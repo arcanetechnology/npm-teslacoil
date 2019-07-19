@@ -2,7 +2,6 @@ package users
 
 import (
 	"github.com/jinzhu/gorm"
-	uuid "github.com/satori/go.uuid"
 )
 
 // GetAll is a GET request that returns all the users in the database
@@ -29,17 +28,13 @@ func GetUser(d *gorm.DB, id uint64) (User, error) {
 // CreateUser is a POST request and inserts all the users in the body into the database
 func CreateUser(d *gorm.DB, nu UserNew) (User, error) {
 
-	newUUID, err := uuid.NewV4()
 	user := User{
-		UUID:     newUUID,
 		Balance:  nu.Balance,
 		Password: nu.Password,
 	}
-	if err != nil {
+
+	if err := d.Create(&user).Error; err != nil {
 		return user, err
 	}
-
-	d.Create(&user)
-
 	return user, nil
 }

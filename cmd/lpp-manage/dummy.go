@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/jinzhu/gorm"
-	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/lpp/internal/deposits"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
@@ -22,17 +21,14 @@ func setupDB(d *gorm.DB) {
 func FillWithDummyData(d *gorm.DB) {
 	d.Create(&users.User{
 		Balance:  50000,
-		UUID:     uuid.NewV4(),
 		Password: "1234",
 	})
 	d.Create(&users.User{
 		Balance:  0,
-		UUID:     uuid.NewV4(),
 		Password: "4321",
 	})
 	d.Create(&users.User{
 		Balance:  25000,
-		UUID:     uuid.NewV4(),
 		Password: "9876",
 	})
 
