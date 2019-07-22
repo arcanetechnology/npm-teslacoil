@@ -78,7 +78,7 @@ func main() {
 				{
 					Name:    "down",
 					Aliases: []string{"md"},
-					Usage:   "Migrates the database up",
+					Usage:   "down x, Migrates the database down x number of steps",
 					Action: func(c *cli.Context) error {
 						if c.NArg() > 0 {
 							steps, err := strconv.Atoi(c.Args().First())
