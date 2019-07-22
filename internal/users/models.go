@@ -6,7 +6,7 @@ import (
 
 // UserNew contains all fields used while constructing a new user
 type UserNew struct {
-	Balance  int    `json:"balance" binding:"required"`
+	Email    string `json:"email"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -15,6 +15,7 @@ type User struct {
 	// To read more about gorm.Model, follow this link
 	// http://gorm.io/docs/conventions.html
 	gorm.Model
-	Balance  int
-	Password string `json:"-"`
+	Email          string
+	Balance        int
+	HashedPassword []byte `json:"-"`
 }
