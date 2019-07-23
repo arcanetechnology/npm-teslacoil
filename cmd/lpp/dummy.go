@@ -32,13 +32,14 @@ func FillWithDummyData(d *gorm.DB) error {
 		statusOptions := []string{"completed", "failed"}
 		directionOptions := []string{"inbound", "outbound"}
 		for index := 1; index <= transactionCount; index++ {
-			_, err = transactions.Create(d, transactions.NewTransaction{
+			_, err = transactions.CreateInvoice(d, transactions.NewTransaction{
 				UserID:      user.ID,
 				Invoice:     "sadfsdafasdfasdfsdfsadf12321213123",
 				Status:      gofakeit.RandString(statusOptions),
 				Description: "Dummy data",
-				Direction:   transactions.Direction(gofakeit.RandString(directionOptions)),
-				Amount:      gofakeit.Number(50000, 4000000000),
+				Direction: transactions.Direction(
+					gofakeit.RandString(directionOptions)),
+				Amount: int64(gofakeit.Number(50000, 4000000000)),
 			})
 			if err != nil {
 				return err

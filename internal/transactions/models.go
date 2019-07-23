@@ -21,7 +21,7 @@ type NewTransaction struct {
 	Status      string
 	Description string
 	Direction   Direction
-	Amount      int
+	Amount      int64
 }
 
 // Transaction is a database table
@@ -33,6 +33,6 @@ type Transaction struct {
 	Status      string
 	Description string
 	Direction   Direction `sql:"type:direction"`
-	Amount      int       `gorm:"not null"`
+	Amount      int64     `gorm:"not null"`
 	SettledAt   time.Time // If this is not 0 or null, it means the invoice is settled
 }

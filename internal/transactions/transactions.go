@@ -1,7 +1,11 @@
 package transactions
 
 import (
+	"context"
+
 	"github.com/jinzhu/gorm"
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 )
 
 // All fetches all transactions
@@ -27,18 +31,34 @@ func GetByID(d *gorm.DB, id int) (Transaction, error) {
 }
 
 // Create a new transaction
-func Create(d *gorm.DB, nt NewTransaction) (Transaction, error) {
+func CreateInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 
 	transaction := Transaction{
 		UserID:      nt.UserID,
-		Invoice:     nt.Invoice,
 		Description: nt.Description,
 		Direction:   nt.Direction,
 		Status:      nt.Status,
 		Amount:      nt.Amount,
 	}
 
-	if err := d.Create(&transaction).Error; err != nil {
+	client, err := ln.NewLNDClient()
+	if err != nil {
+		return transaction, err
+	}
+	invoice := &lnrpc.Invoice{
+		Memo:  nt.Description,
+		Value: nt.Amount,
+	}
+
+	newInvoice, err := client.AddInvoice(context.Background(), invoice)
+	if err != nil {
+		return transaction, err
+	}
+
+	transaction.Invoice = newInvoice.PaymentRequest
+
+	err = d.Create(&transaction).Error
+	if err != nil {
 		return transaction, err
 	}
 
