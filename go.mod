@@ -3,6 +3,7 @@ module gitlab.com/arcanecrypto/lpp
 go 1.12
 
 require (
+	github.com/brianvoe/gofakeit v3.18.0+incompatible
 	github.com/gin-contrib/sse v0.1.0
 	github.com/gin-gonic/gin v1.4.0
 	github.com/golang-migrate/migrate/v4 v4.5.0

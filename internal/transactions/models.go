@@ -7,11 +7,11 @@ import (
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
-type direction string
+type Direction string
 
 const (
-	inbound  direction = "inbound"
-	outbound direction = "outbound"
+	inbound  Direction = "inbound"
+	outbound Direction = "outbound"
 )
 
 // NewTransaction contains all information required to create a transaction
@@ -20,7 +20,7 @@ type NewTransaction struct {
 	Invoice     string
 	Status      string
 	Description string
-	Direction   direction
+	Direction   Direction
 	Amount      int
 }
 
@@ -32,7 +32,7 @@ type Transaction struct {
 	Invoice     string
 	Status      string
 	Description string
-	Direction   direction `sql:"type:direction"`
+	Direction   Direction `sql:"type:direction"`
 	Amount      int       `gorm:"not null"`
 	SettledAt   time.Time // If this is not 0 or null, it means the invoice is settled
 }
