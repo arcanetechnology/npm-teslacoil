@@ -10,8 +10,8 @@ import (
 type Direction string
 
 const (
-	inbound  Direction = "inbound"
-	outbound Direction = "outbound"
+	inbound  Direction = "inbound"  //nolint
+	outbound Direction = "outbound" //nolint
 )
 
 // NewTransaction contains all information required to create a transaction
