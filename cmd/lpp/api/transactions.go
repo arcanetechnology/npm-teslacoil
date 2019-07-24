@@ -42,7 +42,7 @@ func GetTransaction(d *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// CreateTransaction is a POST request and inserts all the users in the body into the database
+// CreateNewInvoice creates a new incove on behalf of a user
 func CreateNewInvoice(d *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
@@ -53,11 +53,9 @@ func CreateNewInvoice(d *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		newTransaction.Direction = transactions.Direction("inbound")
-
 		t, err := transactions.CreateInvoice(d, newTransaction)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not create transaction"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not create new invoice"})
 			return
 		}
 
@@ -65,25 +63,23 @@ func CreateNewInvoice(d *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// // PayInvoice is a POST request and inserts all the users in the body into the database
-// func PayInvoice(d *gorm.DB) gin.HandlerFunc {
-// 	return func(c *gin.Context) {
+// PayInvoice pays a valid invoice on behalf of a user
+func PayInvoice(d *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
 
-// 		var newTransaction transactions.NewTransaction
+		var newTransaction transactions.NewTransaction
 
-// 		if err := c.ShouldBindJSON(&newTransaction); err != nil {
-// 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 			return
-// 		}
+		if err := c.ShouldBindJSON(&newTransaction); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
-// 		newTransaction.Direction = transactions.Direction("outbound")
+		t, err := transactions.PayInvoice(d, newTransaction)
+		if err != nil {
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not pay invoice"})
+			return
+		}
 
-// 		t, err := transactions.CreateInvoice(d, newTransaction)
-// 		if err != nil {
-// 			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not create transaction"})
-// 			return
-// 		}
-
-// 		c.JSONP(200, t)
-// 	}
-// }
+		c.JSONP(200, t)
+	}
+}

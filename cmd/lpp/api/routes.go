@@ -68,7 +68,8 @@ func RegisterUserRoutes(r *gin.Engine, d *gorm.DB) {
 func RegisterTransactionRoutes(r *gin.Engine, d *gorm.DB) {
 	r.GET("/transactions", AllTransactions(d))
 	r.GET("/transactions/:id", GetTransaction(d))
-	r.POST("/transactions", CreateNewInvoice(d))
+	r.POST("/invoice/create", CreateNewInvoice(d))
+	r.POST("/invoice/pay", PayInvoice(d))
 }
 
 // func contentTypeJSONMiddleware(next http.Handler) http.Handler {

@@ -36,8 +36,8 @@ func CreateInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 	transaction := Transaction{
 		UserID:      nt.UserID,
 		Description: nt.Description,
-		Direction:   nt.Direction,
-		Status:      nt.Status,
+		Direction:   Direction("inbound"), // All created invoices are inbound
+		Status:      "unpaid",
 		Amount:      nt.Amount,
 	}
 
@@ -61,6 +61,51 @@ func CreateInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 	if err != nil {
 		return transaction, err
 	}
+
+	return transaction, nil
+}
+
+// PayInvoice pay an invoice on behalf of the user
+func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
+
+	transaction := Transaction{
+		UserID:    nt.UserID,
+		Direction: Direction("outbound"), // All paid invoices are outbound
+		Invoice:   nt.Invoice,
+		Status:    "unpaid",
+	}
+
+	client, err := ln.NewLNDClient()
+	if err != nil {
+		return transaction, err
+	}
+
+	payRequest, err := client.DecodePayReq(
+		context.Background(),
+		&lnrpc.PayReqString{PayReq: nt.Invoice})
+	if err != nil {
+		return transaction, err
+	}
+
+	transaction.Description = payRequest.Description
+	transaction.Amount = payRequest.NumSatoshis
+	// log.Printf("%v", payRequest)
+
+	err = d.Create(&transaction).Error
+	if err != nil {
+		return transaction, err
+	}
+
+	sendRequest := &lnrpc.SendRequest{
+		PaymentRequest: nt.Invoice,
+	}
+	// TODO: Need to improve this step to allow for slow paying invoices.
+	sendResponse, err := client.SendPaymentSync(context.Background(), sendRequest)
+	if err != nil {
+		return transaction, err
+	}
+	transaction.Status = sendResponse.PaymentError
+	d.Save(transaction)
 
 	return transaction, nil
 }
