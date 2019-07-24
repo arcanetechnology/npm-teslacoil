@@ -124,7 +124,7 @@ func UpdateUserBalance(invoiceUpdatesCh chan lnrpc.Invoice, database *gorm.DB) {
 			t.Status = invoice.State.String()
 			if invoice.Settled {
 				t.SettledAt = time.Now()
-				t.User.Balance += int(invoice.AmtPaidSat) * 1000
+				t.User.Balance += int(invoice.AmtPaidMsat)
 			}
 			database.Save(&t)
 		}
