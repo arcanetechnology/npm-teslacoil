@@ -3,12 +3,20 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
+	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/transactions"
 )
 
 func NewApp() *gin.Engine {
 	d := db.OpenDatabase()
 	r := gin.Default()
+
+	invoiceUpdatesCh := make(chan lnrpc.Invoice)
+	go ln.ListenInvoices(invoiceUpdatesCh)
+
+	go transactions.UpdateUserBalance(invoiceUpdatesCh, d)
 
 	RegisterUserRoutes(r, d)
 	RegisterTransactionRoutes(r, d)

@@ -57,3 +57,4 @@ func hashAndSalt(pwd string) []byte {
 	// convert the bytes to a string and return it
 	return hash
 }
+

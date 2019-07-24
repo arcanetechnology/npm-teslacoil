@@ -2,6 +2,7 @@ package transactions
 
 import (
 	"context"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -108,4 +109,24 @@ func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 	d.Save(transaction)
 
 	return transaction, nil
+}
+
+// UpdateUserBalance continually listens for messages and updated the user balance
+// PS: This is most likely done in a horrible way. Must be refactored.
+// We also need to keep track of the last received messages from lnd
+func UpdateUserBalance(invoiceUpdatesCh chan lnrpc.Invoice, database *gorm.DB) {
+	go func() {
+		for {
+			invoice := <-invoiceUpdatesCh
+
+			t := Transaction{}
+			database.Preload("User").Where("invoice = ?", invoice.PaymentRequest).First(&t)
+			t.Status = invoice.State.String()
+			if invoice.Settled {
+				t.SettledAt = time.Now()
+				t.User.Balance += int(invoice.AmtPaidSat) * 1000
+			}
+			database.Save(&t)
+		}
+	}()
 }
