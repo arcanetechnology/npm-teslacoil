@@ -1,69 +1,68 @@
 package api
 
-import (
-	"gitlab.com/arcanecrypto/lpp/cmd/internal/models"
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"testing"
+// import (
+// 	"encoding/json"
+// 	"io/ioutil"
+// 	"net/http"
+// 	"net/http/httptest"
+// 	"os"
+// 	"testing"
 
-	_ "github.com/lib/pq" // Import postgres
-)
+// 	_ "github.com/lib/pq" // Import postgres
+// )
 
-var withdrawals = []models.Withdrawal{
-	{
+// var withdrawals = []models.Withdrawal{
+// 	{
 
-		PaymentRequest: "lnbc10u1pwdh735pp5e3p5phcdzjhwc39yvm7jr3w2hvtnwpvdjmptm8829cjcqwvy5clqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpgyrtvetq6044dtj7x9gf0stpp8c9nrvy2ac22eshyqarnkgv654ts7t3kc09yyjgcw05jeeu8syns5nh5fvc8y7w2aj0a548q6efa55cqy50lfx",
-		Amount:         1000,
-		Description:    "lightningspin",
-	},
-	{
-		PaymentRequest: "lnbc10u1pwdh73lpp5xvlu0jhr3vsj0xyppuw6793qahdcjw56r3mk85jq5mj09w6alpcqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg2p6cm8ddmvgvcg3ct2uceseu07tjucvvkdujdds7lw9p6x7g0jy8a6rf3dnaa8yhejarhrzk304vuqjzchvq3pez5sekytn42aa7fvsq75g98j",
-		Amount:         1000,
-		Description:    "lightningspin",
-	},
-	{
-		PaymentRequest: "lnbc10u1pwdh7jdpp5sh0ghtjm32yaqj7vv8dkx6ckx59snflhymyqvknswacey2vjqpcsdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg42g69hmpc3ftufdtmx6sp27558vjgpmgukd8xlv64rc0g2chfft39vz3gedawt9c9uhqjxma2rzphet4tk2p0jnjlyk5unxxthelvpspxr9uyp",
-		Amount:         1000,
-		Description:    "lightningspin",
-		Fee:            3,
-	},
-}
+// 		PaymentRequest: "lnbc10u1pwdh735pp5e3p5phcdzjhwc39yvm7jr3w2hvtnwpvdjmptm8829cjcqwvy5clqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpgyrtvetq6044dtj7x9gf0stpp8c9nrvy2ac22eshyqarnkgv654ts7t3kc09yyjgcw05jeeu8syns5nh5fvc8y7w2aj0a548q6efa55cqy50lfx",
+// 		Amount:         1000,
+// 		Description:    "lightningspin",
+// 	},
+// 	{
+// 		PaymentRequest: "lnbc10u1pwdh73lpp5xvlu0jhr3vsj0xyppuw6793qahdcjw56r3mk85jq5mj09w6alpcqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg2p6cm8ddmvgvcg3ct2uceseu07tjucvvkdujdds7lw9p6x7g0jy8a6rf3dnaa8yhejarhrzk304vuqjzchvq3pez5sekytn42aa7fvsq75g98j",
+// 		Amount:         1000,
+// 		Description:    "lightningspin",
+// 	},
+// 	{
+// 		PaymentRequest: "lnbc10u1pwdh7jdpp5sh0ghtjm32yaqj7vv8dkx6ckx59snflhymyqvknswacey2vjqpcsdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg42g69hmpc3ftufdtmx6sp27558vjgpmgukd8xlv64rc0g2chfft39vz3gedawt9c9uhqjxma2rzphet4tk2p0jnjlyk5unxxthelvpspxr9uyp",
+// 		Amount:         1000,
+// 		Description:    "lightningspin",
+// 		Fee:            3,
+// 	},
+// }
 
-var deposits = []models.Deposit{
-	{
-		PaymentRequest: "lnbc10u1pwdh735pp5e3p5phcdzjhwc39yvm7jr3w2hvtnwpvdjmptm8829cjcqwvy5clqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpgyrtvetq6044dtj7x9gf0stpp8c9nrvy2ac22eshyqarnkgv654ts7t3kc09yyjgcw05jeeu8syns5nh5fvc8y7w2aj0a548q6efa55cqy50lfx",
-		Amount:         1000,
-		Description:    "lightningspin",
-	},
-	{
-		PaymentRequest: "lnbc10u1pwdh73lpp5xvlu0jhr3vsj0xyppuw6793qahdcjw56r3mk85jq5mj09w6alpcqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg2p6cm8ddmvgvcg3ct2uceseu07tjucvvkdujdds7lw9p6x7g0jy8a6rf3dnaa8yhejarhrzk304vuqjzchvq3pez5sekytn42aa7fvsq75g98j",
-		Amount:         1000,
-		Description:    "lightningspin",
-	},
-	{
-		PaymentRequest: "lnbc10u1pwdh7jdpp5sh0ghtjm32yaqj7vv8dkx6ckx59snflhymyqvknswacey2vjqpcsdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg42g69hmpc3ftufdtmx6sp27558vjgpmgukd8xlv64rc0g2chfft39vz3gedawt9c9uhqjxma2rzphet4tk2p0jnjlyk5unxxthelvpspxr9uyp",
-		Amount:         1000,
-		Description:    "lightningspin",
-	},
-}
+// var deposits = []models.Deposit{
+// 	{
+// 		PaymentRequest: "lnbc10u1pwdh735pp5e3p5phcdzjhwc39yvm7jr3w2hvtnwpvdjmptm8829cjcqwvy5clqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpgyrtvetq6044dtj7x9gf0stpp8c9nrvy2ac22eshyqarnkgv654ts7t3kc09yyjgcw05jeeu8syns5nh5fvc8y7w2aj0a548q6efa55cqy50lfx",
+// 		Amount:         1000,
+// 		Description:    "lightningspin",
+// 	},
+// 	{
+// 		PaymentRequest: "lnbc10u1pwdh73lpp5xvlu0jhr3vsj0xyppuw6793qahdcjw56r3mk85jq5mj09w6alpcqdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg2p6cm8ddmvgvcg3ct2uceseu07tjucvvkdujdds7lw9p6x7g0jy8a6rf3dnaa8yhejarhrzk304vuqjzchvq3pez5sekytn42aa7fvsq75g98j",
+// 		Amount:         1000,
+// 		Description:    "lightningspin",
+// 	},
+// 	{
+// 		PaymentRequest: "lnbc10u1pwdh7jdpp5sh0ghtjm32yaqj7vv8dkx6ckx59snflhymyqvknswacey2vjqpcsdqlxycrqvpqwdshgueqvfjhggr0dcsry7qcqzpg42g69hmpc3ftufdtmx6sp27558vjgpmgukd8xlv64rc0g2chfft39vz3gedawt9c9uhqjxma2rzphet4tk2p0jnjlyk5unxxthelvpspxr9uyp",
+// 		Amount:         1000,
+// 		Description:    "lightningspin",
+// 	},
+// }
 
-var users = []models.User{
-	{
-		Balance: 50000,
-		UUID:    "1234-1234-1234-1234",
-	},
-	{
-		Balance: 0,
-		UUID:    "1234-1234-1234-1234",
-	},
-	{
-		Balance: 25000,
-		UUID:    "1234-1234-1234-1234",
-	},
-}
+// var users = []models.User{
+// 	{
+// 		Balance: 50000,
+// 		UUID:    "1234-1234-1234-1234",
+// 	},
+// 	{
+// 		Balance: 0,
+// 		UUID:    "1234-1234-1234-1234",
+// 	},
+// 	{
+// 		Balance: 25000,
+// 		UUID:    "1234-1234-1234-1234",
+// 	},
+// }
 
 // var server = httptest.NewServer()
 
