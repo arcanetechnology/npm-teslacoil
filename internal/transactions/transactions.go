@@ -2,6 +2,7 @@ package transactions
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/jinzhu/gorm"
@@ -42,6 +43,8 @@ func CreateInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 		Amount:      nt.Amount,
 	}
 
+	transaction.User.ID = nt.UserID
+
 	client, err := ln.NewLNDClient()
 	if err != nil {
 		return transaction, err
@@ -73,7 +76,6 @@ func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 		UserID:    nt.UserID,
 		Direction: Direction("outbound"), // All paid invoices are outbound
 		Invoice:   nt.Invoice,
-		Status:    "unpaid",
 	}
 
 	client, err := ln.NewLNDClient()
@@ -90,6 +92,9 @@ func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 
 	transaction.Description = payRequest.Description
 	transaction.Amount = payRequest.NumSatoshis
+	// TODO: Here we need to store the payment hash
+	// We also need to store the payment preimage once the invoice is settled
+
 	// log.Printf("%v", payRequest)
 
 	err = d.Create(&transaction).Error
@@ -100,33 +105,43 @@ func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 	sendRequest := &lnrpc.SendRequest{
 		PaymentRequest: nt.Invoice,
 	}
+	log.Println("Creating send client")
 	// TODO: Need to improve this step to allow for slow paying invoices.
-	sendResponse, err := client.SendPaymentSync(context.Background(), sendRequest)
+	paymentResponse, err := client.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
-		return transaction, err
+		return transaction, nil
 	}
-	transaction.Status = sendResponse.PaymentError
-	d.Save(transaction)
 
+	if paymentResponse.PaymentError == "" {
+		transaction.Status = "SETTLED"
+	} else {
+		transaction.Status = paymentResponse.PaymentError
+	}
+	transaction.SettledAt = time.Now()
+	log.Println(transaction.User)
+	transaction.User.ID = nt.UserID
+	transaction.User.Balance -= int(payRequest.NumSatoshis * 1000)
+	// transaction.PaymentPreImage = paymentResponse.PaymentPreimage
+	d.Save(&transaction)
 	return transaction, nil
 }
 
-// UpdateUserBalance continually listens for messages and updated the user balance
+// UpdateInvoiceStatus continually listens for messages and updated the user balance
 // PS: This is most likely done in a horrible way. Must be refactored.
 // We also need to keep track of the last received messages from lnd
-func UpdateUserBalance(invoiceUpdatesCh chan lnrpc.Invoice, database *gorm.DB) {
-	go func() {
-		for {
-			invoice := <-invoiceUpdatesCh
+func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *gorm.DB) {
 
-			t := Transaction{}
-			database.Preload("User").Where("invoice = ?", invoice.PaymentRequest).First(&t)
-			t.Status = invoice.State.String()
-			if invoice.Settled {
-				t.SettledAt = time.Now()
-				t.User.Balance += int(invoice.AmtPaidMsat)
-			}
-			database.Save(&t)
+	for {
+		invoice := <-invoiceUpdatesCh
+
+		t := Transaction{}
+		database.Preload("User").Where("invoice = ?", invoice.PaymentRequest).First(&t)
+		t.Status = invoice.State.String()
+		if invoice.Settled {
+			t.SettledAt = time.Now()
+			t.User.Balance += int(invoice.AmtPaidMsat)
 		}
-	}()
+		database.Save(&t)
+	}
 }
+

@@ -16,7 +16,7 @@ func NewApp() *gin.Engine {
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
 	go ln.ListenInvoices(invoiceUpdatesCh)
 
-	go transactions.UpdateUserBalance(invoiceUpdatesCh, d)
+	go transactions.UpdateInvoiceStatus(invoiceUpdatesCh, d)
 
 	RegisterUserRoutes(r, d)
 	RegisterTransactionRoutes(r, d)

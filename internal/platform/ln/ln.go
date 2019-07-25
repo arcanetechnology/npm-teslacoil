@@ -1,7 +1,6 @@
 package ln
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
 	"os/user"
@@ -59,34 +58,6 @@ func NewLNDClient() (lnrpc.LightningClient, error) {
 	client := lnrpc.NewLightningClient(conn)
 
 	return client, nil
-}
-
-func ListenInvoices(msgCh chan lnrpc.Invoice) error {
-
-	client, err := NewLNDClient()
-	if err != nil {
-		return err
-	}
-
-	invoiceSubDetails := &lnrpc.InvoiceSubscription{}
-
-	invoiceClient, err := client.SubscribeInvoices(
-		context.Background(),
-		invoiceSubDetails)
-	if err != nil {
-		return err
-	}
-
-	for {
-		invoice := lnrpc.Invoice{}
-		err := invoiceClient.RecvMsg(&invoice)
-		if err != nil {
-			return err
-		}
-		msgCh <- invoice
-	}
-
-	return nil
 }
 
 // func ListenInvoices() (lnrpc.Lightning_SubscribeTransactionsClient, error) {
