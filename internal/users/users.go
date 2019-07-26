@@ -3,15 +3,15 @@ package users
 import (
 	"log"
 
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // All is a GET request that returns all the users in the database
-func All(d *gorm.DB) ([]User, error) {
+func All(d *sqlx.DB) ([]User, error) {
 	// Equivalent to SELECT * from users;
 	queryResult := []User{}
-	if err := d.Find(&queryResult).Error; err != nil {
+	if err := d.Select(&queryResult, "SELECT * FROM users"); err != nil {
 		return queryResult, err
 	}
 
@@ -19,27 +19,42 @@ func All(d *gorm.DB) ([]User, error) {
 }
 
 // GetByID is a GET request that returns users that match the one specified in the body
-func GetByID(d *gorm.DB, id uint64) (User, error) {
-	queryResult := User{}
-	if err := d.Where("id = ?", id).First(&queryResult).Error; err != nil {
-		return queryResult, err
+func GetByID(d *sqlx.DB, id uint) (UserResponse, error) {
+	userResult := UserResponse{}
+	uQuery := `SELECT id, email, balance FROM users WHERE id=$1 LIMIT 1`
+
+	if err := d.Get(&userResult, uQuery, id); err != nil {
+		return userResult, err
 	}
 
-	return queryResult, nil
+	return userResult, nil
 }
 
 // Create is a POST request and inserts all the users in the body into the database
-func Create(d *gorm.DB, nu UserNew) (User, error) {
+func Create(d *sqlx.DB, nu UserNew) (UserResponse, error) {
+	uResp := UserResponse{}
 
 	user := User{
 		Email:          nu.Email,
 		HashedPassword: hashAndSalt(nu.Password),
 	}
+	userCreateQuery := `INSERT INTO users 
+		(email, balance, hashed_password)
+		VALUES (:email, 0, :hashed_password)
+		RETURNING id, email, balance`
 
-	if err := d.Create(&user).Error; err != nil {
-		return user, err
+	rows, err := d.NamedQuery(userCreateQuery, user)
+	if err != nil {
+		return uResp, err
 	}
-	return user, nil
+	defer rows.Close()
+	if rows.Next() {
+		if err = rows.Scan(&uResp.ID, &uResp.Email, &uResp.Balance); err != nil {
+			return uResp, err
+		}
+	}
+
+	return uResp, nil
 }
 
 func hashAndSalt(pwd string) []byte {
@@ -57,4 +72,3 @@ func hashAndSalt(pwd string) []byte {
 	// convert the bytes to a string and return it
 	return hash
 }
-

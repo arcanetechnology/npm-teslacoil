@@ -4,13 +4,13 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"gitlab.com/arcanecrypto/lpp/internal/transactions"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 // FillWithDummyData creates three entries in each table
-func FillWithDummyData(d *gorm.DB) error {
+func FillWithDummyData(d *sqlx.DB) error {
 	gofakeit.Seed(time.Now().UnixNano())
 
 	userCount := 10
@@ -24,9 +24,6 @@ func FillWithDummyData(d *gorm.DB) error {
 			return err
 		}
 
-		user.Balance = gofakeit.Number(50000, 10000000000)
-		d.Save(user)
-
 		transactionCount := gofakeit.Number(1, 20)
 
 		statusOptions := []string{"completed", "failed"}
@@ -39,7 +36,7 @@ func FillWithDummyData(d *gorm.DB) error {
 				Description: "Dummy data",
 				Direction: transactions.Direction(
 					gofakeit.RandString(directionOptions)),
-				Amount: int64(gofakeit.Number(50000, 4000000000)),
+				Amount: int64(gofakeit.Number(50, 4000000)),
 			})
 			if err != nil {
 				return err

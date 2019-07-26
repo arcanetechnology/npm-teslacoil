@@ -1,7 +1,7 @@
 package users
 
 import (
-	"github.com/jinzhu/gorm"
+	"time"
 )
 
 // UserNew contains all fields used while constructing a new user
@@ -12,10 +12,18 @@ type UserNew struct {
 
 // User is a database table
 type User struct {
-	// To read more about gorm.Model, follow this link
-	// http://gorm.io/docs/conventions.html
-	gorm.Model
-	Email          string
-	Balance        int
-	HashedPassword []byte `json:"-"`
+	ID             uint64     `db:"id"`
+	Email          string     `db:"email"`
+	Balance        int        `db:"balance"`
+	HashedPassword []byte     `db:"hashed_password" json:"-"`
+	CreatedAt      time.Time  `db:"created_at"`
+	UpdatedAt      time.Time  `db:"updated_at"`
+	DeletedAt      *time.Time `db:"deleted_at"`
+}
+
+// UserResponse is a database table
+type UserResponse struct {
+	ID      uint64 `db:"id"`
+	Email   string `db:"email"`
+	Balance int    `db:"balance"`
 }

@@ -5,45 +5,53 @@ import (
 	"log"
 	"time"
 
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 )
 
 // All fetches all transactions
-func All(d *gorm.DB) ([]Transaction, error) {
-	// Equivalent to SELECT * from users;
-	queryResult := []Transaction{}
-	if err := d.Find(&queryResult).Error; err != nil {
-		return queryResult, err
+func All(d *sqlx.DB) ([]Transaction, error) {
+	transactions := []Transaction{}
+	const tQuery = `SELECT t.* 
+		FROM transactions AS t 
+		ORDER BY t.created_at ASC`
+
+	err := d.Select(&transactions, tQuery)
+	log.Printf("%v", err)
+	if err != nil {
+		return transactions, err
 	}
 
-	return queryResult, nil
+	return transactions, nil
 }
 
-// GetByID is a GET request that returns deposits that match the one specified in the body
-func GetByID(d *gorm.DB, id int) (Transaction, error) {
+// GetByID returns a single transaction based on the id given
+func GetByID(d *sqlx.DB, id uint64) (TransactionResponse, error) {
+	trxResult := TransactionResponse{}
+	tQuery := `SELECT * FROM transactions WHERE id=$1 LIMIT 1`
 
-	transaction := Transaction{}
-	if err := d.Where("id = ?", id).First(&transaction).Error; err != nil {
-		return transaction, err
+	if err := d.Get(&trxResult, tQuery, id); err != nil {
+		return trxResult, errors.Wrap(err, "Could not get transaction")
 	}
 
-	return transaction, nil
+	return trxResult, nil
 }
 
 // Create a new transaction
-func CreateInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
+func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
 
-	transaction := Transaction{
+	transaction := TransactionResponse{
 		UserID:      nt.UserID,
 		Description: nt.Description,
 		Direction:   Direction("inbound"), // All created invoices are inbound
 		Status:      "unpaid",
-		Amount:      nt.Amount,
+		// TOOD: Danger we need to split this into Msats and sats
+		Amount: nt.Amount * 1000,
 	}
 
-	transaction.User.ID = nt.UserID
+	transaction.UserID = nt.UserID
 
 	client, err := ln.NewLNDClient()
 	if err != nil {
@@ -61,23 +69,49 @@ func CreateInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 
 	transaction.Invoice = newInvoice.PaymentRequest
 
-	err = d.Create(&transaction).Error
+	trxCreateQuery := `INSERT INTO transactions 
+		(user_id, invoice, description, direction, status, amount)
+		VALUES (:user_id, :invoice, :description, :direction, :status, :amount)
+		RETURNING id, user_id, invoice, description, direction, status, amount,
+				  created_at, updated_at`
+
+	rows, err := d.NamedQuery(trxCreateQuery, transaction)
 	if err != nil {
 		return transaction, err
 	}
+	if rows.Next() {
+		if err = rows.Scan(
+			&transaction.ID,
+			&transaction.UserID,
+			&transaction.Invoice,
+			&transaction.Description,
+			&transaction.Direction,
+			&transaction.Status,
+			// TOOD: Danger we need to split this into Msats and sats
+			&transaction.Amount,
+			&transaction.CreatedAt,
+			&transaction.UpdatedAt,
+		); err != nil {
+			return transaction, err
+		}
+	}
+	rows.Close() // Free up the database connection
 
 	return transaction, nil
 }
 
 // PayInvoice pay an invoice on behalf of the user
-func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
+func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 
-	transaction := Transaction{
-		UserID:    nt.UserID,
-		Direction: Direction("outbound"), // All paid invoices are outbound
-		Invoice:   nt.Invoice,
-	}
+	// Define a custom response struct to include user details
+	transaction := PaymentResponse{}
 
+	transaction.UserID = nt.UserID
+	transaction.Direction = Direction("outbound") // All paid invoices are outbound
+	transaction.Invoice = nt.Invoice
+
+	// TODO: the LND gRPC client should mayeb be shared, no need to create a
+	// new for each transaction
 	client, err := ln.NewLNDClient()
 	if err != nil {
 		return transaction, err
@@ -91,21 +125,12 @@ func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 	}
 
 	transaction.Description = payRequest.Description
-	transaction.Amount = payRequest.NumSatoshis
-	// TODO: Here we need to store the payment hash
-	// We also need to store the payment preimage once the invoice is settled
-
-	// log.Printf("%v", payRequest)
-
-	err = d.Create(&transaction).Error
-	if err != nil {
-		return transaction, err
-	}
+	transaction.Amount = payRequest.NumSatoshis * 1000
 
 	sendRequest := &lnrpc.SendRequest{
 		PaymentRequest: nt.Invoice,
 	}
-	log.Println("Creating send client")
+
 	// TODO: Need to improve this step to allow for slow paying invoices.
 	paymentResponse, err := client.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
@@ -113,35 +138,139 @@ func PayInvoice(d *gorm.DB, nt NewTransaction) (Transaction, error) {
 	}
 
 	if paymentResponse.PaymentError == "" {
+		tNow := time.Now()
+		transaction.SettledAt = &tNow
 		transaction.Status = "SETTLED"
 	} else {
 		transaction.Status = paymentResponse.PaymentError
+		// TODO: Here we need to update the transaction response to clearly
+		// destinguis between successfully paid and not.
+		// For example by creating error types
+		return transaction, nil
 	}
-	transaction.SettledAt = time.Now()
-	log.Println(transaction.User)
-	transaction.User.ID = nt.UserID
-	transaction.User.Balance -= int(payRequest.NumSatoshis * 1000)
+
+	tx := d.MustBegin()
+
+	uUpdateQuery := `UPDATE users 
+		SET balance = balance - :amount
+		WHERE id = :user_id
+		RETURNING id, balance, updated_at`
+
+	trxCreateQuery := `INSERT INTO transactions 
+		(user_id, invoice, description, direction, status, amount)
+		VALUES (:user_id, :invoice, :description, :direction, :status, :amount)
+		RETURNING id, user_id, invoice, description, direction, status, amount,
+				  created_at, updated_at`
+
+	rows, err := tx.NamedQuery(trxCreateQuery, transaction)
+	if err != nil {
+		return transaction, err
+	}
+	if rows.Next() {
+		if err = rows.Scan(
+			&transaction.ID,
+			&transaction.UserID,
+			&transaction.Invoice,
+			&transaction.Description,
+			&transaction.Direction,
+			&transaction.Status,
+			// TOOD: Danger we need to split this into Msats and sats
+			&transaction.Amount,
+			&transaction.CreatedAt,
+			&transaction.UpdatedAt,
+		); err != nil {
+			return transaction, err
+		}
+	}
+	rows.Close() // Free up the database connection
+
+	if transaction.Status == "SETTLED" {
+		rows, err := d.NamedQuery(uUpdateQuery, &transaction)
+		if err != nil {
+			// TODO: This is probably not a healthy way to deal with an error here
+			return transaction, errors.Wrap(err, "PayInvoice: Cold not construct user update")
+		}
+		if rows.Next() {
+			if err = rows.Scan(
+				&transaction.User.ID,
+				&transaction.User.Balance,
+				&transaction.User.UpdatedAt,
+			); err != nil {
+				return transaction, errors.Wrap(err, "PayInvoice: Could not decrement user balance")
+			}
+		}
+	}
+
+	if err != nil {
+		return transaction, err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return transaction, errors.Wrap(err, "PayInvoice: Cound not commit")
+	}
+
+	// TODO: Here we need to store the payment hash
+	// We also need to store the payment preimage once the invoice is settled
+
 	// transaction.PaymentPreImage = paymentResponse.PaymentPreimage
-	d.Save(&transaction)
+
 	return transaction, nil
 }
 
 // UpdateInvoiceStatus continually listens for messages and updated the user balance
 // PS: This is most likely done in a horrible way. Must be refactored.
 // We also need to keep track of the last received messages from lnd
-func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *gorm.DB) {
+func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB) {
 
 	for {
 		invoice := <-invoiceUpdatesCh
 
-		t := Transaction{}
-		database.Preload("User").Where("invoice = ?", invoice.PaymentRequest).First(&t)
+		type UserDetails struct {
+			ID        uint64
+			Balance   int64
+			UpdatedAt *time.Time
+		}
+
+		// Define a custom response struct to include user details
+		t := struct {
+			Transaction
+			User UserDetails
+		}{}
+
+		tQuery := `SELECT * FROM transactions as t WHERE invoice=$1 LIMIT 1`
+		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
+			// TODO: This is probably not a healthy way to deal with an error here
+			if invoice.State != lnrpc.Invoice_OPEN {
+				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not get transaction").Error())
+			}
+		}
+
 		t.Status = invoice.State.String()
 		if invoice.Settled {
-			t.SettledAt = time.Now()
-			t.User.Balance += int(invoice.AmtPaidMsat)
+			tNow := time.Now()
+			t.SettledAt = &tNow
+			uUpdateQuery := `UPDATE users 
+				SET balance = :amount + balance
+				WHERE id = :user_id
+				RETURNING id, balance, updated_at`
+
+			rows, err := database.NamedQuery(uUpdateQuery, &t)
+			if err != nil {
+				// TODO: This is probably not a healthy way to deal with an error here
+				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update user balance").Error())
+			}
+			if rows.Next() {
+				if err = rows.Scan(
+					&t.User.ID,
+					&t.User.Balance,
+					&t.User.UpdatedAt,
+				); err != nil {
+					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not read updated user detials").Error())
+				}
+			}
+			rows.Close() // Free up the database connection
+			// TODO: Here we need to call the callback with the response.
 		}
-		database.Save(&t)
 	}
 }
-

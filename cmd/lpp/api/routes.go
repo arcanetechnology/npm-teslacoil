@@ -2,15 +2,13 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 	"gitlab.com/arcanecrypto/lpp/internal/transactions"
 )
 
-func NewApp() *gin.Engine {
-	d := db.OpenDatabase()
+func NewApp(d *sqlx.DB) (*gin.Engine, error) {
 	r := gin.Default()
 
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
@@ -26,7 +24,8 @@ func NewApp() *gin.Engine {
 	// 		"message": "It's happening!",
 	// 	})
 	// })
-	return r
+
+	return r, nil
 }
 
 // func API(d gorm.DB) http.Handler {
@@ -67,13 +66,13 @@ func NewApp() *gin.Engine {
 // }
 
 // RegisterUserRoutes registers all user routes on the router
-func RegisterUserRoutes(r *gin.Engine, d *gorm.DB) {
+func RegisterUserRoutes(r *gin.Engine, d *sqlx.DB) {
 	r.GET("/users", AllUsers(d))
 	r.GET("/users/:id", GetUser(d))
 	r.POST("/users", CreateUser(d))
 }
 
-func RegisterTransactionRoutes(r *gin.Engine, d *gorm.DB) {
+func RegisterTransactionRoutes(r *gin.Engine, d *sqlx.DB) {
 	r.GET("/transactions", AllTransactions(d))
 	r.GET("/transactions/:id", GetTransaction(d))
 	r.POST("/invoice/create", CreateNewInvoice(d))

@@ -8,14 +8,14 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/golang-migrate/migrate/v4/source/github"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
 
 // MigrationStatus prints the migrations verison number
-func MigrationStatus(migrationsPath string, d *gorm.DB) error {
+func MigrationStatus(migrationsPath string, d *sqlx.DB) error {
 
-	driver, err := postgres.WithInstance(d.DB(), &postgres.Config{})
+	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
 		"postgres",
@@ -36,9 +36,9 @@ func MigrationStatus(migrationsPath string, d *gorm.DB) error {
 }
 
 // MigrateUp Migrates everything up
-func MigrateUp(migrationsPaths string, d *gorm.DB) {
+func MigrateUp(migrationsPaths string, d *sqlx.DB) {
 
-	driver, err := postgres.WithInstance(d.DB(), &postgres.Config{})
+	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPaths,
 		"postgres",
@@ -56,9 +56,9 @@ func MigrateUp(migrationsPaths string, d *gorm.DB) {
 }
 
 // MigrateDown migrates down
-func MigrateDown(migrationsPaths string, d *gorm.DB, steps int) {
+func MigrateDown(migrationsPaths string, d *sqlx.DB, steps int) {
 
-	driver, err := postgres.WithInstance(d.DB(), &postgres.Config{})
+	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPaths,
 		"postgres",

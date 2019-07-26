@@ -5,12 +5,13 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 // GetUsers is a GET request that returns all the users in the database
-func AllUsers(d *gorm.DB) gin.HandlerFunc {
+func AllUsers(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		u, err := users.All(d)
 		if err != nil {
@@ -22,18 +23,18 @@ func AllUsers(d *gorm.DB) gin.HandlerFunc {
 }
 
 // GetUser is a GET request that returns users that match the one specified in the body
-func GetUser(d *gorm.DB) gin.HandlerFunc {
+func GetUser(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSONP(404, gin.H{"error": "User id should be a integer"})
 			return
 		}
-		u, err := users.GetByID(d, id)
+		u, err := users.GetByID(d, uint(id))
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
-				gin.H{"error": "User not found"},
+				gin.H{"error": errors.Wrap(err, "User not found").Error()},
 			)
 			return
 		}
@@ -43,7 +44,7 @@ func GetUser(d *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateUser is a POST request and inserts all the users in the body into the database
-func CreateUser(d *gorm.DB) gin.HandlerFunc {
+func CreateUser(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newUser users.UserNew
 
@@ -54,7 +55,7 @@ func CreateUser(d *gorm.DB) gin.HandlerFunc {
 
 		u, err := users.Create(d, newUser)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not create user"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not create new user").Error()})
 			return
 		}
 

@@ -17,7 +17,7 @@ import (
 
 func askForConfirmation() bool {
 	var response string
-	_, err := fmt.Scanln(&response)
+	_, err := fmt.Scan(&response)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,8 +53,6 @@ func containsString(slice []string, element string) bool {
 
 func main() {
 
-	database := db.OpenDatabase()
-
 	app := cli.NewApp()
 	app.Name = "lpp"
 	app.Usage = "Manageing helper for developing lightning payment processor"
@@ -65,7 +63,15 @@ func main() {
 			Name:  "serve",
 			Usage: "Starts the lightning payment processing api",
 			Action: func(c *cli.Context) error {
-				a := api.NewApp()
+				database, err := db.OpenDatabase()
+				if err != nil {
+					return err
+				}
+				defer database.Close()
+				a, err := api.NewApp(database)
+				if err != nil {
+					return err
+				}
 				a.Run()
 				return nil
 			},
@@ -81,6 +87,11 @@ func main() {
 					Usage:   "down x, Migrates the database down x number of steps",
 					Action: func(c *cli.Context) error {
 						if c.NArg() > 0 {
+							database, err := db.OpenDatabase()
+							if err != nil {
+								return err
+							}
+							defer database.Close()
 							steps, err := strconv.Atoi(c.Args().First())
 							if err != nil {
 								return err
@@ -105,6 +116,11 @@ func main() {
 					Aliases: []string{"mu"},
 					Usage:   "Migrates the database up",
 					Action: func(c *cli.Context) error {
+						database, err := db.OpenDatabase()
+						if err != nil {
+							return err
+						}
+						defer database.Close()
 						_, filename, _, ok := runtime.Caller(0)
 						if ok == false {
 							return cli.NewExitError("Cannot find migrations folder", 22)
@@ -119,6 +135,11 @@ func main() {
 					Aliases: []string{"s"},
 					Usage:   "Check migrations status and version number",
 					Action: func(c *cli.Context) error {
+						database, err := db.OpenDatabase()
+						if err != nil {
+							return err
+						}
+						defer database.Close()
 						_, filename, _, ok := runtime.Caller(0)
 						if ok == false {
 							return cli.NewExitError("Cannot find migrations folder", 22)
@@ -135,7 +156,15 @@ func main() {
 					Aliases: []string{"dd"},
 					Usage:   "Fills the database with dummy data",
 					Action: func(c *cli.Context) error {
-						// fmt.Println("Just filled the database with dummy data")
+						database, err := db.OpenDatabase()
+						if err != nil {
+							return err
+						}
+						defer database.Close()
+						fmt.Println("Are you sure you want to fill dummy data?")
+						if askForConfirmation() {
+
+						}
 						return FillWithDummyData(database)
 					},
 				},

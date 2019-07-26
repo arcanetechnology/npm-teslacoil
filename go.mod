@@ -20,6 +20,7 @@ require (
 	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c // indirect
 	github.com/jinzhu/gorm v1.9.10
 	github.com/jinzhu/inflection v1.0.0
+	github.com/jmoiron/sqlx v1.2.0
 	github.com/json-iterator/go v1.1.6
 	github.com/lib/pq v1.1.1
 	github.com/lightninglabs/gozmq v0.0.0-20190710231225-cea2a031735d // indirect
@@ -29,6 +30,7 @@ require (
 	github.com/mattn/go-isatty v0.0.8
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 	github.com/modern-go/reflect2 v1.0.1
+	github.com/pkg/errors v0.8.1
 	github.com/roasbeef/btcd v0.0.0-20180418012700-a03db407e40d // indirect
 	github.com/roasbeef/btcrpcclient v0.0.0-20170622074026-d0f4db8b4dad // indirect
 	github.com/roasbeef/btcutil v0.0.0-20180406014609-dfb640c57141 // indirect

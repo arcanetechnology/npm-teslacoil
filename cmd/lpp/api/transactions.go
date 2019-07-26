@@ -5,16 +5,26 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/transactions"
 )
 
-// GetUsers is a GET request that returns all the users in the database
-func AllTransactions(d *gorm.DB) gin.HandlerFunc {
+// import (
+// 	"net/http"
+// 	"strconv"
+
+// 	"github.com/gin-gonic/gin"
+// 	"github.com/jinzhu/gorm"
+// 	"gitlab.com/arcanecrypto/lpp/internal/transactions"
+// )
+
+// AllTransactions is a GET request that returns all the users in the database
+func AllTransactions(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		t, err := transactions.All(d)
 		if err != nil {
-			c.JSONP(500, gin.H{"error": err})
+			c.JSONP(500, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSONP(200, t)
@@ -22,9 +32,9 @@ func AllTransactions(d *gorm.DB) gin.HandlerFunc {
 }
 
 // GetTransaction is a GET request that returns users that match the one specified in the body
-func GetTransaction(d *gorm.DB) gin.HandlerFunc {
+func GetTransaction(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
 			c.JSONP(404, gin.H{"error": "Transactions id should be a integer"})
 			return
@@ -33,7 +43,7 @@ func GetTransaction(d *gorm.DB) gin.HandlerFunc {
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
-				gin.H{"error": "User not found"},
+				gin.H{"error": errors.Wrap(err, "Transaction not found not found").Error()},
 			)
 			return
 		}
@@ -43,7 +53,7 @@ func GetTransaction(d *gorm.DB) gin.HandlerFunc {
 }
 
 // CreateNewInvoice creates a new incove on behalf of a user
-func CreateNewInvoice(d *gorm.DB) gin.HandlerFunc {
+func CreateNewInvoice(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		var newTransaction transactions.NewTransaction
@@ -55,7 +65,7 @@ func CreateNewInvoice(d *gorm.DB) gin.HandlerFunc {
 
 		t, err := transactions.CreateInvoice(d, newTransaction)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not create new invoice"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not create new invoice").Error()})
 			return
 		}
 
@@ -64,7 +74,7 @@ func CreateNewInvoice(d *gorm.DB) gin.HandlerFunc {
 }
 
 // PayInvoice pays a valid invoice on behalf of a user
-func PayInvoice(d *gorm.DB) gin.HandlerFunc {
+func PayInvoice(d *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		var newTransaction transactions.NewTransaction
