@@ -150,6 +150,23 @@ func main() {
 						MigrationStatus(migrationsPath, database)
 						return nil
 					},
+				}, {
+					Name:    "newmigration",
+					Aliases: []string{"nm"},
+					Usage:   "Creates a new migration file",
+					Action: func(c *cli.Context) error {
+
+						_, filename, _, ok := runtime.Caller(0)
+						if ok == false {
+							return cli.NewExitError("Cannot find migrations folder", 22)
+						}
+
+						migrationText := c.Args().First() // get the filename
+						migrationsPath := path.Join(path.Dir(filename), "/migrations")
+
+						CreateMigration(migrationsPath, migrationText)
+						return nil
+					},
 				},
 				{
 					Name:    "dummy",
