@@ -5,7 +5,7 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/jmoiron/sqlx"
-	"gitlab.com/arcanecrypto/lpp/internal/transactions"
+	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
@@ -24,14 +24,14 @@ func FillWithDummyData(d *sqlx.DB) error {
 			return err
 		}
 
-		transactionCount := gofakeit.Number(1, 20)
+		paymentCount := gofakeit.Number(1, 20)
 
 		directionOptions := []string{"inbound", "outbound"}
-		for index := 1; index <= transactionCount; index++ {
-			_, err = transactions.CreateInvoice(d, transactions.NewTransaction{
+		for index := 1; index <= paymentCount; index++ {
+			_, err = payments.CreateInvoice(d, payments.NewPayment{
 				UserID:      user.ID,
 				Description: "Dummy data " + string(index),
-				Direction: transactions.Direction(
+				Direction: payments.Direction(
 					gofakeit.RandString(directionOptions)),
 				Amount: int64(gofakeit.Number(50, 10000)),
 			})

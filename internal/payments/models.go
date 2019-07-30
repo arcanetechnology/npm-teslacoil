@@ -1,9 +1,10 @@
-package transactions
+package payments
 
 import (
 	"time"
 )
 
+// Direction is the direction of a lightning payment
 type Direction string
 
 const (
@@ -11,8 +12,8 @@ const (
 	outbound Direction = "outbound" //nolint
 )
 
-// NewTransaction contains all information required to create a transaction
-type NewTransaction struct {
+// NewPayment contains all information required to create a payment
+type NewPayment struct {
 	UserID      uint64 `json:"user_id"` // userID of the user this withdrawal belongs to
 	Invoice     string
 	Status      string
@@ -21,8 +22,8 @@ type NewTransaction struct {
 	Amount      int64
 }
 
-// Transaction is a database table
-type Transaction struct {
+// Payment is a database table
+type Payment struct {
 	ID             uint64     `db:"id"`
 	UserID         uint64     `db:"user_id"`
 	Invoice        string     `db:"invoice"`
@@ -39,8 +40,8 @@ type Transaction struct {
 	DeletedAt      *time.Time `db:"deleted_at"`
 }
 
-// TransactionResponse contains all field that are supposed to be returned
-type TransactionResponse struct {
+// PaymentResponse contains all field that are supposed to be returned
+type PaymentResponse struct {
 	ID             uint64     `db:"id"`
 	UserID         uint64     `db:"user_id"`
 	Invoice        string     `db:"invoice"`
@@ -57,8 +58,9 @@ type TransactionResponse struct {
 	DeletedAt      *time.Time `db:"deleted_at" json:"-"`
 }
 
-type PaymentResponse struct {
-	TransactionResponse
+//UserPaymentResponse is a user payment response
+type UserPaymentResponse struct {
+	PaymentResponse
 	User struct {
 		ID        uint64     `db:"u.id"`
 		Balance   int64      `db:"u.balance"`

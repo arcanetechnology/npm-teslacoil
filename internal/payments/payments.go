@@ -1,4 +1,4 @@
-package transactions
+package payments
 
 import (
 	"context"
@@ -13,37 +13,37 @@ import (
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 )
 
-// All fetches all transactions
-func All(d *sqlx.DB) ([]Transaction, error) {
-	transactions := []Transaction{}
+// All fetches all payments
+func All(d *sqlx.DB) ([]Payment, error) {
+	payments := []Payment{}
 	const tQuery = `SELECT t.* 
-		FROM transactions AS t 
+		FROM payments AS t 
 		ORDER BY t.created_at ASC`
 
-	err := d.Select(&transactions, tQuery)
+	err := d.Select(&payments, tQuery)
 	if err != nil {
-		return transactions, err
+		return payments, err
 	}
 
-	return transactions, nil
+	return payments, nil
 }
 
-// GetByID returns a single transaction based on the id given
-func GetByID(d *sqlx.DB, id uint64) (TransactionResponse, error) {
-	trxResult := TransactionResponse{}
-	tQuery := `SELECT * FROM transactions WHERE id=$1 LIMIT 1`
+// GetByID returns a single payment based on the id given
+func GetByID(d *sqlx.DB, id uint64) (PaymentResponse, error) {
+	trxResult := PaymentResponse{}
+	tQuery := `SELECT * FROM payments WHERE id=$1 LIMIT 1`
 
 	if err := d.Get(&trxResult, tQuery, id); err != nil {
-		return trxResult, errors.Wrap(err, "Could not get transaction")
+		return trxResult, errors.Wrap(err, "Could not get payment")
 	}
 
 	return trxResult, nil
 }
 
-// Create a new transaction
-func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
+// CreateInvoice creates a new payment
+func CreateInvoice(d *sqlx.DB, nt NewPayment) (PaymentResponse, error) {
 
-	transaction := TransactionResponse{
+	payment := PaymentResponse{
 		UserID:      nt.UserID,
 		Description: nt.Description,
 		Direction:   Direction("inbound"), // All created invoices are inbound
@@ -52,16 +52,16 @@ func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
 		Amount: nt.Amount * 1000,
 	}
 
-	transaction.UserID = nt.UserID
+	payment.UserID = nt.UserID
 
 	client, err := ln.NewLNDClient()
 	if err != nil {
-		return transaction, err
+		return payment, err
 	}
 	// Generate random preimage.
 	preimage := make([]byte, 32)
 	if _, err := rand.Read(preimage); err != nil {
-		return transaction, err
+		return payment, err
 	}
 	hexPreimage := hex.EncodeToString(preimage)
 
@@ -73,75 +73,75 @@ func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
 
 	newInvoice, err := client.AddInvoice(context.Background(), invoice)
 	if err != nil {
-		return transaction, err
+		return payment, err
 	}
 
-	transaction.Invoice = newInvoice.PaymentRequest
-	transaction.PreImage = hexPreimage
-	transaction.HashedPreImage = hex.EncodeToString(newInvoice.RHash)
+	payment.Invoice = newInvoice.PaymentRequest
+	payment.PreImage = hexPreimage
+	payment.HashedPreImage = hex.EncodeToString(newInvoice.RHash)
 
-	trxCreateQuery := `INSERT INTO transactions 
+	trxCreateQuery := `INSERT INTO payments 
 		(user_id, invoice, pre_image, hashed_pre_image, description, direction, status, amount)
 		VALUES (:user_id, :invoice, :pre_image, :hashed_pre_image, :description,
 				:direction, :status, :amount)
 		RETURNING id, user_id, invoice, pre_image, hashed_pre_image, description, direction, status, amount,
 				  created_at, updated_at`
 
-	rows, err := d.NamedQuery(trxCreateQuery, transaction)
+	rows, err := d.NamedQuery(trxCreateQuery, payment)
 	if err != nil {
-		return transaction, err
+		return payment, err
 	}
 	if rows.Next() {
 		if err = rows.Scan(
-			&transaction.ID,
-			&transaction.UserID,
-			&transaction.Invoice,
-			&transaction.PreImage,
-			&transaction.HashedPreImage,
-			&transaction.Description,
-			&transaction.Direction,
-			&transaction.Status,
+			&payment.ID,
+			&payment.UserID,
+			&payment.Invoice,
+			&payment.PreImage,
+			&payment.HashedPreImage,
+			&payment.Description,
+			&payment.Direction,
+			&payment.Status,
 			// TOOD: Danger we need to split this into Msats and sats
-			&transaction.Amount,
-			&transaction.CreatedAt,
-			&transaction.UpdatedAt,
+			&payment.Amount,
+			&payment.CreatedAt,
+			&payment.UpdatedAt,
 		); err != nil {
-			return transaction, err
+			return payment, err
 		}
 	}
 	rows.Close() // Free up the database connection
 
-	return transaction, nil
+	return payment, nil
 }
 
 // PayInvoice pay an invoice on behalf of the user
-func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
+func PayInvoice(d *sqlx.DB, nt NewPayment) (UserPaymentResponse, error) {
 
 	// Define a custom response struct to include user details
-	transaction := PaymentResponse{}
+	payment := UserPaymentResponse{}
 
-	transaction.UserID = nt.UserID
-	transaction.Direction = Direction("outbound") // All paid invoices are outbound
-	transaction.Invoice = nt.Invoice
+	payment.UserID = nt.UserID
+	payment.Direction = Direction("outbound") // All paid invoices are outbound
+	payment.Invoice = nt.Invoice
 
 	// TODO: the LND gRPC client should mayeb be shared, no need to create a
-	// new for each transaction
+	// new for each payment
 	client, err := ln.NewLNDClient()
 	if err != nil {
-		return transaction, err
+		return payment, err
 	}
 
 	payRequest, err := client.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: nt.Invoice})
 	if err != nil {
-		return transaction, err
+		return payment, err
 	}
 
-	transaction.HashedPreImage = payRequest.PaymentHash
-	// transaction.Destination = payRequest.Destination
-	transaction.Description = payRequest.Description
-	transaction.Amount = payRequest.NumSatoshis * 1000
+	payment.HashedPreImage = payRequest.PaymentHash
+	// payment.Destination = payRequest.Destination
+	payment.Description = payRequest.Description
+	payment.Amount = payRequest.NumSatoshis * 1000
 
 	sendRequest := &lnrpc.SendRequest{
 		PaymentRequest: nt.Invoice,
@@ -150,18 +150,18 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 	// TODO: Need to improve this step to allow for slow paying invoices.
 	paymentResponse, err := client.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
-		return transaction, nil
+		return payment, nil
 	}
 
 	if paymentResponse.PaymentError == "" {
 		tNow := time.Now()
-		transaction.SettledAt = &tNow
-		transaction.Status = "SETTLED"
-		transaction.PreImage = hex.EncodeToString(paymentResponse.PaymentPreimage)
+		payment.SettledAt = &tNow
+		payment.Status = "SETTLED"
+		payment.PreImage = hex.EncodeToString(paymentResponse.PaymentPreimage)
 	} else {
-		transaction.Status = paymentResponse.PaymentError
-		transaction.Status = "FAILED"
-		return transaction, nil
+		payment.Status = paymentResponse.PaymentError
+		payment.Status = "FAILED"
+		return payment, nil
 	}
 
 	tx := d.MustBegin()
@@ -171,70 +171,70 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 		WHERE id = :user_id
 		RETURNING id, balance, updated_at`
 
-	trxCreateQuery := `INSERT INTO transactions 
+	trxCreateQuery := `INSERT INTO payments 
 		(user_id, invoice, description, direction, status, amount)
 		VALUES (:user_id, :invoice, :description, :direction, :status, :amount)
 		RETURNING id, user_id, invoice, description, direction, status, amount,
 				  created_at, updated_at`
 
-	rows, err := tx.NamedQuery(trxCreateQuery, transaction)
+	rows, err := tx.NamedQuery(trxCreateQuery, payment)
 	if err != nil {
 		_ = tx.Rollback()
-		return transaction, err
+		return payment, err
 	}
 	if rows.Next() {
 		if err = rows.Scan(
-			&transaction.ID,
-			&transaction.UserID,
-			&transaction.Invoice,
-			&transaction.Description,
-			&transaction.Direction,
-			&transaction.Status,
+			&payment.ID,
+			&payment.UserID,
+			&payment.Invoice,
+			&payment.Description,
+			&payment.Direction,
+			&payment.Status,
 			// TOOD: Danger we need to split this into Msats and sats
-			&transaction.Amount,
-			&transaction.CreatedAt,
-			&transaction.UpdatedAt,
+			&payment.Amount,
+			&payment.CreatedAt,
+			&payment.UpdatedAt,
 		); err != nil {
 			_ = tx.Rollback()
-			return transaction, errors.Wrap(err, "PayInvoice: Paid but cold not create transaction")
+			return payment, errors.Wrap(err, "PayInvoice: Paid but cold not create payment")
 		}
 	}
 	rows.Close() // Free up the database connection
 
-	if transaction.Status == "SETTLED" {
-		rows, err := d.NamedQuery(uUpdateQuery, &transaction)
+	if payment.Status == "SETTLED" {
+		rows, err := d.NamedQuery(uUpdateQuery, &payment)
 		if err != nil {
 			// TODO: This is probably not a healthy way to deal with an error here
 			tx.Rollback()
-			return transaction, errors.Wrap(err, "PayInvoice: Cold not construct user update")
+			return payment, errors.Wrap(err, "PayInvoice: Cold not construct user update")
 		}
 		if rows.Next() {
 			if err = rows.Scan(
-				&transaction.User.ID,
-				&transaction.User.Balance,
-				&transaction.User.UpdatedAt,
+				&payment.User.ID,
+				&payment.User.Balance,
+				&payment.User.UpdatedAt,
 			); err != nil {
 				_ = tx.Rollback()
-				return transaction, errors.Wrap(err, "PayInvoice: Could not decrement user balance")
+				return payment, errors.Wrap(err, "PayInvoice: Could not decrement user balance")
 			}
 		}
 	}
 
 	if err != nil {
-		return transaction, err
+		return payment, err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return transaction, errors.Wrap(err, "PayInvoice: Cound not commit")
+		return payment, errors.Wrap(err, "PayInvoice: Cound not commit")
 	}
 
 	// TODO: Here we need to store the payment hash
 	// We also need to store the payment preimage once the invoice is settled
 
-	// transaction.PaymentPreImage = paymentResponse.PaymentPreimage
+	// payment.PaymentPreImage = paymentResponse.PaymentPreimage
 
-	return transaction, nil
+	return payment, nil
 }
 
 // UpdateInvoiceStatus continually listens for messages and updated the user balance
@@ -253,14 +253,14 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 
 		// Define a custom response struct to include user details
 		t := struct {
-			Transaction
+			Payment
 			User UserDetails
 		}{}
 
-		tQuery := `SELECT * FROM transactions as t WHERE invoice=$1 LIMIT 1`
+		tQuery := `SELECT * FROM payments as t WHERE invoice=$1 LIMIT 1`
 		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
 			// TODO: This is probably not a healthy way to deal with an error here
-			log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find transaction").Error())
+			log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find payment").Error())
 			return
 		}
 
@@ -269,7 +269,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			tNow := time.Now()
 			t.SettledAt = &tNow
 
-			trxUpdateQuery := `UPDATE transactions 
+			trxUpdateQuery := `UPDATE payments 
 				SET status = :status, settled_at = :settled_at 
 				WHERE hashed_pre_image = :hashed_pre_image
 				RETURNING id, user_id, invoice, pre_image, hashed_pre_image,
@@ -284,7 +284,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			rows, err := tx.NamedQuery(trxUpdateQuery, &t)
 			if err != nil {
 				_ = tx.Rollback()
-				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update transaction").Error())
+				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update payment").Error())
 				return
 			}
 			if rows.Next() {
@@ -303,7 +303,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.UpdatedAt,
 				); err != nil {
 					_ = tx.Rollback()
-					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update transaction").Error())
+					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update payment").Error())
 					return
 				}
 			}

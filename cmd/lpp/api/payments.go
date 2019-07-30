@@ -6,13 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/lpp/internal/transactions"
+	"gitlab.com/arcanecrypto/lpp/internal/payments"
 )
 
-// GetAllTransactions is a GET request that returns all the users in the database
-func GetAllTransactions(r *RestServer) gin.HandlerFunc {
+// GetAllPayments is a GET request that returns all the users in the database
+func GetAllPayments(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		t, err := transactions.All(r.db)
+		t, err := payments.All(r.db)
 		if err != nil {
 			c.JSONP(500, gin.H{"error": err.Error()})
 			return
@@ -21,19 +21,19 @@ func GetAllTransactions(r *RestServer) gin.HandlerFunc {
 	}
 }
 
-// GetTransaction is a GET request that returns users that match the one specified in the body
-func GetTransaction(r *RestServer) gin.HandlerFunc {
+// GetPayment is a GET request that returns users that match the one specified in the body
+func GetPayment(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSONP(404, gin.H{"error": "Transactions id should be a integer"})
+			c.JSONP(404, gin.H{"error": "Payments id should be a integer"})
 			return
 		}
-		t, err := transactions.GetByID(r.db, id)
+		t, err := payments.GetByID(r.db, id)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
-				gin.H{"error": errors.Wrap(err, "Transaction not found not found").Error()},
+				gin.H{"error": errors.Wrap(err, "Payment not found not found").Error()},
 			)
 			return
 		}
@@ -46,14 +46,14 @@ func GetTransaction(r *RestServer) gin.HandlerFunc {
 func CreateNewInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		var newTransaction transactions.NewTransaction
+		var newPayment payments.NewPayment
 
-		if err := c.ShouldBindJSON(&newTransaction); err != nil {
+		if err := c.ShouldBindJSON(&newPayment); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		t, err := transactions.CreateInvoice(r.db, newTransaction)
+		t, err := payments.CreateInvoice(r.db, newPayment)
 		if err != nil {
 			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not create new invoice").Error()})
 			return
@@ -67,14 +67,14 @@ func CreateNewInvoice(r *RestServer) gin.HandlerFunc {
 func PayInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		var newTransaction transactions.NewTransaction
+		var newPayment payments.NewPayment
 
-		if err := c.ShouldBindJSON(&newTransaction); err != nil {
+		if err := c.ShouldBindJSON(&newPayment); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		t, err := transactions.PayInvoice(r.db, newTransaction)
+		t, err := payments.PayInvoice(r.db, newPayment)
 		if err != nil {
 			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not pay invoice"})
 			return

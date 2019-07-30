@@ -60,7 +60,7 @@ func NewLNDClient() (lnrpc.LightningClient, error) {
 	return client, nil
 }
 
-// func ListenInvoices() (lnrpc.Lightning_SubscribeTransactionsClient, error) {
+// func ListenInvoices() (lnrpc.Lightning_SubscribePaymentsClient, error) {
 
 // 	// iu := &InvoiceUpdates{}
 
@@ -69,14 +69,14 @@ func NewLNDClient() (lnrpc.LightningClient, error) {
 // 		return nil, err
 // 	}
 
-// 	transactionsDetails := &lnrpc.GetTransactionsRequest{}
+// 	paymentsDetails := &lnrpc.GetPaymentsRequest{}
 
-// 	transactionsClient, err := client.SubscribeTransactions(
+// 	paymentsClient, err := client.SubscribePayments(
 // 		context.Background(),
-// 		transactionsDetails)
+// 		paymentsDetails)
 // 	if err != nil {
 // 		return nil, err
 // 	}
 
-// 	return transactionsClient, nil
+// 	return paymentsClient, nil
 // }

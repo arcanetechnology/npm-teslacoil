@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
-	"gitlab.com/arcanecrypto/lpp/internal/transactions"
 )
 
 // RestServer is the rest server for our app. It includes a Router,
@@ -39,10 +39,10 @@ func NewApp(d *sqlx.DB) (RestServer, error) {
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
 	go ln.ListenInvoices(invoiceUpdatesCh)
 
-	go transactions.UpdateInvoiceStatus(invoiceUpdatesCh, d)
+	go payments.UpdateInvoiceStatus(invoiceUpdatesCh, d)
 
 	RegisterUserRoutes(&restServer)
-	RegisterTransactionRoutes(&restServer)
+	RegisterPaymentRoutes(&restServer)
 
 	return restServer, nil
 }
@@ -54,10 +54,10 @@ func RegisterUserRoutes(r *RestServer) {
 	r.Router.POST("/users", CreateUser(r))
 }
 
-// RegisterTransactionRoutes registers all transaction routes on the router
-func RegisterTransactionRoutes(r *RestServer) {
-	r.Router.GET("/transactions", GetAllTransactions(r))
-	r.Router.GET("/transactions/:id", GetTransaction(r))
+// RegisterPaymentRoutes registers all payment routes on the router
+func RegisterPaymentRoutes(r *RestServer) {
+	r.Router.GET("/payments", GetAllPayments(r))
+	r.Router.GET("/payments/:id", GetPayment(r))
 	r.Router.POST("/invoice/create", CreateNewInvoice(r))
 	r.Router.POST("/invoice/pay", PayInvoice(r))
 }

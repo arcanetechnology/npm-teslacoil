@@ -1,6 +1,6 @@
 DROP TYPE IF EXISTS direction;
 CREATE TYPE direction AS ENUM ('inbound', 'outbound');
-CREATE TABLE transactions(
+CREATE TABLE payments(
     id SERIAL PRIMARY KEY,
     user_id integer REFERENCES users(id),
     invoice TEXT NOT NULL,
@@ -13,4 +13,4 @@ CREATE TABLE transactions(
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
 );
-COMMENT ON COLUMN transactions.amount is 'Amount stored in millisatoshis.';
+COMMENT ON COLUMN payments.amount is 'Amount stored in millisatoshis.';
