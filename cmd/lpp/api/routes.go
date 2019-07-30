@@ -1,6 +1,9 @@
 package api
 
 import (
+	"time"
+
+	jwt "github.com/appleboy/gin-jwt"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -8,80 +11,53 @@ import (
 	"gitlab.com/arcanecrypto/lpp/internal/transactions"
 )
 
-func NewApp(d *sqlx.DB) (*gin.Engine, error) {
-	r := gin.Default()
+// RestServer is the rest server for our app. It includes a Router,
+// a JWT middleware and a db connection
+type RestServer struct {
+	Router *gin.Engine
+	JWT    *jwt.GinJWTMiddleware
+	db     *sqlx.DB
+}
+
+//NewApp creates a new app
+func NewApp(d *sqlx.DB) (RestServer, error) {
+	g := gin.Default()
+
+	restServer := RestServer{
+		Router: g,
+		JWT: &jwt.GinJWTMiddleware{
+			Realm:         "gin jwt",
+			Key:           []byte("secret key"),
+			Timeout:       time.Hour,
+			MaxRefresh:    time.Hour,
+			TokenHeadName: "Bearer",
+			TimeFunc:      time.Now,
+		},
+		db: d,
+	}
 
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
 	go ln.ListenInvoices(invoiceUpdatesCh)
 
 	go transactions.UpdateInvoiceStatus(invoiceUpdatesCh, d)
 
-	RegisterUserRoutes(r, d)
-	RegisterTransactionRoutes(r, d)
+	RegisterUserRoutes(&restServer)
+	RegisterTransactionRoutes(&restServer)
 
-	// router.GET("/", func(c *gin.Context) {
-	// 	c.JSONP(200, gin.H{
-	// 		"message": "It's happening!",
-	// 	})
-	// })
-
-	return r, nil
+	return restServer, nil
 }
-
-// func API(d gorm.DB) http.Handler {
-
-// 	router := mux.NewRouter()
-
-// 	s.router.RegisterDepositRoutes(s.database)
-// 	s.router.RegisterWithdrawalRoutes(s.database)
-// 	s.router.RegisterUserRoutes(s.database)
-
-// 	return
-// }
-
-// // RegisterRoutes registers all routes
-// func (s *web.Server) RegisterRoutes() {
-// 	s.router.Use(contentTypeJSONMiddleware)
-// 	// TODO ANYONE: Structure the app better than to pass the server as an argument
-// 	// It is my understanding this is very bad form.. There must be a better way:(
-// 	s.router.RegisterDepositRoutes(s.database)
-// 	s.router.RegisterWithdrawalRoutes(s.database)
-// 	s.router.RegisterUserRoutes(s.database)
-
-// 	http.Handle("/", s.router)
-// }
-
-// // RegisterDepositRoutes registers all user routes on the router
-// func (r *web.Router) RegisterDepositRoutes(d db.DB) {
-// 	r.Handle("/deposits", deposits.Deposits(d)).Methods("GET")
-// 	r.Handle("/deposits", deposits.CreateDeposit(d)).Methods("POST")
-// 	r.Handle("/deposits/{id:[0-9]+}", deposits.GetDeposit(d)).Methods("GET")
-// }
-
-// // RegisterWithdrawalRoutes registers all user routes on the router
-// func (r *web.Router) RegisterWithdrawalRoutes(d db.DB) {
-// 	r.Handle("/withdrawals", withdrawals.Withdrawals(d)).Methods("GET")
-// 	r.Handle("/withdrawals", withdrawals.CreateWithdrawal(d)).Methods("POST")
-// 	r.Handle("/withdrawals/{id:[0-9]+}", withdrawals.GetWithdrawal(d)).Methods("GET")
-// }
 
 // RegisterUserRoutes registers all user routes on the router
-func RegisterUserRoutes(r *gin.Engine, d *sqlx.DB) {
-	r.GET("/users", AllUsers(d))
-	r.GET("/users/:id", GetUser(d))
-	r.POST("/users", CreateUser(d))
+func RegisterUserRoutes(r *RestServer) {
+	r.Router.GET("/users", GetAllUsers(r))
+	r.Router.GET("/users/:id", GetUser(r))
+	r.Router.POST("/users", CreateUser(r))
 }
 
-func RegisterTransactionRoutes(r *gin.Engine, d *sqlx.DB) {
-	r.GET("/transactions", AllTransactions(d))
-	r.GET("/transactions/:id", GetTransaction(d))
-	r.POST("/invoice/create", CreateNewInvoice(d))
-	r.POST("/invoice/pay", PayInvoice(d))
+// RegisterTransactionRoutes registers all transaction routes on the router
+func RegisterTransactionRoutes(r *RestServer) {
+	r.Router.GET("/transactions", GetAllTransactions(r))
+	r.Router.GET("/transactions/:id", GetTransaction(r))
+	r.Router.POST("/invoice/create", CreateNewInvoice(r))
+	r.Router.POST("/invoice/pay", PayInvoice(r))
 }
-
-// func contentTypeJSONMiddleware(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		w.Header().Add("Content-Type", "application/json")
-// 		next.ServeHTTP(w, r)
-// 	})
-// }

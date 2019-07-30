@@ -55,7 +55,7 @@ func main() {
 
 	app := cli.NewApp()
 	app.Name = "lpp"
-	app.Usage = "Manageing helper for developing lightning payment processor"
+	app.Usage = "Managing helper for developing lightning payment processor"
 	app.EnableBashCompletion = true
 
 	app.Commands = []cli.Command{
@@ -72,7 +72,7 @@ func main() {
 				if err != nil {
 					return err
 				}
-				a.Run()
+				a.Router.Run()
 				return nil
 			},
 		},

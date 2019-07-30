@@ -3,6 +3,7 @@ module gitlab.com/arcanecrypto/lpp
 go 1.12
 
 require (
+	github.com/appleboy/gin-jwt v2.5.0+incompatible
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
 	github.com/btcsuite/go-flags v0.0.0-20150116065318-6c288d648c1c // indirect
@@ -36,10 +37,12 @@ require (
 	github.com/roasbeef/btcrpcclient v0.0.0-20170622074026-d0f4db8b4dad // indirect
 	github.com/roasbeef/btcutil v0.0.0-20180406014609-dfb640c57141 // indirect
 	github.com/roasbeef/btcwallet v0.0.0-20180426223453-30affec83c18 // indirect
+	github.com/tidwall/gjson v1.3.2 // indirect
 	github.com/ugorji/go v1.1.7
 	golang.org/x/crypto v0.0.0-20190426145343-a29dc8fdc734
 	golang.org/x/sys v0.0.0-20190712062909-fae7ac547cb7
 	google.golang.org/grpc v1.20.1
+	gopkg.in/dgrijalva/jwt-go.v3 v3.2.0 // indirect
 	gopkg.in/go-playground/validator.v8 v8.18.2
 	gopkg.in/macaroon.v2 v2.1.0
 	gopkg.in/urfave/cli.v1 v1.20.0

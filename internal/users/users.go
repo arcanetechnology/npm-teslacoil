@@ -31,12 +31,12 @@ func GetByID(d *sqlx.DB, id uint) (UserResponse, error) {
 }
 
 // Create is a POST request and inserts all the users in the body into the database
-func Create(d *sqlx.DB, nu UserNew) (UserResponse, error) {
+func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 	uResp := UserResponse{}
 
 	user := User{
-		Email:          nu.Email,
-		HashedPassword: hashAndSalt(nu.Password),
+		Email:          email,
+		HashedPassword: hashAndSalt(password),
 	}
 	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password)
