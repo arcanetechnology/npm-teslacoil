@@ -101,3 +101,17 @@ func CreateMigration(migrationsPath string, migrationText string) error {
 	}
 	return nil
 }
+
+// DropDatabase drops the existing database
+func DropDatabase(migrationsPath string, d *sqlx.DB) error {
+	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+	migrator, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		return err
+	}
+	return migrator.Drop()
+}
