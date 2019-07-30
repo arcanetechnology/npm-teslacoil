@@ -150,6 +150,45 @@ func main() {
 						MigrationStatus(migrationsPath, database)
 						return nil
 					},
+				}, {
+					Name:    "newmigration",
+					Aliases: []string{"nm"},
+					Usage:   "Creates a new migration file",
+					Action: func(c *cli.Context) error {
+
+						_, filename, _, ok := runtime.Caller(0)
+						if ok == false {
+							return cli.NewExitError("Cannot find migrations folder", 22)
+						}
+
+						migrationText := c.Args().First() // get the filename
+						migrationsPath := path.Join(path.Dir(filename), "/migrations")
+
+						CreateMigration(migrationsPath, migrationText)
+						return nil
+					},
+				}, {
+					Name:    "drop",
+					Aliases: []string{"dr"},
+					Usage:   "Drops the entire database.",
+					Action: func(c *cli.Context) error {
+						database, err := db.OpenDatabase()
+						if err != nil {
+							return err
+						}
+						defer database.Close()
+						_, filename, _, ok := runtime.Caller(0)
+						if ok == false {
+							return cli.NewExitError("Cannot find migrations folder", 22)
+						}
+						migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
+
+						fmt.Println("Are you sure you want to drop the entire database?")
+						if askForConfirmation() {
+							return DropDatabase(migrationsPath, database)
+						}
+						return nil
+					},
 				},
 				{
 					Name:    "dummy",
@@ -163,9 +202,9 @@ func main() {
 						defer database.Close()
 						fmt.Println("Are you sure you want to fill dummy data?")
 						if askForConfirmation() {
-
+							return FillWithDummyData(database)
 						}
-						return FillWithDummyData(database)
+						return nil
 					},
 				},
 			},

@@ -1,3 +1,4 @@
+DROP TYPE IF EXISTS direction;
 CREATE TYPE direction AS ENUM ('inbound', 'outbound');
 CREATE TABLE transactions(
     id SERIAL PRIMARY KEY,

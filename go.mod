@@ -18,6 +18,7 @@ require (
 	github.com/google/go-querystring v1.0.0
 	github.com/gorilla/mux v1.7.3
 	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c // indirect
+	github.com/iancoleman/strcase v0.0.0-20190422225806-e506e3ef7365
 	github.com/jinzhu/gorm v1.9.10
 	github.com/jinzhu/inflection v1.0.0
 	github.com/jmoiron/sqlx v1.2.0

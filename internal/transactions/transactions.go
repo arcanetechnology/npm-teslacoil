@@ -2,6 +2,8 @@ package transactions
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"time"
 
@@ -19,7 +21,6 @@ func All(d *sqlx.DB) ([]Transaction, error) {
 		ORDER BY t.created_at ASC`
 
 	err := d.Select(&transactions, tQuery)
-	log.Printf("%v", err)
 	if err != nil {
 		return transactions, err
 	}
@@ -57,9 +58,17 @@ func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
 	if err != nil {
 		return transaction, err
 	}
+	// Generate random preimage.
+	preimage := make([]byte, 32)
+	if _, err := rand.Read(preimage); err != nil {
+		return transaction, err
+	}
+	hexPreimage := hex.EncodeToString(preimage)
+
 	invoice := &lnrpc.Invoice{
-		Memo:  nt.Description,
-		Value: nt.Amount,
+		Memo:      nt.Description,
+		Value:     nt.Amount,
+		RPreimage: preimage,
 	}
 
 	newInvoice, err := client.AddInvoice(context.Background(), invoice)
@@ -68,11 +77,14 @@ func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
 	}
 
 	transaction.Invoice = newInvoice.PaymentRequest
+	transaction.PreImage = hexPreimage
+	transaction.HashedPreImage = hex.EncodeToString(newInvoice.RHash)
 
 	trxCreateQuery := `INSERT INTO transactions 
-		(user_id, invoice, description, direction, status, amount)
-		VALUES (:user_id, :invoice, :description, :direction, :status, :amount)
-		RETURNING id, user_id, invoice, description, direction, status, amount,
+		(user_id, invoice, pre_image, hashed_pre_image, description, direction, status, amount)
+		VALUES (:user_id, :invoice, :pre_image, :hashed_pre_image, :description,
+				:direction, :status, :amount)
+		RETURNING id, user_id, invoice, pre_image, hashed_pre_image, description, direction, status, amount,
 				  created_at, updated_at`
 
 	rows, err := d.NamedQuery(trxCreateQuery, transaction)
@@ -84,6 +96,8 @@ func CreateInvoice(d *sqlx.DB, nt NewTransaction) (TransactionResponse, error) {
 			&transaction.ID,
 			&transaction.UserID,
 			&transaction.Invoice,
+			&transaction.PreImage,
+			&transaction.HashedPreImage,
 			&transaction.Description,
 			&transaction.Direction,
 			&transaction.Status,
@@ -124,6 +138,8 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 		return transaction, err
 	}
 
+	transaction.HashedPreImage = payRequest.PaymentHash
+	// transaction.Destination = payRequest.Destination
 	transaction.Description = payRequest.Description
 	transaction.Amount = payRequest.NumSatoshis * 1000
 
@@ -141,11 +157,10 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 		tNow := time.Now()
 		transaction.SettledAt = &tNow
 		transaction.Status = "SETTLED"
+		transaction.PreImage = hex.EncodeToString(paymentResponse.PaymentPreimage)
 	} else {
 		transaction.Status = paymentResponse.PaymentError
-		// TODO: Here we need to update the transaction response to clearly
-		// destinguis between successfully paid and not.
-		// For example by creating error types
+		transaction.Status = "FAILED"
 		return transaction, nil
 	}
 
@@ -164,6 +179,7 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 
 	rows, err := tx.NamedQuery(trxCreateQuery, transaction)
 	if err != nil {
+		_ = tx.Rollback()
 		return transaction, err
 	}
 	if rows.Next() {
@@ -179,7 +195,8 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 			&transaction.CreatedAt,
 			&transaction.UpdatedAt,
 		); err != nil {
-			return transaction, err
+			_ = tx.Rollback()
+			return transaction, errors.Wrap(err, "PayInvoice: Paid but cold not create transaction")
 		}
 	}
 	rows.Close() // Free up the database connection
@@ -188,6 +205,7 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 		rows, err := d.NamedQuery(uUpdateQuery, &transaction)
 		if err != nil {
 			// TODO: This is probably not a healthy way to deal with an error here
+			tx.Rollback()
 			return transaction, errors.Wrap(err, "PayInvoice: Cold not construct user update")
 		}
 		if rows.Next() {
@@ -196,6 +214,7 @@ func PayInvoice(d *sqlx.DB, nt NewTransaction) (PaymentResponse, error) {
 				&transaction.User.Balance,
 				&transaction.User.UpdatedAt,
 			); err != nil {
+				_ = tx.Rollback()
 				return transaction, errors.Wrap(err, "PayInvoice: Could not decrement user balance")
 			}
 		}
@@ -241,24 +260,61 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 		tQuery := `SELECT * FROM transactions as t WHERE invoice=$1 LIMIT 1`
 		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
 			// TODO: This is probably not a healthy way to deal with an error here
-			if invoice.State != lnrpc.Invoice_OPEN {
-				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not get transaction").Error())
-			}
+			log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find transaction").Error())
+			return
 		}
 
 		t.Status = invoice.State.String()
 		if invoice.Settled {
 			tNow := time.Now()
 			t.SettledAt = &tNow
+
+			trxUpdateQuery := `UPDATE transactions 
+				SET status = :status, settled_at = :settled_at 
+				WHERE hashed_pre_image = :hashed_pre_image
+				RETURNING id, user_id, invoice, pre_image, hashed_pre_image,
+						  description, direction, status, amount,
+						  created_at, updated_at`
+
 			uUpdateQuery := `UPDATE users 
 				SET balance = :amount + balance
 				WHERE id = :user_id
 				RETURNING id, balance, updated_at`
-
-			rows, err := database.NamedQuery(uUpdateQuery, &t)
+			tx := database.MustBegin()
+			rows, err := tx.NamedQuery(trxUpdateQuery, &t)
 			if err != nil {
+				_ = tx.Rollback()
+				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update transaction").Error())
+				return
+			}
+			if rows.Next() {
+				if err = rows.Scan(
+					&t.ID,
+					&t.UserID,
+					&t.Invoice,
+					&t.PreImage,
+					&t.HashedPreImage,
+					&t.Description,
+					&t.Direction,
+					&t.Status,
+					// TOOD: Danger we need to split this into Msats and sats
+					&t.Amount,
+					&t.CreatedAt,
+					&t.UpdatedAt,
+				); err != nil {
+					_ = tx.Rollback()
+					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update transaction").Error())
+					return
+				}
+			}
+			rows.Close() // Free up the database connection
+
+			rows, err = tx.NamedQuery(uUpdateQuery, &t)
+			if err != nil {
+				_ = tx.Rollback()
 				// TODO: This is probably not a healthy way to deal with an error here
 				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update user balance").Error())
+				return
 			}
 			if rows.Next() {
 				if err = rows.Scan(
@@ -266,10 +322,13 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.User.Balance,
 					&t.User.UpdatedAt,
 				); err != nil {
+					_ = tx.Rollback()
 					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not read updated user detials").Error())
+					return
 				}
 			}
 			rows.Close() // Free up the database connection
+			_ = tx.Commit()
 			// TODO: Here we need to call the callback with the response.
 		}
 	}

@@ -3,11 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"path"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/golang-migrate/migrate/v4/source/github"
+	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -36,11 +40,11 @@ func MigrationStatus(migrationsPath string, d *sqlx.DB) error {
 }
 
 // MigrateUp Migrates everything up
-func MigrateUp(migrationsPaths string, d *sqlx.DB) {
+func MigrateUp(migrationsPath string, d *sqlx.DB) {
 
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	m, err := migrate.NewWithDatabaseInstance(
-		migrationsPaths,
+		migrationsPath,
 		"postgres",
 		driver,
 	)
@@ -56,11 +60,11 @@ func MigrateUp(migrationsPaths string, d *sqlx.DB) {
 }
 
 // MigrateDown migrates down
-func MigrateDown(migrationsPaths string, d *sqlx.DB, steps int) {
+func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) {
 
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	m, err := migrate.NewWithDatabaseInstance(
-		migrationsPaths,
+		migrationsPath,
 		"postgres",
 		driver,
 	)
@@ -73,4 +77,41 @@ func MigrateDown(migrationsPaths string, d *sqlx.DB, steps int) {
 	if err := m.Steps(-steps); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func newMigrationFile(filePath string) error {
+	if _, err := os.Create(filePath); err != nil {
+		return err
+	}
+	return nil
+}
+
+// CreateMigration creates a new empty migration file with correct name
+func CreateMigration(migrationsPath string, migrationText string) error {
+	migrationTime := time.Now().UTC().Format("20060102150405")
+
+	fileNameUp := path.Join(migrationsPath, migrationTime+"_"+strcase.ToSnake(migrationText)+".up.pgsql")
+	if err := newMigrationFile(fileNameUp); err != nil {
+		return err
+	}
+
+	fileNameDown := path.Join(migrationsPath, migrationTime+"_"+strcase.ToSnake(migrationText)+".down.pgsql")
+	if err := newMigrationFile(fileNameDown); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DropDatabase drops the existing database
+func DropDatabase(migrationsPath string, d *sqlx.DB) error {
+	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+	migrator, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		return err
+	}
+	return migrator.Drop()
 }
