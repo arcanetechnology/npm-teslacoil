@@ -20,8 +20,19 @@ import (
 // providing the user with important data
 
 //GetAllInvoicesResponse is the type returned by the api to the front-end
-type GetAllInvoicesResponse struct {
+type getAllInvoicesResponse struct {
 	Invoices []payments.Payment
+}
+type getInvoiceResponse struct {
+	PaymentRequest string
+	Hash           string
+	Direction      payments.Direction
+}
+type createInvoiceResponse struct {
+	PaymentRequest string
+}
+type payInvoiceResponse struct {
+	Status string
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database
@@ -32,7 +43,7 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 			c.JSONP(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSONP(200, &GetAllInvoicesResponse{Invoices: t})
+		c.JSONP(200, &getAllInvoicesResponse{Invoices: t})
 	}
 }
 
@@ -53,7 +64,11 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, t)
+		c.JSONP(200, &getInvoiceResponse{
+			PaymentRequest: t.PaymentRequest,
+			Hash:           t.HashedPreImage,
+			Direction:      t.Direction,
+		})
 	}
 }
 
@@ -74,7 +89,9 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(200, &createInvoiceResponse{
+			PaymentRequest: t.PaymentRequest,
+		})
 	}
 }
 
@@ -94,6 +111,8 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(200, &payInvoiceResponse{
+			Status: t.Status,
+		})
 	}
 }
