@@ -99,6 +99,6 @@ func RegisterUserRoutes(r *RestServer) {
 func RegisterPaymentRoutes(r *RestServer) {
 	r.Router.GET("/payments", GetAllPayments(r))
 	r.Router.GET("/payments/:id", GetPayment(r))
-	r.Router.POST("/invoice/create", CreateNewInvoice(r))
+	r.Router.POST("/invoice/create", CreateInvoice(r))
 	r.Router.POST("/invoice/pay", PayInvoice(r))
 }

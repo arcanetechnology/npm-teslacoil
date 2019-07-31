@@ -2,7 +2,6 @@ package payments
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"log"
 	"time"
@@ -10,10 +9,64 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 )
 
-// All fetches all payments
-func All(d *sqlx.DB) ([]Payment, error) {
+// Direction is the direction of a lightning payment
+type Direction string
+
+const (
+	inbound  Direction = "inbound"  //nolint
+	outbound Direction = "outbound" //nolint
+)
+
+//NewDeposit is a new deposit
+type NewDeposit struct {
+	UserID uint64 `json:"user_id"`
+	Memo   string `json:"memo"`
+	Amount int64  `json:"amount"`
+}
+
+//NewWithdrawal is the required(and optional) fields for initiating a withdrawal
+type NewWithdrawal struct {
+	UserID      uint64 `json:"user_id"` // userID of the user this withdrawal belongs to
+	Invoice     string
+	Status      string
+	Description string
+	Direction   Direction
+	Amount      int64
+}
+
+// Payment is a database table
+type Payment struct {
+	ID             uint64     `db:"id"`
+	UserID         uint64     `db:"user_id"`
+	PaymentRequest string     `db:"invoice"`
+	PreImage       string     `db:"pre_image"`
+	HashedPreImage string     `db:"hashed_pre_image"`
+	CallbackURL    *string    `db:"callback_url"`
+	Status         string     `db:"status"`
+	Description    string     `db:"description"`
+	Direction      Direction  `db:"direction"`
+	Amount         int64      `db:"amount"`
+	SettledAt      *time.Time `db:"settled_at"` // If this is not 0 or null, it means the invoice is settled
+	CreatedAt      time.Time  `db:"created_at"`
+	UpdatedAt      time.Time  `db:"updated_at"`
+	DeletedAt      *time.Time `db:"deleted_at"`
+}
+
+//UserPaymentResponse is a user payment response
+type UserPaymentResponse struct {
+	Payment
+	User struct {
+		ID        uint64     `db:"u.id"`
+		Balance   int64      `db:"u.balance"`
+		UpdatedAt *time.Time `db:"u.updated_at"`
+	}
+}
+
+// GetAll fetches all payments
+func GetAll(d *sqlx.DB) ([]Payment, error) {
 	payments := []Payment{}
 	const tQuery = `SELECT t.* 
 		FROM payments AS t 
@@ -28,8 +81,8 @@ func All(d *sqlx.DB) ([]Payment, error) {
 }
 
 // GetByID returns a single invoice based on the id given
-func GetByID(d *sqlx.DB, id uint64) (PaymentResponse, error) {
-	trxResult := PaymentResponse{}
+func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
+	trxResult := Payment{}
 	tQuery := `SELECT * FROM payments WHERE id=$1 LIMIT 1`
 
 	if err := d.Get(&trxResult, tQuery, id); err != nil {
@@ -39,42 +92,34 @@ func GetByID(d *sqlx.DB, id uint64) (PaymentResponse, error) {
 	return trxResult, nil
 }
 
-// CreateInvoice creates a new invoice
-func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
-	PaymentResponse, error) {
+// CreateInvoice inserts a invoice into the database creates a new invoice
+func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposit) (
+	Payment, error) {
 
-	payment := PaymentResponse{
-		UserID:      nt.UserID,
-		Description: nt.Description,
-		Direction:   Direction("inbound"), // All created invoices are inbound
-		Status:      "unpaid",
-		// TOOD: Danger we need to split this into Msats and sats
-		Amount: nt.Amount * 1000,
-	}
-
-	payment.UserID = nt.UserID
-
-	// Generate random preimage.
-	preimage := make([]byte, 32)
-	if _, err := rand.Read(preimage); err != nil {
-		return payment, err
-	}
-	hexPreimage := hex.EncodeToString(preimage)
-
-	invoice := &lnrpc.Invoice{
-		Memo:      nt.Description,
-		Value:     nt.Amount,
-		RPreimage: preimage,
-	}
-
-	newInvoice, err := lncli.AddInvoice(context.Background(), invoice)
+	invoice, err := ln.AddInvoice(lncli, &ln.AddInvoiceData{
+		Memo: newPayment.Memo, Amount: newPayment.Amount,
+	})
 	if err != nil {
-		return payment, err
+		return Payment{}, err
 	}
 
-	payment.Invoice = newInvoice.PaymentRequest
-	payment.PreImage = hexPreimage
-	payment.HashedPreImage = hex.EncodeToString(newInvoice.RHash)
+	// Sanity check the invoice we just created
+	if invoice.Value != newPayment.Amount {
+		log.Fatal("could not insert invoice, created invoice amount not equal request.Amount")
+	}
+
+	preimage := hex.EncodeToString(invoice.RPreimage)
+	payment := Payment{
+		UserID:         newPayment.UserID,
+		PaymentRequest: invoice.PaymentRequest,
+		Description:    newPayment.Memo,
+		PreImage:       preimage,
+		HashedPreImage: hex.EncodeToString(invoice.RHash),
+		Status:         "unpaid",
+		Direction:      Direction("inbound"), // All created invoices are inbound
+		// TOOD: Danger we need to split this into Msats and sats
+		Amount: newPayment.Amount * 1000,
+	}
 
 	trxCreateQuery := `INSERT INTO payments 
 		(user_id, invoice, pre_image, hashed_pre_image, description, direction, status, amount)
@@ -91,7 +136,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
 		if err = rows.Scan(
 			&payment.ID,
 			&payment.UserID,
-			&payment.Invoice,
+			&payment.PaymentRequest,
 			&payment.PreImage,
 			&payment.HashedPreImage,
 			&payment.Description,
@@ -111,19 +156,19 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
 }
 
 // PayInvoice pay an invoice on behalf of the user
-func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
+func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWithdrawal) (
 	UserPaymentResponse, error) {
 
 	// Define a custom response struct to include user details
 	payment := UserPaymentResponse{}
 
-	payment.UserID = nt.UserID
+	payment.UserID = withdrawalRequest.UserID
 	payment.Direction = Direction("outbound") // All paid invoices are outbound
-	payment.Invoice = nt.Invoice
+	payment.PaymentRequest = withdrawalRequest.Invoice
 
 	payRequest, err := lncli.DecodePayReq(
 		context.Background(),
-		&lnrpc.PayReqString{PayReq: nt.Invoice})
+		&lnrpc.PayReqString{PayReq: withdrawalRequest.Invoice})
 	if err != nil {
 		return payment, err
 	}
@@ -134,7 +179,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
 	payment.Amount = payRequest.NumSatoshis * 1000
 
 	sendRequest := &lnrpc.SendRequest{
-		PaymentRequest: nt.Invoice,
+		PaymentRequest: withdrawalRequest.Invoice,
 	}
 
 	// TODO: Need to improve this step to allow for slow paying invoices.
@@ -176,7 +221,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
 		if err = rows.Scan(
 			&payment.ID,
 			&payment.UserID,
-			&payment.Invoice,
+			&payment.PaymentRequest,
 			&payment.Description,
 			&payment.Direction,
 			&payment.Status,
@@ -281,7 +326,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 				if err = rows.Scan(
 					&t.ID,
 					&t.UserID,
-					&t.Invoice,
+					&t.PaymentRequest,
 					&t.PreImage,
 					&t.HashedPreImage,
 					&t.Description,

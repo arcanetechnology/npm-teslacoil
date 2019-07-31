@@ -1,6 +1,8 @@
 package ln
 
 import (
+	"context"
+	"crypto/rand"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -15,6 +17,12 @@ import (
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/macaroon.v2"
 )
+
+// AddInvoiceData is the data required to add a invoice
+type AddInvoiceData struct {
+	Memo   string `json:"memo"`
+	Amount int64  `json:"amount"`
+}
 
 // LightningConfig is a struct containing all possible options for configuring
 // a connection to lnd
@@ -130,4 +138,34 @@ func cleanAndExpandPath(path string) string {
 	// NOTE: The os.ExpandEnv doesn't work with Windows-style %VARIABLE%,
 	// but the variables can still be expanded via POSIX-style $VARIABLE.
 	return filepath.Clean(os.ExpandEnv(path))
+}
+
+// AddInvoice creates a new invoice
+func AddInvoice(lncli lnrpc.LightningClient, invoiceData *AddInvoiceData) (
+	*lnrpc.Invoice, error) {
+	// Generate random preimage.
+	preimage := make([]byte, 32)
+	if _, err := rand.Read(preimage); err != nil {
+		return &lnrpc.Invoice{}, err
+	}
+
+	invoice := &lnrpc.Invoice{
+		Memo:      invoiceData.Memo,
+		Value:     invoiceData.Amount,
+		RPreimage: preimage,
+	}
+
+	newInvoice, err := lncli.AddInvoice(context.Background(), invoice)
+	if err != nil {
+		return &lnrpc.Invoice{}, err
+	}
+
+	inv, err := lncli.LookupInvoice(context.Background(), &lnrpc.PaymentHash{
+		RHash: newInvoice.RHash,
+	})
+	if err != nil {
+		return &lnrpc.Invoice{}, err
+	}
+
+	return inv, nil
 }
