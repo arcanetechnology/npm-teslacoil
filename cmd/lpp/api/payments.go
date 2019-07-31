@@ -53,7 +53,7 @@ func CreateNewInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		t, err := payments.CreateInvoice(r.db, newPayment)
+		t, err := payments.CreateInvoice(r.db, *r.lncli, newPayment)
 		if err != nil {
 			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not create new invoice").Error()})
 			return
@@ -66,7 +66,6 @@ func CreateNewInvoice(r *RestServer) gin.HandlerFunc {
 // PayInvoice pays a valid invoice on behalf of a user
 func PayInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		var newPayment payments.NewPayment
 
 		if err := c.ShouldBindJSON(&newPayment); err != nil {
@@ -74,9 +73,9 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		t, err := payments.PayInvoice(r.db, newPayment)
+		t, err := payments.PayInvoice(r.db, *r.lncli, newPayment)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "Could not pay invoice"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not pay invoice")})
 			return
 		}
 

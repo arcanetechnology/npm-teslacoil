@@ -10,7 +10,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 )
 
 // All fetches all payments
@@ -41,7 +40,8 @@ func GetByID(d *sqlx.DB, id uint64) (PaymentResponse, error) {
 }
 
 // CreateInvoice creates a new invoice
-func CreateInvoice(d *sqlx.DB, nt NewPayment) (PaymentResponse, error) {
+func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
+	PaymentResponse, error) {
 
 	payment := PaymentResponse{
 		UserID:      nt.UserID,
@@ -54,10 +54,6 @@ func CreateInvoice(d *sqlx.DB, nt NewPayment) (PaymentResponse, error) {
 
 	payment.UserID = nt.UserID
 
-	client, err := ln.NewLNDClient()
-	if err != nil {
-		return payment, err
-	}
 	// Generate random preimage.
 	preimage := make([]byte, 32)
 	if _, err := rand.Read(preimage); err != nil {
@@ -71,7 +67,7 @@ func CreateInvoice(d *sqlx.DB, nt NewPayment) (PaymentResponse, error) {
 		RPreimage: preimage,
 	}
 
-	newInvoice, err := client.AddInvoice(context.Background(), invoice)
+	newInvoice, err := lncli.AddInvoice(context.Background(), invoice)
 	if err != nil {
 		return payment, err
 	}
@@ -115,7 +111,8 @@ func CreateInvoice(d *sqlx.DB, nt NewPayment) (PaymentResponse, error) {
 }
 
 // PayInvoice pay an invoice on behalf of the user
-func PayInvoice(d *sqlx.DB, nt NewPayment) (UserPaymentResponse, error) {
+func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, nt NewPayment) (
+	UserPaymentResponse, error) {
 
 	// Define a custom response struct to include user details
 	payment := UserPaymentResponse{}
@@ -124,14 +121,7 @@ func PayInvoice(d *sqlx.DB, nt NewPayment) (UserPaymentResponse, error) {
 	payment.Direction = Direction("outbound") // All paid invoices are outbound
 	payment.Invoice = nt.Invoice
 
-	// TODO: the LND gRPC client should mayeb be shared, no need to create a
-	// new for each payment
-	client, err := ln.NewLNDClient()
-	if err != nil {
-		return payment, err
-	}
-
-	payRequest, err := client.DecodePayReq(
+	payRequest, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: nt.Invoice})
 	if err != nil {
@@ -148,7 +138,7 @@ func PayInvoice(d *sqlx.DB, nt NewPayment) (UserPaymentResponse, error) {
 	}
 
 	// TODO: Need to improve this step to allow for slow paying invoices.
-	paymentResponse, err := client.SendPaymentSync(context.Background(), sendRequest)
+	paymentResponse, err := lncli.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
 		return payment, nil
 	}

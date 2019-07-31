@@ -6,6 +6,7 @@ require (
 	github.com/appleboy/gin-jwt v2.5.0+incompatible
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
+	github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
 	github.com/btcsuite/go-flags v0.0.0-20150116065318-6c288d648c1c // indirect
 	github.com/codahale/chacha20 v0.0.0-20151107025005-ec07b4f69a3f // indirect
 	github.com/codahale/chacha20poly1305 v0.0.0-20151127064032-f8a5c4830182 // indirect

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"time"
 
 	jwt "github.com/appleboy/gin-jwt"
@@ -9,19 +10,26 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 // RestServer is the rest server for our app. It includes a Router,
-// a JWT middleware and a db connection
+// a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
 	Router *gin.Engine
 	JWT    *jwt.GinJWTMiddleware
 	db     *sqlx.DB
+	lncli  *lnrpc.LightningClient
 }
 
 //NewApp creates a new app
-func NewApp(d *sqlx.DB) (RestServer, error) {
+func NewApp(d *sqlx.DB, lightningConfig ln.LightningConfig) (RestServer, error) {
 	g := gin.Default()
+
+	lncli, err := ln.NewLNDClient(lightningConfig)
+	if err != nil {
+		return RestServer{}, err
+	}
 
 	restServer := RestServer{
 		Router: g,
@@ -33,11 +41,12 @@ func NewApp(d *sqlx.DB) (RestServer, error) {
 			TokenHeadName: "Bearer",
 			TimeFunc:      time.Now,
 		},
-		db: d,
+		db:    d,
+		lncli: &lncli,
 	}
 
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
-	go ln.ListenInvoices(invoiceUpdatesCh)
+	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
 	go payments.UpdateInvoiceStatus(invoiceUpdatesCh, d)
 
@@ -47,8 +56,40 @@ func NewApp(d *sqlx.DB) (RestServer, error) {
 	return restServer, nil
 }
 
+//LoginAuthenticator is an authenticator
+func (r *RestServer) LoginAuthenticator(ctx *gin.Context) (interface{}, error) {
+	var params GetUserRequest
+	if err := ctx.Bind(&params); err != nil {
+		return "", jwt.ErrMissingLoginValues
+	}
+
+	// Get users by ID
+	user, err := users.All(r.db)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify password
+	// nah
+
+	return user, nil
+}
+
+//Login logs in
+func Login(r *RestServer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, err := r.LoginAuthenticator(c)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+		}
+
+		c.JSONP(200, user)
+	}
+}
+
 // RegisterUserRoutes registers all user routes on the router
 func RegisterUserRoutes(r *RestServer) {
+	r.Router.POST("/login", Login(r))
 	r.Router.GET("/users", GetAllUsers(r))
 	r.Router.GET("/users/:id", GetUser(r))
 	r.Router.POST("/users", CreateUser(r))

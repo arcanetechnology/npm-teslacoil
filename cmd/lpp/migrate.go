@@ -43,6 +43,9 @@ func MigrationStatus(migrationsPath string, d *sqlx.DB) error {
 func MigrateUp(migrationsPath string, d *sqlx.DB) {
 
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
 		"postgres",

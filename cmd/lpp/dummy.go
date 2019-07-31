@@ -5,21 +5,22 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/jmoiron/sqlx"
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 // FillWithDummyData creates three entries in each table
-func FillWithDummyData(d *sqlx.DB) error {
+func FillWithDummyData(d *sqlx.DB, lncli lnrpc.LightningClient) error {
 	gofakeit.Seed(time.Now().UnixNano())
 
 	userCount := 10
 
 	for index := 1; index <= userCount; index++ {
-		user, err := users.Create(d, users.UserNew{
-			Email:    gofakeit.Email(),
-			Password: gofakeit.Password(true, true, true, true, true, 32),
-		})
+		user, err := users.Create(d,
+			gofakeit.Email(),
+			gofakeit.Password(true, true, true, true, true, 32),
+		)
 		if err != nil {
 			return err
 		}
@@ -28,7 +29,7 @@ func FillWithDummyData(d *sqlx.DB) error {
 
 		directionOptions := []string{"inbound", "outbound"}
 		for index := 1; index <= paymentCount; index++ {
-			_, err = payments.CreateInvoice(d, payments.NewPayment{
+			_, err = payments.CreateInvoice(d, lncli, payments.NewPayment{
 				UserID:      user.ID,
 				Description: "Dummy data " + string(index),
 				Direction: payments.Direction(
