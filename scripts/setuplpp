@@ -1,3 +1,0 @@
-sudo apt install postgresql postgresql-contrib
-sudo su - postgres
-sudo adduser 
