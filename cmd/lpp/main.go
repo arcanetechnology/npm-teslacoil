@@ -72,8 +72,18 @@ func main() {
 				if err != nil {
 					return err
 				}
-				a.Router.Run()
+
+				address := ":" + c.String("port")
+				a.Router.Run(address)
 				return nil
+			},
+
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "port",
+					Value: "8080",
+					Usage: "Port number to listen on",
+				},
 			},
 		},
 		{
