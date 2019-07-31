@@ -28,7 +28,7 @@ func All(d *sqlx.DB) ([]Payment, error) {
 	return payments, nil
 }
 
-// GetByID returns a single payment based on the id given
+// GetByID returns a single invoice based on the id given
 func GetByID(d *sqlx.DB, id uint64) (PaymentResponse, error) {
 	trxResult := PaymentResponse{}
 	tQuery := `SELECT * FROM payments WHERE id=$1 LIMIT 1`
@@ -40,7 +40,7 @@ func GetByID(d *sqlx.DB, id uint64) (PaymentResponse, error) {
 	return trxResult, nil
 }
 
-// CreateInvoice creates a new payment
+// CreateInvoice creates a new invoice
 func CreateInvoice(d *sqlx.DB, nt NewPayment) (PaymentResponse, error) {
 
 	payment := PaymentResponse{
