@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -26,10 +27,12 @@ type RestServer struct {
 func NewApp(d *sqlx.DB, lightningConfig ln.LightningConfig) (RestServer, error) {
 	g := gin.Default()
 
-	user, err := users.UpdateUserBalance(d)
+	user, err := users.UpdateUserBalance(d, 1)
 	if err != nil {
-		return nil, err
+		return RestServer{}, err
 	}
+
+	fmt.Println(user)
 
 	lncli, err := ln.NewLNDClient(lightningConfig)
 	if err != nil {

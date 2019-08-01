@@ -113,6 +113,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 	invoice, err := ln.AddInvoice(lncli, &ln.AddInvoiceData{
 		Memo: newPayment.Memo, Amount: newPayment.AmountSat,
 	})
+
 	if err != nil {
 		return Payment{}, err
 	}
