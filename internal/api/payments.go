@@ -9,29 +9,25 @@ import (
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
 )
 
-// Need to plan how this should be...
-// I want to separate the DB calls and the API requests/responses, simply
-// because it reads better. You can not mind the DB and only look at the API
-// functions to see what is returned
-// It also removes the link between the API and the DB. (You can't change the
-// DB call without also changing the API)
-// I am still of the opinion that more general SQL queries scale better than
-// writing SQL for each query. You can scale better to special endpoints
-// providing the user with important data
-
 //GetAllInvoicesResponse is the type returned by the api to the front-end
-type getAllInvoicesResponse struct {
+type GetAllInvoicesResponse struct {
 	Invoices []payments.Payment
 }
-type getInvoiceResponse struct {
+
+// GetInvoiceResponse is the response for the /invoice/:id endpoint
+type GetInvoiceResponse struct {
 	PaymentRequest string
 	Hash           string
 	Direction      payments.Direction
 }
-type createInvoiceResponse struct {
+
+// CreateInvoiceResponse is the request for the /invoice/create endpoint
+type CreateInvoiceResponse struct {
 	PaymentRequest string
 }
-type payInvoiceResponse struct {
+
+// PayInvoiceResponse is the response for the /invoice/pay endpoint
+type PayInvoiceResponse struct {
 	Status string
 }
 
@@ -43,7 +39,7 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 			c.JSONP(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSONP(200, &getAllInvoicesResponse{Invoices: t})
+		c.JSONP(200, &GetAllInvoicesResponse{Invoices: t})
 	}
 }
 
@@ -64,7 +60,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, &getInvoiceResponse{
+		c.JSONP(200, &GetInvoiceResponse{
 			PaymentRequest: t.PaymentRequest,
 			Hash:           t.HashedPreImage,
 			Direction:      t.Direction,
@@ -85,11 +81,12 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 
 		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not create new invoice").Error()})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err,
+				"Could not create new invoice").Error()})
 			return
 		}
 
-		c.JSONP(200, &createInvoiceResponse{
+		c.JSONP(200, &CreateInvoiceResponse{
 			PaymentRequest: t.PaymentRequest,
 		})
 	}
@@ -111,7 +108,7 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, &payInvoiceResponse{
+		c.JSONP(200, &PayInvoiceResponse{
 			Status: t.Status,
 		})
 	}

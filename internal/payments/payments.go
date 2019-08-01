@@ -9,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/ln"
 )
 
 // Direction is the direction of a lightning payment

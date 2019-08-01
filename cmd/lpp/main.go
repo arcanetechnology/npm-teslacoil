@@ -10,9 +10,9 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
-	"gitlab.com/arcanecrypto/lpp/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/api"
+	"gitlab.com/arcanecrypto/lpp/internal/db"
+	"gitlab.com/arcanecrypto/lpp/internal/ln"
 	"gopkg.in/urfave/cli.v1"
 )
 

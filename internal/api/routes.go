@@ -9,7 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/ln"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
@@ -97,8 +97,8 @@ func RegisterUserRoutes(r *RestServer) {
 
 // RegisterPaymentRoutes registers all payment routes on the router
 func RegisterPaymentRoutes(r *RestServer) {
-	r.Router.GET("/payments", GetAllPayments(r))
-	r.Router.GET("/payments/:id", GetPayment(r))
+	r.Router.GET("/payments", GetAllInvoices(r))
+	r.Router.GET("/payments/:id", GetInvoice(r))
 	r.Router.POST("/invoice/create", CreateInvoice(r))
 	r.Router.POST("/invoice/pay", PayInvoice(r))
 }
