@@ -2,7 +2,6 @@ package ln
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -140,34 +139,23 @@ func cleanAndExpandPath(path string) string {
 	return filepath.Clean(os.ExpandEnv(path))
 }
 
-// AddInvoice creates a new invoice
-func AddInvoice(lncli lnrpc.LightningClient, invoiceData *AddInvoiceData) (
+// AddInvoice adds an invoice and looks up the invoice in the lnd DB to extract
+// more useful data
+func AddInvoice(lncli lnrpc.LightningClient, invoiceData lnrpc.Invoice) (
 	*lnrpc.Invoice, error) {
-	// Generate random preimage.
-	preimage := make([]byte, 32)
-	if _, err := rand.Read(preimage); err != nil {
-		return &lnrpc.Invoice{}, err
-	}
-
-	invoice := &lnrpc.Invoice{
-		Memo:      invoiceData.Memo,
-		Value:     invoiceData.Amount,
-		RPreimage: preimage,
-	}
-
-	newInvoice, err := lncli.AddInvoice(context.Background(), invoice)
+	ctx := context.Background()
+	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
 		return &lnrpc.Invoice{}, err
 	}
-
-	inv, err := lncli.LookupInvoice(context.Background(), &lnrpc.PaymentHash{
-		RHash: newInvoice.RHash,
+	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
+		RHash: inv.RHash,
 	})
 	if err != nil {
 		return &lnrpc.Invoice{}, err
 	}
 
-	return inv, nil
+	return invoice, nil
 }
 
 // ListenInvoices subscribes to lnd invoices

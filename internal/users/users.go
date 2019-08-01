@@ -29,9 +29,10 @@ type User struct {
 
 // UserResponse is a database table
 type UserResponse struct {
-	ID      uint64 `db:"id"`
-	Email   string `db:"email"`
-	Balance int    `db:"balance"`
+	ID        uint64    `db:"id"`
+	Email     string    `db:"email"`
+	Balance   int       `db:"balance"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 // All is a GET request that returns all the users in the database
@@ -48,7 +49,7 @@ func All(d *sqlx.DB) ([]User, error) {
 // GetByID is a GET request that returns users that match the one specified in the body
 func GetByID(d *sqlx.DB, id uint) (UserResponse, error) {
 	userResult := UserResponse{}
-	uQuery := `SELECT id, email, balance FROM users WHERE id=$1 LIMIT 1`
+	uQuery := `SELECT id, email, balance, updated_at FROM users WHERE id=$1 LIMIT 1`
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
 		return userResult, err
@@ -68,7 +69,7 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password)
 		VALUES (:email, 0, :hashed_password)
-		RETURNING id, email, balance`
+		RETURNING id, email, balance, updated_at`
 
 	rows, err := d.NamedQuery(userCreateQuery, user)
 	if err != nil {
