@@ -3,11 +3,14 @@ package payments
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/btcsuite/btcutil"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/ln"
 )
@@ -22,9 +25,10 @@ const (
 
 //NewDeposit is a new deposit
 type NewDeposit struct {
-	UserID uint64 `json:"user_id"`
-	Memo   string `json:"memo"`
-	Amount int64  `json:"amount"`
+	UserID     uint64              `json:"user_id"`
+	Memo       string              `json:"memo"`
+	AmountSat  int64               `json:"amount_sat"`
+	AmountMSat lnwire.MilliSatoshi `json:"amount_msat"`
 }
 
 //NewWithdrawal is the required(and optional) fields for initiating a withdrawal
@@ -34,25 +38,39 @@ type NewWithdrawal struct {
 	Status      string
 	Description string
 	Direction   Direction
-	Amount      int64
+	AmountSat   int64
+	AmountMSat  lnwire.MilliSatoshi
+}
+
+func Hi() {
+	x := NewWithdrawal{
+		AmountSat:  int64(btcutil.Amount(5).ToUnit(btcutil.AmountSatoshi)),
+		AmountMSat: lnwire.NewMSatFromSatoshis(5),
+	}
+
+	fmt.Println("---------------------------------------------------------------")
+	fmt.Println(x.AmountSat)
+	fmt.Println(x.AmountMSat)
+	fmt.Println("---------------------------------------------------------------")
 }
 
 // Payment is a database table
 type Payment struct {
-	ID             uint64     `db:"id"`
-	UserID         uint64     `db:"user_id"`
-	PaymentRequest string     `db:"invoice"`
-	PreImage       string     `db:"pre_image"`
-	HashedPreImage string     `db:"hashed_pre_image"`
-	CallbackURL    *string    `db:"callback_url"`
-	Status         string     `db:"status"`
-	Description    string     `db:"description"`
-	Direction      Direction  `db:"direction"`
-	Amount         int64      `db:"amount"`
-	SettledAt      *time.Time `db:"settled_at"` // If this is not 0 or null, it means the invoice is settled
-	CreatedAt      time.Time  `db:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
+	ID             uint64              `db:"id"`
+	UserID         uint64              `db:"user_id"`
+	PaymentRequest string              `db:"invoice"`
+	PreImage       string              `db:"pre_image"`
+	HashedPreImage string              `db:"hashed_pre_image"`
+	CallbackURL    *string             `db:"callback_url"`
+	Status         string              `db:"status"`
+	Description    string              `db:"description"`
+	Direction      Direction           `db:"direction"`
+	AmountSat      int64               `db:"amount_sat"`
+	AmountMSat     lnwire.MilliSatoshi `db:"amount_msat"`
+	SettledAt      *time.Time          `db:"settled_at"` // If this is not 0 or null, it means the invoice is settled
+	CreatedAt      time.Time           `db:"created_at"`
+	UpdatedAt      time.Time           `db:"updated_at"`
+	DeletedAt      *time.Time          `db:"deleted_at"`
 }
 
 //UserPaymentResponse is a user payment response
@@ -97,14 +115,14 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 	Payment, error) {
 
 	invoice, err := ln.AddInvoice(lncli, &ln.AddInvoiceData{
-		Memo: newPayment.Memo, Amount: newPayment.Amount,
+		Memo: newPayment.Memo, Amount: newPayment.AmountSat,
 	})
 	if err != nil {
 		return Payment{}, err
 	}
 
 	// Sanity check the invoice we just created
-	if invoice.Value != newPayment.Amount {
+	if invoice.Value != newPayment.AmountSat {
 		log.Fatal("could not insert invoice, created invoice amount not equal request.Amount")
 	}
 
@@ -118,7 +136,8 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 		Status:         "unpaid",
 		Direction:      Direction("inbound"), // All created invoices are inbound
 		// TOOD: Danger we need to split this into Msats and sats
-		Amount: newPayment.Amount * 1000,
+		AmountMSat: lnwire.MilliSatoshi(newPayment.AmountSat),
+		AmountSat:  newPayment.AmountSat,
 	}
 
 	trxCreateQuery := `INSERT INTO payments 
@@ -143,7 +162,8 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 			&payment.Direction,
 			&payment.Status,
 			// TOOD: Danger we need to split this into Msats and sats
-			&payment.Amount,
+			&payment.AmountSat,
+			&payment.AmountMSat,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 		); err != nil {
@@ -176,7 +196,8 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWi
 	payment.HashedPreImage = payRequest.PaymentHash
 	// payment.Destination = payRequest.Destination
 	payment.Description = payRequest.Description
-	payment.Amount = payRequest.NumSatoshis * 1000
+	payment.AmountSat = payRequest.NumSatoshis
+	payment.AmountMSat = lnwire.MilliSatoshi(payRequest.NumSatoshis)
 
 	sendRequest := &lnrpc.SendRequest{
 		PaymentRequest: withdrawalRequest.Invoice,
@@ -226,7 +247,8 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWi
 			&payment.Direction,
 			&payment.Status,
 			// TOOD: Danger we need to split this into Msats and sats
-			&payment.Amount,
+			&payment.AmountSat,
+			&payment.AmountMSat,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 		); err != nil {
@@ -333,7 +355,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.Direction,
 					&t.Status,
 					// TOOD: Danger we need to split this into Msats and sats
-					&t.Amount,
+					&t.AmountSat,
+					&t.AmountMSat,
 					&t.CreatedAt,
 					&t.UpdatedAt,
 				); err != nil {

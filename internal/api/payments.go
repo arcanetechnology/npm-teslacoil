@@ -71,7 +71,6 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 // CreateInvoice creates a new incove on behalf of a user
 func CreateInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		var newInvoice payments.NewDeposit
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {

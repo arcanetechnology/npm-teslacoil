@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
