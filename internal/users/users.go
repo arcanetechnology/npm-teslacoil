@@ -1,10 +1,12 @@
 package users
 
 import (
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -80,6 +82,33 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 	}
 
 	return uResp, nil
+}
+
+// UpdateUserBalance updates the users balance
+func UpdateUserBalance(d *sqlx.DB, userID uint64) (UserResponse, error) {
+	updateBalanceQuery := `UPDATE users 
+		SET balance = balance - :amount
+		WHERE id = :user_id
+		RETURNING id, balance`
+
+	user := UserResponse{}
+
+	rows, err := d.NamedQuery(updateBalanceQuery, &user)
+	if err != nil {
+		// TODO: This is probably not a healthy way to deal with an error here
+		return UserResponse{}, errors.Wrap(err, "PayInvoice: Cold not construct user update")
+	}
+	if rows.Next() {
+		if err = rows.Scan(
+			&user.ID,
+			&user.Balance,
+		); err != nil {
+			return UserResponse{}, err
+		}
+	}
+	fmt.Printf("user %v\n", user)
+
+	return user, nil
 }
 
 func hashAndSalt(pwd string) []byte {

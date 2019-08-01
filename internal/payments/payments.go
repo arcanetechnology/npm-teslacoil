@@ -3,16 +3,15 @@ package payments
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"log"
 	"time"
 
-	"github.com/btcsuite/btcutil"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 // Direction is the direction of a lightning payment
@@ -42,17 +41,17 @@ type NewWithdrawal struct {
 	AmountMSat  lnwire.MilliSatoshi
 }
 
-func Hi() {
-	x := NewWithdrawal{
-		AmountSat:  int64(btcutil.Amount(5).ToUnit(btcutil.AmountSatoshi)),
-		AmountMSat: lnwire.NewMSatFromSatoshis(5),
-	}
-
-	fmt.Println("---------------------------------------------------------------")
-	fmt.Println(x.AmountSat)
-	fmt.Println(x.AmountMSat)
-	fmt.Println("---------------------------------------------------------------")
-}
+// func SatMSat() {
+// x := NewWithdrawal{
+// AmountSat:  int64(btcutil.Amount(5).ToUnit(btcutil.AmountSatoshi)),
+// AmountMSat: lnwire.NewMSatFromSatoshis(5),
+// }
+//
+// fmt.Println("---------------------------------------------------------------")
+// fmt.Println(x.AmountSat)
+// fmt.Println(x.AmountMSat)
+// fmt.Println("---------------------------------------------------------------")
+// }
 
 // Payment is a database table
 type Payment struct {
@@ -76,11 +75,7 @@ type Payment struct {
 //UserPaymentResponse is a user payment response
 type UserPaymentResponse struct {
 	Payment
-	User struct {
-		ID        uint64     `db:"u.id"`
-		Balance   int64      `db:"u.balance"`
-		UpdatedAt *time.Time `db:"u.updated_at"`
-	}
+	users.UserResponse
 }
 
 // GetAll fetches all payments
@@ -110,7 +105,8 @@ func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
 	return trxResult, nil
 }
 
-// CreateInvoice inserts a invoice into the database creates a new invoice
+// CreateInvoice creates a new invoice using lnd based on the function parameter
+// and inserts the newly created invoice into the database
 func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposit) (
 	Payment, error) {
 
@@ -149,7 +145,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 
 	rows, err := d.NamedQuery(trxCreateQuery, payment)
 	if err != nil {
-		return payment, err
+		return Payment{}, err
 	}
 	if rows.Next() {
 		if err = rows.Scan(
@@ -167,7 +163,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 		); err != nil {
-			return payment, err
+			return Payment{}, err
 		}
 	}
 	rows.Close() // Free up the database connection
@@ -175,29 +171,16 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, newPayment NewDeposi
 	return payment, nil
 }
 
-// PayInvoice pay an invoice on behalf of the user
-func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWithdrawal) (
-	UserPaymentResponse, error) {
+// PayInvoice pays an invoice on behalf of the user
+func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
+	withdrawalRequest NewWithdrawal) (UserPaymentResponse, error) {
 
-	// Define a custom response struct to include user details
-	payment := UserPaymentResponse{}
-
-	payment.UserID = withdrawalRequest.UserID
-	payment.Direction = Direction("outbound") // All paid invoices are outbound
-	payment.PaymentRequest = withdrawalRequest.Invoice
-
-	payRequest, err := lncli.DecodePayReq(
+	payreq, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: withdrawalRequest.Invoice})
 	if err != nil {
-		return payment, err
+		return UserPaymentResponse{}, err
 	}
-
-	payment.HashedPreImage = payRequest.PaymentHash
-	// payment.Destination = payRequest.Destination
-	payment.Description = payRequest.Description
-	payment.AmountSat = payRequest.NumSatoshis
-	payment.AmountMSat = lnwire.MilliSatoshi(payRequest.NumSatoshis)
 
 	sendRequest := &lnrpc.SendRequest{
 		PaymentRequest: withdrawalRequest.Invoice,
@@ -206,7 +189,20 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWi
 	// TODO: Need to improve this step to allow for slow paying invoices.
 	paymentResponse, err := lncli.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
-		return payment, nil
+		return UserPaymentResponse{}, nil
+	}
+
+	userPayment := UserPaymentResponse{}
+
+	payment := Payment{
+		UserID:         withdrawalRequest.UserID,
+		Direction:      Direction("outbound"),
+		PaymentRequest: withdrawalRequest.Invoice,
+		HashedPreImage: payreq.PaymentHash,
+		Description:    payreq.Description,
+		PreImage:       hex.EncodeToString(paymentResponse.PaymentPreimage),
+		AmountSat:      payreq.NumSatoshis,
+		AmountMSat:     lnwire.MilliSatoshi(payreq.NumSatoshis),
 	}
 
 	if paymentResponse.PaymentError == "" {
@@ -217,26 +213,21 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWi
 	} else {
 		payment.Status = paymentResponse.PaymentError
 		payment.Status = "FAILED"
-		return payment, nil
+		return UserPaymentResponse{}, nil
 	}
 
 	tx := d.MustBegin()
 
-	uUpdateQuery := `UPDATE users 
-		SET balance = balance - :amount
-		WHERE id = :user_id
-		RETURNING id, balance, updated_at`
-
-	trxCreateQuery := `INSERT INTO payments 
+	createOffchainTXQuery := `INSERT INTO payments 
 		(user_id, invoice, description, direction, status, amount)
 		VALUES (:user_id, :invoice, :description, :direction, :status, :amount)
 		RETURNING id, user_id, invoice, description, direction, status, amount,
 				  created_at, updated_at`
 
-	rows, err := tx.NamedQuery(trxCreateQuery, payment)
+	rows, err := tx.NamedQuery(createOffchainTXQuery, payment)
 	if err != nil {
 		_ = tx.Rollback()
-		return payment, err
+		return UserPaymentResponse{}, err
 	}
 	if rows.Next() {
 		if err = rows.Scan(
@@ -246,59 +237,41 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient, withdrawalRequest NewWi
 			&payment.Description,
 			&payment.Direction,
 			&payment.Status,
-			// TOOD: Danger we need to split this into Msats and sats
 			&payment.AmountSat,
 			&payment.AmountMSat,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 		); err != nil {
 			_ = tx.Rollback()
-			return payment, errors.Wrap(err, "PayInvoice: Paid but cold not create payment")
+			return UserPaymentResponse{}, errors.Wrap(err, "PayInvoice: Paid but cold not create payment")
 		}
 	}
 	rows.Close() // Free up the database connection
 
+	var user users.UserResponse
 	if payment.Status == "SETTLED" {
-		rows, err := d.NamedQuery(uUpdateQuery, &payment)
+		user, err = users.UpdateUserBalance(d, payment.UserID)
 		if err != nil {
-			// TODO: This is probably not a healthy way to deal with an error here
 			tx.Rollback()
-			return payment, errors.Wrap(err, "PayInvoice: Cold not construct user update")
+			return UserPaymentResponse{}, err
 		}
-		if rows.Next() {
-			if err = rows.Scan(
-				&payment.User.ID,
-				&payment.User.Balance,
-				&payment.User.UpdatedAt,
-			); err != nil {
-				_ = tx.Rollback()
-				return payment, errors.Wrap(err, "PayInvoice: Could not decrement user balance")
-			}
-		}
-	}
-
-	if err != nil {
-		return payment, err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return payment, errors.Wrap(err, "PayInvoice: Cound not commit")
+		return UserPaymentResponse{}, errors.Wrap(err, "PayInvoice: Cound not commit")
 	}
 
-	// TODO: Here we need to store the payment hash
-	// We also need to store the payment preimage once the invoice is settled
+	userPayment.UserResponse = user
+	userPayment.Payment = payment
 
-	// payment.PaymentPreImage = paymentResponse.PaymentPreimage
-
-	return payment, nil
+	return userPayment, nil
 }
 
 // UpdateInvoiceStatus continually listens for messages and updated the user balance
 // PS: This is most likely done in a horrible way. Must be refactored.
 // We also need to keep track of the last received messages from lnd
 func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB) {
-
 	for {
 		invoice := <-invoiceUpdatesCh
 

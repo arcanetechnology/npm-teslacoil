@@ -26,6 +26,11 @@ type RestServer struct {
 func NewApp(d *sqlx.DB, lightningConfig ln.LightningConfig) (RestServer, error) {
 	g := gin.Default()
 
+	user, err := users.UpdateUserBalance(d)
+	if err != nil {
+		return nil, err
+	}
+
 	lncli, err := ln.NewLNDClient(lightningConfig)
 	if err != nil {
 		return RestServer{}, err
