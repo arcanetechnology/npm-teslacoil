@@ -4,7 +4,10 @@ A custodial payment processor running in the lightning network using lnd.
 
 ## Installation
 
-1. Install direnv `sudo apt install direnv` and add `direnv hook fish | source` to your .bashrc(or fish or whatever)
+1. Install direnv `sudo apt install direnv` and add `direnv hook fish | source` to your ./config.fish
+
+See here if you are using a different shell https://direnv.net/docs/hook.md
+
 2. Create .envrc and will inn details (see defaults in .envrc-example)
 3. Install postgres and create a user and a sample DB by running these commands:
    ```
