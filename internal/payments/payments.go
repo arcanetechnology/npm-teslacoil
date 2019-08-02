@@ -52,21 +52,23 @@ type PayInvoiceData struct {
 
 // Payment is a database table
 type Payment struct {
-	ID             uint64     `db:"id"`
-	UserID         uint64     `db:"user_id"`
-	PaymentRequest string     `db:"payment_request"`
-	Preimage       string     `db:"preimage"`
-	HashedPreimage string     `db:"hashed_preimage"`
-	CallbackURL    *string    `db:"callback_url"`
-	Status         Status     `db:"status"`
-	Description    string     `db:"description"`
-	Direction      Direction  `db:"direction"`
-	AmountSat      int64      `db:"amount_sat"`
-	AmountMSat     int64      `db:"amount_msat"`
-	SettledAt      time.Time  `db:"settled_at"` // If not 0 or null, it means the invoice is settled
-	CreatedAt      time.Time  `db:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
+	ID             uint64    `db:"id"`
+	UserID         uint64    `db:"user_id"`
+	PaymentRequest string    `db:"payment_request"`
+	Preimage       string    `db:"preimage"`
+	HashedPreimage string    `db:"hashed_preimage"`
+	CallbackURL    *string   `db:"callback_url"`
+	Status         Status    `db:"status"`
+	Description    string    `db:"description"`
+	Direction      Direction `db:"direction"`
+	AmountSat      int64     `db:"amount_sat"`
+	AmountMSat     int64     `db:"amount_msat"`
+	// SettledAt is a pointer because it can be null, and inserting null in
+	// something not a pointer when querying the db is not possible
+	SettledAt *time.Time `db:"settled_at"` // If not 0 or nil, it means the invoice is settled
+	CreatedAt time.Time  `db:"created_at"`
+	UpdatedAt time.Time  `db:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at"`
 }
 
 //UserPaymentResponse is a user payment response
@@ -78,9 +80,9 @@ type UserPaymentResponse struct {
 // GetAll fetches all payments
 func GetAll(d *sqlx.DB) ([]Payment, error) {
 	payments := []Payment{}
-	tQuery := fmt.Sprintf(`SELECT t.* 
-		FROM %s AS t 
-		ORDER BY t.created_at ASC`, OffchainTXTable)
+	tQuery := fmt.Sprintf(`SELECT *
+		FROM %s
+		ORDER BY created_at ASC`, OffchainTXTable)
 
 	err := d.Select(&payments, tQuery)
 	if err != nil {
@@ -183,7 +185,8 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	}
 
 	if paymentResponse.PaymentError == "" {
-		p.SettledAt = time.Now()
+		t := time.Now()
+		p.SettledAt = &t
 		p.Status = "SETTLED"
 		p.Preimage = hex.EncodeToString(paymentResponse.PaymentPreimage)
 	} else {
@@ -255,7 +258,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 		t.Status = Status(invoice.State.String())
 		if invoice.Settled {
 			fmt.Println("2")
-			t.SettledAt = time.Now()
+			time := time.Now()
+			t.SettledAt = &time
 
 			updateOffchainTxQuery := fmt.Sprintf(`UPDATE %s 
 				SET status = :status, settled_at = :settled_at 
@@ -273,7 +277,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			if err != nil {
 				fmt.Println("3")
 				_ = tx.Rollback()
-				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update payment").Error())
+				log.Println(errors.Wrap(err,
+					"UpdateInvoiceStatus: Could not update payment").Error())
 				return
 			}
 			if rows.Next() {
@@ -294,7 +299,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.UpdatedAt,
 				); err != nil {
 					_ = tx.Rollback()
-					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update payment").Error())
+					log.Println(errors.Wrap(err,
+						"UpdateInvoiceStatus: Could not update payment").Error())
 					return
 				}
 			}
@@ -306,7 +312,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 				fmt.Println("5")
 				_ = tx.Rollback()
 				// TODO: This is probably not a healthy way to deal with an error here
-				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update user balance").Error())
+				log.Println(errors.Wrap(err,
+					"UpdateInvoiceStatus: Could not update user balance").Error())
 				return
 			}
 			if rows.Next() {
@@ -318,7 +325,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&u.UpdatedAt,
 				); err != nil {
 					_ = tx.Rollback()
-					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not read updated user detials").Error())
+					log.Println(errors.Wrap(err,
+						"UpdateInvoiceStatus: Could not read updated user detials").Error())
 					return
 				}
 			}
