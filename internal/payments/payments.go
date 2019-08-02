@@ -41,13 +41,10 @@ type CreateInvoiceData struct {
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
 type PayInvoiceData struct {
-	UserID      uint64 `json:"user_id"` // userID of the user this withdrawal belongs to
-	Invoice     string
-	Status      string
-	Description string
-	Direction   Direction
-	AmountSat   int64
-	AmountMSat  int64
+	UserID         uint64 `json:"user_id"` // userID of the user this withdrawal belongs to
+	PaymentRequest string `json:"payment_request"`
+	Description    string `json:"description"`
+	AmountSat      int64  `json:"amount_sat"`
 }
 
 // Payment is a database table
@@ -65,7 +62,7 @@ type Payment struct {
 	AmountMSat     int64     `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
-	SettledAt *time.Time `db:"settled_at"` // If not 0 or nil, it means the invoice is settled
+	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the invoice is settled
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
@@ -158,19 +155,19 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
-		&lnrpc.PayReqString{PayReq: withdrawalRequest.Invoice})
+		&lnrpc.PayReqString{PayReq: withdrawalRequest.PaymentRequest})
 	if err != nil {
 		return UserPaymentResponse{}, err
 	}
 
 	sendRequest := &lnrpc.SendRequest{
-		PaymentRequest: withdrawalRequest.Invoice,
+		PaymentRequest: withdrawalRequest.PaymentRequest,
 	}
 
 	p := Payment{
 		UserID:         withdrawalRequest.UserID,
 		Direction:      outbound,
-		PaymentRequest: withdrawalRequest.Invoice,
+		PaymentRequest: withdrawalRequest.PaymentRequest,
 
 		HashedPreimage: payreq.PaymentHash,
 		Description:    payreq.Description,
