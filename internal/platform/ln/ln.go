@@ -1,11 +1,15 @@
 package ln
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/user"
-	"path"
+	"path/filepath"
+	"strings"
 
+	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/grpc"
@@ -13,26 +17,75 @@ import (
 	"gopkg.in/macaroon.v2"
 )
 
-// NewLNDClient opens a new connection to LND and returns the client
-func NewLNDClient() (lnrpc.LightningClient, error) {
-	usr, err := user.Current()
-	if err != nil {
-		fmt.Println("Cannot get current user:", err)
-		return nil, err
+// AddInvoiceData is the data required to add a invoice
+type AddInvoiceData struct {
+	Memo   string `json:"memo"`
+	Amount int64  `json:"amount"`
+}
+
+// LightningConfig is a struct containing all possible options for configuring
+// a connection to lnd
+type LightningConfig struct {
+	LndDir       string
+	TLSCertPath  string
+	MacaroonPath string
+	Network      string
+	RPCServer    string
+}
+
+var (
+	// DefaultLndDir is the default location of .lnd
+	DefaultLndDir = btcutil.AppDataDir("lnd", false)
+	// DefaultTLSCertPath is the default location of tls.cert
+	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
+	// DefaultMacaroonPath is the default dir of x.macaroon
+	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin/testnet/admin.macaroon")
+
+	// DefaultCfg is a config interface with default values
+	DefaultCfg = LightningConfig{
+		LndDir:       DefaultLndDir,
+		TLSCertPath:  DefaultTLSCertPath,
+		MacaroonPath: DefaultMacaroonPath,
+		Network:      DefaultNetwork,
+		RPCServer:    DefaultRPCHostPort,
 	}
-	// ctx := context.Background()
+)
 
-	// Connect to lnd
-	tlsCertPath := path.Join(usr.HomeDir, ".lnd/tls.cert")
-	macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/simnet/admin.macaroon")
+const (
+	// DefaultNetwork is the default network
+	DefaultNetwork = "testnet"
+	// DefaultRPCHostPort is the default host port of lnd
+	DefaultRPCHostPort = "localhost:10009"
+	// DefaultTLSCertFileName is the default filename of the tls certificate
+	DefaultTLSCertFileName = "tls.cert"
+)
 
-	tlsCreds, err := credentials.NewClientTLSFromFile(tlsCertPath, "")
+// NewLNDClient opens a new connection to LND and returns the client
+func NewLNDClient(options LightningConfig) (
+	lnrpc.LightningClient, error) {
+	cfg := LightningConfig{
+		LndDir:       options.LndDir,
+		TLSCertPath:  CleanAndExpandPath(options.TLSCertPath),
+		MacaroonPath: CleanAndExpandPath(options.MacaroonPath),
+		Network:      options.Network,
+		RPCServer:    options.RPCServer,
+	}
+
+	if options.LndDir != DefaultLndDir {
+		cfg.LndDir = options.LndDir
+		cfg.TLSCertPath = filepath.Join(cfg.LndDir, DefaultTLSCertFileName)
+		cfg.MacaroonPath = filepath.Join(cfg.LndDir,
+			filepath.Join("data/chain/bitcoin",
+				filepath.Join(cfg.Network, "admin.macaroon")))
+	}
+
+	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
 	if err != nil {
 		fmt.Println("Cannot get node tls credentials", err)
 		return nil, err
 	}
 
-	macaroonBytes, err := ioutil.ReadFile(macaroonPath)
+	macaroonBytes, err := ioutil.ReadFile(cfg.MacaroonPath)
 	if err != nil {
 		fmt.Println("Cannot read macaroon file", err)
 		return nil, err
@@ -50,7 +103,7 @@ func NewLNDClient() (lnrpc.LightningClient, error) {
 		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
 	}
 
-	conn, err := grpc.Dial("localhost:10009", opts...)
+	conn, err := grpc.Dial(cfg.RPCServer, opts...)
 	if err != nil {
 		fmt.Println("cannot dial to lnd", err)
 		return nil, err
@@ -60,23 +113,68 @@ func NewLNDClient() (lnrpc.LightningClient, error) {
 	return client, nil
 }
 
-// func ListenInvoices() (lnrpc.Lightning_SubscribeTransactionsClient, error) {
+// CleanAndExpandPath expands environment variables and leading ~ in the
+// passed path, cleans the result, and returns it.
+// This function is taken from https://github.com/btcsuite/btcd
+func CleanAndExpandPath(path string) string {
+	if path == "" {
+		return ""
+	}
 
-// 	// iu := &InvoiceUpdates{}
+	// Expand initial ~ to OS specific home directory.
+	if strings.HasPrefix(path, "~") {
+		var homeDir string
+		user, err := user.Current()
+		if err == nil {
+			homeDir = user.HomeDir
+		} else {
+			homeDir = os.Getenv("HOME")
+		}
 
-// 	client, err := NewLNDClient()
-// 	if err != nil {
-// 		return nil, err
-// 	}
+		path = strings.Replace(path, "~", homeDir, 1)
+	}
 
-// 	transactionsDetails := &lnrpc.GetTransactionsRequest{}
+	// NOTE: The os.ExpandEnv doesn't work with Windows-style %VARIABLE%,
+	// but the variables can still be expanded via POSIX-style $VARIABLE.
+	return filepath.Clean(os.ExpandEnv(path))
+}
 
-// 	transactionsClient, err := client.SubscribeTransactions(
-// 		context.Background(),
-// 		transactionsDetails)
-// 	if err != nil {
-// 		return nil, err
-// 	}
+// AddInvoice adds an invoice and looks up the invoice in the lnd DB to extract
+// more useful data
+func AddInvoice(lncli lnrpc.LightningClient, invoiceData lnrpc.Invoice) (
+	*lnrpc.Invoice, error) {
+	ctx := context.Background()
+	inv, err := lncli.AddInvoice(ctx, &invoiceData)
+	if err != nil {
+		return &lnrpc.Invoice{}, err
+	}
+	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
+		RHash: inv.RHash,
+	})
+	if err != nil {
+		return &lnrpc.Invoice{}, err
+	}
 
-// 	return transactionsClient, nil
-// }
+	return invoice, nil
+}
+
+// ListenInvoices subscribes to lnd invoices
+func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error {
+	invoiceSubDetails := &lnrpc.InvoiceSubscription{}
+
+	invoiceClient, err := lncli.SubscribeInvoices(
+		context.Background(),
+		invoiceSubDetails)
+	if err != nil {
+		return err
+	}
+
+	for {
+		invoice := lnrpc.Invoice{}
+		err := invoiceClient.RecvMsg(&invoice)
+		if err != nil {
+			return err
+		}
+		msgCh <- invoice
+	}
+}

@@ -1,0 +1,8 @@
+export DATABASE_USER="lpp"
+export DATABASE_PASSWORD="password"
+export DATABASE_NAME="lpp"
+
+export DATABASE_TEST_USER="lpp_test"
+export DATABASE_TEST_PASSWORD="password"
+export DATABASE_TEST_NAME="lpp_test"
+export GO111MODULE=on

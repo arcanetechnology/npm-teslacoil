@@ -160,7 +160,7 @@ package api
 	// 	t.Fail()
 	// }
 
-}
+
 
 // //Tests that the /users endpoint returns exactly what is entered into the database
 // func TestUsersReturnsAllUsers(t *testing.T) {
