@@ -13,6 +13,12 @@ import (
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
+// Config is a config
+type Config struct {
+	LightningConfig ln.LightningConfig
+	DebugLevel      string
+}
+
 // RestServer is the rest server for our app. It includes a Router,
 // a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
@@ -23,10 +29,10 @@ type RestServer struct {
 }
 
 //NewApp creates a new app
-func NewApp(d *sqlx.DB, lightningConfig ln.LightningConfig) (RestServer, error) {
+func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 	g := gin.Default()
 
-	lncli, err := ln.NewLNDClient(lightningConfig)
+	lncli, err := ln.NewLNDClient(config.LightningConfig)
 	if err != nil {
 		return RestServer{}, err
 	}

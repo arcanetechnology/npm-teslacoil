@@ -2,7 +2,6 @@ package users
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -126,7 +125,7 @@ func hashAndSalt(pwd string) []byte {
 	// than the MinCost (4)
 	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.MinCost)
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 	}
 	// GenerateFromPassword returns a byte slice so we need to
 	// convert the bytes to a string and return it

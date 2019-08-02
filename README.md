@@ -17,7 +17,7 @@ See here if you are using a different shell https://direnv.net/docs/hook.md
    create database lpp with owner lpp;
    grant all privileges on database lpp to lpp;
    ```
-4. Migrate the db: `lpp db up 6`
+4. Migrate the db: `lpp db up`
 
 Run: `go get` to install dependencies
 

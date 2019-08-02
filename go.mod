@@ -6,6 +6,7 @@ require (
 	github.com/appleboy/gin-jwt v2.5.0+incompatible
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
+	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f
 	github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
 	github.com/btcsuite/go-flags v0.0.0-20150116065318-6c288d648c1c // indirect
 	github.com/codahale/chacha20 v0.0.0-20151107025005-ec07b4f69a3f // indirect
@@ -24,6 +25,7 @@ require (
 	github.com/jinzhu/gorm v1.9.10
 	github.com/jinzhu/inflection v1.0.0
 	github.com/jmoiron/sqlx v1.2.0
+	github.com/jrick/logrotate v1.0.0
 	github.com/json-iterator/go v1.1.6
 	github.com/lib/pq v1.1.1
 	github.com/lightninglabs/gozmq v0.0.0-20190710231225-cea2a031735d // indirect

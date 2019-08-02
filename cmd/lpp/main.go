@@ -16,6 +16,15 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
+const (
+	DefaultLoggingLevel = "trace"
+)
+
+var (
+	defaultLppDir      = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/lpp/logs/", os.Getenv("GOPATH"))
+	defaultLogFilename = "lpp.log"
+)
+
 func askForConfirmation() bool {
 	var response string
 	_, err := fmt.Scan(&response)
@@ -201,6 +210,9 @@ var (
 
 func main() {
 
+	initLogRotator(ln.CleanAndExpandPath(path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
+	setLogLevels("info")
+
 	app := cli.NewApp()
 	app.Name = "lpp"
 	app.Usage = "Managing helper for developing lightning payment processor"
@@ -231,6 +243,11 @@ func main() {
 			Value: ln.DefaultRPCHostPort,
 			Usage: "host:port of ln daemon",
 		},
+		cli.StringFlag{
+			Name:  "debuglevel",
+			Value: DefaultLoggingLevel,
+			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, critical}",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -243,15 +260,19 @@ func main() {
 					return err
 				}
 
-				lnConfig := ln.LightningConfig{
-					LndDir:       c.GlobalString("lnddir"),
-					TLSCertPath:  c.GlobalString("tlscertpath"),
-					MacaroonPath: c.GlobalString("macaroonpath"),
-					Network:      c.GlobalString("network"),
-					RPCServer:    c.GlobalString("lndrpcserver"),
+				config := api.Config{
+					LightningConfig: ln.LightningConfig{
+						LndDir:       c.GlobalString("lnddir"),
+						TLSCertPath:  c.GlobalString("tlscertpath"),
+						MacaroonPath: c.GlobalString("macaroonpath"),
+						Network:      c.GlobalString("network"),
+						RPCServer:    c.GlobalString("lndrpcserver"),
+					},
+
+					DebugLevel: c.GlobalString("debuglevel"),
 				}
 				defer database.Close()
-				a, err := api.NewApp(database, lnConfig)
+				a, err := api.NewApp(database, config)
 				if err != nil {
 					return err
 				}
@@ -271,6 +292,7 @@ func main() {
 		},
 		dbCommand,
 	}
+
 	sort.Sort(cli.CommandsByName(app.Commands))
 	err := app.Run(os.Args)
 	if err != nil {

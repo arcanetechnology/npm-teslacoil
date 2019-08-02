@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -106,6 +105,11 @@ func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
 func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	invoiceData CreateInvoiceData) (Payment, error) {
 
+	log.Trace("DEBUG")
+	log.Debug("DEBUG")
+	log.Warn("DEBUG")
+	fmt.Println(log.Level())
+
 	// First we add an invoice given the given parameters using the ln package
 	invoice, err := ln.AddInvoice(lncli, lnrpc.Invoice{
 		Memo: invoiceData.Memo, Value: invoiceData.AmountSat,
@@ -116,7 +120,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 
 	// Sanity check the invoice we just created
 	if invoice.Value != invoiceData.AmountSat {
-		log.Fatal("could not insert invoice, created invoice amount not equal request.Amount")
+		return Payment{}, errors.New("could not insert invoice, created invoice amount not equal request.Amount")
 	}
 
 	// Insert the payment into the database. Should anything inside insertPayment
@@ -139,7 +143,6 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		tx.Rollback()
 		return Payment{}, err
 	}
-	fmt.Println("INSERTED")
 
 	if err = tx.Commit(); err != nil {
 		tx.Rollback()
@@ -246,15 +249,12 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 		tQuery := fmt.Sprintf("SELECT * FROM %s WHERE payment_request=$1", OffchainTXTable)
 
 		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
-			fmt.Println("1")
 			// TODO: This is probably not a healthy way to deal with an error here
-			log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find payment").Error())
-			return
+			fmt.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find payment").Error())
 		}
 
 		t.Status = Status(invoice.State.String())
 		if invoice.Settled {
-			fmt.Println("2")
 			time := time.Now()
 			t.SettledAt = &time
 
@@ -272,14 +272,12 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			tx := database.MustBegin()
 			rows, err := tx.NamedQuery(updateOffchainTxQuery, &t)
 			if err != nil {
-				fmt.Println("3")
 				_ = tx.Rollback()
-				log.Println(errors.Wrap(err,
+				fmt.Println(errors.Wrap(err,
 					"UpdateInvoiceStatus: Could not update payment").Error())
 				return
 			}
 			if rows.Next() {
-				fmt.Println("4")
 				if err = rows.Scan(
 					&t.ID,
 					&t.UserID,
@@ -296,7 +294,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.UpdatedAt,
 				); err != nil {
 					_ = tx.Rollback()
-					log.Println(errors.Wrap(err,
+					fmt.Println(errors.Wrap(err,
 						"UpdateInvoiceStatus: Could not update payment").Error())
 					return
 				}
@@ -306,15 +304,13 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			var u UserDetails
 			rows, err = tx.NamedQuery(updateUserBalanceQuery, &t)
 			if err != nil {
-				fmt.Println("5")
 				_ = tx.Rollback()
 				// TODO: This is probably not a healthy way to deal with an error here
-				log.Println(errors.Wrap(err,
+				fmt.Println(errors.Wrap(err,
 					"UpdateInvoiceStatus: Could not update user balance").Error())
 				return
 			}
 			if rows.Next() {
-				fmt.Println("6")
 				_ = tx.Rollback()
 				if err = rows.Scan(
 					&u.ID,
@@ -322,7 +318,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&u.UpdatedAt,
 				); err != nil {
 					_ = tx.Rollback()
-					log.Println(errors.Wrap(err,
+					fmt.Println(errors.Wrap(err,
 						"UpdateInvoiceStatus: Could not read updated user detials").Error())
 					return
 				}

@@ -65,8 +65,8 @@ func NewLNDClient(options LightningConfig) (
 	lnrpc.LightningClient, error) {
 	cfg := LightningConfig{
 		LndDir:       options.LndDir,
-		TLSCertPath:  cleanAndExpandPath(options.TLSCertPath),
-		MacaroonPath: cleanAndExpandPath(options.MacaroonPath),
+		TLSCertPath:  CleanAndExpandPath(options.TLSCertPath),
+		MacaroonPath: CleanAndExpandPath(options.MacaroonPath),
 		Network:      options.Network,
 		RPCServer:    options.RPCServer,
 	}
@@ -113,10 +113,10 @@ func NewLNDClient(options LightningConfig) (
 	return client, nil
 }
 
-// cleanAndExpandPath expands environment variables and leading ~ in the
+// CleanAndExpandPath expands environment variables and leading ~ in the
 // passed path, cleans the result, and returns it.
 // This function is taken from https://github.com/btcsuite/btcd
-func cleanAndExpandPath(path string) string {
+func CleanAndExpandPath(path string) string {
 	if path == "" {
 		return ""
 	}
