@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -9,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/lpp/internal/ln"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
+	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
@@ -26,13 +25,6 @@ type RestServer struct {
 //NewApp creates a new app
 func NewApp(d *sqlx.DB, lightningConfig ln.LightningConfig) (RestServer, error) {
 	g := gin.Default()
-
-	user, err := users.UpdateUserBalance(d, 1)
-	if err != nil {
-		return RestServer{}, err
-	}
-
-	fmt.Println(user)
 
 	lncli, err := ln.NewLNDClient(lightningConfig)
 	if err != nil {

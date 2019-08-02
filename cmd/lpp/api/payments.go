@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -28,7 +29,7 @@ type CreateInvoiceResponse struct {
 
 // PayInvoiceResponse is the response for the /invoice/pay endpoint
 type PayInvoiceResponse struct {
-	Status string
+	Status payments.Status
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database
@@ -62,7 +63,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 		// Return the user when it is found and no errors where encountered
 		c.JSONP(200, &GetInvoiceResponse{
 			PaymentRequest: t.PaymentRequest,
-			Hash:           t.HashedPreImage,
+			Hash:           t.HashedPreimage,
 			Direction:      t.Direction,
 		})
 	}
@@ -71,12 +72,14 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 // CreateInvoice creates a new incove on behalf of a user
 func CreateInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var newInvoice payments.NewDeposit
+		var newInvoice payments.CreateInvoiceData
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		fmt.Printf("newInv %v\n", newInvoice)
 
 		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice)
 		if err != nil {
@@ -94,7 +97,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 // PayInvoice pays a valid invoice on behalf of a user
 func PayInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var newPayment payments.NewWithdrawal
+		var newPayment payments.PayInvoiceData
 
 		if err := c.ShouldBindJSON(&newPayment); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

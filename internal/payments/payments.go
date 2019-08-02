@@ -3,13 +3,12 @@ package payments
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"time"
 
-	"github.com/btcsuite/btcutil"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
@@ -18,9 +17,19 @@ import (
 // Direction is the direction of a lightning payment
 type Direction string
 
+// Status is the status of a lightning payment
+type Status string
+
 const (
-	inbound  Direction = "inbound"  //nolint
-	outbound Direction = "outbound" //nolint
+	inbound  Direction = "INBOUND"
+	outbound Direction = "OUTBOUND"
+
+	succeeded Status = "SUCCEEDED"
+	failed    Status = "FAILED"
+	inflight  Status = "IN-FLIGHT"
+
+	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
+	OffchainTXTable = "offchaintx"
 )
 
 // CreateInvoiceData is a deposit
@@ -38,26 +47,26 @@ type PayInvoiceData struct {
 	Description string
 	Direction   Direction
 	AmountSat   int64
-	AmountMSat  lnwire.MilliSatoshi
+	AmountMSat  int64
 }
 
 // Payment is a database table
 type Payment struct {
-	ID             uint64              `db:"id"`
-	UserID         uint64              `db:"user_id"`
-	PaymentRequest string              `db:"invoice"`
-	PreImage       string              `db:"pre_image"`
-	HashedPreImage string              `db:"hashed_pre_image"`
-	CallbackURL    *string             `db:"callback_url"`
-	Status         string              `db:"status"`
-	Description    string              `db:"description"`
-	Direction      Direction           `db:"direction"`
-	AmountSat      int64               `db:"amount_sat"`
-	AmountMSat     lnwire.MilliSatoshi `db:"amount_msat"`
-	SettledAt      time.Time           `db:"settled_at"` // If not 0 or null, it means the invoice is settled
-	CreatedAt      time.Time           `db:"created_at"`
-	UpdatedAt      time.Time           `db:"updated_at"`
-	DeletedAt      *time.Time          `db:"deleted_at"`
+	ID             uint64     `db:"id"`
+	UserID         uint64     `db:"user_id"`
+	PaymentRequest string     `db:"payment_request"`
+	Preimage       string     `db:"preimage"`
+	HashedPreimage string     `db:"hashed_preimage"`
+	CallbackURL    *string    `db:"callback_url"`
+	Status         Status     `db:"status"`
+	Description    string     `db:"description"`
+	Direction      Direction  `db:"direction"`
+	AmountSat      int64      `db:"amount_sat"`
+	AmountMSat     int64      `db:"amount_msat"`
+	SettledAt      time.Time  `db:"settled_at"` // If not 0 or null, it means the invoice is settled
+	CreatedAt      time.Time  `db:"created_at"`
+	UpdatedAt      time.Time  `db:"updated_at"`
+	DeletedAt      *time.Time `db:"deleted_at"`
 }
 
 //UserPaymentResponse is a user payment response
@@ -69,9 +78,9 @@ type UserPaymentResponse struct {
 // GetAll fetches all payments
 func GetAll(d *sqlx.DB) ([]Payment, error) {
 	payments := []Payment{}
-	const tQuery = `SELECT t.* 
-		FROM payments AS t 
-		ORDER BY t.created_at ASC`
+	tQuery := fmt.Sprintf(`SELECT t.* 
+		FROM %s AS t 
+		ORDER BY t.created_at ASC`, OffchainTXTable)
 
 	err := d.Select(&payments, tQuery)
 	if err != nil {
@@ -84,7 +93,7 @@ func GetAll(d *sqlx.DB) ([]Payment, error) {
 // GetByID returns a single invoice based on the id given
 func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
 	txResult := Payment{}
-	tQuery := `SELECT * FROM payments WHERE id=$1 LIMIT 1`
+	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 LIMIT 1", OffchainTXTable)
 
 	if err := d.Get(&txResult, tQuery, id); err != nil {
 		return txResult, errors.Wrap(err, "Could not get payment")
@@ -119,18 +128,19 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		Payment{
 			UserID:         invoiceData.UserID,
 			Description:    invoiceData.Memo,
-			AmountMSat:     lnwire.MilliSatoshi(invoiceData.AmountSat),
 			AmountSat:      invoiceData.AmountSat,
+			AmountMSat:     invoiceData.AmountSat * 1000,
 			PaymentRequest: invoice.PaymentRequest,
-			HashedPreImage: hex.EncodeToString(invoice.RHash),
-			PreImage:       hex.EncodeToString(invoice.RPreimage),
-			Status:         "unpaid",
-			Direction:      Direction("inbound"), // All created invoices are inbound
+			HashedPreimage: hex.EncodeToString(invoice.RHash),
+			Preimage:       hex.EncodeToString(invoice.RPreimage),
+			Status:         inflight,
+			Direction:      inbound,
 		})
 	if err != nil {
 		tx.Rollback()
 		return Payment{}, err
 	}
+	fmt.Println("INSERTED")
 
 	if err = tx.Commit(); err != nil {
 		tx.Rollback()
@@ -157,13 +167,13 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 
 	p := Payment{
 		UserID:         withdrawalRequest.UserID,
-		Direction:      Direction("outbound"),
+		Direction:      outbound,
 		PaymentRequest: withdrawalRequest.Invoice,
 
-		HashedPreImage: payreq.PaymentHash,
+		HashedPreimage: payreq.PaymentHash,
 		Description:    payreq.Description,
 		AmountSat:      payreq.NumSatoshis,
-		AmountMSat:     lnwire.MilliSatoshi(payreq.NumSatoshis),
+		AmountMSat:     int64(payreq.NumSatoshis * 1000),
 	}
 	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
 	// See logic in lightningspin-api for possible solution
@@ -175,10 +185,9 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	if paymentResponse.PaymentError == "" {
 		p.SettledAt = time.Now()
 		p.Status = "SETTLED"
-		p.PreImage = hex.EncodeToString(paymentResponse.PaymentPreimage)
+		p.Preimage = hex.EncodeToString(paymentResponse.PaymentPreimage)
 	} else {
-		p.Status = paymentResponse.PaymentError
-		p.Status = "FAILED"
+		p.Status = failed
 		return UserPaymentResponse{}, nil
 	}
 
@@ -212,6 +221,15 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 // UpdateInvoiceStatus continually listens for messages and updated the user balance
 // PS: This is most likely done in a horrible way. Must be refactored.
 // We also need to keep track of the last received messages from lnd
+// TODO: Give better error message if payment was just created, but not yet
+// inserted into the database
+// This happens because the flow is this:
+// 1. Payment is created
+// 2. A notification is sent to the SubscribeInvoices stream
+// 3. UpdateInvoiceStatus is run, looking for the newly created payment. It
+// errors with 'sql: no rows in result set' on the first database.Get() because
+// the invoice is not yet inserted into the database.
+// 4. Payment is inserted into the database
 func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB) {
 	for {
 		invoice := <-invoiceUpdatesCh
@@ -223,47 +241,49 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 		}
 
 		// Define a custom response struct to include user details
-		t := struct {
-			Payment
-			User UserDetails
-		}{}
+		t := Payment{}
 
-		tQuery := `SELECT * FROM payments as t WHERE invoice=$1 LIMIT 1`
+		tQuery := fmt.Sprintf("SELECT * FROM %s WHERE payment_request=$1", OffchainTXTable)
+
 		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
+			fmt.Println("1")
 			// TODO: This is probably not a healthy way to deal with an error here
 			log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find payment").Error())
 			return
 		}
 
-		t.Status = invoice.State.String()
+		t.Status = Status(invoice.State.String())
 		if invoice.Settled {
+			fmt.Println("2")
 			t.SettledAt = time.Now()
 
-			updateOffchainTxQuery := `UPDATE offchaintx 
+			updateOffchainTxQuery := fmt.Sprintf(`UPDATE %s 
 				SET status = :status, settled_at = :settled_at 
-				WHERE hashed_pre_image = :hashed_pre_image
-				RETURNING id, user_id, invoice, pre_image, hashed_pre_image,
-						  description, direction, status, amount,
-						  created_at, updated_at`
+				WHERE hashed_preimage = :hashed_preimage
+				RETURNING id, user_id, payment_request, preimage, hashed_preimage,
+						  description, direction, status, amount_sat, amount_msat,
+						  created_at, updated_at`, OffchainTXTable)
 
-			updateUserBalanceQuery := `UPDATE users 
+			updateUserBalanceQuery := fmt.Sprintf(`UPDATE %s 
 				SET balance = :amount + balance
 				WHERE id = :user_id
-				RETURNING id, balance, updated_at`
+				RETURNING id, balance, updated_at`, users.UsersTable)
 			tx := database.MustBegin()
 			rows, err := tx.NamedQuery(updateOffchainTxQuery, &t)
 			if err != nil {
+				fmt.Println("3")
 				_ = tx.Rollback()
 				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update payment").Error())
 				return
 			}
 			if rows.Next() {
+				fmt.Println("4")
 				if err = rows.Scan(
 					&t.ID,
 					&t.UserID,
 					&t.PaymentRequest,
-					&t.PreImage,
-					&t.HashedPreImage,
+					&t.Preimage,
+					&t.HashedPreimage,
 					&t.Description,
 					&t.Direction,
 					&t.Status,
@@ -280,18 +300,22 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			}
 			rows.Close() // Free up the database connection
 
+			var u UserDetails
 			rows, err = tx.NamedQuery(updateUserBalanceQuery, &t)
 			if err != nil {
+				fmt.Println("5")
 				_ = tx.Rollback()
 				// TODO: This is probably not a healthy way to deal with an error here
 				log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not update user balance").Error())
 				return
 			}
 			if rows.Next() {
+				fmt.Println("6")
+				_ = tx.Rollback()
 				if err = rows.Scan(
-					&t.User.ID,
-					&t.User.Balance,
-					&t.User.UpdatedAt,
+					&u.ID,
+					&u.Balance,
+					&u.UpdatedAt,
 				); err != nil {
 					_ = tx.Rollback()
 					log.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not read updated user detials").Error())
@@ -308,19 +332,19 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 	var createOffchainTXQuery string
 
-	if payment.Direction == Direction("inbound") {
-		createOffchainTXQuery = `INSERT INTO offchaintx
-		(user_id, payment_request, pre_image, hashed_pre_image, description, direction, status, amount)
-		VALUES (:user_id, :payment_request, :pre_image, :hashed_pre_image, :description,
-				:direction, :status, :amount)
-		RETURNING id, user_id, payment_request, pre_image, hashed_pre_image,
-		description, direction, status, amount_sat, amount_msat, created_at, updated_at`
+	if payment.Direction == inbound {
+		createOffchainTXQuery = fmt.Sprintf(`INSERT INTO %s
+		(user_id, payment_request, preimage, hashed_preimage, description, direction, status, amount_sat, amount_msat)
+		VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, :description,
+				:direction, :status, :amount_sat, :amount_msat)
+		RETURNING id, user_id, payment_request, preimage, hashed_preimage,
+		description, direction, status, amount_sat, amount_msat, created_at, updated_at`, OffchainTXTable)
 	} else {
-		createOffchainTXQuery = `INSERT INTO payments 
-		(user_id, invoice, description, direction, status, amount)
-		VALUES (:user_id, :invoice, :description, :direction, :status, :amount)
-		RETURNING id, user_id, payment_request, pre_image, hashed_pre_image,
-		description, direction, status, amount_sat, amount_msat, created_at, updated_at`
+		createOffchainTXQuery = fmt.Sprintf(`INSERT INTO %s 
+		(user_id, payment_request, description, direction, status, amount_sat, amount_msat)
+		VALUES (:user_id, :payment_request, :description, :direction, :status, :amount_sat, :amount_msat)
+		RETURNING id, user_id, payment_request, preimage, hashed_preimage,
+		description, direction, status, amount_sat, amount_msat, created_at, updated_at`, OffchainTXTable)
 	}
 
 	// Using the above query, NamedQuery() will extract VALUES from the payment
@@ -335,8 +359,8 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 			&tempPayment.ID,
 			&tempPayment.UserID,
 			&tempPayment.PaymentRequest,
-			&tempPayment.PreImage,
-			&tempPayment.HashedPreImage,
+			&tempPayment.Preimage,
+			&tempPayment.HashedPreimage,
 			&tempPayment.Description,
 			&tempPayment.Direction,
 			&tempPayment.Status,
@@ -364,10 +388,10 @@ func sanityCheckPayment(tempPayment Payment, payment Payment) bool {
 	if tempPayment.PaymentRequest != payment.PaymentRequest {
 		return false
 	}
-	if tempPayment.PreImage != payment.PreImage {
+	if tempPayment.Preimage != payment.Preimage {
 		return false
 	}
-	if tempPayment.HashedPreImage != payment.HashedPreImage {
+	if tempPayment.HashedPreimage != payment.HashedPreimage {
 		return false
 	}
 	if tempPayment.Description != payment.Description {
@@ -385,7 +409,7 @@ func sanityCheckPayment(tempPayment Payment, payment Payment) bool {
 	if tempPayment.AmountMSat != payment.AmountMSat {
 		return false
 	}
-	if tempPayment.AmountMSat.ToSatoshis().ToUnit(btcutil.AmountSatoshi) != float64(payment.AmountSat) {
+	if tempPayment.AmountMSat != (payment.AmountSat * 1000) {
 		return false
 	}
 	return true

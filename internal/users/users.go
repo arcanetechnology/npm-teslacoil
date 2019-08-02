@@ -35,11 +35,15 @@ type UserResponse struct {
 	UpdatedAt time.Time `db:"updated_at"`
 }
 
+// UsersTable is the tablename of users, as saved in the DB
+const UsersTable = "users"
+
 // All is a GET request that returns all the users in the database
 func All(d *sqlx.DB) ([]User, error) {
 	// Equivalent to SELECT * from users;
 	queryResult := []User{}
-	if err := d.Select(&queryResult, "SELECT * FROM users"); err != nil {
+	err := d.Select(&queryResult, fmt.Sprintf("SELECT * FROM %s", UsersTable))
+	if err != nil {
 		return queryResult, err
 	}
 
@@ -49,7 +53,8 @@ func All(d *sqlx.DB) ([]User, error) {
 // GetByID is a GET request that returns users that match the one specified in the body
 func GetByID(d *sqlx.DB, id uint) (UserResponse, error) {
 	userResult := UserResponse{}
-	uQuery := `SELECT id, email, balance, updated_at FROM users WHERE id=$1 LIMIT 1`
+	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
 		return userResult, err
@@ -66,10 +71,10 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 		Email:          email,
 		HashedPassword: hashAndSalt(password),
 	}
-	userCreateQuery := `INSERT INTO users 
+	userCreateQuery := fmt.Sprintf(`INSERT INTO %s 
 		(email, balance, hashed_password)
 		VALUES (:email, 0, :hashed_password)
-		RETURNING id, email, balance, updated_at`
+		RETURNING id, email, balance, updated_at`, UsersTable)
 
 	rows, err := d.NamedQuery(userCreateQuery, user)
 	if err != nil {
@@ -77,7 +82,7 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 	}
 	defer rows.Close()
 	if rows.Next() {
-		if err = rows.Scan(&uResp.ID, &uResp.Email, &uResp.Balance); err != nil {
+		if err = rows.Scan(&uResp.ID, &uResp.Email, &uResp.Balance, &uResp.UpdatedAt); err != nil {
 			return uResp, err
 		}
 	}
@@ -87,10 +92,10 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 
 // UpdateUserBalance updates the users balance
 func UpdateUserBalance(d *sqlx.DB, userID uint64) (UserResponse, error) {
-	updateBalanceQuery := `UPDATE users 
+	updateBalanceQuery := fmt.Sprintf(`UPDATE %s 
 		SET balance = balance - :amount
 		WHERE id = :user_id
-		RETURNING id, balance`
+		RETURNING id, balance`, UsersTable)
 
 	user := UserResponse{}
 

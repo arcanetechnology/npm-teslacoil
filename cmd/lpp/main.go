@@ -10,9 +10,9 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
-	"gitlab.com/arcanecrypto/lpp/internal/api"
-	"gitlab.com/arcanecrypto/lpp/internal/db"
-	"gitlab.com/arcanecrypto/lpp/internal/ln"
+	"gitlab.com/arcanecrypto/lpp/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
+	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -242,12 +242,6 @@ func main() {
 				if err != nil {
 					return err
 				}
-
-				fmt.Println(c.GlobalString("lnddir"))
-				fmt.Println(c.GlobalString("tlscertpath"))
-				fmt.Println(c.GlobalString("macaroonpath"))
-				fmt.Println(c.GlobalString("network"))
-				fmt.Println(c.GlobalString("lndrpcserver"))
 
 				lnConfig := ln.LightningConfig{
 					LndDir:       c.GlobalString("lnddir"),
