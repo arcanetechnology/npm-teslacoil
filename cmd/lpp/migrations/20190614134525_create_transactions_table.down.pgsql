@@ -1,3 +1,3 @@
-DROP TABLE transactions;
+DROP TABLE offchaintx;
 DROP TYPE IF EXISTS direction; -- Must Drop type after dropping table that depends on it.
 DROP TYPE IF EXISTS status;
