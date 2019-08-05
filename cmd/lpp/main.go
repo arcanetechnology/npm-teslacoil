@@ -133,7 +133,10 @@ var (
 
 					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
 
-					MigrationStatus(migrationsPath, database)
+					err = MigrationStatus(migrationsPath, database)
+					if err != nil {
+						return err
+					}
 					return nil
 				},
 			}, {
@@ -150,7 +153,10 @@ var (
 					migrationText := c.Args().First() // get the filename
 					migrationsPath := path.Join(path.Dir(filename), "/migrations")
 
-					CreateMigration(migrationsPath, migrationText)
+					err := CreateMigration(migrationsPath, migrationText)
+					if err != nil {
+						return err
+					}
 					return nil
 				},
 			}, {
@@ -278,7 +284,10 @@ func main() {
 				}
 
 				address := ":" + c.String("port")
-				a.Router.Run(address)
+				err = a.Router.Run(address)
+				if err != nil {
+					return err
+				}
 				return nil
 			},
 
@@ -292,7 +301,6 @@ func main() {
 		},
 		dbCommand,
 	}
-
 	sort.Sort(cli.CommandsByName(app.Commands))
 	err := app.Run(os.Args)
 	if err != nil {
