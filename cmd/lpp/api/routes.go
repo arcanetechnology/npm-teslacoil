@@ -33,6 +33,7 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 
 	lncli, err := ln.NewLNDClient(config.LightningConfig)
 	if err != nil {
+		log.Error(err)
 		return RestServer{}, err
 	}
 

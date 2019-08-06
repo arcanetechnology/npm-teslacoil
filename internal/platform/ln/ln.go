@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -101,11 +102,12 @@ func NewLNDClient(options LightningConfig) (
 		grpc.WithTransportCredentials(tlsCreds),
 		grpc.WithBlock(),
 		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
+		grpc.WithTimeout(5 * time.Second),
 	}
 
 	conn, err := grpc.Dial(cfg.RPCServer, opts...)
 	if err != nil {
-		log.Errorf("cannot dial to lnd %v", err)
+		log.Errorf("cannot dial to lnd: %v", err)
 		return nil, err
 	}
 	client := lnrpc.NewLightningClient(conn)
