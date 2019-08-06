@@ -26,6 +26,7 @@ const (
 	succeeded Status = "SUCCEEDED"
 	failed    Status = "FAILED"
 	inflight  Status = "IN-FLIGHT"
+	open      Status = "OPEN"
 
 	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
 	OffchainTXTable = "offchaintx"
@@ -82,8 +83,11 @@ func GetAll(d *sqlx.DB) ([]Payment, error) {
 
 	err := d.Select(&payments, tQuery)
 	if err != nil {
+		log.Error(err)
 		return payments, err
 	}
+
+	log.Debugf("query %s returned %v", tQuery, payments)
 
 	return payments, nil
 }
@@ -94,8 +98,11 @@ func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
 	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 LIMIT 1", OffchainTXTable)
 
 	if err := d.Get(&txResult, tQuery, id); err != nil {
-		return txResult, errors.Wrap(err, "Could not get payment")
+		log.Error(err)
+		return txResult, errors.Wrap(err, "could not get payment")
 	}
+
+	log.Debugf("query %s returned %v", tQuery, txResult)
 
 	return txResult, nil
 }
@@ -105,22 +112,20 @@ func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
 func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	invoiceData CreateInvoiceData) (Payment, error) {
 
-	log.Trace("DEBUG")
-	log.Debug("DEBUG")
-	log.Warn("DEBUG")
-	fmt.Println(log.Level())
-
 	// First we add an invoice given the given parameters using the ln package
 	invoice, err := ln.AddInvoice(lncli, lnrpc.Invoice{
 		Memo: invoiceData.Memo, Value: invoiceData.AmountSat,
 	})
 	if err != nil {
+		log.Error(err)
 		return Payment{}, err
 	}
 
 	// Sanity check the invoice we just created
 	if invoice.Value != invoiceData.AmountSat {
-		return Payment{}, errors.New("could not insert invoice, created invoice amount not equal request.Amount")
+		err = errors.New("could not insert invoice, created invoice amount not equal request.Amount")
+		log.Error(err)
+		return Payment{}, err
 	}
 
 	// Insert the payment into the database. Should anything inside insertPayment
@@ -140,11 +145,13 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 			Direction:      inbound,
 		})
 	if err != nil {
+		log.Error(err)
 		tx.Rollback()
 		return Payment{}, err
 	}
 
 	if err = tx.Commit(); err != nil {
+		log.Error(err)
 		tx.Rollback()
 		return Payment{}, err
 	}
@@ -160,6 +167,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: withdrawalRequest.PaymentRequest})
 	if err != nil {
+		log.Error(err)
 		return UserPaymentResponse{}, err
 	}
 
@@ -181,6 +189,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	// See logic in lightningspin-api for possible solution
 	paymentResponse, err := lncli.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
+		log.Error(err)
 		return UserPaymentResponse{}, nil
 	}
 
@@ -198,6 +207,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 
 	payment, err := insertPayment(tx, p)
 	if err != nil {
+		log.Error(err)
 		tx.Rollback()
 		return UserPaymentResponse{}, err
 	}
@@ -206,12 +216,14 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	if payment.Status == "SETTLED" {
 		user, err = users.UpdateUserBalance(d, payment.UserID)
 		if err != nil {
+			log.Error(err)
 			tx.Rollback()
 			return UserPaymentResponse{}, err
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
+		log.Error(err)
 		return UserPaymentResponse{}, errors.Wrap(err, "PayInvoice: Cound not commit")
 	}
 
@@ -243,14 +255,13 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			UpdatedAt *time.Time
 		}
 
-		// Define a custom response struct to include user details
-		t := Payment{}
-
 		tQuery := fmt.Sprintf("SELECT * FROM %s WHERE payment_request=$1", OffchainTXTable)
 
+		// Define a custom response struct to include user details
+		t := Payment{}
 		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
 			// TODO: This is probably not a healthy way to deal with an error here
-			fmt.Println(errors.Wrap(err, "UpdateInvoiceStatus: Could not find payment").Error())
+			log.Warnf("UpdateInvoiceStatus: could not find payment: %v", err)
 		}
 
 		t.Status = Status(invoice.State.String())
@@ -273,8 +284,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			rows, err := tx.NamedQuery(updateOffchainTxQuery, &t)
 			if err != nil {
 				_ = tx.Rollback()
-				fmt.Println(errors.Wrap(err,
-					"UpdateInvoiceStatus: Could not update payment").Error())
+				log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
 				return
 			}
 			if rows.Next() {
@@ -293,9 +303,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.CreatedAt,
 					&t.UpdatedAt,
 				); err != nil {
+					log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
 					_ = tx.Rollback()
-					fmt.Println(errors.Wrap(err,
-						"UpdateInvoiceStatus: Could not update payment").Error())
 					return
 				}
 			}
@@ -304,10 +313,9 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			var u UserDetails
 			rows, err = tx.NamedQuery(updateUserBalanceQuery, &t)
 			if err != nil {
-				_ = tx.Rollback()
 				// TODO: This is probably not a healthy way to deal with an error here
-				fmt.Println(errors.Wrap(err,
-					"UpdateInvoiceStatus: Could not update user balance").Error())
+				log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
+				_ = tx.Rollback()
 				return
 			}
 			if rows.Next() {
@@ -317,9 +325,9 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&u.Balance,
 					&u.UpdatedAt,
 				); err != nil {
+					// TODO: This is probably not a healthy way to deal with an error here
+					log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
 					_ = tx.Rollback()
-					fmt.Println(errors.Wrap(err,
-						"UpdateInvoiceStatus: Could not read updated user detials").Error())
 					return
 				}
 			}
@@ -352,6 +360,7 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 	// variable and insert them into the query
 	rows, err := tx.NamedQuery(createOffchainTXQuery, payment)
 	if err != nil {
+		log.Error(err)
 		return Payment{}, err
 	}
 	if rows.Next() {
@@ -370,48 +379,57 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 			&tempPayment.CreatedAt,
 			&tempPayment.UpdatedAt,
 		); err != nil {
+			log.Error(err)
 			return Payment{}, err
 		}
-		if !sanityCheckPayment(tempPayment, payment) {
-			return Payment{}, errors.New("Sanity check for inserted invoice failed")
+		// sanityCheckPayment is used as a failsafe in case what was inserted
+		// in the db is not the same as what was intended. Because this is
+		// critical information, we double check just in case tests do not cover
+		// a possible edge case
+		if err = sanityCheckPayment(tempPayment, payment); err != nil {
+			err = errors.New("sanity check for inserted invoice failed")
+			log.Error(err)
+			return Payment{}, err
 		}
 		payment = tempPayment
 	}
 	rows.Close() // Free up the database connection
 
+	log.Debugf("query %s inserted %v", createOffchainTXQuery, payment)
+
 	return payment, nil
 }
 
-func sanityCheckPayment(tempPayment Payment, payment Payment) bool {
+func sanityCheckPayment(tempPayment Payment, payment Payment) error {
 	if tempPayment.UserID != payment.UserID {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.UserID %d not equal payment.UserID %d", tempPayment.UserID, payment.UserID))
 	}
 	if tempPayment.PaymentRequest != payment.PaymentRequest {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.PaymentRequest %s not equal payment.PaymentRequest %s", tempPayment.PaymentRequest, payment.PaymentRequest))
 	}
 	if tempPayment.Preimage != payment.Preimage {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.Preimage %s not equal payment.Preimage %s", tempPayment.Preimage, payment.Preimage))
 	}
 	if tempPayment.HashedPreimage != payment.HashedPreimage {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.HashedPreimage %s not equal payment.HashedPreimage %s", tempPayment.HashedPreimage, payment.HashedPreimage))
 	}
 	if tempPayment.Description != payment.Description {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.Description %s not equal payment.Description %s", tempPayment.Description, payment.Description))
 	}
 	if tempPayment.Direction != payment.Direction {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.Direction %v not equal payment.Direction %v", tempPayment.Direction, payment.Direction))
 	}
 	if tempPayment.Status != payment.Status {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.Status %v not equal payment.Status %v", tempPayment.Status, payment.Status))
 	}
 	if tempPayment.AmountSat != payment.AmountSat {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.AmountSat %d not equal payment.AmountSat %d", tempPayment.AmountSat, payment.AmountSat))
 	}
 	if tempPayment.AmountMSat != payment.AmountMSat {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.AmountMSat %d not equal payment.AmountMSat %d", tempPayment.AmountMSat, payment.AmountMSat))
 	}
 	if tempPayment.AmountMSat != (payment.AmountSat * 1000) {
-		return false
+		return errors.New(fmt.Sprintf("tempPayment.AmountMSat %d not equal (payment.AmountSat * 1000) %d", tempPayment.AmountMSat, payment.AmountSat*1000))
 	}
-	return true
+	return nil
 }

@@ -17,19 +17,47 @@ type GetAllInvoicesResponse struct {
 
 // GetInvoiceResponse is the response for the /invoice/:id endpoint
 type GetInvoiceResponse struct {
+	ID             uint64
+	UserID         uint64
 	PaymentRequest string
+	Preimage       string
 	Hash           string
+	CallbackURL    string
+	Status         payments.Status
+	Description    string
 	Direction      payments.Direction
+	AmountSat      int64
+	AmountMSat     int64
+	SettledAt      string
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
-	PaymentRequest string
+	ID             uint64
+	UserID         uint64          `json:""`
+	PaymentRequest string          `json:""`
+	HashedPreimage string          `json:""`
+	CallbackURL    string          `json:""`
+	Status         payments.Status `json:""`
+	Description    string          `json:""`
+	AmountSat      int64           `json:""`
+	AmountMSat     int64
 }
 
 // PayInvoiceResponse is the response for the /invoice/pay endpoint
 type PayInvoiceResponse struct {
-	Status payments.Status
+	ID             uint64
+	UserID         uint64
+	PaymentRequest string
+	Preimage       string
+	Hash           string
+	CallbackURL    string
+	Status         payments.Status
+	Description    string
+	Direction      payments.Direction
+	AmountSat      int64
+	AmountMSat     int64
+	SettledAt      string
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database
@@ -62,9 +90,17 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 		}
 		// Return the user when it is found and no errors where encountered
 		c.JSONP(200, &GetInvoiceResponse{
+			ID:             t.ID,
+			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
+			Preimage:       t.Preimage,
 			Hash:           t.HashedPreimage,
-			Direction:      t.Direction,
+			CallbackURL:    *t.CallbackURL,
+			Status:         t.Status,
+			Description:    t.Description,
+			AmountSat:      t.AmountSat,
+			AmountMSat:     t.AmountMSat,
+			SettledAt:      t.SettledAt.String(),
 		})
 	}
 }
@@ -79,7 +115,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		fmt.Printf("newInv %v\n", newInvoice)
+		fmt.Printf("new invoice %v\n", newInvoice)
 
 		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice)
 		if err != nil {
@@ -88,8 +124,17 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
+		// Return as much info as possible
 		c.JSONP(200, &CreateInvoiceResponse{
+			ID:             t.ID,
+			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
+			HashedPreimage: t.HashedPreimage,
+			CallbackURL:    *t.CallbackURL,
+			Status:         t.Status,
+			Description:    t.Description,
+			AmountSat:      t.AmountSat,
+			AmountMSat:     t.AmountMSat,
 		})
 	}
 }
@@ -110,8 +155,18 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
+		// Return as much info as possible
 		c.JSONP(200, &PayInvoiceResponse{
-			Status: t.Status,
+			ID:             t.Payment.ID,
+			UserID:         t.UserID,
+			PaymentRequest: t.PaymentRequest,
+			Preimage:       t.Preimage,
+			Hash:           t.HashedPreimage,
+			Status:         t.Status,
+			Description:    t.Description,
+			AmountSat:      t.AmountSat,
+			AmountMSat:     t.AmountMSat,
+			SettledAt:      t.SettledAt.String(),
 		})
 	}
 }
