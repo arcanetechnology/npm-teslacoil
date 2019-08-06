@@ -40,6 +40,9 @@ func OpenDatabase() (*sqlx.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.Debugf("opened connection to db")
+
 	return d, nil
 }
 

@@ -12,6 +12,7 @@ require (
 	github.com/codahale/chacha20 v0.0.0-20151107025005-ec07b4f69a3f // indirect
 	github.com/codahale/chacha20poly1305 v0.0.0-20151127064032-f8a5c4830182 // indirect
 	github.com/coreos/bbolt v1.3.3 // indirect
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-contrib/sse v0.1.0
 	github.com/gin-gonic/gin v1.4.0
 	github.com/golang-migrate/migrate/v4 v4.5.0
