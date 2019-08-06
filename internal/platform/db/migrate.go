@@ -58,23 +58,11 @@ func MigrateUp(migrationsPath string, d *sqlx.DB) error {
 	}
 
 	// Migrate all the way up ...
-<<<<<<< HEAD:internal/platform/db/migrate.go
 	return m.Up()
-=======
-	if err := m.Up(); err != nil {
-		return err
-	}
-
-	return nil
->>>>>>> master:cmd/lpp/migrate.go
 }
 
 // MigrateDown migrates down
 func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) error {
-<<<<<<< HEAD:internal/platform/db/migrate.go
-
-=======
->>>>>>> master:cmd/lpp/migrate.go
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	if err != nil {
 		return err
@@ -90,15 +78,7 @@ func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) error {
 	}
 
 	// Migrate down x number of steps
-<<<<<<< HEAD:internal/platform/db/migrate.go
 	return m.Steps(-steps)
-=======
-	if err := m.Steps(-steps); err != nil {
-		return err
-	}
-
-	return nil
->>>>>>> master:cmd/lpp/migrate.go
 }
 
 func newMigrationFile(filePath string) error {
