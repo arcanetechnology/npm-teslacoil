@@ -77,14 +77,15 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(req); err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "request should only contain email {\"email\": \"email@domain.com\"}"})
+			c.JSONP(http.StatusBadRequest, gin.H{
+				"error": "request should only contain email {\"email\": \"email@domain.com\"}"})
 			return
 		}
 
 		user, err := users.GetByCredentials(r.db, req.Email)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusNotFound, gin.H{"error": errors.Wrap(err, "User not found")})
+			c.JSONP(http.StatusNotFound, gin.H{"error": "User not found"})
 		}
 
 		res := GetUserResponse{
@@ -107,7 +108,8 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(req); err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
 			return
 		}
 		log.Info("creating user with credentials: %v", req)
@@ -115,7 +117,8 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 		u, err := users.Create(r.db, req.Email, req.Password)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(200, gin.H{"error": err.Error()})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 		}
 
 		res := CreateUserResponse{
@@ -136,7 +139,8 @@ func Login(r *RestServer) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": err})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
 			return
 		}
 
@@ -145,7 +149,8 @@ func Login(r *RestServer) gin.HandlerFunc {
 		user, err := users.GetByCredentials(r.db, req.Email)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 			return
 		}
 		log.Info("found user %v", user)
@@ -153,7 +158,8 @@ func Login(r *RestServer) gin.HandlerFunc {
 		tokenString, err := createJWTToken(req.Email)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 			return
 		}
 
@@ -175,21 +181,23 @@ func RefreshToken(r *RestServer) gin.HandlerFunc {
 		_, claims, err := parseToken(c.GetHeader("Authorization"))
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": err})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 		}
 
 		email, ok := claims["email"].(string)
 		if !ok {
 			err = errors.New("could not extract email from jwt-token")
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "bad jwt, please log in again"})
 			return
 		}
 
 		tokenString, err := createJWTToken(email)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 		}
 
 		res := &RefreshTokenResponse{

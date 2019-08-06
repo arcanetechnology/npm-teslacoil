@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
 )
 
@@ -65,7 +64,8 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		t, err := payments.GetAll(r.db)
 		if err != nil {
-			c.JSONP(500, gin.H{"error": err.Error()})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 			return
 		}
 		c.JSONP(200, &GetAllInvoicesResponse{Invoices: t})
@@ -84,7 +84,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
-				gin.H{"error": errors.Wrap(err, "Invoice not found").Error()},
+				gin.H{"error": "Invoice not found"},
 			)
 			return
 		}
@@ -111,16 +111,16 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 		var newInvoice payments.CreateInvoiceData
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 			return
 		}
 
-		fmt.Printf("new invoice %v\n", newInvoice)
+		fmt.Printf("received new request for CreateInvoice: %v\n", newInvoice)
 
 		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err,
-				"Could not create new invoice").Error()})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support "})
 			return
 		}
 
@@ -145,13 +145,15 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 		var newPayment payments.PayInvoiceData
 
 		if err := c.ShouldBindJSON(&newPayment); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
 			return
 		}
 
 		t, err := payments.PayInvoice(r.db, *r.lncli, newPayment)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not pay invoice")})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, could not pay invoice"})
 			return
 		}
 
