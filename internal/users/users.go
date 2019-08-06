@@ -1,6 +1,7 @@
 package users
 
 import (
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -43,8 +44,11 @@ func All(d *sqlx.DB) ([]User, error) {
 	queryResult := []User{}
 	err := d.Select(&queryResult, fmt.Sprintf("SELECT * FROM %s", UsersTable))
 	if err != nil {
+		log.Error(err)
 		return queryResult, err
 	}
+
+	log.Tracef("SELECT * from users received %v from DB", queryResult)
 
 	return queryResult, nil
 }
@@ -56,19 +60,42 @@ func GetByID(d *sqlx.DB, id uint) (UserResponse, error) {
 		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
+		log.Error(err)
 		return userResult, err
 	}
+
+	log.Tracef("SELECT * from users WHERE id=%d received %v from %v", userResult)
+
+	return userResult, nil
+}
+
+// GetByCredentials retrieves a user from the database using the email and
+// the salted/hashed password
+func GetByCredentials(d *sqlx.DB, email string) (UserResponse, error) {
+	userResult := UserResponse{}
+	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
+
+	if err := d.Get(&userResult, uQuery, email); err != nil {
+		log.Error(err)
+		return userResult, err
+	}
+
+	log.Tracef("%s received user %v", uQuery, userResult)
 
 	return userResult, nil
 }
 
 // Create is a POST request and inserts all the users in the body into the database
 func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
-	uResp := UserResponse{}
-
+	hashedPassword, err := hashAndSalt(password)
+	if err != nil {
+		log.Error(err)
+		return UserResponse{}, err
+	}
 	user := User{
 		Email:          email,
-		HashedPassword: hashAndSalt(password),
+		HashedPassword: hashedPassword,
 	}
 	userCreateQuery := fmt.Sprintf(`INSERT INTO %s 
 		(email, balance, hashed_password)
@@ -77,14 +104,20 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 
 	rows, err := d.NamedQuery(userCreateQuery, user)
 	if err != nil {
-		return uResp, err
+		log.Error(err)
+		return UserResponse{}, err
 	}
 	defer rows.Close()
+
+	uResp := UserResponse{}
 	if rows.Next() {
 		if err = rows.Scan(&uResp.ID, &uResp.Email, &uResp.Balance, &uResp.UpdatedAt); err != nil {
+			log.Error(err)
 			return uResp, err
 		}
 	}
+
+	log.Tracef("%s inserted %v", userCreateQuery, uResp)
 
 	return uResp, nil
 }
@@ -100,6 +133,7 @@ func UpdateUserBalance(d *sqlx.DB, userID uint64) (UserResponse, error) {
 
 	rows, err := d.NamedQuery(updateBalanceQuery, &user)
 	if err != nil {
+		log.Error(err)
 		// TODO: This is probably not a healthy way to deal with an error here
 		return UserResponse{}, errors.Wrap(err, "PayInvoice: Cold not construct user update")
 	}
@@ -108,16 +142,16 @@ func UpdateUserBalance(d *sqlx.DB, userID uint64) (UserResponse, error) {
 			&user.ID,
 			&user.Balance,
 		); err != nil {
+			log.Error(err)
 			return UserResponse{}, err
 		}
 	}
-	fmt.Printf("user %v\n", user)
+	log.Tracef("%s inserted %v", updateBalanceQuery, user)
 
 	return user, nil
 }
 
-func hashAndSalt(pwd string) []byte {
-
+func hashAndSalt(pwd string) ([]byte, error) {
 	// Use GenerateFromPassword to hash & salt pwd.
 	// MinCost is just an integer constant provided by the bcrypt
 	// package along with DefaultCost & MaxCost.
@@ -125,9 +159,12 @@ func hashAndSalt(pwd string) []byte {
 	// than the MinCost (4)
 	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.MinCost)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
+		return nil, err
 	}
+
+	log.Tracef("generated %s", hex.EncodeToString(hash))
 	// GenerateFromPassword returns a byte slice so we need to
 	// convert the bytes to a string and return it
-	return hash
+	return hash, nil
 }

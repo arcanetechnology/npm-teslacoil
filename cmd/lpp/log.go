@@ -52,9 +52,7 @@ var subsystemLoggers = map[string]btclog.Logger{
 // create roll files in the same directory.  It must be called before the
 // package-global log rotator variables are used.
 func initLogRotator(logFile string, MaxLogFileSize int, MaxLogFiles int) {
-	fmt.Printf("logFile %s\n", logFile)
 	logDir, _ := filepath.Split(logFile)
-	fmt.Printf("logDir %s\n", logDir)
 	err := os.MkdirAll(logDir, 0700)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create log directory: %v\n", err)

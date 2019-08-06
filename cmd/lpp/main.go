@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	DefaultLoggingLevel = "trace"
+	defaultLoggingLevel = "trace"
 )
 
 var (
@@ -88,11 +88,10 @@ var (
 						}
 
 						migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-						MigrateDown(migrationsPath, database, steps)
-						return nil
+						return MigrateDown(migrationsPath, database, steps)
 					}
 					return cli.NewExitError(
-						"You need to spesify a number of steps to migrate down",
+						"You need to specify a number of steps to migrate down",
 						22,
 					)
 				},
@@ -113,8 +112,8 @@ var (
 					}
 
 					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-					MigrateUp(migrationsPath, database)
-					return nil
+
+					return MigrateUp(migrationsPath, database)
 				},
 			}, {
 				Name:    "status",
@@ -133,8 +132,7 @@ var (
 
 					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
 
-					MigrationStatus(migrationsPath, database)
-					return nil
+					return MigrationStatus(migrationsPath, database)
 				},
 			}, {
 				Name:    "newmigration",
@@ -150,8 +148,7 @@ var (
 					migrationText := c.Args().First() // get the filename
 					migrationsPath := path.Join(path.Dir(filename), "/migrations")
 
-					CreateMigration(migrationsPath, migrationText)
-					return nil
+					return CreateMigration(migrationsPath, migrationText)
 				},
 			}, {
 				Name:    "drop",
@@ -171,8 +168,11 @@ var (
 
 					fmt.Println("Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
-						return DropDatabase(migrationsPath, database)
+						if err = DropDatabase(migrationsPath, database); err != nil {
+							return err
+						}
 					}
+
 					return nil
 				},
 			},
@@ -245,7 +245,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "debuglevel",
-			Value: DefaultLoggingLevel,
+			Value: defaultLoggingLevel,
 			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, critical}",
 		},
 	}
@@ -257,6 +257,7 @@ func main() {
 			Action: func(c *cli.Context) error {
 				database, err := db.OpenDatabase()
 				if err != nil {
+					log.Fatal(err)
 					return err
 				}
 
@@ -274,6 +275,7 @@ func main() {
 				defer database.Close()
 				a, err := api.NewApp(database, config)
 				if err != nil {
+					log.Fatal(err)
 					return err
 				}
 

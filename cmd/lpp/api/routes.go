@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"time"
 
-	jwt "github.com/appleboy/gin-jwt"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
-	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 // Config is a config
@@ -23,7 +23,6 @@ type Config struct {
 // a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
 	Router *gin.Engine
-	JWT    *jwt.GinJWTMiddleware
 	db     *sqlx.DB
 	lncli  *lnrpc.LightningClient
 }
@@ -39,16 +38,8 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 
 	restServer := RestServer{
 		Router: g,
-		JWT: &jwt.GinJWTMiddleware{
-			Realm:         "gin jwt",
-			Key:           []byte("secret key"),
-			Timeout:       time.Hour,
-			MaxRefresh:    time.Hour,
-			TokenHeadName: "Bearer",
-			TimeFunc:      time.Now,
-		},
-		db:    d,
-		lncli: &lncli,
+		db:     d,
+		lncli:  &lncli,
 	}
 
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
@@ -56,55 +47,115 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 
 	go payments.UpdateInvoiceStatus(invoiceUpdatesCh, d)
 
+	// We register /login separately to require jwt-tokens on every other endpoint
+	// than /login
+	restServer.Router.POST("/login", Login(&restServer))
+	RegisterAuthRoutes(&restServer)
 	RegisterUserRoutes(&restServer)
 	RegisterPaymentRoutes(&restServer)
 
 	return restServer, nil
 }
 
-//LoginAuthenticator is an authenticator
-func (r *RestServer) LoginAuthenticator(ctx *gin.Context) (interface{}, error) {
-	var params GetUserRequest
-	if err := ctx.Bind(&params); err != nil {
-		return "", jwt.ErrMissingLoginValues
-	}
+// RegisterAuthRoutes registers all auth routes
+func RegisterAuthRoutes(r *RestServer) {
+	auth := r.Router.Group("")
+	auth.Use(authenticateJWT)
 
-	// Get users by ID
-	user, err := users.All(r.db)
-	if err != nil {
-		return nil, err
-	}
-
-	// Verify password
-	// nah
-
-	return user, nil
-}
-
-//Login logs in
-func Login(r *RestServer) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, err := r.LoginAuthenticator(c)
-		if err != nil {
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
-		}
-
-		c.JSONP(200, user)
-	}
+	auth.GET("/auth/refresh_token", RefreshToken(r))
 }
 
 // RegisterUserRoutes registers all user routes on the router
 func RegisterUserRoutes(r *RestServer) {
-	r.Router.POST("/login", Login(r))
-	r.Router.GET("/users", GetAllUsers(r))
-	r.Router.GET("/users/:id", GetUser(r))
-	r.Router.POST("/users", CreateUser(r))
+	// We group on empty paths to apply middlewares to everything but the
+	// /login route. The group path is empty because it is easier to read
+	users := r.Router.Group("")
+	users.Use(authenticateJWT)
+
+	users.GET("/users", GetAllUsers(r))
+	users.GET("/users/:id", GetUser(r))
+	users.POST("/users", CreateUser(r))
 }
 
 // RegisterPaymentRoutes registers all payment routes on the router
 func RegisterPaymentRoutes(r *RestServer) {
-	r.Router.GET("/payments", GetAllInvoices(r))
-	r.Router.GET("/payments/:id", GetInvoice(r))
-	r.Router.POST("/invoice/create", CreateInvoice(r))
-	r.Router.POST("/invoice/pay", PayInvoice(r))
+	payments := r.Router.Group("")
+	payments.Use(authenticateJWT)
+
+	payments.GET("/payments", GetAllInvoices(r))
+	payments.GET("/payments/:id", GetInvoice(r))
+	payments.POST("/invoices/create", CreateInvoice(r))
+	payments.POST("/invoices/pay", PayInvoice(r))
+}
+
+// authenticateJWT is the middleware applied to every request to authenticate
+// the jwt is issued by us. It aborts the following request if the supplied jwt
+// is not valid or has expired
+func authenticateJWT(c *gin.Context) {
+	// Here we extract the token from the header
+	tokenString := c.GetHeader("Authorization")
+
+	_, _, err := parseToken(tokenString)
+	if err != nil {
+		c.JSONP(http.StatusForbidden, gin.H{"error": err})
+		c.Abort() // cancels the following request
+	}
+
+	log.Infof("jwt-token is valid: %s", tokenString)
+}
+
+// parseToken parses a string representation of a jwt-token, and validates
+// it is signed by us. It returns the token and the extracted claims.
+// If anything goes wrong, an error with a descriptive reason is returned.
+func parseToken(tokenString string) (*jwt.Token, jwt.MapClaims, error) {
+	claims := jwt.MapClaims{}
+	// Here we decode the token, verify it is signed with our secret key, and
+	// extract the claims
+	token, err := jwt.ParseWithClaims(tokenString, claims,
+		func(token *jwt.Token) (interface{}, error) {
+			return []byte("secret_key"), nil
+		})
+	if err != nil {
+		log.Errorf("parsing jwt-token %s failed %v", tokenString, err)
+		return nil, nil, errors.Wrap(err, "invalid request, restricted endpoint")
+	}
+
+	if !token.Valid {
+		log.Errorf("jwt-token invalid %s", tokenString)
+		return nil, nil, errors.New("invalid token, restricted endpoint. log in first")
+	}
+
+	// convert Claims to a map-type we can extract fields from
+	mapClaims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, nil, errors.New("invalid token, could not extract claims")
+	}
+
+	return token, mapClaims, nil
+}
+
+// createJWTToken creates a new JWT token with the supplied email as the
+// claim, a specific expiration time, and signed with our secret key.
+// It returns the string representation of the token
+func createJWTToken(email string) (string, error) {
+	expiresAt := time.Now().Add(5 * time.Minute).Unix()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
+		&JWTClaims{
+			Email: email,
+			StandardClaims: jwt.StandardClaims{
+				ExpiresAt: expiresAt,
+			},
+		},
+	)
+
+	log.Info(expiresAt)
+
+	tokenString, err := token.SignedString([]byte("secret_key"))
+	if err != nil {
+		log.Errorf("signing jwt-token failed %v", err)
+		return "", err
+	}
+
+	return tokenString, nil
 }
