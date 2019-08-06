@@ -1,8 +1,7 @@
-package main
+package db
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"time"
@@ -43,11 +42,11 @@ func MigrationStatus(migrationsPath string, d *sqlx.DB) error {
 }
 
 // MigrateUp Migrates everything up
-func MigrateUp(migrationsPath string, d *sqlx.DB) {
+func MigrateUp(migrationsPath string, d *sqlx.DB) error {
 
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
@@ -56,19 +55,20 @@ func MigrateUp(migrationsPath string, d *sqlx.DB) {
 	)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// Migrate all the way up ...
-	if err := m.Up(); err != nil {
-		log.Fatal(err)
-	}
+	return m.Up()
 }
 
 // MigrateDown migrates down
-func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) {
+func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) error {
 
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+	if err != nil {
+		return err
+	}
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
 		"postgres",
@@ -76,13 +76,11 @@ func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) {
 	)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// Migrate down x number of steps
-	if err := m.Steps(-steps); err != nil {
-		log.Fatal(err)
-	}
+	return m.Steps(-steps)
 }
 
 func newMigrationFile(filePath string) error {
@@ -111,6 +109,9 @@ func CreateMigration(migrationsPath string, migrationText string) error {
 // DropDatabase drops the existing database
 func DropDatabase(migrationsPath string, d *sqlx.DB) error {
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+	if err != nil {
+		return err
+	}
 	migrator, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
 		"postgres",
