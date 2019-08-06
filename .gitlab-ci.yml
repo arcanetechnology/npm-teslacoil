@@ -1,11 +1,12 @@
 image: golang:1.12.3
 
 stages:
-  - build
+  - test
 
-job 1:
+test job:
   only:
   - merge_requests
-  stage: build
+  stage: test
   script: GO111MODULE=on
-  script: go get
+  script: go test ./...
+

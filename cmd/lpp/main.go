@@ -72,28 +72,29 @@ var (
 				Aliases: []string{"md"},
 				Usage:   "down x, Migrates the database down x number of steps",
 				Action: func(c *cli.Context) error {
-					if c.NArg() > 0 {
-						database, err := db.OpenDatabase()
-						if err != nil {
-							return err
-						}
-						defer database.Close()
-						steps, err := strconv.Atoi(c.Args().First())
-						if err != nil {
-							return err
-						}
-						_, filename, _, ok := runtime.Caller(0)
-						if ok == false {
-							return cli.NewExitError("Cannot find migrations folder", 22)
-						}
-
-						migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-						return MigrateDown(migrationsPath, database, steps)
+					if c.NArg() != 1 {
+						return cli.NewExitError(
+							"You need to spesify a number of steps to migrate down",
+							22,
+						)
 					}
-					return cli.NewExitError(
-						"You need to specify a number of steps to migrate down",
-						22,
-					)
+					database, err := db.OpenDatabase()
+					if err != nil {
+						return err
+					}
+					defer database.Close()
+					steps, err := strconv.Atoi(c.Args().First())
+					if err != nil {
+						return err
+					}
+					_, filename, _, ok := runtime.Caller(0)
+					if ok == false {
+						return cli.NewExitError("Cannot find migrations folder", 22)
+					}
+
+					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
+					return db.MigrateDown(migrationsPath, database, steps)
+
 				},
 			},
 			{
@@ -112,8 +113,7 @@ var (
 					}
 
 					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-
-					return MigrateUp(migrationsPath, database)
+					return db.MigrateUp(migrationsPath, database)
 				},
 			}, {
 				Name:    "status",
@@ -132,7 +132,7 @@ var (
 
 					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
 
-					return MigrationStatus(migrationsPath, database)
+					return db.MigrationStatus(migrationsPath, database)
 				},
 			}, {
 				Name:    "newmigration",
@@ -148,7 +148,7 @@ var (
 					migrationText := c.Args().First() // get the filename
 					migrationsPath := path.Join(path.Dir(filename), "/migrations")
 
-					return CreateMigration(migrationsPath, migrationText)
+					return db.CreateMigration(migrationsPath, migrationText)
 				},
 			}, {
 				Name:    "drop",
@@ -168,9 +168,7 @@ var (
 
 					fmt.Println("Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
-						if err = DropDatabase(migrationsPath, database); err != nil {
-							return err
-						}
+						return db.DropDatabase(migrationsPath, database)
 					}
 
 					return nil
@@ -280,7 +278,10 @@ func main() {
 				}
 
 				address := ":" + c.String("port")
-				a.Router.Run(address)
+				err = a.Router.Run(address)
+				if err != nil {
+					return err
+				}
 				return nil
 			},
 
@@ -294,7 +295,6 @@ func main() {
 		},
 		dbCommand,
 	}
-
 	sort.Sort(cli.CommandsByName(app.Commands))
 	err := app.Run(os.Args)
 	if err != nil {
