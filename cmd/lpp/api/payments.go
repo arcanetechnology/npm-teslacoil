@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -60,6 +59,10 @@ type PayInvoiceResponse struct {
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database
+// TODO: An attack exists where a deposit(inbound invoice) is not paid, but then
+// the user hits this endpoint and leanrs the preimage. THUS, we need to create
+// a interface for the response, to maintain complete control. deletedat,
+// createdat, updatedat is not something the user needs either
 func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
@@ -70,7 +73,8 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 				"error": "internal server error, please try again or contact support"})
 			return
 		}
-		c.JSONP(200, &GetAllInvoicesResponse{Invoices: t})
+
+		c.JSONP(200, t)
 	}
 }
 
@@ -81,6 +85,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
+			log.Error(err)
 			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
@@ -115,6 +120,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 		var newInvoice payments.CreateInvoiceData
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {
+			log.Error(err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 			return
 		}
@@ -125,7 +131,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 				"error": "internal server error, please try again or contact support"})
 		}
 
-		fmt.Printf("received new request for CreateInvoice for user_id %d: %v\n",
+		log.Debugf("received new request for CreateInvoice for user_id %d: %v\n",
 			claims.UserID,
 			newInvoice)
 
@@ -164,6 +170,7 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 		var newPayment payments.PayInvoiceData
 
 		if err := c.ShouldBindJSON(&newPayment); err != nil {
+			log.Error(err)
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "bad request, see documentation"})
 			return

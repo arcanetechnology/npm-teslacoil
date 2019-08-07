@@ -76,10 +76,11 @@ func RegisterAuthRoutes(r *RestServer) {
 
 // RegisterUserRoutes registers all user routes on the router
 func RegisterUserRoutes(r *RestServer) {
-	// We group on empty paths to apply middlewares to everything but the
-	// /login route. The group path is empty because it is easier to read
+	// Creating a user doesn't require a JWT
 	r.Router.POST("/users", CreateUser(r))
 
+	// We group on empty paths to apply middlewares to everything but the
+	// /login route. The group path is empty because it is easier to read
 	users := r.Router.Group("")
 	users.Use(authenticateJWT)
 	users.GET("/users", GetAllUsers(r))
@@ -123,8 +124,6 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	// Remove 'Bearer ' from tokenString. It is fine to do it this way because
 	// a malicious actor will just create an invalid jwt-token if anything other
 	// then Bearer is passed as the first 7 characters
-	log.Debug(len(tokenString))
-	log.Debug(tokenString)
 	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
 		return nil, nil, errors.New(
 			"invalid jwt-token, please include token on form 'Bearer xx.xx.xx")

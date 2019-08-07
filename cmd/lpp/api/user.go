@@ -116,7 +116,7 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 
 		log.Info("creating user with credentials: ", req)
 
-		// Because the email column in users table has the unique tag, we don't
+		// because the email column in users table has the unique tag, we don't
 		// double check the email is unique
 		u, err := users.Create(r.db, req.Email, req.Password)
 		if err != nil {
@@ -160,7 +160,6 @@ func Login(r *RestServer) gin.HandlerFunc {
 
 		tokenString, err := createJWTToken(req.Email, user.ID)
 		if err != nil {
-			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
 			return
