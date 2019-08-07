@@ -24,8 +24,8 @@ type GetInvoiceResponse struct {
 	Status         payments.Status
 	Description    string
 	Direction      payments.Direction
-	AmountSat      int
-	AmountMSat     int
+	AmountSat      int64
+	AmountMSat     int64
 	SettledAt      string
 }
 
@@ -38,8 +38,8 @@ type CreateInvoiceResponse struct {
 	CallbackURL    string          `json:""`
 	Status         payments.Status `json:""`
 	Description    string          `json:""`
-	AmountSat      int             `json:""`
-	AmountMSat     int
+	AmountSat      int64           `json:""`
+	AmountMSat     int64
 }
 
 // PayInvoiceResponse is the response for the /invoice/pay endpoint
@@ -53,8 +53,8 @@ type PayInvoiceResponse struct {
 	Status         payments.Status
 	Description    string
 	Direction      payments.Direction
-	AmountSat      int
-	AmountMSat     int
+	AmountSat      int64
+	AmountMSat     int64
 	SettledAt      string
 }
 

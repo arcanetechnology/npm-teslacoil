@@ -35,14 +35,14 @@ const (
 // CreateInvoiceData is a deposit
 type CreateInvoiceData struct {
 	Memo      string `json:"memo"`
-	AmountSat int    `json:"amount_sat"`
+	AmountSat int64  `json:"amount_sat"`
 }
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
 type PayInvoiceData struct {
 	PaymentRequest string `json:"payment_request"`
 	Description    string `json:"description"`
-	AmountSat      int    `json:"amount_sat"`
+	AmountSat      int64  `json:"amount_sat"`
 }
 
 // Payment is a database table
@@ -56,8 +56,8 @@ type Payment struct {
 	Status         Status    `db:"status"`
 	Description    string    `db:"description"`
 	Direction      Direction `db:"direction"`
-	AmountSat      int       `db:"amount_sat"`
-	AmountMSat     int       `db:"amount_msat"`
+	AmountSat      int64     `db:"amount_sat"`
+	AmountMSat     int64     `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
 	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the invoice is settled
@@ -189,8 +189,8 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 
 		HashedPreimage: payreq.PaymentHash,
 		Description:    payreq.Description,
-		AmountSat:      int(payreq.NumSatoshis),
-		AmountMSat:     int(payreq.NumSatoshis * 1000),
+		AmountSat:      payreq.NumSatoshis,
+		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
 
 	tx := d.MustBegin()

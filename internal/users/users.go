@@ -130,26 +130,35 @@ func Create(d *sqlx.DB, email, password string) (*UserResponse, error) {
 }
 
 // UpdateUserBalance updates the users balance
-func UpdateUserBalance(d *sqlx.DB, userID uint, amount int) (*UserResponse, error) {
-	if amount == 0 {
+func UpdateUserBalance(d *sqlx.DB, userID int, amountSat int64) (*UserResponse, error) {
+	if amountSat == 0 {
 		return nil, errors.New(
 			"No point in updating users balance with 0 satoshi")
 	}
 
+	type UpdateBalanceQuery struct {
+		UserID    int   `db:"user_id"`
+		AmountSat int64 `db:"amount_sat"`
+	}
+
 	updateBalanceQuery := fmt.Sprintf(`UPDATE %s 
-		SET balance = balance + :amount
+		SET balance = balance + :amount_sat
 		WHERE id = :user_id
 		RETURNING id, balance`, UsersTable)
 
-	user := UserResponse{}
-
-	rows, err := d.NamedQuery(updateBalanceQuery, &user)
+	rows, err := d.NamedQuery(updateBalanceQuery, &UpdateBalanceQuery{
+		UserID:    userID,
+		AmountSat: amountSat,
+	})
 	if err != nil {
 		log.Error(err)
 		// TODO: This is probably not a healthy way to deal with an error here
 		return nil, errors.Wrap(
 			err, "UpdateUserBalance(): could not construct user update")
 	}
+
+	var user UserResponse
+
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
