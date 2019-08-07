@@ -1,4 +1,4 @@
-package main
+package lpp
 
 import (
 	"fmt"
@@ -48,10 +48,10 @@ var subsystemLoggers = map[string]btclog.Logger{
 	"LN":       lnLog,
 }
 
-// initLogRotator initializes the logging rotator to write logs to logFile and
+// InitLogRotator initializes the logging rotator to write logs to logFile and
 // create roll files in the same directory.  It must be called before the
 // package-global log rotator variables are used.
-func initLogRotator(logFile string, MaxLogFileSize int, MaxLogFiles int) {
+func InitLogRotator(logFile string, MaxLogFileSize int, MaxLogFiles int) {
 	logDir, _ := filepath.Split(logFile)
 	err := os.MkdirAll(logDir, 0700)
 	if err != nil {
@@ -70,7 +70,7 @@ func initLogRotator(logFile string, MaxLogFileSize int, MaxLogFiles int) {
 	logWriter.RotatorPipe = pw
 	logRotator = r
 
-	setLogLevels("INFO")
+	SetLogLevels("INFO")
 }
 
 // setLogLevel sets the logging level for provided subsystem.  Invalid
@@ -88,10 +88,10 @@ func setLogLevel(subsystemID string, logLevel string) {
 	logger.SetLevel(level)
 }
 
-// setLogLevels sets the log level for all subsystem loggers to the passed
+// SetLogLevels sets the log level for all subsystem loggers to the passed
 // level. It also dynamically creates the subsystem loggers as needed, so it
 // can be used to initialize the logging system.
-func setLogLevels(logLevel string) {
+func SetLogLevels(logLevel string) {
 	// Configure all sub-systems with the new logging level.  Dynamically
 	// create loggers as needed.
 	for subsystemID := range subsystemLoggers {

@@ -2,28 +2,28 @@ package users
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"path"
-	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
+	"gitlab.com/arcanecrypto/lpp"
 
 	"github.com/brianvoe/gofakeit"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 )
 
+var migrationsPath = path.Join(
+	os.Getenv("GOPATH"),
+	"/src/gitlab.com/arcanecrypto/lpp/internal/platform/migrations")
+
 func createTestDatabase(testDB *sqlx.DB) error {
-	_, filename, _, ok := runtime.Caller(1)
-	if ok == false {
-		return nil
-	}
-	migrationFiles := path.Join(path.Dir(filename), "../platform/migrations")
-	err := db.DropDatabase(migrationFiles, testDB)
+	err := db.DropDatabase(migrationsPath, testDB)
 	if err != nil {
 		return err
 	}
-	err = db.MigrateUp(migrationFiles, testDB)
+	err = db.MigrateUp(migrationsPath, testDB)
 	if err != nil {
 		return err
 	}
@@ -34,11 +34,13 @@ var testDB *sqlx.DB
 
 func TestMain(m *testing.M) {
 	println("Configuring user test database")
+	lpp.InitLogRotator("/home/bo/gocode/src/gitlab.com/arcanecrypto/lpp/logs/lpp.log", 10, 3)
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		return
 	}
+	fmt.Println(testDB.Ping())
 
 	err = createTestDatabase(testDB)
 	if err != nil {
@@ -71,6 +73,8 @@ func TestCanGetUserByEmail(t *testing.T) {
 		t.Log(err)
 		t.Fail()
 	}
+
+	t.Error(user)
 	if user.Email != "test_user@example.com" {
 		t.Log("User email stored incorrectly.")
 		t.Fail()

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
+	"gitlab.com/arcanecrypto/lpp"
 	"gitlab.com/arcanecrypto/lpp/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
@@ -23,7 +24,8 @@ var (
 	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/lpp/logs/",
 		os.Getenv("GOPATH"))
 	defaultLogFilename = "lpp.log"
-	migrationsPath     = path.Join(
+	// Path tho migrations
+	migrationsPath = path.Join(
 		os.Getenv("GOPATH"),
 		"/src/gitlab.com/arcanecrypto/lpp/internal/platform/migrations")
 )
@@ -182,8 +184,8 @@ var (
 
 func main() {
 
-	initLogRotator(ln.CleanAndExpandPath(path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
-	setLogLevels("info")
+	lpp.InitLogRotator(ln.CleanAndExpandPath(path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
+	lpp.SetLogLevels("info")
 
 	app := cli.NewApp()
 	app.Name = "lpp"

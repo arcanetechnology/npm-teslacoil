@@ -42,6 +42,7 @@ func OpenDatabase() (*sqlx.DB, error) {
 // OpenTestDatabase Fetches the database credentials from env vars and opens a
 // connection to the test db
 func OpenTestDatabase() (*sqlx.DB, error) {
+
 	// Define SSL mode.
 	sslMode := "disable" // require
 
@@ -64,5 +65,6 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return d, nil
 }

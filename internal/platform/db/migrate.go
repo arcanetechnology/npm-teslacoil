@@ -108,18 +108,25 @@ func CreateMigration(migrationsPath string, migrationText string) error {
 func DropDatabase(migrationsPath string, d *sqlx.DB) error {
 	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
 	if err != nil {
+		log.Error("1")
 		return err
 	}
+
+	fmt.Println(migrationsPath)
+	fmt.Println(driver)
 	migrator, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
 		"postgres",
 		driver,
 	)
 	if err != nil {
+		log.Error("2")
+		log.Error(err)
 		return err
 	}
 
 	if err = migrator.Drop(); err != nil {
+		log.Error("3")
 		return err
 	}
 
