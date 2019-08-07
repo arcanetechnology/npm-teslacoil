@@ -2,14 +2,14 @@ package users
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"path"
 	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
-
-	"github.com/brianvoe/gofakeit"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 )
 
@@ -18,14 +18,22 @@ func createTestDatabase(testDB *sqlx.DB) error {
 	if ok == false {
 		return nil
 	}
-	migrationFiles := path.Join(path.Dir(filename), "../platform/migrations")
+	migrationFiles := path.Join("file://", path.Dir(filename), "../platform/migrations")
 	err := db.DropDatabase(migrationFiles, testDB)
 	if err != nil {
-		return err
+		return errors.Wrapf(err,
+			"Cannot connect to database %s with user %s",
+			os.Getenv("DATABASE_TEST_NAME"),
+			os.Getenv("DATABASE_TEST_USER"),
+		)
 	}
 	err = db.MigrateUp(migrationFiles, testDB)
 	if err != nil {
-		return err
+		return errors.Wrapf(err,
+			"Cannot connect to database %s with user %s",
+			os.Getenv("DATABASE_TEST_NAME"),
+			os.Getenv("DATABASE_TEST_USER"),
+		)
 	}
 	return nil
 }
@@ -37,26 +45,57 @@ func TestMain(m *testing.M) {
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
+		fmt.Printf("%+v\n", err)
 		return
 	}
 
 	err = createTestDatabase(testDB)
 	if err != nil {
+		fmt.Printf("%+v\n", err)
 		return
 	}
 
-	_, err = Create(testDB,
-		"test_user@example.com",
-		gofakeit.Password(true, true, true, true, true, 32),
-	)
-
-	if err != nil {
-		return
-	}
 	flag.Parse()
 	result := m.Run()
-	println("All tests are done")
 	os.Exit(result)
+}
+
+func TestCanCreateUser(t *testing.T) {
+
+	testDB, err := db.OpenTestDatabase()
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := Create(testDB,
+		"test_user@example.com",
+		"password",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("user result was empty")
+	}
+
+	expectedResult := UserResponse{
+		Email:   "test_user@example.com",
+		Balance: 0,
+		ID:      1,
+	}
+	if user.Email != expectedResult.Email {
+		t.Fatalf(
+			"Email incorrect: %s does not equal %s",
+			expectedResult.Email,
+			user.Email,
+		)
+	}
+	if user.Balance != expectedResult.Balance {
+		t.Fatalf(
+			"Incorrect Balance. Expected: %d, was: %d",
+			expectedResult.Balance,
+			user.Balance,
+		)
+	}
 }
 
 func TestCanGetUserByEmail(t *testing.T) {
@@ -68,11 +107,99 @@ func TestCanGetUserByEmail(t *testing.T) {
 	}
 	user, err := GetByEmail(testDB, "test_user@example.com")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("user result was empty")
+	}
+
+	expectedResult := UserResponse{
+		Email:   "test_user@example.com",
+		Balance: 0,
+		ID:      1,
+	}
+	if user.Email != expectedResult.Email {
+		t.Fatalf(
+			"Email incorrect: %s does not equal %s",
+			expectedResult.Email,
+			user.Email,
+		)
+	}
+	if user.Balance != expectedResult.Balance {
+		t.Fatalf(
+			"Incorrect Balance. Expected: %d, was: %d",
+			expectedResult.Balance,
+			user.Balance,
+		)
+	}
+}
+
+func TestCanGetUserByCredentials(t *testing.T) {
+
+	testDB, err := db.OpenTestDatabase()
+	if err != nil {
 		t.Log(err)
 		t.Fail()
 	}
-	if user.Email != "test_user@example.com" {
-		t.Log("User email stored incorrectly.")
+	user, err := GetByCredentials(testDB, "test_user@example.com", "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("user result was empty")
+	}
+	expectedResult := UserResponse{
+		Email:   "test_user@example.com",
+		Balance: 0,
+		ID:      1,
+	}
+	if user.Email != expectedResult.Email {
+		t.Fatalf(
+			"Email incorrect: %s does not equal %s",
+			expectedResult.Email,
+			user.Email,
+		)
+	}
+	if user.Balance != expectedResult.Balance {
+		t.Fatalf(
+			"Incorrect Balance. Expected: %d, was: %d",
+			expectedResult.Balance,
+			user.Balance,
+		)
+	}
+}
+
+func TestCanUpdateUserBalance(t *testing.T) {
+
+	testDB, err := db.OpenTestDatabase()
+	if err != nil {
+		t.Log(err)
 		t.Fail()
+	}
+	user, err := UpdateUserBalance(testDB, 1, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("user result was empty")
+	}
+	expectedResult := UserResponse{
+		Email:   "test_user@example.com",
+		Balance: 1000,
+		ID:      1,
+	}
+	if user.Email != expectedResult.Email {
+		t.Fatalf(
+			"Email incorrect: %s does not equal %s",
+			expectedResult.Email,
+			user.Email,
+		)
+	}
+	if user.Balance != expectedResult.Balance {
+		t.Fatalf(
+			"Incorrect Balance. Expected: %d, was: %d",
+			expectedResult.Balance,
+			user.Balance,
+		)
 	}
 }
