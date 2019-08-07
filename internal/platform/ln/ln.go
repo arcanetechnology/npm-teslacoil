@@ -21,7 +21,7 @@ import (
 // AddInvoiceData is the data required to add a invoice
 type AddInvoiceData struct {
 	Memo   string `json:"memo"`
-	Amount int64  `json:"amount"`
+	Amount int    `json:"amount"`
 }
 
 // LightningConfig is a struct containing all possible options for configuring

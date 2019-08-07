@@ -1,12 +1,10 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/payments"
 )
 
@@ -17,74 +15,85 @@ type GetAllInvoicesResponse struct {
 
 // GetInvoiceResponse is the response for the /invoice/:id endpoint
 type GetInvoiceResponse struct {
-	ID             uint64
-	UserID         uint64
-	PaymentRequest string
-	Preimage       string
-	Hash           string
-	CallbackURL    string
-	Status         payments.Status
-	Description    string
-	Direction      payments.Direction
-	AmountSat      int64
-	AmountMSat     int64
-	SettledAt      string
+	ID             uint               `json:"id"`
+	UserID         uint               `json:"user_id"`
+	PaymentRequest string             `json:"payment_request"`
+	Preimage       string             `json:"preimage"`
+	Hash           string             `json:"hash"`
+	CallbackURL    string             `json:"callback_url"`
+	Status         payments.Status    `json:"status"`
+	Description    string             `json:"description"`
+	Direction      payments.Direction `json:"direction"`
+	AmountSat      int64              `json:"amount_sat"`
+	AmountMSat     int64              `json:"amount_msat"`
+	SettledAt      string             `json:"settled_at"`
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
-	ID             uint64
-	UserID         uint64          `json:""`
-	PaymentRequest string          `json:""`
-	HashedPreimage string          `json:""`
-	CallbackURL    string          `json:""`
-	Status         payments.Status `json:""`
-	Description    string          `json:""`
-	AmountSat      int64           `json:""`
-	AmountMSat     int64
+	ID             uint            `json:"id"`
+	UserID         uint            `json:"user_id"`
+	PaymentRequest string          `json:"payment_request"`
+	HashedPreimage string          `json:"hashed_preimage"`
+	CallbackURL    string          `json:"callback_url"`
+	Status         payments.Status `json:"status"`
+	Description    string          `json:"description"`
+	AmountSat      int64           `json:"amount_sat"`
+	AmountMSat     int64           `json:"amount_msat"`
 }
 
 // PayInvoiceResponse is the response for the /invoice/pay endpoint
 type PayInvoiceResponse struct {
-	ID             uint64
-	UserID         uint64
-	PaymentRequest string
-	Preimage       string
-	Hash           string
-	CallbackURL    string
-	Status         payments.Status
-	Description    string
-	Direction      payments.Direction
-	AmountSat      int64
-	AmountMSat     int64
-	SettledAt      string
+	ID             uint               `json:"id"`
+	UserID         uint               `json:"user_id"`
+	PaymentRequest string             `json:"payment_request"`
+	Preimage       string             `json:"preimage"`
+	Hash           string             `json:"hash"`
+	CallbackURL    string             `json:"callback_url"`
+	Status         payments.Status    `json:"status"`
+	Description    string             `json:"description"`
+	Direction      payments.Direction `json:"direction"`
+	AmountSat      int64              `json:"amount_sat"`
+	AmountMSat     int64              `json:"amount_msat"`
+	SettledAt      string             `json:"settled_at"`
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database
+// TODO: An attack exists where a deposit(inbound invoice) is not paid, but then
+// the user hits this endpoint and leanrs the preimage. THUS, we need to create
+// a interface for the response, to maintain complete control. deletedat,
+// createdat, updatedat is not something the user needs either
 func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		t, err := payments.GetAll(r.db)
+		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
+
+		t, err := payments.GetAll(r.db, claim.UserID)
 		if err != nil {
-			c.JSONP(500, gin.H{"error": err.Error()})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 			return
 		}
-		c.JSONP(200, &GetAllInvoicesResponse{Invoices: t})
+
+		c.JSONP(200, t)
 	}
 }
 
 // GetInvoice is a GET request that returns users that match the one specified in the body
 func GetInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
+
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
-			c.JSONP(404, gin.H{"error": "Invoices id should be a integer"})
+			log.Error(err)
+			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
-		t, err := payments.GetByID(r.db, id)
+		t, err := payments.GetByID(r.db, id, claim.UserID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
-				gin.H{"error": errors.Wrap(err, "Invoice not found").Error()},
+				gin.H{"error": "invoice not found"},
 			)
 			return
 		}
@@ -105,23 +114,38 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 	}
 }
 
-// CreateInvoice creates a new incove on behalf of a user
+// CreateInvoice creates a new invoice on behalf of a user
 func CreateInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newInvoice payments.CreateInvoiceData
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			log.Error(err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 			return
 		}
 
-		fmt.Printf("new invoice %v\n", newInvoice)
-
-		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice)
+		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err,
-				"Could not create new invoice").Error()})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
+		}
+
+		log.Debugf("received new request for CreateInvoice for user_id %d: %v\n",
+			claims.UserID,
+			newInvoice)
+
+		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice, claims.UserID)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support "})
 			return
+		}
+
+		if t.UserID != claims.UserID {
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "create invoice internal server error, id's not equal",
+			})
 		}
 
 		// Return as much info as possible
@@ -140,18 +164,31 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 }
 
 // PayInvoice pays a valid invoice on behalf of a user
+// TODO: This should extract the userID from the jwt
 func PayInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newPayment payments.PayInvoiceData
 
 		if err := c.ShouldBindJSON(&newPayment); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			log.Error(err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
 			return
 		}
 
-		t, err := payments.PayInvoice(r.db, *r.lncli, newPayment)
+		// authenticate the user by extracting the id from the jwt-token
+		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, gin.H{"error": errors.Wrap(err, "Could not pay invoice")})
+			c.JSONP(http.StatusInternalServerError,
+				gin.H{"error": "internal server error, try logging in again or refreshing your session"})
+		}
+
+		// Pays an invoice from claims.UserID's balance. This is secure because
+		// the UserID is extracted from the JWT
+		t, err := payments.PayInvoice(r.db, *r.lncli, newPayment, claims.UserID)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, could not pay invoice"})
 			return
 		}
 

@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"runtime"
 	"sort"
 	"strconv"
 
@@ -21,8 +20,12 @@ const (
 )
 
 var (
-	defaultLppDir      = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/lpp/logs/", os.Getenv("GOPATH"))
+	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/lpp/logs/",
+		os.Getenv("GOPATH"))
 	defaultLogFilename = "lpp.log"
+	migrationsPath     = path.Join(
+		os.Getenv("GOPATH"),
+		"/src/gitlab.com/arcanecrypto/lpp/internal/platform/migrations")
 )
 
 func askForConfirmation() bool {
@@ -87,14 +90,7 @@ var (
 					if err != nil {
 						return err
 					}
-					_, filename, _, ok := runtime.Caller(0)
-					if ok == false {
-						return cli.NewExitError("Cannot find migrations folder", 22)
-					}
-
-					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-					return db.MigrateDown(migrationsPath, database, steps)
-
+					return db.MigrateDown(path.Join("file://", migrationsPath), database, steps)
 				},
 			},
 			{
@@ -107,13 +103,8 @@ var (
 						return err
 					}
 					defer database.Close()
-					_, filename, _, ok := runtime.Caller(0)
-					if ok == false {
-						return cli.NewExitError("Cannot find migrations folder", 22)
-					}
 
-					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-					return db.MigrateUp(migrationsPath, database)
+					return db.MigrateUp(path.Join("file://", migrationsPath), database)
 				},
 			}, {
 				Name:    "status",
@@ -125,14 +116,8 @@ var (
 						return err
 					}
 					defer database.Close()
-					_, filename, _, ok := runtime.Caller(0)
-					if ok == false {
-						return cli.NewExitError("Cannot find migrations folder", 22)
-					}
 
-					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
-
-					return db.MigrationStatus(migrationsPath, database)
+					return db.MigrationStatus(path.Join("file://", migrationsPath), database)
 				},
 			}, {
 				Name:    "newmigration",
@@ -140,15 +125,9 @@ var (
 				Usage:   "Creates a new migration file",
 				Action: func(c *cli.Context) error {
 
-					_, filename, _, ok := runtime.Caller(0)
-					if ok == false {
-						return cli.NewExitError("Cannot find migrations folder", 22)
-					}
-
 					migrationText := c.Args().First() // get the filename
-					migrationsPath := path.Join(path.Dir(filename), "/migrations")
 
-					return db.CreateMigration(migrationsPath, migrationText)
+					return db.CreateMigration(path.Join("file://", migrationsPath), migrationText)
 				},
 			}, {
 				Name:    "drop",
@@ -160,15 +139,10 @@ var (
 						return err
 					}
 					defer database.Close()
-					_, filename, _, ok := runtime.Caller(0)
-					if ok == false {
-						return cli.NewExitError("Cannot find migrations folder", 22)
-					}
-					migrationsPath := path.Join("file://", path.Dir(filename), "/migrations")
 
 					fmt.Println("Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
-						return db.DropDatabase(migrationsPath, database)
+						return db.DropDatabase(path.Join("file://", migrationsPath), database)
 					}
 
 					return nil

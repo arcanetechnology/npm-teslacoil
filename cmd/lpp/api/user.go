@@ -3,15 +3,14 @@ package api
 import (
 	"net/http"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 //GetUserRequest is the expected type to find a user in the DB
 type GetUserRequest struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 //CreateUserRequest is the expected type to create a new user
@@ -27,14 +26,14 @@ type GetAllUsersResponse struct {
 
 //GetUserResponse is the type returned by the api to the front-end
 type GetUserResponse struct {
-	ID      uint64 `db:"id"`
+	ID      uint   `db:"id"`
 	Email   string `db:"email"`
 	Balance int    `db:"balance"`
 }
 
 //CreateUserResponse is the type returned by the api to the front-end
 type CreateUserResponse struct {
-	ID      uint64 `db:"id"`
+	ID      uint   `db:"id"`
 	Email   string `db:"email"`
 	Balance int    `db:"balance"`
 }
@@ -43,6 +42,8 @@ type CreateUserResponse struct {
 type LoginResponse struct {
 	AccessToken string `json:"access_token"`
 	Email       string `json:"email"`
+	ID          uint   `json:"id"`
+	Balance     uint   `db:"balance"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
@@ -50,13 +51,8 @@ type RefreshTokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-// JWTClaims is the common form for our jwts
-type JWTClaims struct {
-	Email string `json:"email"`
-	jwt.StandardClaims
-}
-
 // GetAllUsers is a GET request that returns all the users in the database
+// TODO: Restrict this to only the admin user
 func GetAllUsers(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userResponse, err := users.All(r.db)
@@ -70,6 +66,8 @@ func GetAllUsers(r *RestServer) gin.HandlerFunc {
 }
 
 // GetUser is a GET request that returns users that match the one specified in the body
+// This endpoint is no longer needed, as Login takes care of the logic
+/*
 func GetUser(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Remove ID and add jwt later
@@ -77,14 +75,15 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(req); err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "request should only contain email {\"email\": \"email@domain.com\"}"})
+			c.JSONP(http.StatusBadRequest, gin.H{
+				"error": "request should only contain email {\"email\": \"email@domain.com\"}"})
 			return
 		}
 
-		user, err := users.GetByCredentials(r.db, req.Email)
+		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusNotFound, gin.H{"error": errors.Wrap(err, "User not found")})
+			c.JSONP(http.StatusNotFound, gin.H{"error": "User not found"})
 		}
 
 		res := GetUserResponse{
@@ -99,23 +98,31 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 		c.JSONP(200, res)
 	}
 }
+*/
 
 // CreateUser is a POST request and inserts all the users in the body into the database
 func CreateUser(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateUserRequest
 
-		if err := c.ShouldBindJSON(req); err != nil {
+		log.Debugf("req: %v", req)
+
+		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSONP(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
 			return
 		}
-		log.Info("creating user with credentials: %v", req)
 
+		log.Info("creating user with credentials: ", req)
+
+		// because the email column in users table has the unique tag, we don't
+		// double check the email is unique
 		u, err := users.Create(r.db, req.Email, req.Password)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(200, gin.H{"error": err.Error()})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
+			return
 		}
 
 		res := CreateUserResponse{
@@ -123,7 +130,7 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 			Email:   u.Email,
 			Balance: u.Balance,
 		}
-		log.Info("created user %v", res)
+		log.Info("successfully created user: ", res)
 
 		c.JSONP(200, res)
 	}
@@ -136,24 +143,25 @@ func Login(r *RestServer) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": err})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
 			return
 		}
 
-		log.Info("logging in user %v", req)
+		log.Info("logging in user: ", req)
 
-		user, err := users.GetByCredentials(r.db, req.Email)
+		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 			return
 		}
-		log.Info("found user %v", user)
+		log.Info("found user: ", user)
 
-		tokenString, err := createJWTToken(req.Email)
+		tokenString, err := createJWTToken(req.Email, user.ID)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 			return
 		}
 
@@ -161,7 +169,7 @@ func Login(r *RestServer) gin.HandlerFunc {
 			Email:       user.Email,
 			AccessToken: tokenString,
 		}
-		log.Info("LoginResponse %v", res)
+		log.Info("LoginResponse: ", res)
 
 		c.JSONP(200, res)
 	}
@@ -172,31 +180,23 @@ func RefreshToken(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
-		_, claims, err := parseToken(c.GetHeader("Authorization"))
+		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": err})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 		}
 
-		email, ok := claims["email"].(string)
-		if !ok {
-			err = errors.New("could not extract email from jwt-token")
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
-			return
-		}
-
-		tokenString, err := createJWTToken(email)
+		tokenString, err := createJWTToken(claims.Email, claims.UserID)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSONP(http.StatusInternalServerError, gin.H{
+				"error": "internal server error, please try again or contact support"})
 		}
 
 		res := &RefreshTokenResponse{
 			AccessToken: tokenString,
 		}
 
-		log.Info("RefreshTokenResponse %v", res)
+		log.Info("RefreshTokenResponse: ", res)
 
 		c.JSONP(200, res)
 	}
