@@ -15,47 +15,47 @@ type GetAllInvoicesResponse struct {
 
 // GetInvoiceResponse is the response for the /invoice/:id endpoint
 type GetInvoiceResponse struct {
-	ID             uint
-	UserID         uint
-	PaymentRequest string
-	Preimage       string
-	Hash           string
-	CallbackURL    string
-	Status         payments.Status
-	Description    string
-	Direction      payments.Direction
-	AmountSat      int64
-	AmountMSat     int64
-	SettledAt      string
+	ID             uint               `json:"id"`
+	UserID         uint               `json:"user_id"`
+	PaymentRequest string             `json:"payment_request"`
+	Preimage       string             `json:"preimage"`
+	Hash           string             `json:"hash"`
+	CallbackURL    string             `json:"callback_url"`
+	Status         payments.Status    `json:"status"`
+	Description    string             `json:"description"`
+	Direction      payments.Direction `json:"direction"`
+	AmountSat      int64              `json:"amount_sat"`
+	AmountMSat     int64              `json:"amount_msat"`
+	SettledAt      string             `json:"settled_at"`
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
-	ID             uint
-	UserID         uint            `json:""`
-	PaymentRequest string          `json:""`
-	HashedPreimage string          `json:""`
-	CallbackURL    string          `json:""`
-	Status         payments.Status `json:""`
-	Description    string          `json:""`
-	AmountSat      int64           `json:""`
-	AmountMSat     int64
+	ID             uint            `json:"id"`
+	UserID         uint            `json:"user_id"`
+	PaymentRequest string          `json:"payment_request"`
+	HashedPreimage string          `json:"hashed_preimage"`
+	CallbackURL    string          `json:"callback_url"`
+	Status         payments.Status `json:"status"`
+	Description    string          `json:"description"`
+	AmountSat      int64           `json:"amount_sat"`
+	AmountMSat     int64           `json:"amount_msat"`
 }
 
 // PayInvoiceResponse is the response for the /invoice/pay endpoint
 type PayInvoiceResponse struct {
-	ID             uint
-	UserID         uint
-	PaymentRequest string
-	Preimage       string
-	Hash           string
-	CallbackURL    string
-	Status         payments.Status
-	Description    string
-	Direction      payments.Direction
-	AmountSat      int64
-	AmountMSat     int64
-	SettledAt      string
+	ID             uint               `json:"id"`
+	UserID         uint               `json:"user_id"`
+	PaymentRequest string             `json:"payment_request"`
+	Preimage       string             `json:"preimage"`
+	Hash           string             `json:"hash"`
+	CallbackURL    string             `json:"callback_url"`
+	Status         payments.Status    `json:"status"`
+	Description    string             `json:"description"`
+	Direction      payments.Direction `json:"direction"`
+	AmountSat      int64              `json:"amount_sat"`
+	AmountMSat     int64              `json:"amount_msat"`
+	SettledAt      string             `json:"settled_at"`
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database

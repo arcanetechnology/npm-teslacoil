@@ -130,14 +130,14 @@ func Create(d *sqlx.DB, email, password string) (*UserResponse, error) {
 }
 
 // UpdateUserBalance updates the users balance
-func UpdateUserBalance(d *sqlx.DB, userID int, amountSat int64) (*UserResponse, error) {
+func UpdateUserBalance(d *sqlx.DB, userID uint, amountSat int64) (*UserResponse, error) {
 	if amountSat == 0 {
 		return nil, errors.New(
 			"No point in updating users balance with 0 satoshi")
 	}
 
 	type UpdateBalanceQuery struct {
-		UserID    int   `db:"user_id"`
+		UserID    uint  `db:"user_id"`
 		AmountSat int64 `db:"amount_sat"`
 	}
 
