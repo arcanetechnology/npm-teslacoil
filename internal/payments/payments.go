@@ -34,23 +34,21 @@ const (
 
 // CreateInvoiceData is a deposit
 type CreateInvoiceData struct {
-	UserID    uint64 `json:"user_id"`
 	Memo      string `json:"memo"`
-	AmountSat int64  `json:"amount_sat"`
+	AmountSat int    `json:"amount_sat"`
 }
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
 type PayInvoiceData struct {
-	UserID         uint64 `json:"user_id"` // userID of the user this withdrawal belongs to
 	PaymentRequest string `json:"payment_request"`
 	Description    string `json:"description"`
-	AmountSat      int64  `json:"amount_sat"`
+	AmountSat      int    `json:"amount_sat"`
 }
 
 // Payment is a database table
 type Payment struct {
-	ID             uint64    `db:"id"`
-	UserID         uint64    `db:"user_id"`
+	ID             uint      `db:"id"`
+	UserID         uint      `db:"user_id"`
 	PaymentRequest string    `db:"payment_request"`
 	Preimage       string    `db:"preimage"`
 	HashedPreimage string    `db:"hashed_preimage"`
@@ -58,8 +56,8 @@ type Payment struct {
 	Status         Status    `db:"status"`
 	Description    string    `db:"description"`
 	Direction      Direction `db:"direction"`
-	AmountSat      int64     `db:"amount_sat"`
-	AmountMSat     int64     `db:"amount_msat"`
+	AmountSat      int       `db:"amount_sat"`
+	AmountMSat     int       `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
 	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the invoice is settled
@@ -75,34 +73,43 @@ type UserPaymentResponse struct {
 }
 
 // GetAll fetches all payments
-func GetAll(d *sqlx.DB) ([]Payment, error) {
+func GetAll(d *sqlx.DB, userID uint) ([]Payment, error) {
 	payments := []Payment{}
 	tQuery := fmt.Sprintf(`SELECT *
 		FROM %s
+		WHERE user_id=$1
 		ORDER BY created_at ASC`, OffchainTXTable)
 
-	err := d.Select(&payments, tQuery)
+	err := d.Select(&payments, tQuery, userID)
 	if err != nil {
 		log.Error(err)
 		return payments, err
 	}
 
-	log.Debugf("query %s returned %v", tQuery, payments)
+	log.Debugf("query %s for user_id %d returned %v", tQuery, userID, payments)
 
 	return payments, nil
 }
 
 // GetByID returns a single invoice based on the id given
-func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
+// It only retrieves invoices whose user_id is the same as the supplied argument
+func GetByID(d *sqlx.DB, id uint64, userID uint) (Payment, error) {
 	txResult := Payment{}
-	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 LIMIT 1", OffchainTXTable)
+	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
 
-	if err := d.Get(&txResult, tQuery, id); err != nil {
+	if err := d.Get(&txResult, tQuery, id, userID); err != nil {
 		log.Error(err)
 		return txResult, errors.Wrap(err, "could not get payment")
 	}
 
-	log.Debugf("query %s returned %v", tQuery, txResult)
+	// sanity check the query
+	if txResult.UserID != userID {
+		err := errors.New(fmt.Sprintf("db query retrieved unexpected value, expected payment with user_id %d but got %d", userID, txResult.UserID))
+		log.Errorf(err.Error())
+		return Payment{}, err
+	}
+
+	log.Debugf("query %s for user_id %d returned %v", tQuery, userID, txResult)
 
 	return txResult, nil
 }
@@ -110,11 +117,11 @@ func GetByID(d *sqlx.DB, id uint64) (Payment, error) {
 // CreateInvoice creates a new invoice using lnd based on the function parameter
 // and inserts the newly created invoice into the database
 func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
-	invoiceData CreateInvoiceData) (Payment, error) {
+	invoiceData CreateInvoiceData, userID uint) (Payment, error) {
 
 	// First we add an invoice given the given parameters using the ln package
 	invoice, err := ln.AddInvoice(lncli, lnrpc.Invoice{
-		Memo: invoiceData.Memo, Value: invoiceData.AmountSat,
+		Memo: invoiceData.Memo, Value: int64(invoiceData.AmountSat),
 	})
 	if err != nil {
 		log.Error(err)
@@ -122,7 +129,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	}
 
 	// Sanity check the invoice we just created
-	if invoice.Value != invoiceData.AmountSat {
+	if invoice.Value != int64(invoiceData.AmountSat) {
 		err = errors.New("could not insert invoice, created invoice amount not equal request.Amount")
 		log.Error(err)
 		return Payment{}, err
@@ -134,7 +141,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	payment, err := insertPayment(tx,
 		// Payment struct with all required data to add to the DB
 		Payment{
-			UserID:         invoiceData.UserID,
+			UserID:         userID,
 			Description:    invoiceData.Memo,
 			AmountSat:      invoiceData.AmountSat,
 			AmountMSat:     invoiceData.AmountSat * 1000,
@@ -161,29 +168,41 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 
 // PayInvoice pays an invoice on behalf of the user
 func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
-	withdrawalRequest PayInvoiceData) (UserPaymentResponse, error) {
+	payInvoiceRequest PayInvoiceData, userID uint) (UserPaymentResponse, error) {
 
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
-		&lnrpc.PayReqString{PayReq: withdrawalRequest.PaymentRequest})
+		&lnrpc.PayReqString{PayReq: payInvoiceRequest.PaymentRequest})
 	if err != nil {
 		log.Error(err)
 		return UserPaymentResponse{}, err
 	}
 
 	sendRequest := &lnrpc.SendRequest{
-		PaymentRequest: withdrawalRequest.PaymentRequest,
+		PaymentRequest: payInvoiceRequest.PaymentRequest,
 	}
 
 	p := Payment{
-		UserID:         withdrawalRequest.UserID,
+		UserID:         userID,
 		Direction:      outbound,
-		PaymentRequest: withdrawalRequest.PaymentRequest,
+		PaymentRequest: payInvoiceRequest.PaymentRequest,
 
 		HashedPreimage: payreq.PaymentHash,
 		Description:    payreq.Description,
-		AmountSat:      payreq.NumSatoshis,
-		AmountMSat:     int64(payreq.NumSatoshis * 1000),
+		AmountSat:      int(payreq.NumSatoshis),
+		AmountMSat:     int(payreq.NumSatoshis * 1000),
+	}
+
+	tx := d.MustBegin()
+
+	// We insert the transaction in the DB before we attempt to send it to
+	// avoid issues with attempte updates to the payment before it is added to
+	// the DB
+	payment, err := insertPayment(tx, p)
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return UserPaymentResponse{}, err
 	}
 	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
 	// See logic in lightningspin-api for possible solution
@@ -192,29 +211,19 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		log.Error(err)
 		return UserPaymentResponse{}, nil
 	}
-
 	if paymentResponse.PaymentError == "" {
 		t := time.Now()
 		p.SettledAt = &t
-		p.Status = "SETTLED"
+		p.Status = Status("SETTLED")
 		p.Preimage = hex.EncodeToString(paymentResponse.PaymentPreimage)
 	} else {
 		p.Status = failed
 		return UserPaymentResponse{}, nil
 	}
 
-	tx := d.MustBegin()
-
-	payment, err := insertPayment(tx, p)
-	if err != nil {
-		log.Error(err)
-		tx.Rollback()
-		return UserPaymentResponse{}, err
-	}
-
-	var user users.UserResponse
+	var user *users.UserResponse
 	if payment.Status == "SETTLED" {
-		user, err = users.UpdateUserBalance(d, payment.UserID)
+		user, err = users.UpdateUserBalance(d, payment.UserID, p.AmountSat)
 		if err != nil {
 			log.Error(err)
 			tx.Rollback()
@@ -228,7 +237,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	}
 
 	return UserPaymentResponse{
-		UserResponse: user,
+		UserResponse: *user,
 		Payment:      payment,
 	}, nil
 }
@@ -250,8 +259,8 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 		invoice := <-invoiceUpdatesCh
 
 		type UserDetails struct {
-			ID        uint64
-			Balance   int64
+			ID        uint
+			Balance   int
 			UpdatedAt *time.Time
 		}
 

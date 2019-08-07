@@ -59,14 +59,14 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func TestCanGetUserByID(t *testing.T) {
+func TestCanGetUserByEmail(t *testing.T) {
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Log(err)
 		t.Fail()
 	}
-	user, err := GetByID(testDB, 1)
+	user, err := GetByEmail(testDB, "test_user@example.com")
 	if err != nil {
 		t.Log(err)
 		t.Fail()

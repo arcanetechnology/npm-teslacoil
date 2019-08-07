@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -25,6 +26,13 @@ type RestServer struct {
 	Router *gin.Engine
 	db     *sqlx.DB
 	lncli  *lnrpc.LightningClient
+}
+
+// JWTClaims is the common form for our jwts
+type JWTClaims struct {
+	Email  string `json:"email"`
+	UserID uint   `json:"user_id"`
+	jwt.StandardClaims
 }
 
 //NewApp creates a new app
@@ -70,12 +78,12 @@ func RegisterAuthRoutes(r *RestServer) {
 func RegisterUserRoutes(r *RestServer) {
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read
+	r.Router.POST("/users", CreateUser(r))
+
 	users := r.Router.Group("")
 	users.Use(authenticateJWT)
-
 	users.GET("/users", GetAllUsers(r))
-	users.GET("/users/:id", GetUser(r))
-	users.POST("/users", CreateUser(r))
+	// users.GET("/users/:id", GetUser(r))
 }
 
 // RegisterPaymentRoutes registers all payment routes on the router
@@ -96,20 +104,34 @@ func authenticateJWT(c *gin.Context) {
 	// Here we extract the token from the header
 	tokenString := c.GetHeader("Authorization")
 
-	_, _, err := parseToken(tokenString)
+	_, _, err := parseBearerJWT(tokenString)
 	if err != nil {
 		c.JSONP(http.StatusForbidden, gin.H{"error": err})
 		c.Abort() // cancels the following request
+		return
 	}
 
 	log.Infof("jwt-token is valid: %s", tokenString)
 }
 
-// parseToken parses a string representation of a jwt-token, and validates
+// parseBearerJWT parses a string representation of a jwt-token, and validates
 // it is signed by us. It returns the token and the extracted claims.
 // If anything goes wrong, an error with a descriptive reason is returned.
-func parseToken(tokenString string) (*jwt.Token, jwt.MapClaims, error) {
+func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	claims := jwt.MapClaims{}
+
+	// Remove 'Bearer ' from tokenString. It is fine to do it this way because
+	// a malicious actor will just create an invalid jwt-token if anything other
+	// then Bearer is passed as the first 7 characters
+	log.Debug(len(tokenString))
+	log.Debug(tokenString)
+	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
+		return nil, nil, errors.New(
+			"invalid jwt-token, please include token on form 'Bearer xx.xx.xx")
+	}
+
+	tokenString = tokenString[7:]
+
 	// Here we decode the token, verify it is signed with our secret key, and
 	// extract the claims
 	token, err := jwt.ParseWithClaims(tokenString, claims,
@@ -132,25 +154,46 @@ func parseToken(tokenString string) (*jwt.Token, jwt.MapClaims, error) {
 		return nil, nil, errors.New("invalid token, could not extract claims")
 	}
 
-	return token, mapClaims, nil
+	// Extract fields from claims, and check they are of the correct type
+	email, ok := mapClaims["email"].(string)
+	if !ok {
+		return nil, nil, errors.New("invalid token, could not extract email from claim")
+	}
+	idString, ok := mapClaims["id"].(string)
+	if !ok {
+		return nil, nil, errors.New("invalid token, could not extract id from claim")
+	}
+	u64, err := strconv.ParseUint(idString, 10, 64)
+	if err != nil {
+		return nil, nil, errors.New("invalid token, id not a integer")
+	}
+	id := uint(u64)
+
+	jwtClaims := &JWTClaims{
+		Email:  email,
+		UserID: id,
+	}
+
+	return token, jwtClaims, nil
 }
 
 // createJWTToken creates a new JWT token with the supplied email as the
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token
-func createJWTToken(email string) (string, error) {
+func createJWTToken(email string, id uint) (string, error) {
 	expiresAt := time.Now().Add(5 * time.Minute).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		&JWTClaims{
-			Email: email,
+			Email:  email,
+			UserID: id,
 			StandardClaims: jwt.StandardClaims{
 				ExpiresAt: expiresAt,
 			},
 		},
 	)
 
-	log.Info(expiresAt)
+	log.Info("created token: ", token)
 
 	tokenString, err := token.SignedString([]byte("secret_key"))
 	if err != nil {
@@ -158,5 +201,7 @@ func createJWTToken(email string) (string, error) {
 		return "", err
 	}
 
-	return tokenString, nil
+	log.Info("signed token making tokenString %s", tokenString)
+
+	return "Bearer " + tokenString, nil
 }
