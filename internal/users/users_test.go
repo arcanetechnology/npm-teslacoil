@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"runtime"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -12,11 +13,13 @@ import (
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 )
 
-var migrationsPath = path.Join(
-	os.Getenv("GOPATH"),
-	"/src/gitlab.com/arcanecrypto/lpp/internal/platform/migrations")
-
 func createTestDatabase(testDB *sqlx.DB) error {
+	_, filename, _, ok := runtime.Caller(1)
+	if ok == false {
+		return errors.New("Could not find path to migrations files.")
+	}
+
+	migrationsPath := path.Join("file://", path.Dir(filename), "../platform/migrations")
 	err := db.DropDatabase(migrationsPath, testDB)
 	if err != nil {
 		return errors.Wrapf(err,
