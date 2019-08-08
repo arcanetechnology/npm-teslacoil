@@ -45,11 +45,10 @@ func All(d *sqlx.DB) ([]User, error) {
 	queryResult := []User{}
 	err := d.Select(&queryResult, fmt.Sprintf("SELECT * FROM %s", UsersTable))
 	if err != nil {
-		log.Error(err)
 		return queryResult, err
 	}
 
-	log.Tracef("SELECT * from users received %v from DB", queryResult)
+	// log.Tracef("SELECT * from users received %v from DB", queryResult)
 
 	return queryResult, nil
 }
@@ -61,34 +60,31 @@ func GetByEmail(d *sqlx.DB, email string) (*UserResponse, error) {
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrapf(err, "GetByEmail(db, %s)", email)
 	}
 
-	log.Tracef("%s returned %v", uQuery, userResult)
+	// log.Tracef("%s returned %v", uQuery, userResult)
 
 	return &userResult, nil
 }
 
 // GetByCredentials retrieves a user from the database using the email and
 // the salted/hashed password
-func GetByCredentials(d *sqlx.DB, email, password string) (*UserResponse, error) {
+func GetByCredentials(d *sqlx.DB, email string, password string) (*UserResponse, error) {
 	userResult := UserResponse{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, hashed_password, updated_at
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrapf(err, "GetByCredentials(db, %s, **password_not_logged**)", email)
 	}
 
 	err := bcrypt.CompareHashAndPassword(userResult.HashedPassword, []byte(password))
 	if err != nil {
-		log.Errorf("password authentication failed: ", err)
-		return nil, err
+		return nil, errors.Wrap(err, "password authentication failed")
 	}
 
-	log.Tracef("%s received user %v", uQuery, userResult)
+	// log.Tracef("%s received user %v", uQuery, userResult)
 
 	return &userResult, nil
 }
@@ -104,27 +100,25 @@ func Create(d *sqlx.DB, email, password string) (*UserResponse, error) {
 		HashedPassword: hashedPassword,
 	}
 
-	userCreateQuery := fmt.Sprintf(`INSERT INTO %s 
+	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password)
 		VALUES (:email, 0, :hashed_password)
-		RETURNING id, email, balance, updated_at`, UsersTable)
+		RETURNING id, email, balance, updated_at`
 
 	rows, err := d.NamedQuery(userCreateQuery, user)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, errors.Wrapf(err, "users.Create(db, %s, %s)", email, string(hashedPassword))
 	}
 	defer rows.Close()
 
 	uResp := UserResponse{}
 	if rows.Next() {
 		if err = rows.Scan(&uResp.ID, &uResp.Email, &uResp.Balance, &uResp.UpdatedAt); err != nil {
-			log.Error(err)
-			return nil, err
+			return nil, errors.Wrap(err, "users.Create- rows.Scan() failed")
 		}
 	}
 
-	log.Tracef("%s inserted %v", userCreateQuery, uResp)
+	// log.Tracef("%s inserted %v", userCreateQuery, uResp)
 
 	return &uResp, nil
 }
@@ -144,14 +138,14 @@ func UpdateUserBalance(d *sqlx.DB, userID uint, amountSat int64) (*UserResponse,
 	updateBalanceQuery := fmt.Sprintf(`UPDATE %s 
 		SET balance = balance + :amount_sat
 		WHERE id = :user_id
-		RETURNING id, balance`, UsersTable)
+		RETURNING id, email, balance`, UsersTable)
 
 	rows, err := d.NamedQuery(updateBalanceQuery, &UpdateBalanceQuery{
 		UserID:    userID,
 		AmountSat: amountSat,
 	})
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		// TODO: This is probably not a healthy way to deal with an error here
 		return nil, errors.Wrap(
 			err, "UpdateUserBalance(): could not construct user update")
@@ -162,13 +156,14 @@ func UpdateUserBalance(d *sqlx.DB, userID uint, amountSat int64) (*UserResponse,
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
+			&user.Email,
 			&user.Balance,
 		); err != nil {
-			log.Error(err)
+			// log.Error(err)
 			return nil, err
 		}
 	}
-	log.Tracef("%s inserted %v", updateBalanceQuery, user)
+	// log.Tracef("%s inserted %v", updateBalanceQuery, user)
 
 	return &user, nil
 }
@@ -181,13 +176,13 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	// than the MinCost (4)
 	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), 12)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return nil, err
 	}
 
 	// bcrypt returns a base64 encoded hash, therefore string(hash) works for
 	// converting the password to a readable format
-	log.Tracef("generated password %s", string(hash))
+	// log.Tracef("generated password %s", string(hash))
 
 	return hash, nil
 }

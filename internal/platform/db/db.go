@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 )
 
 // OpenDatabase fetched the database credentials from environment variables
@@ -31,7 +32,11 @@ func OpenDatabase() (*sqlx.DB, error) {
 
 	d, err := sqlx.Open("postgres", databaseURL.String())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err,
+			"Cannot connect to database %s with user %s",
+			os.Getenv("DATABASE_NAME"),
+			os.Getenv("DATABASE_USER"),
+		)
 	}
 
 	log.Debugf("opened connection to db")
@@ -63,7 +68,11 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 
 	d, err := sqlx.Open("postgres", databaseURL.String())
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err,
+			"Cannot connect to database %s with user %s",
+			os.Getenv("DATABASE_TEST_NAME"),
+			os.Getenv("DATABASE_TEST_USER"),
+		)
 	}
 
 	return d, nil
