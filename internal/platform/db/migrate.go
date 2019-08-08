@@ -112,8 +112,6 @@ func DropDatabase(migrationsPath string, d *sqlx.DB) error {
 		return err
 	}
 
-	fmt.Println(migrationsPath)
-	fmt.Println(driver)
 	migrator, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
 		"postgres",

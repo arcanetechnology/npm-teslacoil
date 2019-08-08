@@ -43,14 +43,12 @@ var testDB *sqlx.DB
 
 func TestMain(m *testing.M) {
 	println("Configuring user test database")
-	lpp.InitLogRotator("/home/bo/gocode/src/gitlab.com/arcanecrypto/lpp/logs/lpp.log", 10, 3)
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		return
 	}
-	fmt.Println(testDB.Ping())
 
 	err = createTestDatabase(testDB)
 	if err != nil {
