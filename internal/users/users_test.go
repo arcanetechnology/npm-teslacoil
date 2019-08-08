@@ -64,17 +64,18 @@ func TestCanCreateUser(t *testing.T) {
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%+v\n", err)
 	}
 	user, err := Create(testDB,
 		"test_user@example.com",
 		"password",
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if user == nil {
-		t.Fatal("user result was empty")
+		t.Log("user result was empty")
+		t.Fail()
+	}
+	if err != nil {
+		t.Fatalf("%+v\n", err)
 	}
 
 	expectedResult := UserResponse{
@@ -84,14 +85,14 @@ func TestCanCreateUser(t *testing.T) {
 	}
 	if user.Email != expectedResult.Email {
 		t.Fatalf(
-			"Email incorrect: %s does not equal %s",
+			"Email incorrect. Expected \"%s\" got \"%s\"",
 			expectedResult.Email,
 			user.Email,
 		)
 	}
 	if user.Balance != expectedResult.Balance {
 		t.Fatalf(
-			"Incorrect Balance. Expected: %d, was: %d",
+			"Incorrect Balance. Expected: %d, got: %d",
 			expectedResult.Balance,
 			user.Balance,
 		)
@@ -102,15 +103,18 @@ func TestCanGetUserByEmail(t *testing.T) {
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
-		t.Log(err)
-		t.Fail()
+		t.Fatalf("%+v\n", err)
 	}
+
 	user, err := GetByEmail(testDB, "test_user@example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if user == nil {
-		t.Fatal("user result was empty")
+		t.Log("User result was empty")
+	}
+	if err != nil {
+		t.Logf("%+v\n", err)
+	}
+	if err != nil || user == nil {
+		t.FailNow()
 	}
 
 	expectedResult := UserResponse{
@@ -120,14 +124,14 @@ func TestCanGetUserByEmail(t *testing.T) {
 	}
 	if user.Email != expectedResult.Email {
 		t.Fatalf(
-			"Email incorrect: %s does not equal %s",
+			"Email incorrect. Expected \"%s\" got \"%s\"",
 			expectedResult.Email,
 			user.Email,
 		)
 	}
 	if user.Balance != expectedResult.Balance {
 		t.Fatalf(
-			"Incorrect Balance. Expected: %d, was: %d",
+			"Incorrect Balance. Expected: %d, got: %d",
 			expectedResult.Balance,
 			user.Balance,
 		)
@@ -138,16 +142,22 @@ func TestCanGetUserByCredentials(t *testing.T) {
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
-		t.Log(err)
-		t.Fail()
+		t.Fatalf("%+v\n", err)
 	}
+
+	// Get the user and fail if error or no user was returned
 	user, err := GetByCredentials(testDB, "test_user@example.com", "password")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if user == nil {
-		t.Fatal("user result was empty")
+		t.Log("User result was empty")
 	}
+	if err != nil {
+		t.Logf("%+v\n", err)
+	}
+	if err != nil || user == nil {
+		t.FailNow()
+	}
+
+	// Check if the GetByCredentials returned the expected user object
 	expectedResult := UserResponse{
 		Email:   "test_user@example.com",
 		Balance: 0,
@@ -155,14 +165,14 @@ func TestCanGetUserByCredentials(t *testing.T) {
 	}
 	if user.Email != expectedResult.Email {
 		t.Fatalf(
-			"Email incorrect: %s does not equal %s",
+			"Email incorrect. Expected \"%s\" got \"%s\"",
 			expectedResult.Email,
 			user.Email,
 		)
 	}
 	if user.Balance != expectedResult.Balance {
 		t.Fatalf(
-			"Incorrect Balance. Expected: %d, was: %d",
+			"Incorrect Balance. Expected: %d, got: %d",
 			expectedResult.Balance,
 			user.Balance,
 		)
@@ -173,16 +183,22 @@ func TestCanUpdateUserBalance(t *testing.T) {
 
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
-		t.Log(err)
-		t.Fail()
+		t.Fatalf("%+v\n", err)
 	}
+
+	// Update user
 	user, err := UpdateUserBalance(testDB, 1, 1000)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if user == nil {
-		t.Fatal("user result was empty")
+		t.Log("User result was empty")
 	}
+	if err != nil {
+		t.Logf("%+v\n", err)
+	}
+	if err != nil || user == nil {
+		t.FailNow()
+	}
+
+	// Check that user balance was updated correctly.
 	expectedResult := UserResponse{
 		Email:   "test_user@example.com",
 		Balance: 1000,
@@ -190,14 +206,14 @@ func TestCanUpdateUserBalance(t *testing.T) {
 	}
 	if user.Email != expectedResult.Email {
 		t.Fatalf(
-			"Email incorrect: %s does not equal %s",
+			"Email incorrect. Expected \"%s\" got \"%s\"",
 			expectedResult.Email,
 			user.Email,
 		)
 	}
 	if user.Balance != expectedResult.Balance {
 		t.Fatalf(
-			"Incorrect Balance. Expected: %d, was: %d",
+			"Incorrect Balance. Expected: %d, got: %d",
 			expectedResult.Balance,
 			user.Balance,
 		)
