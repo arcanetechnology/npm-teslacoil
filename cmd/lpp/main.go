@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
-	"gitlab.com/arcanecrypto/lpp"
 	"gitlab.com/arcanecrypto/lpp/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
 	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
@@ -184,8 +183,8 @@ var (
 
 func main() {
 
-	lpp.InitLogRotator(ln.CleanAndExpandPath(path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
-	lpp.SetLogLevels("info")
+	InitLogRotator(ln.CleanAndExpandPath(path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
+	SetLogLevels("info")
 
 	app := cli.NewApp()
 	app.Name = "lpp"

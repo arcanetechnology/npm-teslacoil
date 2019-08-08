@@ -1,4 +1,4 @@
-package lpp
+package main
 
 import (
 	"fmt"
