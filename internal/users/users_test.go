@@ -71,11 +71,13 @@ func TestCanCreateUser(t *testing.T) {
 		"password",
 	)
 	if user == nil {
-		t.Log("user result was empty")
-		t.Fail()
+		t.Log("User result was empty")
 	}
 	if err != nil {
-		t.Fatalf("%+v\n", err)
+		t.Logf("%+v\n", err)
+	}
+	if err != nil || user == nil {
+		t.FailNow()
 	}
 
 	expectedResult := UserResponse{
