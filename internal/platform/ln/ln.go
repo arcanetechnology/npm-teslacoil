@@ -34,13 +34,45 @@ type LightningConfig struct {
 	RPCServer    string
 }
 
+func configDefaultLndDir() string {
+	if len(os.Getenv("LND_DIR")) != 0 {
+		return os.Getenv("LND_DIR")
+	}
+	return btcutil.AppDataDir("lnd", false)
+}
+
+func configDefaultLndNet() string {
+	if len(os.Getenv("LND_NETWORK")) != 0 {
+		return os.Getenv("LND_NETWORK")
+	}
+	return "testnet"
+
+}
+func configDefaultLndPort() string {
+	if len(os.Getenv("LND_PORT")) != 0 {
+		return os.Getenv("LND_PORT")
+	}
+	return "10009"
+}
+
+var (
+	// DefaultNetwork is the default network
+	DefaultNetwork = configDefaultLndNet()
+	DefaultPort    = configDefaultLndPort()
+	// DefaultRPCHostPort is the default host port of lnd
+	DefaultRPCHostPort = "localhost:" + DefaultPort
+	// DefaultTLSCertFileName is the default filename of the tls certificate
+	DefaultTLSCertFileName = "tls.cert"
+)
+
 var (
 	// DefaultLndDir is the default location of .lnd
-	DefaultLndDir = btcutil.AppDataDir("lnd", false)
+	DefaultLndDir = configDefaultLndDir()
+	LndNetwork    = configDefaultLndNet()
 	// DefaultTLSCertPath is the default location of tls.cert
 	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
 	// DefaultMacaroonPath is the default dir of x.macaroon
-	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin/testnet/admin.macaroon")
+	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin", DefaultNetwork, "admin.macaroon")
 
 	// DefaultCfg is a config interface with default values
 	DefaultCfg = LightningConfig{
@@ -50,15 +82,6 @@ var (
 		Network:      DefaultNetwork,
 		RPCServer:    DefaultRPCHostPort,
 	}
-)
-
-const (
-	// DefaultNetwork is the default network
-	DefaultNetwork = "testnet"
-	// DefaultRPCHostPort is the default host port of lnd
-	DefaultRPCHostPort = "localhost:10009"
-	// DefaultTLSCertFileName is the default filename of the tls certificate
-	DefaultTLSCertFileName = "tls.cert"
 )
 
 // NewLNDClient opens a new connection to LND and returns the client
