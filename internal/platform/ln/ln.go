@@ -105,19 +105,19 @@ func NewLNDClient(options LightningConfig) (
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
 	if err != nil {
-		log.Errorf("Cannot get node tls credentials %v", err)
+		// log.Errorf("Cannot get node tls credentials %v", err)
 		return nil, err
 	}
 
 	macaroonBytes, err := ioutil.ReadFile(cfg.MacaroonPath)
 	if err != nil {
-		log.Errorf("Cannot read macaroon file %v", err)
+		// log.Errorf("Cannot read macaroon file %v", err)
 		return nil, err
 	}
 
 	mac := &macaroon.Macaroon{}
 	if err = mac.UnmarshalBinary(macaroonBytes); err != nil {
-		log.Errorf("Cannot unmarshal macaroon %v", err)
+		// log.Errorf("Cannot unmarshal macaroon %v", err)
 		return nil, err
 	}
 
@@ -130,12 +130,12 @@ func NewLNDClient(options LightningConfig) (
 
 	conn, err := grpc.Dial(cfg.RPCServer, opts...)
 	if err != nil {
-		log.Errorf("cannot dial to lnd: %v", err)
+		// log.Errorf("cannot dial to lnd: %v", err)
 		return nil, err
 	}
 	client := lnrpc.NewLightningClient(conn)
 
-	log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
+	// log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
 
 	return client, nil
 }
@@ -173,18 +173,18 @@ func AddInvoice(lncli lnrpc.LightningClient, invoiceData lnrpc.Invoice) (
 	ctx := context.Background()
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return &lnrpc.Invoice{}, err
 	}
 	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
 		RHash: inv.RHash,
 	})
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return &lnrpc.Invoice{}, err
 	}
 
-	log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
+	// log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
 
 	return invoice, nil
 }
@@ -197,7 +197,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 		context.Background(),
 		invoiceSubDetails)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return err
 	}
 
@@ -205,10 +205,10 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 		invoice := lnrpc.Invoice{}
 		err := invoiceClient.RecvMsg(&invoice)
 		if err != nil {
-			log.Error(err)
+			// log.Error(err)
 			return err
 		}
-		log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
+		// log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
 		msgCh <- invoice
 	}
 }

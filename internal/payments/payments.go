@@ -82,11 +82,11 @@ func GetAll(d *sqlx.DB, userID uint) ([]Payment, error) {
 
 	err := d.Select(&payments, tQuery, userID)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return payments, err
 	}
 
-	log.Debugf("query %s for user_id %d returned %v", tQuery, userID, payments)
+	// log.Debugf("query %s for user_id %d returned %v", tQuery, userID, payments)
 
 	return payments, nil
 }
@@ -98,18 +98,18 @@ func GetByID(d *sqlx.DB, id uint64, userID uint) (Payment, error) {
 	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
 
 	if err := d.Get(&txResult, tQuery, id, userID); err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return txResult, errors.Wrap(err, "could not get payment")
 	}
 
 	// sanity check the query
 	if txResult.UserID != userID {
 		err := errors.New(fmt.Sprintf("db query retrieved unexpected value, expected payment with user_id %d but got %d", userID, txResult.UserID))
-		log.Errorf(err.Error())
+		// log.Errorf(err.Error())
 		return Payment{}, err
 	}
 
-	log.Debugf("query %s for user_id %d returned %v", tQuery, userID, txResult)
+	// log.Debugf("query %s for user_id %d returned %v", tQuery, userID, txResult)
 
 	return txResult, nil
 }
@@ -124,14 +124,14 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		Memo: invoiceData.Memo, Value: int64(invoiceData.AmountSat),
 	})
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return Payment{}, err
 	}
 
 	// Sanity check the invoice we just created
 	if invoice.Value != int64(invoiceData.AmountSat) {
 		err = errors.New("could not insert invoice, created invoice amount not equal request.Amount")
-		log.Error(err)
+		// log.Error(err)
 		return Payment{}, err
 	}
 
@@ -152,13 +152,13 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 			Direction:      inbound,
 		})
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		tx.Rollback()
 		return Payment{}, err
 	}
 
 	if err = tx.Commit(); err != nil {
-		log.Error(err)
+		// log.Error(err)
 		tx.Rollback()
 		return Payment{}, err
 	}
@@ -174,7 +174,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: payInvoiceRequest.PaymentRequest})
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return UserPaymentResponse{}, err
 	}
 
@@ -200,7 +200,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	// the DB
 	payment, err := insertPayment(tx, p)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		tx.Rollback()
 		return UserPaymentResponse{}, err
 	}
@@ -208,7 +208,7 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	// See logic in lightningspin-api for possible solution
 	paymentResponse, err := lncli.SendPaymentSync(context.Background(), sendRequest)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return UserPaymentResponse{}, nil
 	}
 	if paymentResponse.PaymentError == "" {
@@ -225,14 +225,14 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 	if payment.Status == "SETTLED" {
 		user, err = users.UpdateUserBalance(d, payment.UserID, p.AmountSat)
 		if err != nil {
-			log.Error(err)
+			// log.Error(err)
 			tx.Rollback()
 			return UserPaymentResponse{}, err
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return UserPaymentResponse{}, errors.Wrap(err, "PayInvoice: Cound not commit")
 	}
 
@@ -270,7 +270,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 		t := Payment{}
 		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
 			// TODO: This is probably not a healthy way to deal with an error here
-			log.Warnf("UpdateInvoiceStatus: could not find payment: %v", err)
+			// log.Warnf("UpdateInvoiceStatus: could not find payment: %v", err)
 		}
 
 		t.Status = Status(invoice.State.String())
@@ -293,7 +293,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			rows, err := tx.NamedQuery(updateOffchainTxQuery, &t)
 			if err != nil {
 				_ = tx.Rollback()
-				log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
+				// log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
 				return
 			}
 			if rows.Next() {
@@ -312,7 +312,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&t.CreatedAt,
 					&t.UpdatedAt,
 				); err != nil {
-					log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
+					// log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
 					_ = tx.Rollback()
 					return
 				}
@@ -323,7 +323,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 			rows, err = tx.NamedQuery(updateUserBalanceQuery, &t)
 			if err != nil {
 				// TODO: This is probably not a healthy way to deal with an error here
-				log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
+				// log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
 				_ = tx.Rollback()
 				return
 			}
@@ -335,7 +335,7 @@ func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB)
 					&u.UpdatedAt,
 				); err != nil {
 					// TODO: This is probably not a healthy way to deal with an error here
-					log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
+					// log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
 					_ = tx.Rollback()
 					return
 				}
@@ -369,7 +369,7 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 	// variable and insert them into the query
 	rows, err := tx.NamedQuery(createOffchainTXQuery, payment)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return Payment{}, err
 	}
 	if rows.Next() {
@@ -388,7 +388,7 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 			&tempPayment.CreatedAt,
 			&tempPayment.UpdatedAt,
 		); err != nil {
-			log.Error(err)
+			// log.Error(err)
 			return Payment{}, err
 		}
 		// sanityCheckPayment is used as a failsafe in case what was inserted
@@ -397,14 +397,14 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 		// a possible edge case
 		if err = sanityCheckPayment(tempPayment, payment); err != nil {
 			err = errors.New("sanity check for inserted invoice failed")
-			log.Error(err)
-			return Payment{}, err
+			// log.Error(err)
+			return Payment{}, errors.Wrap(err, "sanity check for inserted invoice failed")
 		}
 		payment = tempPayment
 	}
 	rows.Close() // Free up the database connection
 
-	log.Debugf("query %s inserted %v", createOffchainTXQuery, payment)
+	// log.Debugf("query %s inserted %v", createOffchainTXQuery, payment)
 
 	return payment, nil
 }
