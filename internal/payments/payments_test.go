@@ -1,6 +1,8 @@
 package payments
 
 import (
+	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -9,8 +11,13 @@ import (
 	"testing"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
+
 	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
+	// "gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/lpp/internal/users"
 )
 
 func createTestDatabase(testDB *sqlx.DB) error {
@@ -41,6 +48,18 @@ func createTestDatabase(testDB *sqlx.DB) error {
 
 var testDB *sqlx.DB
 
+type lightningMockClient struct {
+	InvoiceResponse lnrpc.Invoice
+}
+
+func (client lightningMockClient) AddInvoice(ctx context.Context, in *lnrpc.Invoice, opts ...grpc.CallOption) (*lnrpc.AddInvoiceResponse, error) {
+	return &lnrpc.AddInvoiceResponse{}, nil
+}
+
+func (client lightningMockClient) LookupInvoice(ctx context.Context, in *lnrpc.PaymentHash, opts ...grpc.CallOption) (*lnrpc.Invoice, error) {
+	return &client.InvoiceResponse, nil
+}
+
 func TestMain(m *testing.M) {
 	println("Configuring payments test database")
 
@@ -56,6 +75,17 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	// Create a user to bind payments to
+	user, err := users.Create(testDB,
+		"test_user@example.com",
+		"password",
+	)
+	if err != nil || user == nil {
+		fmt.Println("User result was empty")
+		fmt.Printf("%+v\n", err)
+		return
+	}
+
 	flag.Parse()
 	result := m.Run()
 	os.Exit(result)
@@ -63,162 +93,140 @@ func TestMain(m *testing.M) {
 
 func TestCreateInvoice(t *testing.T) {
 
+	// Setup the database
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
-	user, err := CreateInvoice(testDB,
-		"test_user@example.com",
-		"password",
-	)
-	if user == nil {
-		t.Log("User result was empty")
+	incoiceData := CreateInvoiceData{
+		Memo:      "HelloWorld",
+		AmountSat: 20000,
 	}
+	userId := uint(1)
+
+	// Create Mock LND client with preconfigured invoice response
+	mockLNcli := lightningMockClient{
+		InvoiceResponse: lnrpc.Invoice{
+			Value:     20000,
+			RHash:     []byte("SomeRHash"),
+			RPreimage: []byte("SomePreimage"),
+			Settled:   true,
+		},
+	}
+
+	payment, err := CreateInvoice(testDB, mockLNcli, incoiceData, userId)
 	if err != nil {
-		t.Logf("%+v\n", err)
+		t.Fatalf("%+v\n", err)
 	}
-	if err != nil || user == nil {
+
+	// Expected test results are defined here.
+	expectedResult := Payment{
+		ID:             1,
+		UserID:         1,
+		AmountSat:      20000,
+		AmountMSat:     20000000,
+		Preimage:       hex.EncodeToString([]byte("SomePreimage")),
+		HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+		Description:    "HelloWorld",
+		Status:         Status("OPEN"),
+		Direction:      Direction("INBOUND"),
+	}
+
+	// Assertions
+	if payment.ID != expectedResult.ID {
+		t.Logf(
+			"ID incorrect. Expected \"%d\" got \"%d\"",
+			expectedResult.ID,
+			payment.ID,
+		)
+		t.Fail()
+	}
+
+	if payment.UserID != expectedResult.UserID {
+		t.Logf(
+			"UserID incorrect. Expected \"%d\" got \"%d\"",
+			expectedResult.UserID,
+			payment.UserID,
+		)
+		t.Fail()
+	}
+
+	if payment.AmountSat != expectedResult.AmountSat {
+		t.Logf(
+			"Invoice amount incorrect. Expected \"%d\" got \"%d\"",
+			expectedResult.AmountSat,
+			payment.AmountSat,
+		)
+		t.Fail()
+	}
+
+	if payment.AmountMSat != expectedResult.AmountMSat {
+		t.Logf(
+			"Invoice milli amount incorrect. Expected \"%d\" got \"%d\"",
+			expectedResult.AmountMSat,
+			payment.AmountMSat,
+		)
+		t.Fail()
+	}
+
+	if payment.Preimage != expectedResult.Preimage {
+		t.Logf(
+			"Invoice preimage incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Preimage,
+			payment.Preimage,
+		)
+		t.Fail()
+	}
+
+	if payment.HashedPreimage != expectedResult.HashedPreimage {
+		t.Logf(
+			"Invoice hashed preimage incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.HashedPreimage,
+			payment.HashedPreimage,
+		)
+		t.Fail()
+	}
+
+	if payment.Description != expectedResult.Description {
+		t.Logf(
+			"Invoice description incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Description,
+			payment.Description,
+		)
+		t.Fail()
+	}
+
+	if payment.Status != expectedResult.Status {
+		t.Logf(
+			"Invoice status incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Status,
+			payment.Status,
+		)
+		t.Fail()
+	}
+
+	if payment.Status != expectedResult.Status {
+		t.Logf(
+			"Invoice status incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Status,
+			payment.Status,
+		)
+		t.Fail()
+	}
+
+	if payment.Direction != expectedResult.Direction {
+		t.Logf(
+			"Invoice direction incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Direction,
+			payment.Direction,
+		)
+		t.Fail()
+	}
+
+	// Fail tests after all assertions that will not interfere with eachother
+	// for improved test result readability.
+	if t.Failed() {
 		t.FailNow()
 	}
 
-	expectedResult := UserResponse{
-		Email:   "test_user@example.com",
-		Balance: 0,
-		ID:      1,
-	}
-	if user.Email != expectedResult.Email {
-		t.Fatalf(
-			"Email incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Email,
-			user.Email,
-		)
-	}
-	if user.Balance != expectedResult.Balance {
-		t.Fatalf(
-			"Incorrect Balance. Expected: %d, got: %d",
-			expectedResult.Balance,
-			user.Balance,
-		)
-	}
 }
-
-// func TestCanGetUserByEmail(t *testing.T) {
-
-// 	testDB, err := db.OpenTestDatabase()
-// 	if err != nil {
-// 		t.Fatalf("%+v\n", err)
-// 	}
-
-// 	user, err := GetByEmail(testDB, "test_user@example.com")
-// 	if user == nil {
-// 		t.Log("User result was empty")
-// 	}
-// 	if err != nil {
-// 		t.Logf("%+v\n", err)
-// 	}
-// 	if err != nil || user == nil {
-// 		t.FailNow()
-// 	}
-
-// 	expectedResult := UserResponse{
-// 		Email:   "test_user@example.com",
-// 		Balance: 0,
-// 		ID:      1,
-// 	}
-// 	if user.Email != expectedResult.Email {
-// 		t.Fatalf(
-// 			"Email incorrect. Expected \"%s\" got \"%s\"",
-// 			expectedResult.Email,
-// 			user.Email,
-// 		)
-// 	}
-// 	if user.Balance != expectedResult.Balance {
-// 		t.Fatalf(
-// 			"Incorrect Balance. Expected: %d, got: %d",
-// 			expectedResult.Balance,
-// 			user.Balance,
-// 		)
-// 	}
-// }
-
-// func TestCanGetUserByCredentials(t *testing.T) {
-
-// 	testDB, err := db.OpenTestDatabase()
-// 	if err != nil {
-// 		t.Fatalf("%+v\n", err)
-// 	}
-
-// 	// Get the user and fail if error or no user was returned
-// 	user, err := GetByCredentials(testDB, "test_user@example.com", "password")
-// 	if user == nil {
-// 		t.Log("User result was empty")
-// 	}
-// 	if err != nil {
-// 		t.Logf("%+v\n", err)
-// 	}
-// 	if err != nil || user == nil {
-// 		t.FailNow()
-// 	}
-
-// 	// Check if the GetByCredentials returned the expected user object
-// 	expectedResult := UserResponse{
-// 		Email:   "test_user@example.com",
-// 		Balance: 0,
-// 		ID:      1,
-// 	}
-// 	if user.Email != expectedResult.Email {
-// 		t.Fatalf(
-// 			"Email incorrect. Expected \"%s\" got \"%s\"",
-// 			expectedResult.Email,
-// 			user.Email,
-// 		)
-// 	}
-// 	if user.Balance != expectedResult.Balance {
-// 		t.Fatalf(
-// 			"Incorrect Balance. Expected: %d, got: %d",
-// 			expectedResult.Balance,
-// 			user.Balance,
-// 		)
-// 	}
-// }
-
-// func TestCanUpdateUserBalance(t *testing.T) {
-
-// 	testDB, err := db.OpenTestDatabase()
-// 	if err != nil {
-// 		t.Fatalf("%+v\n", err)
-// 	}
-
-// 	// Update user
-// 	user, err := UpdateUserBalance(testDB, 1, 1000)
-// 	if user == nil {
-// 		t.Log("User result was empty")
-// 	}
-// 	if err != nil {
-// 		t.Logf("%+v\n", err)
-// 	}
-// 	if err != nil || user == nil {
-// 		t.FailNow()
-// 	}
-
-// 	// Check that user balance was updated correctly.
-// 	expectedResult := UserResponse{
-// 		Email:   "test_user@example.com",
-// 		Balance: 1000,
-// 		ID:      1,
-// 	}
-// 	if user.Email != expectedResult.Email {
-// 		t.Fatalf(
-// 			"Email incorrect. Expected \"%s\" got \"%s\"",
-// 			expectedResult.Email,
-// 			user.Email,
-// 		)
-// 	}
-// 	if user.Balance != expectedResult.Balance {
-// 		t.Fatalf(
-// 			"Incorrect Balance. Expected: %d, got: %d",
-// 			expectedResult.Balance,
-// 			user.Balance,
-// 		)
-// 	}
-// }
