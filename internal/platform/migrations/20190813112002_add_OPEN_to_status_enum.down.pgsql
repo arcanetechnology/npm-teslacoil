@@ -1,0 +1,2 @@
+-- Impossible to remove enum values. If critically important read here
+-- https://stackoverflow.com/questions/25811017/how-to-delete-an-enum-type-value-in-postgres
