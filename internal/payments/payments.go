@@ -116,13 +116,16 @@ func GetByID(d *sqlx.DB, id uint64, userID uint) (Payment, error) {
 
 // CreateInvoice creates a new invoice using lnd based on the function parameter
 // and inserts the newly created invoice into the database
-func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
+func CreateInvoice(d *sqlx.DB, lncli ln.LightningInvoiceClient,
 	invoiceData CreateInvoiceData, userID uint) (Payment, error) {
 
 	// First we add an invoice given the given parameters using the ln package
-	invoice, err := ln.AddInvoice(lncli, lnrpc.Invoice{
-		Memo: invoiceData.Memo, Value: int64(invoiceData.AmountSat),
-	})
+	invoice, err := ln.AddInvoice(
+		lncli,
+		lnrpc.Invoice{
+			Memo:  invoiceData.Memo,
+			Value: int64(invoiceData.AmountSat),
+		})
 	if err != nil {
 		// log.Error(err)
 		return Payment{}, err
@@ -148,7 +151,7 @@ func CreateInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 			PaymentRequest: invoice.PaymentRequest,
 			HashedPreimage: hex.EncodeToString(invoice.RHash),
 			Preimage:       hex.EncodeToString(invoice.RPreimage),
-			Status:         inflight,
+			Status:         open,
 			Direction:      inbound,
 		})
 	if err != nil {
@@ -217,6 +220,8 @@ func PayInvoice(d *sqlx.DB, lncli lnrpc.LightningClient,
 		p.Status = Status("SETTLED")
 		p.Preimage = hex.EncodeToString(paymentResponse.PaymentPreimage)
 	} else {
+		// TODO: Here we need to commit or roll back failed payment
+		// We sould also return the reason for the failed payment
 		p.Status = failed
 		return UserPaymentResponse{}, nil
 	}
@@ -396,7 +401,6 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 		// critical information, we double check just in case tests do not cover
 		// a possible edge case
 		if err = sanityCheckPayment(tempPayment, payment); err != nil {
-			err = errors.New("sanity check for inserted invoice failed")
 			// log.Error(err)
 			return Payment{}, errors.Wrap(err, "sanity check for inserted invoice failed")
 		}
