@@ -128,7 +128,7 @@ var (
 
 					migrationText := c.Args().First() // get the filename
 
-					return db.CreateMigration(path.Join("file://", migrationsPath), migrationText)
+					return db.CreateMigration(migrationsPath, migrationText)
 				},
 			}, {
 				Name:    "drop",
