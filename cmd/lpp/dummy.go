@@ -14,6 +14,15 @@ import (
 func FillWithDummyData(d *sqlx.DB, lncli lnrpc.LightningClient) error {
 	gofakeit.Seed(time.Now().UnixNano())
 
+	// Initial user
+	_, err := users.Create(d,
+		"test_user@example.com",
+		"password",
+	)
+	if err != nil {
+		return err
+	}
+
 	userCount := 10
 
 	for index := 1; index <= userCount; index++ {
@@ -30,7 +39,7 @@ func FillWithDummyData(d *sqlx.DB, lncli lnrpc.LightningClient) error {
 		for index := 1; index <= paymentCount; index++ {
 			_, err = payments.CreateInvoice(d, lncli, payments.CreateInvoiceData{
 				Memo:      "Dummy data " + string(index),
-				AmountSat:  int64(gofakeit.Number(50, 10000)),
+				AmountSat: int64(gofakeit.Number(50, 10000)),
 			}, user.ID)
 			if err != nil {
 				return err
