@@ -10,13 +10,13 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 )
 
 func createTestDatabase(testDB *sqlx.DB) error {
-	_, filename, _, ok := runtime.Caller(1)
+	_, filename, _, ok := runtime.Caller(0)
 	if ok == false {
-		return errors.New("Could not find path to migrations files.")
+		return errors.New("could not find path to migrations files")
 	}
 
 	migrationsPath := path.Join("file://", path.Dir(filename), "../platform/migrations")

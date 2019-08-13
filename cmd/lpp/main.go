@@ -9,9 +9,9 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
-	"gitlab.com/arcanecrypto/lpp/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -20,13 +20,13 @@ const (
 )
 
 var (
-	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/lpp/logs/",
+	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
 		os.Getenv("GOPATH"))
 	defaultLogFilename = "lpp.log"
 	// Path tho migrations
 	migrationsPath = path.Join(
 		os.Getenv("GOPATH"),
-		"/src/gitlab.com/arcanecrypto/lpp/internal/platform/migrations")
+		"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
 )
 
 func askForConfirmation() bool {

@@ -1,4 +1,4 @@
-module gitlab.com/arcanecrypto/lpp
+module gitlab.com/arcanecrypto/teslacoil
 
 go 1.12
 

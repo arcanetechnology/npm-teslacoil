@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"gitlab.com/arcanecrypto/lpp/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 //GetUserRequest is the expected type to find a user in the DB

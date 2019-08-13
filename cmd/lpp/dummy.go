@@ -6,8 +6,8 @@ import (
 	"github.com/brianvoe/gofakeit"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/lpp/internal/payments"
-	"gitlab.com/arcanecrypto/lpp/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 // FillWithDummyData creates three entries in each table

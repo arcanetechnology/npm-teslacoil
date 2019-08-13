@@ -9,11 +9,11 @@ import (
 	"github.com/btcsuite/btclog"
 	"github.com/jrick/logrotate/rotator"
 	"github.com/lightningnetwork/lnd/build"
-	"gitlab.com/arcanecrypto/lpp/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/lpp/internal/payments"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/db"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
-	"gitlab.com/arcanecrypto/lpp/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 var (

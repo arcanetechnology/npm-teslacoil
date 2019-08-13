@@ -10,8 +10,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/lpp/internal/payments"
-	"gitlab.com/arcanecrypto/lpp/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 )
 
 // Config is a config

@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"gitlab.com/arcanecrypto/lpp/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
 //GetAllInvoicesResponse is the type returned by the api to the front-end
