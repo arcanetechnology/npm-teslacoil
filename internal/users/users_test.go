@@ -182,43 +182,43 @@ func TestCanGetUserByCredentials(t *testing.T) {
 	}
 }
 
-func TestCanUpdateUserBalance(t *testing.T) {
+// func TestCanUpdateUserBalance(t *testing.T) {
 
-	testDB, err := db.OpenTestDatabase()
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
+// 	testDB, err := db.OpenTestDatabase()
+// 	if err != nil {
+// 		t.Fatalf("%+v\n", err)
+// 	}
 
-	// Update user
-	user, err := UpdateUserBalance(testDB, 1, 1000)
-	if user == nil {
-		t.Log("User result was empty")
-	}
-	if err != nil {
-		t.Logf("%+v\n", err)
-	}
-	if err != nil || user == nil {
-		t.FailNow()
-	}
+// 	// Update user
+// 	user, err := UpdateUserBalance(testDB, 1, 1000)
+// 	if user == nil {
+// 		t.Log("User result was empty")
+// 	}
+// 	if err != nil {
+// 		t.Logf("%+v\n", err)
+// 	}
+// 	if err != nil || user == nil {
+// 		t.FailNow()
+// 	}
 
-	// Check that user balance was updated correctly.
-	expectedResult := UserResponse{
-		Email:   "test_user@example.com",
-		Balance: 1000,
-		ID:      1,
-	}
-	if user.Email != expectedResult.Email {
-		t.Fatalf(
-			"Email incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Email,
-			user.Email,
-		)
-	}
-	if user.Balance != expectedResult.Balance {
-		t.Fatalf(
-			"Incorrect Balance. Expected: %d, got: %d",
-			expectedResult.Balance,
-			user.Balance,
-		)
-	}
-}
+// 	// Check that user balance was updated correctly.
+// 	expectedResult := UserResponse{
+// 		Email:   "test_user@example.com",
+// 		Balance: 1000,
+// 		ID:      1,
+// 	}
+// 	if user.Email != expectedResult.Email {
+// 		t.Fatalf(
+// 			"Email incorrect. Expected \"%s\" got \"%s\"",
+// 			expectedResult.Email,
+// 			user.Email,
+// 		)
+// 	}
+// 	if user.Balance != expectedResult.Balance {
+// 		t.Fatalf(
+// 			"Incorrect Balance. Expected: %d, got: %d",
+// 			expectedResult.Balance,
+// 			user.Balance,
+// 		)
+// 	}
+// }

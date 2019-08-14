@@ -2,7 +2,6 @@ package ln
 
 import (
 	"context"
-	"encoding/hex"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -17,6 +16,18 @@ import (
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/macaroon.v2"
 )
+
+// AddLookupInvoiceClient defines the required methods for adding an invoice
+type AddLookupInvoiceClient interface {
+	AddInvoice(ctx context.Context, in *lnrpc.Invoice, opts ...grpc.CallOption) (*lnrpc.AddInvoiceResponse, error)
+	LookupInvoice(ctx context.Context, in *lnrpc.PaymentHash, opts ...grpc.CallOption) (*lnrpc.Invoice, error)
+}
+
+// DecodeSendClient defines the required methods for paying an invoice
+type DecodeSendClient interface {
+	DecodePayReq(ctx context.Context, in *lnrpc.PayReqString, opts ...grpc.CallOption) (*lnrpc.PayReq, error)
+	SendPaymentSync(ctx context.Context, in *lnrpc.SendRequest, opts ...grpc.CallOption) (*lnrpc.SendResponse, error)
+}
 
 // AddInvoiceData is the data required to add a invoice
 type AddInvoiceData struct {
@@ -34,13 +45,45 @@ type LightningConfig struct {
 	RPCServer    string
 }
 
+func configDefaultLndDir() string {
+	if len(os.Getenv("LND_DIR")) != 0 {
+		return os.Getenv("LND_DIR")
+	}
+	return btcutil.AppDataDir("lnd", false)
+}
+
+func configDefaultLndNet() string {
+	if len(os.Getenv("LND_NETWORK")) != 0 {
+		return os.Getenv("LND_NETWORK")
+	}
+	return "testnet"
+
+}
+func configDefaultLndPort() string {
+	if len(os.Getenv("LND_PORT")) != 0 {
+		return os.Getenv("LND_PORT")
+	}
+	return "10009"
+}
+
+var (
+	// DefaultNetwork is the default network
+	DefaultNetwork = configDefaultLndNet()
+	DefaultPort    = configDefaultLndPort()
+	// DefaultRPCHostPort is the default host port of lnd
+	DefaultRPCHostPort = "localhost:" + DefaultPort
+	// DefaultTLSCertFileName is the default filename of the tls certificate
+	DefaultTLSCertFileName = "tls.cert"
+)
+
 var (
 	// DefaultLndDir is the default location of .lnd
-	DefaultLndDir = btcutil.AppDataDir("lnd", false)
+	DefaultLndDir = configDefaultLndDir()
+	LndNetwork    = configDefaultLndNet()
 	// DefaultTLSCertPath is the default location of tls.cert
 	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
 	// DefaultMacaroonPath is the default dir of x.macaroon
-	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin/testnet/admin.macaroon")
+	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin", DefaultNetwork, "admin.macaroon")
 
 	// DefaultCfg is a config interface with default values
 	DefaultCfg = LightningConfig{
@@ -50,15 +93,6 @@ var (
 		Network:      DefaultNetwork,
 		RPCServer:    DefaultRPCHostPort,
 	}
-)
-
-const (
-	// DefaultNetwork is the default network
-	DefaultNetwork = "testnet"
-	// DefaultRPCHostPort is the default host port of lnd
-	DefaultRPCHostPort = "localhost:10009"
-	// DefaultTLSCertFileName is the default filename of the tls certificate
-	DefaultTLSCertFileName = "tls.cert"
 )
 
 // NewLNDClient opens a new connection to LND and returns the client
@@ -82,19 +116,19 @@ func NewLNDClient(options LightningConfig) (
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
 	if err != nil {
-		log.Errorf("Cannot get node tls credentials %v", err)
+		// log.Errorf("Cannot get node tls credentials %v", err)
 		return nil, err
 	}
 
 	macaroonBytes, err := ioutil.ReadFile(cfg.MacaroonPath)
 	if err != nil {
-		log.Errorf("Cannot read macaroon file %v", err)
+		// log.Errorf("Cannot read macaroon file %v", err)
 		return nil, err
 	}
 
 	mac := &macaroon.Macaroon{}
 	if err = mac.UnmarshalBinary(macaroonBytes); err != nil {
-		log.Errorf("Cannot unmarshal macaroon %v", err)
+		// log.Errorf("Cannot unmarshal macaroon %v", err)
 		return nil, err
 	}
 
@@ -107,12 +141,12 @@ func NewLNDClient(options LightningConfig) (
 
 	conn, err := grpc.Dial(cfg.RPCServer, opts...)
 	if err != nil {
-		log.Errorf("cannot dial to lnd: %v", err)
+		// log.Errorf("cannot dial to lnd: %v", err)
 		return nil, err
 	}
 	client := lnrpc.NewLightningClient(conn)
 
-	log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
+	// log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
 
 	return client, nil
 }
@@ -145,23 +179,23 @@ func CleanAndExpandPath(path string) string {
 
 // AddInvoice adds an invoice and looks up the invoice in the lnd DB to extract
 // more useful data
-func AddInvoice(lncli lnrpc.LightningClient, invoiceData lnrpc.Invoice) (
+func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	*lnrpc.Invoice, error) {
 	ctx := context.Background()
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return &lnrpc.Invoice{}, err
 	}
 	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
 		RHash: inv.RHash,
 	})
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return &lnrpc.Invoice{}, err
 	}
 
-	log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
+	// log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
 
 	return invoice, nil
 }
@@ -174,7 +208,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 		context.Background(),
 		invoiceSubDetails)
 	if err != nil {
-		log.Error(err)
+		// log.Error(err)
 		return err
 	}
 
@@ -182,10 +216,10 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 		invoice := lnrpc.Invoice{}
 		err := invoiceClient.RecvMsg(&invoice)
 		if err != nil {
-			log.Error(err)
+			// log.Error(err)
 			return err
 		}
-		log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
+		// log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
 		msgCh <- invoice
 	}
 }

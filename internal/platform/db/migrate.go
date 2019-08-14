@@ -13,6 +13,7 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/pkg/errors"
 )
 
 // MigrationStatus prints the migrations verison number
@@ -83,7 +84,7 @@ func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) error {
 
 func newMigrationFile(filePath string) error {
 	if _, err := os.Create(filePath); err != nil {
-		return err
+		return errors.Wrap(err, "Could not create new file")
 	}
 	return nil
 }
