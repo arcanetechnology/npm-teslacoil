@@ -17,11 +17,16 @@ import (
 	"gopkg.in/macaroon.v2"
 )
 
-type LightningInvoiceClient interface {
+// AddLookupInvoiceClient defines the required methods for adding an invoice
+type AddLookupInvoiceClient interface {
 	AddInvoice(ctx context.Context, in *lnrpc.Invoice, opts ...grpc.CallOption) (*lnrpc.AddInvoiceResponse, error)
 	LookupInvoice(ctx context.Context, in *lnrpc.PaymentHash, opts ...grpc.CallOption) (*lnrpc.Invoice, error)
-	// DecodePayReq(ctx context.Context, in *lnrpc.PayReqString, opts ...grpc.CallOption) (*lnrpc.PayReq, error)
-	// SendPaymentSync(ctx context.Context, in *lnrpc.SendRequest, opts ...grpc.CallOption) (*lnrpc.SendResponse, error)
+}
+
+// DecodeSendClient defines the required methods for paying an invoice
+type DecodeSendClient interface {
+	DecodePayReq(ctx context.Context, in *lnrpc.PayReqString, opts ...grpc.CallOption) (*lnrpc.PayReq, error)
+	SendPaymentSync(ctx context.Context, in *lnrpc.SendRequest, opts ...grpc.CallOption) (*lnrpc.SendResponse, error)
 }
 
 // AddInvoiceData is the data required to add a invoice
@@ -174,7 +179,7 @@ func CleanAndExpandPath(path string) string {
 
 // AddInvoice adds an invoice and looks up the invoice in the lnd DB to extract
 // more useful data
-func AddInvoice(lncli LightningInvoiceClient, invoiceData lnrpc.Invoice) (
+func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	*lnrpc.Invoice, error) {
 	ctx := context.Background()
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)

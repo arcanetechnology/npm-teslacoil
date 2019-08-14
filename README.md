@@ -28,3 +28,15 @@ Run: `go get` to install dependencies
 ## DB management etc.
 
 Run `lpp db` to see options.
+
+## LND simnet for development
+
+Fill inn instructions here.
+
+## Testing
+
+To run basic tests use `go test ./internal/payments`.
+
+To run tests using lnd on simnet use `go test ./internal/payments --tags="lnd"`.
+This does however require you to have one or two simnet lnd nodes running.
+See instructions above.

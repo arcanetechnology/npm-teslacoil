@@ -28,7 +28,7 @@ require (
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/jrick/logrotate v1.0.0
 	github.com/json-iterator/go v1.1.6
-	github.com/lib/pq v1.1.1
+	github.com/lib/pq v1.2.0
 	github.com/lightninglabs/gozmq v0.0.0-20190710231225-cea2a031735d // indirect
 	github.com/lightninglabs/neutrino v0.0.0-20190722233500-a5e29bb4bee7 // indirect
 	github.com/lightningnetwork/lightning-onion v0.0.0-20190703000913-ecc936dc56c9 // indirect
