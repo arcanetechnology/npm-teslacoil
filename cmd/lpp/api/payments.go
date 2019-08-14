@@ -102,7 +102,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			ID:             t.ID,
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
-			Preimage:       t.Preimage,
+			Preimage:       *t.Preimage,
 			Hash:           t.HashedPreimage,
 			CallbackURL:    *t.CallbackURL,
 			Status:         t.Status,
@@ -195,15 +195,15 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 		// Return as much info as possible
 		c.JSONP(200, &PayInvoiceResponse{
 			ID:             t.Payment.ID,
-			UserID:         t.UserID,
-			PaymentRequest: t.PaymentRequest,
-			Preimage:       t.Preimage,
-			Hash:           t.HashedPreimage,
-			Status:         t.Status,
-			Description:    t.Description,
-			AmountSat:      t.AmountSat,
-			AmountMSat:     t.AmountMSat,
-			SettledAt:      t.SettledAt.String(),
+			UserID:         t.User.ID,
+			PaymentRequest: t.Payment.PaymentRequest,
+			Preimage:       *t.Payment.Preimage,
+			Hash:           t.Payment.HashedPreimage,
+			Status:         t.Payment.Status,
+			Description:    t.Payment.Description,
+			AmountSat:      t.Payment.AmountSat,
+			AmountMSat:     t.Payment.AmountMSat,
+			SettledAt:      t.Payment.SettledAt.String(),
 		})
 	}
 }
