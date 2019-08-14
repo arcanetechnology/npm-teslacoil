@@ -35,8 +35,8 @@ Fill inn instructions here.
 
 ## Testing
 
-To run basic tests use `go test ./internal/payments`.
+To run basic tests use `go test ./...`.
 
-To run tests using lnd on simnet use `go test ./internal/payments --tags="lnd"`.
+To run tests using lnd on simnet use `go test ./... --tags="lnd"`.
 This does however require you to have one or two simnet lnd nodes running.
 See instructions above.
