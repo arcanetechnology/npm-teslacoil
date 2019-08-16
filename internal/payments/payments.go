@@ -11,7 +11,6 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 // Direction is the direction of a lightning payment
@@ -43,17 +42,20 @@ type CreateInvoiceData struct {
 type PayInvoiceData struct {
 	PaymentRequest string `json:"payment_request"`
 	Description    string `json:"description"`
+	Memo           string `json:"memo"`
 }
 
 // Payment is a database table
 type Payment struct {
-	ID             uint      `db:"id"`
-	UserID         uint      `db:"user_id"`
-	PaymentRequest string    `db:"payment_request"`
+	ID             uint   `db:"id"`
+	UserID         uint   `db:"user_id"`
+	PaymentRequest string `db:"payment_request"`
+	// We use string and time pointers to make a nullable type
 	Preimage       *string   `db:"preimage"`
 	HashedPreimage string    `db:"hashed_preimage"`
 	CallbackURL    *string   `db:"callback_url"`
 	Status         Status    `db:"status"`
+	Memo           string    `db:"memo"`
 	Description    string    `db:"description"`
 	Direction      Direction `db:"direction"`
 	AmountSat      int64     `db:"amount_sat"`
@@ -66,7 +68,7 @@ type Payment struct {
 	DeletedAt *time.Time `db:"deleted_at"`
 }
 
-// UserResponse
+// UserResponse is
 type UserResponse struct {
 	ID        uint      `db:"id"`
 	Email     string    `db:"email"`
@@ -83,10 +85,10 @@ type UserPaymentResponse struct {
 // GetAll fetches all payments
 func GetAll(d *sqlx.DB, userID uint) ([]Payment, error) {
 	payments := []Payment{}
-	tQuery := fmt.Sprintf(`SELECT *
-		FROM %s
+	tQuery := `SELECT *
+		FROM offchaintx
 		WHERE user_id=$1
-		ORDER BY created_at ASC`, OffchainTXTable)
+		ORDER BY created_at ASC`
 
 	err := d.Select(&payments, tQuery, userID)
 	if err != nil {
@@ -154,7 +156,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 		// Payment struct with all required data to add to the DB
 		Payment{
 			UserID:         userID,
-			Description:    invoiceData.Memo,
+			Memo:           invoiceData.Memo,
 			AmountSat:      invoiceData.AmountSat,
 			AmountMSat:     invoiceData.AmountSat * 1000,
 			PaymentRequest: invoice.PaymentRequest,
@@ -200,7 +202,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		PaymentRequest: payInvoiceRequest.PaymentRequest,
 		Status:         succeeded,
 		HashedPreimage: payreq.PaymentHash,
-		Description:    payreq.Description,
+		Memo:           payreq.Description,
 		AmountSat:      payreq.NumSatoshis,
 		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
@@ -232,8 +234,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		payment.Status = succeeded
 		payment.Preimage = &preImg
 	} else {
-		// TODO: Here we need to commit or roll back failed payment
-		// We sould also return the reason for the failed payment
+		tx.Rollback()
 		p.Status = failed
 		return UserPaymentResponse{}, errors.New(paymentResponse.PaymentError)
 	}
@@ -245,7 +246,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 			// log.Error(err)
 			tx.Rollback()
 			return UserPaymentResponse{}, errors.Wrapf(err,
-				"PayInvoice->UpdateUserBalance(tx, %d, %d)", p.UserID, -payment.AmountSat)
+				"PayInvoice->updateUserBalance(tx, %d, %d)", p.UserID, -payment.AmountSat)
 		}
 	}
 
@@ -267,7 +268,6 @@ type QueryExecutor interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
-// UpdateUserBalance updates the users balance
 func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (UserResponse, error) {
 	if amountSat == 0 {
 		return UserResponse{}, errors.New(
@@ -277,7 +277,7 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 	updateBalanceQuery := `UPDATE users
 		SET balance = balance + $1
 		WHERE id = $2
-		RETURNING id, email, balance`
+		RETURNING id, email, balance, updated_at`
 
 	rows, err := queryEx.Query(updateBalanceQuery, amountSat, userID)
 	if err != nil {
@@ -294,6 +294,7 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 			&user.ID,
 			&user.Email,
 			&user.Balance,
+			&user.UpdatedAt,
 		); err != nil {
 			// log.Error(err)
 			return UserResponse{}, errors.Wrap(err, "Could not scan user returned from db")
@@ -303,6 +304,17 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 	// log.Tracef("%s inserted %v", updateBalanceQuery, user)
 
 	return user, nil
+}
+
+// InvoiceStatusListener is
+func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB) {
+	for {
+		invoice := <-invoiceUpdatesCh
+		_, err := UpdateInvoiceStatus(invoice, database)
+		if err != nil {
+			// TODO: Here we need to handle the errors from UpdateInvoiceStatus
+		}
+	}
 }
 
 // UpdateInvoiceStatus continually listens for messages and updated the user balance
@@ -317,108 +329,131 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 // errors with 'sql: no rows in result set' on the first database.Get() because
 // the invoice is not yet inserted into the database.
 // 4. Payment is inserted into the database
-func UpdateInvoiceStatus(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB) {
-	for {
-		invoice := <-invoiceUpdatesCh
+func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (*UserPaymentResponse, error) {
 
-		type UserDetails struct {
-			ID        uint
-			Balance   int
-			UpdatedAt *time.Time
-		}
+	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
-		tQuery := fmt.Sprintf("SELECT * FROM %s WHERE payment_request=$1", OffchainTXTable)
+	// Define a custom response struct to include user details
+	payment := Payment{}
+	if err := database.Get(&payment, tQuery, invoice.PaymentRequest); err != nil {
+		return nil, errors.Wrapf(err,
+			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
+			invoice.PaymentRequest,
+		)
+	}
 
-		// Define a custom response struct to include user details
-		t := Payment{}
-		if err := database.Get(&t, tQuery, invoice.PaymentRequest); err != nil {
-			// TODO: This is probably not a healthy way to deal with an error here
-			// log.Warnf("UpdateInvoiceStatus: could not find payment: %v", err)
-		}
+	user := UserResponse{}
 
-		t.Status = Status(invoice.State.String())
-		if invoice.Settled {
-			time := time.Now()
-			t.SettledAt = &time
+	if invoice.Settled == false {
+		return &UserPaymentResponse{
+			Payment: payment,
+			User:    user,
+		}, nil
+	}
+	time := time.Now()
+	payment.SettledAt = &time
+	payment.Status = Status("SUCCEEDED")
+	preimage := hex.EncodeToString(invoice.RPreimage)
+	payment.Preimage = &preimage
 
-			updateOffchainTxQuery := fmt.Sprintf(`UPDATE %s 
-				SET status = :status, settled_at = :settled_at 
+	updateOffchainTxQuery := `UPDATE offchaintx 
+				SET status = :status, settled_at = :settled_at, preimage = :preimage
 				WHERE hashed_preimage = :hashed_preimage
 				RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-						  description, direction, status, amount_sat, amount_msat,
-						  created_at, updated_at`, OffchainTXTable)
+						  memo, description, direction, status, amount_sat, amount_msat,
+						  created_at, updated_at`
 
-			updateUserBalanceQuery := fmt.Sprintf(`UPDATE %s 
-				SET balance = :amount + balance
-				WHERE id = :user_id
-				RETURNING id, balance, updated_at`, users.UsersTable)
-			tx := database.MustBegin()
-			rows, err := tx.NamedQuery(updateOffchainTxQuery, &t)
-			if err != nil {
-				_ = tx.Rollback()
-				// log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
-				return
-			}
-			if rows.Next() {
-				if err = rows.Scan(
-					&t.ID,
-					&t.UserID,
-					&t.PaymentRequest,
-					&t.Preimage,
-					&t.HashedPreimage,
-					&t.Description,
-					&t.Direction,
-					&t.Status,
-					// TOOD: Danger we need to split this into Msats and sats
-					&t.AmountSat,
-					&t.AmountMSat,
-					&t.CreatedAt,
-					&t.UpdatedAt,
-				); err != nil {
-					// log.Errorf("UpdateInvoiceStatus: could not update payment: %v", err)
-					_ = tx.Rollback()
-					return
-				}
-			}
-			rows.Close() // Free up the database connection
+	tx := database.MustBegin()
 
-			var u UserDetails
-			rows, err = tx.NamedQuery(updateUserBalanceQuery, &t)
-			if err != nil {
-				// TODO: This is probably not a healthy way to deal with an error here
-				// log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
-				_ = tx.Rollback()
-				return
-			}
-			if rows.Next() {
-				_ = tx.Rollback()
-				if err = rows.Scan(
-					&u.ID,
-					&u.Balance,
-					&u.UpdatedAt,
-				); err != nil {
-					// TODO: This is probably not a healthy way to deal with an error here
-					// log.Errorf("UpdateInvoiceStatus: could not update user balance: %v", err)
-					_ = tx.Rollback()
-					return
-				}
-			}
-			rows.Close() // Free up the database connection
-			_ = tx.Commit()
-			// TODO: Here we need to call the callback with the response.
+	rows, err := tx.NamedQuery(updateOffchainTxQuery, &payment)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, errors.Wrapf(err,
+			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %+v)",
+			payment,
+		)
+	}
+	if rows.Next() {
+		if err = rows.Scan(
+			&payment.ID,
+			&payment.UserID,
+			&payment.PaymentRequest,
+			&payment.Preimage,
+			&payment.HashedPreimage,
+			&payment.Memo,
+			&payment.Description,
+			&payment.Direction,
+			&payment.Status,
+			&payment.AmountSat,
+			&payment.AmountMSat,
+			&payment.CreatedAt,
+			&payment.UpdatedAt,
+		); err != nil {
+			_ = tx.Rollback()
+			return nil, errors.Wrap(
+				err,
+				"UpdateInvoiceStatus->rows.Scan()",
+			)
 		}
 	}
+	rows.Close() // Free up the database connection
+
+	updateUserBalanceQuery := `UPDATE users 
+				SET balance = :amount_sat + balance
+				WHERE id = :user_id
+				RETURNING id, email, balance, updated_at`
+
+	rows, err = tx.NamedQuery(updateUserBalanceQuery, &payment)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, errors.Wrapf(
+			err,
+			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %+v)",
+			user,
+		)
+	}
+	if rows.Next() {
+		if err = rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Balance,
+			&user.UpdatedAt,
+		); err != nil {
+			_ = tx.Rollback()
+			return nil, errors.Wrap(
+				err,
+				"UpdateInvoiceStatus->rows.Scan()",
+			)
+		}
+	}
+	rows.Close() // Free up the database connection
+	err = tx.Commit()
+	if err != nil {
+		return nil, errors.Wrap(
+			err,
+			"UpdateInvoiceStatus->tx.Commit()",
+		)
+	}
+	// TODO: Here we need to call the callback with the response.
+
+	return &UserPaymentResponse{
+		Payment: payment,
+		User:    user,
+	}, nil
 }
 
+// insertPayment persists a payment to the database
 func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 	var createOffchainTXQuery string
 
-	createOffchainTXQuery = `INSERT INTO offchaintx
-	(user_id, payment_request, preimage, hashed_preimage, description, direction, status, amount_sat, amount_msat)
-	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, :description,
-			:direction, :status, :amount_sat, :amount_msat)
+	createOffchainTXQuery = `INSERT INTO 
+	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
+		description, direction, status, amount_sat,amount_msat)
+	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
+		    :memo, :description, :direction, :status, :amount_sat, :amount_msat)
 	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-	description, direction, status, amount_sat, amount_msat, created_at, updated_at`
+			  memo, description, direction, status, amount_sat, amount_msat,
+			  created_at, updated_at`
 
 	// Using the above query, NamedQuery() will extract VALUES from the payment
 	// variable and insert them into the query
@@ -440,6 +475,7 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 			&result.PaymentRequest,
 			&result.Preimage,
 			&result.HashedPreimage,
+			&result.Memo,
 			&result.Description,
 			&result.Direction,
 			&result.Status,
@@ -460,38 +496,3 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 
 	return result, nil
 }
-
-// func sanityCheckPayment(tempPayment Payment, payment Payment) error {
-// 	if tempPayment.UserID != payment.UserID {
-// 		return errors.New(fmt.Sprintf("tempPayment.UserID %d not equal payment.UserID %d", tempPayment.UserID, payment.UserID))
-// 	}
-// 	if tempPayment.PaymentRequest != payment.PaymentRequest {
-// 		return errors.New(fmt.Sprintf("tempPayment.PaymentRequest %s not equal payment.PaymentRequest %s", tempPayment.PaymentRequest, payment.PaymentRequest))
-// 	}
-// 	// Temporarily disabled due to trouble with nil dereferencing
-// 	// if tempPayment.Preimage != payment.Preimage {
-// 	// 	return errors.New(fmt.Sprintf("tempPayment.Preimage %v not equal payment.Preimage %v", tempPayment.Preimage, payment.Preimage))
-// 	// }
-// 	if tempPayment.HashedPreimage != payment.HashedPreimage {
-// 		return errors.New(fmt.Sprintf("tempPayment.HashedPreimage %s not equal payment.HashedPreimage %s", tempPayment.HashedPreimage, payment.HashedPreimage))
-// 	}
-// 	if tempPayment.Description != payment.Description {
-// 		return errors.New(fmt.Sprintf("tempPayment.Description %s not equal payment.Description %s", tempPayment.Description, payment.Description))
-// 	}
-// 	if tempPayment.Direction != payment.Direction {
-// 		return errors.New(fmt.Sprintf("tempPayment.Direction %v not equal payment.Direction %v", tempPayment.Direction, payment.Direction))
-// 	}
-// 	if tempPayment.Status != payment.Status {
-// 		return errors.New(fmt.Sprintf("tempPayment.Status %v not equal payment.Status %v", tempPayment.Status, payment.Status))
-// 	}
-// 	if tempPayment.AmountSat != payment.AmountSat {
-// 		return errors.New(fmt.Sprintf("tempPayment.AmountSat %d not equal payment.AmountSat %d", tempPayment.AmountSat, payment.AmountSat))
-// 	}
-// 	if tempPayment.AmountMSat != payment.AmountMSat {
-// 		return errors.New(fmt.Sprintf("tempPayment.AmountMSat %d not equal payment.AmountMSat %d", tempPayment.AmountMSat, payment.AmountMSat))
-// 	}
-// 	if tempPayment.AmountMSat != (payment.AmountSat * 1000) {
-// 		return errors.New(fmt.Sprintf("tempPayment.AmountMSat %d not equal (payment.AmountSat * 1000) %d", tempPayment.AmountMSat, payment.AmountSat*1000))
-// 	}
-// 	return nil
-// }

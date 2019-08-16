@@ -74,11 +74,11 @@ var (
 			{
 				Name:    "down",
 				Aliases: []string{"md"},
-				Usage:   "down x, Migrates the database down x number of steps",
+				Usage:   "down x, migrates the database down x number of steps",
 				Action: func(c *cli.Context) error {
 					if c.NArg() != 1 {
 						return cli.NewExitError(
-							"You need to spesify a number of steps to migrate down",
+							"You need to specify a number of steps to migrate down",
 							22,
 						)
 					}
@@ -97,7 +97,7 @@ var (
 			{
 				Name:    "up",
 				Aliases: []string{"mu"},
-				Usage:   "Migrates the database up",
+				Usage:   "migrates the database up",
 				Action: func(c *cli.Context) error {
 					database, err := db.OpenDatabase()
 					if err != nil {
@@ -110,7 +110,7 @@ var (
 			}, {
 				Name:    "status",
 				Aliases: []string{"s"},
-				Usage:   "Check migrations status and version number",
+				Usage:   "check migrations status and version number",
 				Action: func(c *cli.Context) error {
 					database, err := db.OpenDatabase()
 					if err != nil {
@@ -123,17 +123,19 @@ var (
 			}, {
 				Name:    "newmigration",
 				Aliases: []string{"nm"},
-				Usage:   "Creates a new migration file",
+				Usage:   "newmigration `NAME`, creates new migration file",
 				Action: func(c *cli.Context) error {
 
 					migrationText := c.Args().First() // get the filename
+					if migrationText == "" {
+					}
 
 					return db.CreateMigration(migrationsPath, migrationText)
 				},
 			}, {
 				Name:    "drop",
 				Aliases: []string{"dr"},
-				Usage:   "Drops the entire database.",
+				Usage:   "drops the entire database.",
 				Action: func(c *cli.Context) error {
 					database, err := db.OpenDatabase()
 					if err != nil {
@@ -152,7 +154,7 @@ var (
 			{
 				Name:    "dummy",
 				Aliases: []string{"dd"},
-				Usage:   "Fills the database with dummy data",
+				Usage:   "fills the database with dummy data",
 				Action: func(c *cli.Context) error {
 					database, err := db.OpenDatabase()
 					if err != nil {

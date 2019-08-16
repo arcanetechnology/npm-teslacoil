@@ -61,7 +61,7 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
-	go payments.UpdateInvoiceStatus(invoiceUpdatesCh, d)
+	go payments.InvoiceStatusListener(invoiceUpdatesCh, d)
 
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login
