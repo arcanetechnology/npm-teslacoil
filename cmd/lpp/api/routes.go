@@ -2,14 +2,15 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 )
@@ -38,6 +39,12 @@ type JWTClaims struct {
 //NewApp creates a new app
 func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 	g := gin.Default()
+
+	g.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"http://127.0.0.1:3000"},
+		AllowMethods: []string{"PUT", "GET", "POST", "PATCH", "DELETE"},
+		AllowHeaders: []string{"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer", "Authorization"},
+	}))
 
 	lncli, err := ln.NewLNDClient(config.LightningConfig)
 	if err != nil {
@@ -107,7 +114,7 @@ func authenticateJWT(c *gin.Context) {
 
 	_, _, err := parseBearerJWT(tokenString)
 	if err != nil {
-		c.JSONP(http.StatusForbidden, gin.H{"error": err})
+		c.JSONP(http.StatusForbidden, gin.H{"error": err.Error()})
 		c.Abort() // cancels the following request
 		return
 	}
@@ -135,6 +142,7 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	// extract the claims
 	token, err := jwt.ParseWithClaims(tokenString, claims,
 		func(token *jwt.Token) (interface{}, error) {
+			// TODO: This must be changed before production
 			return []byte("secret_key"), nil
 		})
 	if err != nil {
@@ -158,19 +166,15 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	if !ok {
 		return nil, nil, errors.New("invalid token, could not extract email from claim")
 	}
-	idString, ok := mapClaims["id"].(string)
+	// TODO: This needs to be more robust... Never know what type the client sends!
+	id, ok := mapClaims["user_id"].(float64)
 	if !ok {
-		return nil, nil, errors.New("invalid token, could not extract id from claim")
+		return nil, nil, errors.New("invalid token, could not extract user_id from claim")
 	}
-	u64, err := strconv.ParseUint(idString, 10, 64)
-	if err != nil {
-		return nil, nil, errors.New("invalid token, id not a integer")
-	}
-	id := uint(u64)
 
 	jwtClaims := &JWTClaims{
 		Email:  email,
-		UserID: id,
+		UserID: uint(id),
 	}
 
 	return token, jwtClaims, nil

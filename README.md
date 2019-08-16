@@ -8,7 +8,7 @@ A custodial payment processor running in the lightning network using lnd.
 
 See here if you are using a different shell https://direnv.net/docs/hook.md
 
-2. Create .envrc and will inn details (see defaults in .envrc-example)
+2. Create .envrc and fill inn details (see defaults in .envrc-example)
 3. Install postgres and create a user and a sample DB by running these commands:
    ```
    sudo apt update && sudo apt install postgresql postgresql-contrib

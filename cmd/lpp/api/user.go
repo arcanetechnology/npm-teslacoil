@@ -43,7 +43,7 @@ type LoginResponse struct {
 	AccessToken string `json:"access_token"`
 	Email       string `json:"email"`
 	ID          uint   `json:"id"`
-	Balance     uint   `db:"balance"`
+	Balance     uint   `json:"balance"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
