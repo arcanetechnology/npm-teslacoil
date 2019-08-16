@@ -13,6 +13,7 @@ require (
 	github.com/codahale/chacha20poly1305 v0.0.0-20151127064032-f8a5c4830182 // indirect
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/gin-contrib/cors v1.3.0
 	github.com/gin-contrib/sse v0.1.0
 	github.com/gin-gonic/gin v1.4.0
 	github.com/golang-migrate/migrate/v4 v4.5.0
@@ -41,6 +42,7 @@ require (
 	github.com/roasbeef/btcrpcclient v0.0.0-20170622074026-d0f4db8b4dad // indirect
 	github.com/roasbeef/btcutil v0.0.0-20180406014609-dfb640c57141 // indirect
 	github.com/roasbeef/btcwallet v0.0.0-20180426223453-30affec83c18 // indirect
+	github.com/rs/cors v1.7.0
 	github.com/tidwall/gjson v1.3.2 // indirect
 	github.com/ugorji/go v1.1.7
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4

@@ -43,7 +43,6 @@ type CreateInvoiceData struct {
 type PayInvoiceData struct {
 	PaymentRequest string `json:"payment_request"`
 	Description    string `json:"description"`
-	AmountSat      int64  `json:"amount_sat"`
 }
 
 // Payment is a database table
