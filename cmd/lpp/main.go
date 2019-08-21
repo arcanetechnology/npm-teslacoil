@@ -47,7 +47,8 @@ func askForConfirmation() bool {
 	}
 }
 
-// You might want to put the following two functions in a separate utility package.
+// You might want to put the following two functions in a separate utility
+// package.
 
 // posString returns the first index of element in slice.
 // If slice does not contain element, returns -1.
@@ -91,7 +92,8 @@ var (
 					if err != nil {
 						return err
 					}
-					return db.MigrateDown(path.Join("file://", migrationsPath), database, steps)
+					return db.MigrateDown(
+						path.Join("file://", migrationsPath), database, steps)
 				},
 			},
 			{
@@ -105,7 +107,8 @@ var (
 					}
 					defer database.Close()
 
-					return db.MigrateUp(path.Join("file://", migrationsPath), database)
+					return db.MigrateUp(
+						path.Join("file://", migrationsPath), database)
 				},
 			}, {
 				Name:    "status",
@@ -118,7 +121,8 @@ var (
 					}
 					defer database.Close()
 
-					return db.MigrationStatus(path.Join("file://", migrationsPath), database)
+					return db.MigrationStatus(
+						path.Join("file://", migrationsPath), database)
 				},
 			}, {
 				Name:    "newmigration",
@@ -143,9 +147,11 @@ var (
 					}
 					defer database.Close()
 
-					fmt.Println("Are you sure you want to drop the entire database? y/n")
+					fmt.Println(
+						"Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
-						return db.DropDatabase(path.Join("file://", migrationsPath), database)
+						return db.DropDatabase(
+							path.Join("file://", migrationsPath), database)
 					}
 
 					return nil
@@ -185,7 +191,8 @@ var (
 
 func main() {
 
-	InitLogRotator(ln.CleanAndExpandPath(path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
+	InitLogRotator(ln.CleanAndExpandPath(
+		path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
 	SetLogLevels("info")
 
 	app := cli.NewApp()

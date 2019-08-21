@@ -93,12 +93,16 @@ func newMigrationFile(filePath string) error {
 func CreateMigration(migrationsPath string, migrationText string) error {
 	migrationTime := time.Now().UTC().Format("20060102150405")
 
-	fileNameUp := path.Join(migrationsPath, migrationTime+"_"+strcase.ToSnake(migrationText)+".up.pgsql")
+	fileNameUp := path.Join(
+		migrationsPath,
+		migrationTime+"_"+strcase.ToSnake(migrationText)+".up.pgsql")
 	if err := newMigrationFile(fileNameUp); err != nil {
 		return err
 	}
 
-	fileNameDown := path.Join(migrationsPath, migrationTime+"_"+strcase.ToSnake(migrationText)+".down.pgsql")
+	fileNameDown := path.Join(
+		migrationsPath,
+		migrationTime+"_"+strcase.ToSnake(migrationText)+".down.pgsql")
 	if err := newMigrationFile(fileNameDown); err != nil {
 		return err
 	}

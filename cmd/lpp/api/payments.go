@@ -131,7 +131,8 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			claims.UserID,
 			newInvoice)
 
-		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice, claims.UserID)
+		t, err := payments.CreateInvoice(
+			r.db, *r.lncli, newInvoice, claims.UserID)
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{

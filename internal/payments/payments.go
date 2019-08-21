@@ -63,7 +63,8 @@ type Payment struct {
 	AmountMSat     int64     `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
-	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the invoice is settled
+	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the
+	// invoice is settled
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
 	DeletedAt *time.Time `db:"deleted_at"`
@@ -106,7 +107,8 @@ func GetAll(d *sqlx.DB, userID uint) ([]Payment, error) {
 // It only retrieves invoices whose user_id is the same as the supplied argument
 func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 	txResult := Payment{}
-	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
+	tQuery := fmt.Sprintf(
+		"SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
 
 	if err := d.Get(&txResult, tQuery, id, userID); err != nil {
 		// log.Error(err)
@@ -115,7 +117,10 @@ func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 
 	// sanity check the query
 	if txResult.UserID != userID {
-		err := errors.New(fmt.Sprintf("db query retrieved unexpected value, expected payment with user_id %d but got %d", userID, txResult.UserID))
+		err := errors.New(
+			fmt.Sprintf(
+				"db query retrieved unexpected value, expected payment with user_id %d but got %d",
+				userID, txResult.UserID))
 		// log.Errorf(err.Error())
 		return Payment{}, err
 	}
@@ -230,7 +235,8 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 	}
 	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
 	// See logic in lightningspin-api for possible solution
-	paymentResponse, err := lncli.SendPaymentSync(context.Background(), sendRequest)
+	paymentResponse, err := lncli.SendPaymentSync(
+		context.Background(), sendRequest)
 	if err != nil {
 		// log.Error(err)
 		return UserPaymentResponse{}, err
@@ -255,13 +261,15 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 			// log.Error(err)
 			tx.Rollback()
 			return UserPaymentResponse{}, errors.Wrapf(err,
-				"PayInvoice->updateUserBalance(tx, %d, %d)", p.UserID, -payment.AmountSat)
+				"PayInvoice->updateUserBalance(tx, %d, %d)",
+				p.UserID, -payment.AmountSat)
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
 		// log.Error(err)
-		return UserPaymentResponse{}, errors.Wrap(err, "PayInvoice: Cound not commit")
+		return UserPaymentResponse{}, errors.Wrap(
+			err, "PayInvoice: Cound not commit")
 	}
 
 	result := UserPaymentResponse{
@@ -277,7 +285,9 @@ type QueryExecutor interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
-func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (UserResponse, error) {
+func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
+	UserResponse, error) {
+
 	if amountSat == 0 {
 		return UserResponse{}, errors.New(
 			"No point in updating users balance with 0 satoshi")
@@ -306,7 +316,8 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 			&user.UpdatedAt,
 		); err != nil {
 			// log.Error(err)
-			return UserResponse{}, errors.Wrap(err, "Could not scan user returned from db")
+			return UserResponse{}, errors.Wrap(
+				err, "Could not scan user returned from db")
 		}
 	}
 	rows.Close()
@@ -316,7 +327,9 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 }
 
 // InvoiceStatusListener is
-func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.DB) {
+func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
+	database *sqlx.DB) {
+
 	for {
 		invoice := <-invoiceUpdatesCh
 		_, err := UpdateInvoiceStatus(invoice, database)
@@ -338,7 +351,8 @@ func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice, database *sqlx.D
 // errors with 'sql: no rows in result set' on the first database.Get() because
 // the invoice is not yet inserted into the database.
 // 4. Payment is inserted into the database
-func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (*UserPaymentResponse, error) {
+func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
+	*UserPaymentResponse, error) {
 
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
