@@ -85,7 +85,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
-		t, err := payments.GetByID(r.db, id, claim.UserID)
+		t, err := payments.GetByID(r.db, uint(id), claim.UserID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,

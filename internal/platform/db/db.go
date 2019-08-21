@@ -1,12 +1,18 @@
 package db
 
 import (
+	"fmt"
 	"net/url"
 	"os"
+	"path"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 )
+
+var migrationsPath = path.Join("file://",
+	os.Getenv("GOPATH"),
+	"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
 
 // OpenDatabase fetched the database credentials from environment variables
 // and stars creates the gorm database object
@@ -76,4 +82,50 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 	}
 
 	return d, nil
+}
+
+// CreateTestDatabase applies migrations to the DB. If already applied, drops
+// the db first, then applies migrations
+func CreateTestDatabase(testDB *sqlx.DB) error {
+	err := MigrateUp(migrationsPath, testDB)
+
+	if err != nil {
+		if err.Error() == "no change" {
+			return ResetDB(testDB)
+		}
+		fmt.Println(err)
+		return errors.Wrapf(err,
+			"Cannot connect to database %s with user %s",
+			os.Getenv("DATABASE_TEST_NAME"),
+			os.Getenv("DATABASE_TEST_USER"),
+		)
+	}
+
+	return nil
+}
+
+// TeardownTestDB drops the database, removing all data and schemas
+func TeardownTestDB(testDB *sqlx.DB) error {
+	err := DropDatabase(migrationsPath, testDB)
+	if err != nil {
+		return errors.Wrapf(err,
+			"teardownTestDB cannot connect to database %s with user %s",
+			os.Getenv("DATABASE_TEST_NAME"),
+			os.Getenv("DATABASE_TEST_USER"),
+		)
+	}
+
+	return nil
+}
+
+// ResetDB first drops the DB, then applies migrations
+func ResetDB(testDB *sqlx.DB) error {
+	if err := TeardownTestDB(testDB); err != nil {
+		return err
+	}
+	if err := CreateTestDatabase(testDB); err != nil {
+		return err
+	}
+
+	return nil
 }

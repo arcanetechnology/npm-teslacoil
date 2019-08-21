@@ -21,6 +21,7 @@ require (
 	github.com/golangci/golangci-lint v1.17.1 // indirect
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-querystring v1.0.0
+	github.com/google/gofuzz v1.0.0
 	github.com/gorilla/mux v1.7.3
 	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c // indirect
 	github.com/iancoleman/strcase v0.0.0-20190422225806-e506e3ef7365

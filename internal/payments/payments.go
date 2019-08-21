@@ -34,8 +34,9 @@ const (
 
 // CreateInvoiceData is a deposit
 type CreateInvoiceData struct {
-	Memo      string `json:"memo"`
-	AmountSat int64  `json:"amount_sat"`
+	Memo        string `json:"memo"`
+	Description string `json:"description"`
+	AmountSat   int64  `json:"amount_sat"`
 }
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
@@ -103,7 +104,7 @@ func GetAll(d *sqlx.DB, userID uint) ([]Payment, error) {
 
 // GetByID returns a single invoice based on the id given
 // It only retrieves invoices whose user_id is the same as the supplied argument
-func GetByID(d *sqlx.DB, id uint64, userID uint) (Payment, error) {
+func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 	txResult := Payment{}
 	tQuery := fmt.Sprintf("SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
 
@@ -128,6 +129,13 @@ func GetByID(d *sqlx.DB, id uint64, userID uint) (Payment, error) {
 // and inserts the newly created invoice into the database
 func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	invoiceData CreateInvoiceData, userID uint) (Payment, error) {
+
+	if invoiceData.AmountSat <= 0 {
+		return Payment{}, errors.New("amount cant be less than or equal to 0")
+	}
+	if len(invoiceData.Memo) > 256 {
+		return Payment{}, errors.New("memo cant be longer than 256 characters")
+	}
 
 	// First we add an invoice given the given parameters using the ln package
 	invoice, err := ln.AddInvoice(
@@ -157,6 +165,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 		Payment{
 			UserID:         userID,
 			Memo:           invoiceData.Memo,
+			Description:    invoiceData.Description,
 			AmountSat:      invoiceData.AmountSat,
 			AmountMSat:     invoiceData.AmountSat * 1000,
 			PaymentRequest: invoice.PaymentRequest,
@@ -241,7 +250,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 
 	user := UserResponse{}
 	if payment.Status == succeeded {
-		user, err = updateUserBalance(tx, p.UserID, -payment.AmountSat)
+		user, err = updateUserBalance(tx, p.UserID, payment.AmountSat)
 		if err != nil {
 			// log.Error(err)
 			tx.Rollback()
@@ -284,7 +293,7 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (Use
 		// log.Error(err)
 		return UserResponse{}, errors.Wrap(
 			err,
-			"updateUserBalance(): could not construct user update",
+			"UpdateUserBalance(): could not construct user update",
 		)
 	}
 

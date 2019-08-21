@@ -5,48 +5,28 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"path"
-	"runtime"
 	"testing"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	// "gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
-func createTestDatabase(testDB *sqlx.DB) error {
-	_, filename, _, ok := runtime.Caller(1)
-	if ok == false {
-		return errors.New("could not find path to migrations files")
-	}
+var sampleRPreimage = []byte("SomePreimage")
+var samplePreimage = hex.EncodeToString(sampleRPreimage)
+var migrationsPath = path.Join("file://",
+	os.Getenv("GOPATH"),
+	"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
 
-	migrationsPath := path.Join("file://", path.Dir(filename), "../platform/migrations")
-	err := db.DropDatabase(migrationsPath, testDB)
-	if err != nil {
-		return errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
-		)
-	}
-	err = db.MigrateUp(migrationsPath, testDB)
-	if err != nil {
-		return errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
-		)
-	}
-	return nil
-}
-
-var testDB *sqlx.DB
+const (
+	succeed = "\u2713"
+	fail    = "\u2717"
+)
 
 type lightningMockClient struct {
 	InvoiceResponse         lnrpc.Invoice
@@ -71,171 +51,174 @@ func (client lightningMockClient) SendPaymentSync(ctx context.Context, in *lnrpc
 }
 
 func TestMain(m *testing.M) {
-	println("Configuring payments test database")
-
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		return
 	}
 
-	err = createTestDatabase(testDB)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
+	if err = db.CreateTestDatabase(testDB); err != nil {
+		fmt.Println(err)
 		return
-	}
-
-	// Create some users to bind payments to
-	for index := 1; index <= 3; index++ {
-		user, err := users.Create(testDB,
-			"test_user"+string(index)+"@example.com",
-			"password",
-		)
-		if err != nil || user == nil {
-			fmt.Println("User result was empty")
-			fmt.Printf("%+v\n", err)
-			return
-		}
 	}
 
 	flag.Parse()
 	result := m.Run()
+
+	db.TeardownTestDB(testDB)
 	os.Exit(result)
 }
 
 func TestCreateInvoice(t *testing.T) {
-
 	// Setup the database
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
-	incoiceData := CreateInvoiceData{
-		Memo:      "HelloWorld",
-		AmountSat: 20000,
-	}
-	userID := uint(1)
-
-	// Create Mock LND client with preconfigured invoice response
-	mockLNcli := lightningMockClient{
-		InvoiceResponse: lnrpc.Invoice{
-			Value:          20000,
-			PaymentRequest: "SomePayRequest",
-			RHash:          []byte("SomeRHash"),
-			RPreimage:      []byte("SomePreimage"),
-			Settled:        false,
-		},
-	}
-
-	payment, err := CreateInvoice(testDB, mockLNcli, incoiceData, userID)
-	if err != nil {
+	user, err := users.Create(testDB,
+		"test_userCreateInvoice@example.com",
+		"password",
+	)
+	if err != nil || user == nil {
+		fmt.Println("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
 
-	preImg := hex.EncodeToString([]byte("SomePreimage"))
-	// Expected test results are defined here.
-	expectedResult := Payment{
-		ID:             1,
-		UserID:         1,
-		AmountSat:      20000,
-		AmountMSat:     20000000,
-		Preimage:       &preImg,
-		HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
-		Memo:           "HelloWorld",
-		Description:    "My personal description",
-		Status:         Status("OPEN"),
-		Direction:      Direction("INBOUND"),
+	amount1 := rand.Int63n(4294967)
+	amount2 := rand.Int63n(4294967)
+
+	tests := []struct {
+		createInvoiceData CreateInvoiceData
+		lndInvoice        lnrpc.Invoice
+		out               Payment
+	}{
+		{
+
+			CreateInvoiceData{
+				Memo:      "HiMisterHey",
+				AmountSat: amount1,
+			},
+			lnrpc.Invoice{
+				Value:          int64(amount1),
+				PaymentRequest: "SomePayRequest",
+				RHash:          []byte("SomeRHash"),
+				RPreimage:      sampleRPreimage,
+				Settled:        false,
+			},
+			Payment{
+				UserID:         user.ID,
+				AmountSat:      amount1,
+				AmountMSat:     amount1 * 1000,
+				Preimage:       &samplePreimage,
+				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+				Memo:           "HiMisterHey",
+				Description:    "My personal description",
+				Status:         Status("OPEN"),
+				Direction:      Direction("INBOUND"),
+			},
+		},
+		{
+
+			CreateInvoiceData{
+				Memo:      "HelloWorld",
+				AmountSat: amount2,
+			},
+			lnrpc.Invoice{
+				Value:          amount2,
+				PaymentRequest: "SomePayRequest",
+				RHash:          []byte("SomeRHash"),
+				RPreimage:      sampleRPreimage,
+				Settled:        false,
+			},
+			Payment{
+				UserID:         user.ID,
+				AmountSat:      amount2,
+				AmountMSat:     amount2 * 1000,
+				Preimage:       &samplePreimage,
+				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+				Memo:           "HelloWorld",
+				Description:    "My personal description",
+				Status:         Status("OPEN"),
+				Direction:      Direction("INBOUND"),
+			},
+		},
 	}
 
-	// Assertions
-	if payment.ID != expectedResult.ID {
-		t.Logf(
-			"ID incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.ID,
-			payment.ID,
-		)
-		t.Fail()
-	}
+	t.Log("Testing adding invoices to the DB")
+	{
+		for i, tt := range tests {
+			t.Logf("\tTest: %d\tWhen creating invoice with amount %d and memo %s",
+				i, tt.createInvoiceData.AmountSat, tt.createInvoiceData.Memo)
+			{
+				// Create Mock LND client with preconfigured invoice response
+				mockLNcli := lightningMockClient{
+					InvoiceResponse: tt.lndInvoice,
+				}
 
-	if payment.UserID != expectedResult.UserID {
-		t.Logf(
-			"UserID incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.UserID,
-			payment.UserID,
-		)
-		t.Fail()
-	}
+				payment, err := CreateInvoice(testDB, mockLNcli, tt.createInvoiceData, tt.out.UserID)
+				if err != nil {
+					t.Fatalf("\t%s\tShould be able to CreateInvoice %+v\n", fail, err)
+				}
+				t.Logf("\t%s\tShould be able to CreateInvoice", succeed)
 
-	if payment.AmountSat != expectedResult.AmountSat {
-		t.Logf(
-			"Invoice amount incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.AmountSat,
-			payment.AmountSat,
-		)
-		t.Fail()
-	}
+				// Assertions
+				t.Logf("\tTest: %d\tWhen checking invoice with amount %d and memo %s",
+					i, tt.createInvoiceData.AmountSat, tt.createInvoiceData.Memo)
+				{
+					expectedResult := tt.out
+					if payment.UserID != expectedResult.UserID {
+						t.Logf("\t%s\tUserID should be equal to expected UserID. Expected \"%d\" got \"%d\"",
+							fail, expectedResult.UserID, payment.UserID)
+						t.Fail()
+					}
 
-	if payment.AmountMSat != expectedResult.AmountMSat {
-		t.Logf(
-			"Invoice milli amount incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.AmountMSat,
-			payment.AmountMSat,
-		)
-		t.Fail()
-	}
+					if payment.AmountSat != expectedResult.AmountSat {
+						t.Logf("\t%s\tAmountSat should be equal to expected AmountSat. Expected \"%d\" got \"%d\"",
+							fail, expectedResult.AmountSat, payment.AmountSat)
+						t.Fail()
+					}
 
-	if *payment.Preimage != *expectedResult.Preimage {
-		t.Logf(
-			"Invoice preimage incorrect. Expected \"%s\" got \"%s\"",
-			*expectedResult.Preimage,
-			*payment.Preimage,
-		)
-		t.Fail()
-	}
+					if payment.AmountMSat != expectedResult.AmountMSat {
+						t.Logf("\t%s\tAmountMSat should be equal to expected AmountMSat. Expected \"%d\" got \"%d\"",
+							fail, expectedResult.AmountMSat, payment.AmountMSat)
+						t.Fail()
+					}
 
-	if payment.HashedPreimage != expectedResult.HashedPreimage {
-		t.Logf(
-			"Invoice hashed preimage incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.HashedPreimage,
-			payment.HashedPreimage,
-		)
-		t.Fail()
-	}
+					if *payment.Preimage != *expectedResult.Preimage {
+						t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%s\" got \"%s\"",
+							fail, *expectedResult.Preimage, *payment.Preimage)
+						t.Fail()
+					}
 
-	if payment.Memo != expectedResult.Memo {
-		t.Logf(
-			"Invoice description incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Memo,
-			payment.Memo,
-		)
-		t.Fail()
-	}
+					if payment.HashedPreimage != expectedResult.HashedPreimage {
+						t.Logf("\t%s\tHashedPreimage should be equal to expected HashedPreimage. Expected \"%s\" got \"%s\"",
+							fail, expectedResult.HashedPreimage, payment.HashedPreimage)
+						t.Fail()
+					}
 
-	if payment.Status != expectedResult.Status {
-		t.Logf(
-			"Invoice status incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Status,
-			payment.Status,
-		)
-		t.Fail()
-	}
+					if payment.Memo != expectedResult.Memo {
+						t.Logf("\t%s\tMemo should be equal to expected Memo. Expected \"%s\" got \"%s\"",
+							fail, expectedResult.Memo, payment.Memo)
+						t.Fail()
+					}
 
-	if payment.Status != expectedResult.Status {
-		t.Logf(
-			"Invoice status incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Status,
-			payment.Status,
-		)
-		t.Fail()
-	}
+					if payment.Status != expectedResult.Status {
+						t.Logf("\t%s\tStatus should be equal to expected Status. Expected \"%s\" got \"%s\"",
+							fail, expectedResult.Status, payment.Status)
+						t.Fail()
+					}
 
-	if payment.Direction != expectedResult.Direction {
-		t.Logf(
-			"Invoice direction incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Direction,
-			payment.Direction,
-		)
-		t.Fail()
+					if payment.Direction != expectedResult.Direction {
+						t.Logf("\t%s\tDirection should be equal to expected Direction. Expected \"%s\" got \"%s\"",
+							fail, expectedResult.Direction, payment.Direction)
+						t.Fail()
+					}
+					if !t.Failed() {
+						t.Logf("\t%s\tAll values should be equal to expected values", succeed)
+					}
+				}
+			}
+		}
 	}
 
 	// Fail tests after all assertions that will not interfere with eachother
@@ -243,7 +226,6 @@ func TestCreateInvoice(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
-
 }
 
 func TestGetByID(t *testing.T) {
@@ -253,20 +235,19 @@ func TestGetByID(t *testing.T) {
 		t.Fatalf("%+v\n", err)
 	}
 
-	// Act
-	payment, err := GetByID(testDB, 1, 1)
-	if err != nil {
+	user, err := users.Create(testDB,
+		"test_userGetByID@example.com",
+		"password",
+	)
+	if err != nil || user == nil {
+		fmt.Println("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
-
-	preImg := hex.EncodeToString([]byte("SomePreimage"))
-	// Expected test results are defined here.
 	expectedResult := Payment{
-		ID:             1,
-		UserID:         1,
+		UserID:         user.ID,
 		AmountSat:      20000,
 		AmountMSat:     20000000,
-		Preimage:       &preImg,
+		Preimage:       &samplePreimage,
 		HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 		Memo:           "HelloWorld",
 		Description:    "My personal description",
@@ -274,16 +255,17 @@ func TestGetByID(t *testing.T) {
 		Direction:      Direction("INBOUND"),
 	}
 
-	// Assert
-	if payment.ID != expectedResult.ID {
-		t.Logf(
-			"ID incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.ID,
-			payment.ID,
-		)
-		t.Fail()
+	tx := testDB.MustBegin()
+	payment, err := insertPayment(tx, expectedResult)
+	tx.Commit()
+	// Act
+	payment, err = GetByID(testDB, payment.ID, user.ID)
+	if err != nil {
+		t.Log("Could not retrieve payment")
+		t.Fatalf("%+v\n", err)
 	}
 
+	// Assert
 	if payment.UserID != expectedResult.UserID {
 		t.Logf(
 			"UserID incorrect. Expected \"%d\" got \"%d\"",
@@ -329,6 +311,15 @@ func TestGetByID(t *testing.T) {
 		t.Fail()
 	}
 
+	if payment.Description != expectedResult.Description {
+		t.Logf(
+			"Invoice description incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Description,
+			payment.Description,
+		)
+		t.Fail()
+	}
+
 	if payment.Memo != expectedResult.Memo {
 		t.Logf(
 			"Invoice description incorrect. Expected \"%s\" got \"%s\"",
@@ -370,6 +361,7 @@ func TestGetByID(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
+
 }
 
 func TestUpdateUserBalance(t *testing.T) {
@@ -378,10 +370,18 @@ func TestUpdateUserBalance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
+	u, err := users.Create(testDB,
+		"test_userUpdateUserBalance@example.com",
+		"password",
+	)
+	if err != nil || u == nil {
+		fmt.Println("User result was empty")
+		t.Fatalf("%+v\n", err)
+	}
 
 	// Act
 	tx := testDB.MustBegin()
-	user, err := updateUserBalance(tx, 1, 100000)
+	user, err := updateUserBalance(tx, u.ID, 100000)
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		return
@@ -394,7 +394,7 @@ func TestUpdateUserBalance(t *testing.T) {
 
 	// Assert
 	expectedResult := UserResponse{
-		ID:      1,
+		ID:      u.ID,
 		Balance: 100000, // Test user starts with 100k satoshi
 	}
 
@@ -421,21 +421,27 @@ func TestUpdateUserBalance(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
-
 }
 
 func TestPayInvoice(t *testing.T) {
-
 	// Setup the database
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
+	u, err := users.Create(testDB,
+		"test_userPayInvoice@example.com",
+		"password",
+	)
+	if err != nil || u == nil {
+		fmt.Println("User result was empty")
+		t.Fatalf("%+v\n", err)
+	}
+
 	payInvoiceData := PayInvoiceData{
 		PaymentRequest: "SomePaymentHash",
 		Memo:           "HelloPayment",
 	}
-	userID := uint(1)
 
 	// Create Mock LND client with preconfigured invoice response
 	mockLNcli := lightningMockClient{
@@ -452,20 +458,18 @@ func TestPayInvoice(t *testing.T) {
 		},
 	}
 
-	payment, err := PayInvoice(testDB, mockLNcli, payInvoiceData, userID)
+	payment, err := PayInvoice(testDB, mockLNcli, payInvoiceData, u.ID)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
 
-	preImg := hex.EncodeToString([]byte("SomePreimage"))
 	// Expected test results are defined here.
 	expectedResult := UserPaymentResponse{
 		Payment: Payment{
-			ID:             2,
-			UserID:         1,
+			UserID:         u.ID,
 			AmountSat:      5000,
 			AmountMSat:     5000000,
-			Preimage:       &preImg,
+			Preimage:       &samplePreimage,
 			HashedPreimage: "SomeHash",
 			Memo:           "HelloPayment",
 			Description:    "My personal description",
@@ -473,21 +477,12 @@ func TestPayInvoice(t *testing.T) {
 			Direction:      Direction("OUTBOUND"),
 		},
 		User: UserResponse{
-			ID:      1,
-			Balance: 95000, // Test user starts with 100k satoshi
+			ID:      u.ID,
+			Balance: 5000, // Test user starts with 100k satoshi
 		},
 	}
 
 	// Asserting Payment results
-	if payment.Payment.ID != expectedResult.Payment.ID {
-		t.Logf(
-			"ID incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.Payment.ID,
-			payment.Payment.ID,
-		)
-		t.Fail()
-	}
-
 	if payment.Payment.UserID != expectedResult.Payment.UserID {
 		t.Logf(
 			"UserID incorrect. Expected \"%d\" got \"%d\"",
@@ -593,13 +588,37 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
+	u, err := users.Create(testDB,
+		"test_userUpdateInvoiceStatus@example.com",
+		"password",
+	)
+	if err != nil || u == nil {
+		fmt.Println("User result was empty")
+		t.Fatalf("%+v\n", err)
+	}
 
 	triggerInvoice := lnrpc.Invoice{
-		PaymentRequest: "SomePayRequest",
+		PaymentRequest: "SomePayRequest1",
 		RHash:          []byte("SomeHash"),
 		RPreimage:      []byte("SomePreimage"),
 		Settled:        true,
 	}
+
+	CreateInvoice(testDB,
+		lightningMockClient{
+			InvoiceResponse: lnrpc.Invoice{
+				Value:          20000,
+				PaymentRequest: "SomePayRequest1",
+				RHash:          []byte("SomeHash"),
+				RPreimage:      []byte("SomePreimage"),
+				Settled:        true,
+			},
+		},
+		CreateInvoiceData{
+			Memo:        "HelloWorld",
+			Description: "My description",
+			AmountSat:   20000,
+		}, u.ID)
 
 	// Act
 	payment, err := UpdateInvoiceStatus(triggerInvoice, testDB)
@@ -608,35 +627,23 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	}
 
 	// Assert
-
-	preImg := hex.EncodeToString([]byte("SomePreimage"))
 	// Expected test results are defined here.
 	expectedResult := UserPaymentResponse{
 		Payment: Payment{
-			ID:             1,
-			UserID:         1,
+			UserID:         u.ID,
 			AmountSat:      20000,
 			AmountMSat:     20000000,
-			Preimage:       &preImg,
-			HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+			Preimage:       &samplePreimage,
+			HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
 			Memo:           "HelloWorld",
-			Description:    "My personal description",
+			Description:    "My description",
 			Status:         Status("SUCCEEDED"),
 			Direction:      Direction("INBOUND"),
 		},
 		User: UserResponse{
-			ID:      1,
-			Balance: 115000, // Test user starts with 100k satoshi
+			ID:      u.ID,
+			Balance: 20000, // Test user starts with 100k satoshi
 		},
-	}
-
-	if payment.Payment.ID != expectedResult.Payment.ID {
-		t.Logf(
-			"ID incorrect. Expected \"%d\" got \"%d\"",
-			expectedResult.Payment.ID,
-			payment.Payment.ID,
-		)
-		t.Fail()
 	}
 
 	if payment.Payment.UserID != expectedResult.Payment.UserID {
@@ -711,6 +718,15 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		t.Fail()
 	}
 
+	if payment.Payment.Memo != expectedResult.Payment.Memo {
+		t.Logf(
+			"Memo incorrect. Expected \"%s\" got \"%s\"",
+			expectedResult.Payment.Memo,
+			payment.Payment.Memo,
+		)
+		t.Fail()
+	}
+
 	// Asserting user result
 	if payment.User.ID != expectedResult.User.ID {
 		t.Logf(
@@ -735,72 +751,82 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
-
 }
 
 func TestGetAll(t *testing.T) {
-
 	// Arrange
-
 	// Setup the database
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
-	incoiceData := CreateInvoiceData{
+	invoiceData := CreateInvoiceData{
 		Memo:      "HelloWorld",
 		AmountSat: 20000,
 	}
 
+	var userIDs [3]uint
 	// Create 2 more users and add 3 more invoices to each of them
-	for userID := 1; userID <= 3; userID++ {
+	for i := 0; i < 3; i++ {
+		u, err := users.Create(testDB,
+			fmt.Sprintf("test_user%d@example.com", i),
+			"password",
+		)
+		if err != nil || u == nil {
+			fmt.Println("User result was empty")
+			t.Fatalf("%+v\n", err)
+		}
+		userIDs[i] = u.ID
 		for invoiceIndex := 1; invoiceIndex <= 3; invoiceIndex++ {
 			// Create Mock LND client with preconfigured invoice response
 			mockLNcli := lightningMockClient{
 				InvoiceResponse: lnrpc.Invoice{
 					Value:          20000,
-					PaymentRequest: "PayRequest_" + string(userID) + "_" + string(invoiceIndex),
+					PaymentRequest: "PayRequest_" + string(u.ID) + "_" + string(invoiceIndex),
 					RHash:          []byte("SomeRHash"),
 					RPreimage:      []byte("SomePreimage"),
 					Settled:        false,
 				},
 			}
 
-			_, err := CreateInvoice(testDB, mockLNcli, incoiceData, uint(userID))
+			_, err := CreateInvoice(testDB, mockLNcli, invoiceData, u.ID)
 			if err != nil {
 				t.Fatalf("%+v\n", err)
 			}
 		}
 	}
 
-	// Act
-	invoices, err := GetAll(testDB, 2)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
+	for i := 0; i < 3; i++ {
+		userID := userIDs[i]
+		// Act
+		invoices, err := GetAll(testDB, userID)
+		if err != nil {
+			t.Fatalf("%+v\n", err)
+		}
 
-	// Assert
-	expectedNumberOfInvoices := 3
-	numberOfInvoices := len(invoices)
+		// Assert
+		expectedNumberOfInvoices := 3
+		numberOfInvoices := len(invoices)
 
-	if expectedNumberOfInvoices != numberOfInvoices {
-		t.Logf(
-			"Unexpected invoice count for user %d. Expected \"%d\" got \"%d\"",
-			2,
-			expectedNumberOfInvoices,
-			numberOfInvoices,
-		)
-		t.Fail()
-	}
-
-	for _, invoice := range invoices {
-		if invoice.UserID != 2 {
+		if expectedNumberOfInvoices != numberOfInvoices {
 			t.Logf(
-				"user ID was incorrect. Expected \"%d\" got \"%d\"",
+				"Unexpected invoice count for user %d. Expected \"%d\" got \"%d\"",
 				2,
-				invoice.UserID,
+				expectedNumberOfInvoices,
+				numberOfInvoices,
 			)
 			t.Fail()
+		}
+
+		for _, invoice := range invoices {
+			if invoice.UserID != userID {
+				t.Logf(
+					"user ID was incorrect. Expected \"%d\" got \"%d\"",
+					2,
+					invoice.UserID,
+				)
+				t.Fail()
+			}
 		}
 	}
 
@@ -809,5 +835,4 @@ func TestGetAll(t *testing.T) {
 	if t.Failed() {
 		t.FailNow()
 	}
-
 }
