@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -37,6 +38,12 @@ type CreateInvoiceData struct {
 	Memo        string `json:"memo"`
 	Description string `json:"description"`
 	AmountSat   int64  `json:"amount_sat"`
+}
+
+// GetAllInvoicesData is the body for the GetAll endpoint
+type GetAllInvoicesData struct {
+	SkipFirst int `json:"skip_first"`
+	Count     int `json:"count"`
 }
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
@@ -85,20 +92,23 @@ type UserPaymentResponse struct {
 }
 
 // GetAll fetches all payments
-func GetAll(d *sqlx.DB, userID uint) ([]Payment, error) {
+func GetAll(d *sqlx.DB, userID uint, filter GetAllInvoicesData) ([]Payment, error) {
 	payments := []Payment{}
+
+	// Using OFFSET is not ideal, but until we start seeing
+	// problems, it is fine
 	tQuery := `SELECT *
 		FROM offchaintx
 		WHERE user_id=$1
-		ORDER BY created_at ASC`
+		ORDER BY created_at ASC
+		LIMIT $2
+		OFFSET $3`
 
-	err := d.Select(&payments, tQuery, userID)
+	err := d.Select(&payments, tQuery, userID, filter.Count, filter.SkipFirst)
 	if err != nil {
-		// log.Error(err)
+		log.Error(err)
 		return payments, err
 	}
-
-	// log.Debugf("query %s for user_id %d returned %v", tQuery, userID, payments)
 
 	return payments, nil
 }
@@ -175,7 +185,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 			Description:    invoiceData.Description,
 			AmountSat:      invoiceData.AmountSat,
 			AmountMSat:     invoiceData.AmountSat * 1000,
-			PaymentRequest: invoice.PaymentRequest,
+			PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
 			HashedPreimage: hex.EncodeToString(invoice.RHash),
 			Preimage:       &invoicePreimage,
 			Status:         open,
@@ -360,7 +370,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 
 	// Define a custom response struct to include user details
 	payment := Payment{}
-	if err := database.Get(&payment, tQuery, invoice.PaymentRequest); err != nil {
+	if err := database.Get(&payment, tQuery, strings.ToUpper(invoice.PaymentRequest)); err != nil {
 		return nil, errors.Wrapf(err,
 			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
 			invoice.PaymentRequest,
