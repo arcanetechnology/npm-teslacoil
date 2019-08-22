@@ -5,4 +5,6 @@ export DATABASE_NAME="lpp"
 export DATABASE_TEST_USER="lpp_test"
 export DATABASE_TEST_PASSWORD="password"
 export DATABASE_TEST_NAME="lpp_test"
+export DATABASE_TEST_HOST="localhost"
+
 export GO111MODULE=on

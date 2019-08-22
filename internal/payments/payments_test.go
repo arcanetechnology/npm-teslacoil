@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path"
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -19,9 +18,6 @@ import (
 
 var sampleRPreimage = []byte("SomePreimage")
 var samplePreimage = hex.EncodeToString(sampleRPreimage)
-var migrationsPath = path.Join("file://",
-	os.Getenv("GOPATH"),
-	"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
 
 const (
 	succeed = "\u2713"
@@ -60,11 +56,13 @@ func TestMain(m *testing.M) {
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		fmt.Printf("%+v\n", err)
+		os.Exit(1)
 		return
 	}
 
 	if err = db.CreateTestDatabase(testDB); err != nil {
 		fmt.Println(err)
+		os.Exit(1)
 		return
 	}
 
@@ -689,7 +687,7 @@ func TestGetAll(t *testing.T) {
 }
 
 func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
-	if payment.UserID == expectedResult.UserID {
+	if payment.UserID != expectedResult.UserID {
 		t.Logf("\t%s\tUserID should be equal to expected UserID. Expected \"%d\" got \"%d\"",
 			fail, expectedResult.UserID, payment.UserID)
 		t.Fail()

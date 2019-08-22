@@ -8,11 +8,13 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
+
+	// Necessary for migratiing
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	// Necessary for migratiing
 	_ "github.com/golang-migrate/migrate/v4/source/github"
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 

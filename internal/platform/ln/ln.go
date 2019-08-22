@@ -69,7 +69,8 @@ func configDefaultLndPort() string {
 var (
 	// DefaultNetwork is the default network
 	DefaultNetwork = configDefaultLndNet()
-	DefaultPort    = configDefaultLndPort()
+	// DefaultPort is the default lnd port (10009)
+	DefaultPort = configDefaultLndPort()
 	// DefaultRPCHostPort is the default host port of lnd
 	DefaultRPCHostPort = "localhost:" + DefaultPort
 	// DefaultTLSCertFileName is the default filename of the tls certificate
@@ -79,7 +80,8 @@ var (
 var (
 	// DefaultLndDir is the default location of .lnd
 	DefaultLndDir = configDefaultLndDir()
-	LndNetwork    = configDefaultLndNet()
+	// LndNetwork is the default LND network (testnet)
+	LndNetwork = configDefaultLndNet()
 	// DefaultTLSCertPath is the default location of tls.cert
 	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
 	// DefaultMacaroonPath is the default dir of x.macaroon

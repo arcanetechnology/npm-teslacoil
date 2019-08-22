@@ -23,10 +23,6 @@ var (
 	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
 		os.Getenv("GOPATH"))
 	defaultLogFilename = "lpp.log"
-	// Path tho migrations
-	migrationsPath = path.Join(
-		os.Getenv("GOPATH"),
-		"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
 )
 
 func askForConfirmation() bool {
@@ -93,7 +89,7 @@ var (
 						return err
 					}
 					return db.MigrateDown(
-						path.Join("file://", migrationsPath), database, steps)
+						path.Join("file://", db.MigrationsPath), database, steps)
 				},
 			},
 			{
@@ -108,7 +104,7 @@ var (
 					defer database.Close()
 
 					return db.MigrateUp(
-						path.Join("file://", migrationsPath), database)
+						path.Join("file://", db.MigrationsPath), database)
 				},
 			}, {
 				Name:    "status",
@@ -122,7 +118,7 @@ var (
 					defer database.Close()
 
 					return db.MigrationStatus(
-						path.Join("file://", migrationsPath), database)
+						path.Join("file://", db.MigrationsPath), database)
 				},
 			}, {
 				Name:    "newmigration",
@@ -134,7 +130,7 @@ var (
 					if migrationText == "" {
 					}
 
-					return db.CreateMigration(migrationsPath, migrationText)
+					return db.CreateMigration(db.MigrationsPath, migrationText)
 				},
 			}, {
 				Name:    "drop",
@@ -151,7 +147,7 @@ var (
 						"Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
 						return db.DropDatabase(
-							path.Join("file://", migrationsPath), database)
+							path.Join("file://", db.MigrationsPath), database)
 					}
 
 					return nil

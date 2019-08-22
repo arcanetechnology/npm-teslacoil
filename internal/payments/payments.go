@@ -146,8 +146,10 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	invoice, err := ln.AddInvoice(
 		lncli,
 		lnrpc.Invoice{
-			Memo:  invoiceData.Memo,
-			Value: int64(invoiceData.AmountSat),
+			Memo:      invoiceData.Memo,
+			Value:     int64(invoiceData.AmountSat),
+			RPreimage: []byte("preimage"),
+			RHash:     []byte("someHash"),
 		})
 	if err != nil {
 		// log.Error(err)
@@ -468,6 +470,9 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 // insertPayment persists a payment to the database
 func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 	var createOffchainTXQuery string
+
+	if payment.Preimage != nil && payment.HashedPreimage != "" {
+	}
 
 	createOffchainTXQuery = `INSERT INTO 
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,

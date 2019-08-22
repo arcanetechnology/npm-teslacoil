@@ -5,14 +5,32 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"runtime"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 )
 
-var migrationsPath = path.Join("file://",
-	os.Getenv("GOPATH"),
-	"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
+// MigrationsPath is the migration path
+var MigrationsPath string
+
+func init() {
+	// This is abstracted into a function because calling it directly inside
+	// creates the wrong path
+	setMigrationsPath()
+}
+
+func setMigrationsPath() {
+	_, filename, _, ok := runtime.Caller(1)
+	if ok == false {
+		panic(errors.New("could not find path to migrations files"))
+	}
+	splitPath := strings.SplitAfter(filename, "teslacoil/")
+	basePath := splitPath[0]
+
+	MigrationsPath = path.Join("file://", path.Dir(basePath), "/internal/platform/db/migrations")
+}
 
 // OpenDatabase fetched the database credentials from environment variables
 // and stars creates the gorm database object
@@ -67,7 +85,7 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 		User: url.UserPassword(
 			os.Getenv("DATABASE_TEST_USER"),
 			os.Getenv("DATABASE_TEST_PASSWORD")),
-		Host:     "localhost",
+		Host:     os.Getenv("DATABASE_TEST_HOST"),
 		Path:     os.Getenv("DATABASE_TEST_NAME"),
 		RawQuery: q.Encode(),
 	}
@@ -87,7 +105,7 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 // CreateTestDatabase applies migrations to the DB. If already applied, drops
 // the db first, then applies migrations
 func CreateTestDatabase(testDB *sqlx.DB) error {
-	err := MigrateUp(migrationsPath, testDB)
+	err := MigrateUp(MigrationsPath, testDB)
 
 	if err != nil {
 		if err.Error() == "no change" {
@@ -106,7 +124,7 @@ func CreateTestDatabase(testDB *sqlx.DB) error {
 
 // TeardownTestDB drops the database, removing all data and schemas
 func TeardownTestDB(testDB *sqlx.DB) error {
-	err := DropDatabase(migrationsPath, testDB)
+	err := DropDatabase(MigrationsPath, testDB)
 	if err != nil {
 		return errors.Wrapf(err,
 			"teardownTestDB cannot connect to database %s with user %s",
