@@ -20,9 +20,9 @@ type GetInvoiceResponse struct {
 	PaymentRequest string             `json:"payment_request"`
 	Preimage       string             `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    string             `json:"callback_url"`
+	CallbackURL    *string            `json:"callback_url"`
 	Status         payments.Status    `json:"status"`
-	Description    string             `json:"description"`
+	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
 	AmountSat      int64              `json:"amount_sat"`
 	AmountMSat     int64              `json:"amount_msat"`
@@ -35,9 +35,9 @@ type CreateInvoiceResponse struct {
 	UserID         uint            `json:"user_id"`
 	PaymentRequest string          `json:"payment_request"`
 	HashedPreimage string          `json:"hashed_preimage"`
-	CallbackURL    string          `json:"callback_url"`
+	CallbackURL    *string         `json:"callback_url"`
 	Status         payments.Status `json:"status"`
-	Description    string          `json:"description"`
+	Memo           string          `json:"memo"`
 	AmountSat      int64           `json:"amount_sat"`
 	AmountMSat     int64           `json:"amount_msat"`
 }
@@ -49,9 +49,9 @@ type PayInvoiceResponse struct {
 	PaymentRequest string             `json:"payment_request"`
 	Preimage       string             `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    string             `json:"callback_url"`
+	CallbackURL    *string            `json:"callback_url"`
 	Status         payments.Status    `json:"status"`
-	Description    string             `json:"description"`
+	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
 	AmountSat      int64              `json:"amount_sat"`
 	AmountMSat     int64              `json:"amount_msat"`
@@ -59,10 +59,6 @@ type PayInvoiceResponse struct {
 }
 
 // GetAllInvoices is a GET request that returns all the users in the database
-// TODO: An attack exists where a deposit(inbound invoice) is not paid, but then
-// the user hits this endpoint and leanrs the preimage. THUS, we need to create
-// a interface for the response, to maintain complete control. deletedat,
-// createdat, updatedat is not something the user needs either
 func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
@@ -89,7 +85,7 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
-		t, err := payments.GetByID(r.db, id, claim.UserID)
+		t, err := payments.GetByID(r.db, uint(id), claim.UserID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
@@ -104,9 +100,9 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			PaymentRequest: t.PaymentRequest,
 			Preimage:       *t.Preimage,
 			Hash:           t.HashedPreimage,
-			CallbackURL:    *t.CallbackURL,
+			CallbackURL:    t.CallbackURL,
 			Status:         t.Status,
-			Description:    t.Description,
+			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
 			SettledAt:      t.SettledAt.String(),
@@ -135,8 +131,10 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			claims.UserID,
 			newInvoice)
 
-		t, err := payments.CreateInvoice(r.db, *r.lncli, newInvoice, claims.UserID)
+		t, err := payments.CreateInvoice(
+			r.db, *r.lncli, newInvoice, claims.UserID)
 		if err != nil {
+			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support "})
 			return
@@ -154,9 +152,9 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
 			HashedPreimage: t.HashedPreimage,
-			CallbackURL:    *t.CallbackURL,
+			CallbackURL:    t.CallbackURL,
 			Status:         t.Status,
-			Description:    t.Description,
+			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
 		})
@@ -164,7 +162,6 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 }
 
 // PayInvoice pays a valid invoice on behalf of a user
-// TODO: This should extract the userID from the jwt
 func PayInvoice(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newPayment payments.PayInvoiceData
@@ -200,7 +197,7 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 			Preimage:       *t.Payment.Preimage,
 			Hash:           t.Payment.HashedPreimage,
 			Status:         t.Payment.Status,
-			Description:    t.Payment.Description,
+			Memo:           t.Payment.Memo,
 			AmountSat:      t.Payment.AmountSat,
 			AmountMSat:     t.Payment.AmountMSat,
 			SettledAt:      t.Payment.SettledAt.String(),

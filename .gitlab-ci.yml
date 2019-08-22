@@ -1,12 +1,30 @@
 image: golang:1.12.3
 
+services:
+  - postgres:latest
+
+variables:
+  POSTGRES_DB: $DATABASE_TEST_NAME
+  POSTGRES_USER: $DATABASE_TEST_USER
+  POSTGRES_PASSWORD: $DATABASE_TEST_PASSWORD
+
 stages:
   - test
+  - lint
 
 test job:
   only:
   - merge_requests
   stage: test
   script: GO111MODULE=on
-  script: go test ./...
+  script: go test ./... -v
+
+
+lint job:
+  only:
+  - merge_requests
+  stage: lint
+  script: GO111MODULE=on
+  script: go get golang.org/x/lint/golint && golint -set_exit_status ./...
+
 

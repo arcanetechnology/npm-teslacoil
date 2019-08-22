@@ -43,7 +43,9 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 	g.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"http://127.0.0.1:3000"},
 		AllowMethods: []string{"PUT", "GET", "POST", "PATCH", "DELETE"},
-		AllowHeaders: []string{"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer", "Authorization"},
+		AllowHeaders: []string{
+			"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
+			"Authorization"},
 	}))
 
 	lncli, err := ln.NewLNDClient(config.LightningConfig)
@@ -61,7 +63,7 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 	invoiceUpdatesCh := make(chan lnrpc.Invoice)
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
-	go payments.UpdateInvoiceStatus(invoiceUpdatesCh, d)
+	go payments.InvoiceStatusListener(invoiceUpdatesCh, d)
 
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login

@@ -53,7 +53,8 @@ func All(d *sqlx.DB) ([]User, error) {
 	return queryResult, nil
 }
 
-// GetByEmail is a GET request that returns users that match the one specified in the body
+// GetByEmail is a GET request that returns users that match the one specified
+// in the body
 func GetByEmail(d *sqlx.DB, email string) (*UserResponse, error) {
 	userResult := UserResponse{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
@@ -70,16 +71,20 @@ func GetByEmail(d *sqlx.DB, email string) (*UserResponse, error) {
 
 // GetByCredentials retrieves a user from the database using the email and
 // the salted/hashed password
-func GetByCredentials(d *sqlx.DB, email string, password string) (*UserResponse, error) {
+func GetByCredentials(d *sqlx.DB, email string, password string) (
+	*UserResponse, error) {
+
 	userResult := UserResponse{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, hashed_password, updated_at
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		return nil, errors.Wrapf(err, "GetByCredentials(db, %s, **password_not_logged**)", email)
+		return nil, errors.Wrapf(
+			err, "GetByCredentials(db, %s, **password_not_logged**)", email)
 	}
 
-	err := bcrypt.CompareHashAndPassword(userResult.HashedPassword, []byte(password))
+	err := bcrypt.CompareHashAndPassword(
+		userResult.HashedPassword, []byte(password))
 	if err != nil {
 		return nil, errors.Wrap(err, "password authentication failed")
 	}
@@ -100,27 +105,12 @@ func Create(d *sqlx.DB, email, password string) (*UserResponse, error) {
 		HashedPassword: hashedPassword,
 	}
 
-	userCreateQuery := `INSERT INTO users 
-		(email, balance, hashed_password)
-		VALUES (:email, 0, :hashed_password)
-		RETURNING id, email, balance, updated_at`
-
-	rows, err := d.NamedQuery(userCreateQuery, user)
+	userResp, err := insertUser(d, user)
 	if err != nil {
-		return nil, errors.Wrapf(err, "users.Create(db, %s, %s)", email, string(hashedPassword))
-	}
-	defer rows.Close()
-
-	uResp := UserResponse{}
-	if rows.Next() {
-		if err = rows.Scan(&uResp.ID, &uResp.Email, &uResp.Balance, &uResp.UpdatedAt); err != nil {
-			return nil, errors.Wrap(err, "users.Create- rows.Scan() failed")
-		}
+		return nil, err
 	}
 
-	// log.Tracef("%s inserted %v", userCreateQuery, uResp)
-
-	return &uResp, nil
+	return userResp, nil
 }
 
 func hashAndSalt(pwd string) ([]byte, error) {
@@ -140,4 +130,31 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	// log.Tracef("generated password %s", string(hash))
 
 	return hash, nil
+}
+
+func insertUser(d *sqlx.DB, user User) (*UserResponse, error) {
+	userCreateQuery := `INSERT INTO users 
+		(email, balance, hashed_password)
+		VALUES (:email, 0, :hashed_password)
+		RETURNING id, email, balance, updated_at`
+
+	rows, err := d.NamedQuery(userCreateQuery, user)
+	if err != nil {
+		return nil, errors.Wrapf(
+			err, "users.Create(db, %s, %s)",
+			user.Email, string(user.HashedPassword))
+	}
+	defer rows.Close()
+
+	userResp := UserResponse{}
+	if rows.Next() {
+		if err = rows.Scan(&userResp.ID,
+			&userResp.Email,
+			&userResp.Balance,
+			&userResp.UpdatedAt); err != nil {
+			return nil, errors.Wrap(err, "users.Create- rows.Scan() failed")
+		}
+	}
+
+	return &userResp, nil
 }

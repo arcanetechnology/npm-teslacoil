@@ -42,7 +42,7 @@ type CreateUserResponse struct {
 type LoginResponse struct {
 	AccessToken string `json:"access_token"`
 	Email       string `json:"email"`
-	ID          uint   `json:"id"`
+	UserID      uint   `json:"user_id"`
 	Balance     uint   `json:"balance"`
 }
 
@@ -166,6 +166,7 @@ func Login(r *RestServer) gin.HandlerFunc {
 		}
 
 		res := LoginResponse{
+			UserID:      user.ID,
 			Email:       user.Email,
 			AccessToken: tokenString,
 		}

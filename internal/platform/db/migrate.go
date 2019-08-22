@@ -8,11 +8,13 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
+
+	// Necessary for migratiing
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	// Necessary for migratiing
 	_ "github.com/golang-migrate/migrate/v4/source/github"
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 
@@ -93,12 +95,16 @@ func newMigrationFile(filePath string) error {
 func CreateMigration(migrationsPath string, migrationText string) error {
 	migrationTime := time.Now().UTC().Format("20060102150405")
 
-	fileNameUp := path.Join(migrationsPath, migrationTime+"_"+strcase.ToSnake(migrationText)+".up.pgsql")
+	fileNameUp := path.Join(
+		migrationsPath,
+		migrationTime+"_"+strcase.ToSnake(migrationText)+".up.pgsql")
 	if err := newMigrationFile(fileNameUp); err != nil {
 		return err
 	}
 
-	fileNameDown := path.Join(migrationsPath, migrationTime+"_"+strcase.ToSnake(migrationText)+".down.pgsql")
+	fileNameDown := path.Join(
+		migrationsPath,
+		migrationTime+"_"+strcase.ToSnake(migrationText)+".down.pgsql")
 	if err := newMigrationFile(fileNameDown); err != nil {
 		return err
 	}

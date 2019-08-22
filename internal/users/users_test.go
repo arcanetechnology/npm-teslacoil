@@ -1,45 +1,23 @@
 package users
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
-	"path"
-	"runtime"
 	"testing"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 )
 
-func createTestDatabase(testDB *sqlx.DB) error {
-	_, filename, _, ok := runtime.Caller(0)
-	if ok == false {
-		return errors.New("could not find path to migrations files")
-	}
+const (
+	succeed = "\u2713"
+	fail    = "\u2717"
+)
 
-	migrationsPath := path.Join("file://", path.Dir(filename), "../platform/migrations")
-	err := db.DropDatabase(migrationsPath, testDB)
-	if err != nil {
-		return errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
-		)
-	}
-	err = db.MigrateUp(migrationsPath, testDB)
-	if err != nil {
-		return errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
-		)
-	}
-	return nil
-}
-
-var testDB *sqlx.DB
+var (
+	samplePreimage = hex.EncodeToString([]byte("SomePreimage"))
+)
 
 func TestMain(m *testing.M) {
 	println("Configuring user test database")
@@ -50,94 +28,168 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	err = createTestDatabase(testDB)
-	if err != nil {
-		fmt.Printf("%+v\n", err)
+	if err = db.CreateTestDatabase(testDB); err != nil {
+		fmt.Println(err)
 		return
 	}
 
 	flag.Parse()
 	result := m.Run()
+
+	db.TeardownTestDB(testDB)
 	os.Exit(result)
 }
 
 func TestCanCreateUser(t *testing.T) {
-
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
-	user, err := Create(testDB,
-		"test_user@example.com",
-		"password",
-	)
-	if user == nil {
-		t.Log("User result was empty")
-	}
-	if err != nil {
-		t.Logf("%+v\n", err)
-	}
-	if err != nil || user == nil {
-		t.FailNow()
+
+	const email = "test_userCanCreate@example.com"
+	tests := []struct {
+		email string
+		out   UserResponse
+	}{
+		{
+			email,
+			UserResponse{
+				Email:   email,
+				Balance: 0,
+			},
+		},
 	}
 
-	expectedResult := UserResponse{
-		Email:   "test_user@example.com",
-		Balance: 0,
-		ID:      1,
-	}
-	if user.Email != expectedResult.Email {
-		t.Fatalf(
-			"Email incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Email,
-			user.Email,
-		)
-	}
-	if user.Balance != expectedResult.Balance {
-		t.Fatalf(
-			"Incorrect Balance. Expected: %d, got: %d",
-			expectedResult.Balance,
-			user.Balance,
-		)
+	t.Log("testing can create user")
+	{
+		for i, tt := range tests {
+			t.Logf("\ttest %d\twhen creating user with email %s", i, tt.email)
+
+			{
+				user, err := Create(testDB,
+					email,
+					"password",
+				)
+				if user == nil {
+					t.Fatalf(
+						"\t%s\tshould be able to Create user. User response was nil",
+						fail)
+				}
+				if err != nil {
+					t.Fatalf(
+						"\t%s\tshould be able to Create user. Error: %v",
+						fail, err)
+				}
+				t.Logf("\t%s\tshould be able to Create user", succeed)
+
+				{
+					expectedResult := tt.out
+
+					if user.Email != expectedResult.Email {
+						t.Logf(
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"",
+							fail,
+							expectedResult.Email,
+							user.Email,
+						)
+						t.Fail()
+					}
+					if user.Balance != expectedResult.Balance {
+						t.Logf(
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d",
+							fail,
+							expectedResult.Balance,
+							user.Balance,
+						)
+						t.Fail()
+					}
+					if !t.Failed() {
+						t.Logf("\t%s\tall values should be equal to expected values", succeed)
+					}
+				}
+			}
+		}
 	}
 }
 
 func TestCanGetUserByEmail(t *testing.T) {
-
 	testDB, err := db.OpenTestDatabase()
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
 
-	user, err := GetByEmail(testDB, "test_user@example.com")
-	if user == nil {
-		t.Log("User result was empty")
-	}
-	if err != nil {
-		t.Logf("%+v\n", err)
-	}
-	if err != nil || user == nil {
-		t.FailNow()
+	const email = "test_userGetByEmail@example.com"
+	tests := []struct {
+		user User
+		out  UserResponse
+	}{
+		{
+			User{
+				Email:          email,
+				HashedPassword: []byte("SomePassword"),
+			},
+			UserResponse{
+				Email:   email,
+				Balance: 0,
+			},
+		},
 	}
 
-	expectedResult := UserResponse{
-		Email:   "test_user@example.com",
-		Balance: 0,
-		ID:      1,
-	}
-	if user.Email != expectedResult.Email {
-		t.Fatalf(
-			"Email incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Email,
-			user.Email,
-		)
-	}
-	if user.Balance != expectedResult.Balance {
-		t.Fatalf(
-			"Incorrect Balance. Expected: %d, got: %d",
-			expectedResult.Balance,
-			user.Balance,
-		)
+	t.Log("testing can get user by email")
+	{
+		for i, tt := range tests {
+			t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
+
+			{
+				user, err := insertUser(testDB, User{
+					Email:          tt.user.Email,
+					HashedPassword: tt.user.HashedPassword,
+				})
+				if user == nil {
+					t.Log("User result was empty")
+				}
+				if err != nil {
+					t.Logf("%+v\n", err)
+				}
+
+				user, err = GetByEmail(testDB, email)
+				if user == nil {
+					t.Fatalf(
+						"\t%s\tshould be able to get user. User response was nil",
+						fail)
+				}
+				if err != nil {
+					t.Fatalf("\t%s\tshould be able to get user. Error: %v", fail, err)
+				}
+				t.Logf("\t%s\tshould be able to get user", succeed)
+
+				{
+					expectedResult := tt.out
+
+					if user.Email != expectedResult.Email {
+						t.Logf(
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"",
+							fail,
+							expectedResult.Email,
+							user.Email,
+						)
+						t.Fail()
+					}
+					if user.Balance != expectedResult.Balance {
+						t.Logf(
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d",
+							fail,
+							expectedResult.Balance,
+							user.Balance,
+						)
+						t.Fail()
+					}
+					if !t.Failed() {
+						t.Logf("\t%s\tall values should be equal to expected values", succeed)
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -148,77 +200,72 @@ func TestCanGetUserByCredentials(t *testing.T) {
 		t.Fatalf("%+v\n", err)
 	}
 
-	// Get the user and fail if error or no user was returned
-	user, err := GetByCredentials(testDB, "test_user@example.com", "password")
-	if user == nil {
-		t.Log("User result was empty")
-	}
-	if err != nil {
-		t.Logf("%+v\n", err)
-	}
-	if err != nil || user == nil {
-		t.FailNow()
+	const email = "test_userByCredentials@example.com"
+	tests := []struct {
+		email    string
+		password string
+		out      UserResponse
+	}{
+		{
+			email,
+			"password",
+			UserResponse{
+				Email:   email,
+				Balance: 0,
+			},
+		},
 	}
 
-	// Check if the GetByCredentials returned the expected user object
-	expectedResult := UserResponse{
-		Email:   "test_user@example.com",
-		Balance: 0,
-		ID:      1,
-	}
-	if user.Email != expectedResult.Email {
-		t.Fatalf(
-			"Email incorrect. Expected \"%s\" got \"%s\"",
-			expectedResult.Email,
-			user.Email,
-		)
-	}
-	if user.Balance != expectedResult.Balance {
-		t.Fatalf(
-			"Incorrect Balance. Expected: %d, got: %d",
-			expectedResult.Balance,
-			user.Balance,
-		)
+	t.Log("testing can get user by email")
+	{
+		for i, tt := range tests {
+			t.Logf("\ttest %d\twhen getting user with email %s", i, tt.email)
+
+			{
+				user, err := Create(testDB, tt.email, tt.password)
+				if user == nil {
+					t.Fatalf("\t%s\tshould be able to Create user. User response was nil", fail)
+				}
+				if err != nil {
+					t.Fatalf("\t%s\tshould be able to Create user. Error: %v", fail, err)
+				}
+				t.Logf("\t%s\tshould be able to Create user", succeed)
+
+				user, err = GetByCredentials(testDB, tt.email, tt.password)
+				if user == nil {
+					t.Fatalf("\t%s\tshould be able to get user by credentials. User response was nil", fail)
+				}
+				if err != nil {
+					t.Fatalf("\t%s\tshould be able to get user by credentials. Error: %v", fail, err)
+				}
+				t.Logf("\t%s\tshould be able to get user by credentials", succeed)
+
+				{
+					expectedResult := tt.out
+
+					if user.Email != expectedResult.Email {
+						t.Logf(
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"",
+							fail,
+							expectedResult.Email,
+							user.Email,
+						)
+						t.Fail()
+					}
+					if user.Balance != expectedResult.Balance {
+						t.Logf(
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d",
+							fail,
+							expectedResult.Balance,
+							user.Balance,
+						)
+						t.Fail()
+					}
+					if !t.Failed() {
+						t.Logf("\t%s\tall values should be equal to expected values", succeed)
+					}
+				}
+			}
+		}
 	}
 }
-
-// func TestCanUpdateUserBalance(t *testing.T) {
-
-// 	testDB, err := db.OpenTestDatabase()
-// 	if err != nil {
-// 		t.Fatalf("%+v\n", err)
-// 	}
-
-// 	// Update user
-// 	user, err := UpdateUserBalance(testDB, 1, 1000)
-// 	if user == nil {
-// 		t.Log("User result was empty")
-// 	}
-// 	if err != nil {
-// 		t.Logf("%+v\n", err)
-// 	}
-// 	if err != nil || user == nil {
-// 		t.FailNow()
-// 	}
-
-// 	// Check that user balance was updated correctly.
-// 	expectedResult := UserResponse{
-// 		Email:   "test_user@example.com",
-// 		Balance: 1000,
-// 		ID:      1,
-// 	}
-// 	if user.Email != expectedResult.Email {
-// 		t.Fatalf(
-// 			"Email incorrect. Expected \"%s\" got \"%s\"",
-// 			expectedResult.Email,
-// 			user.Email,
-// 		)
-// 	}
-// 	if user.Balance != expectedResult.Balance {
-// 		t.Fatalf(
-// 			"Incorrect Balance. Expected: %d, got: %d",
-// 			expectedResult.Balance,
-// 			user.Balance,
-// 		)
-// 	}
-// }
