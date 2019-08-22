@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	succeed = "\u2713"
-	fail    = "\u2717"
+	succeed = "\u001b[32m\u2713"
+	fail    = "\u001b[31m\u2717"
+	reset   = "\u001b[0m"
 )
 
 var (
@@ -72,39 +73,41 @@ func TestCanCreateUser(t *testing.T) {
 				)
 				if user == nil {
 					t.Fatalf(
-						"\t%s\tshould be able to Create user. User response was nil",
-						fail)
+						"\t%s\tshould be able to Create user. User response was nil%s",
+						fail, reset)
 				}
 				if err != nil {
 					t.Fatalf(
-						"\t%s\tshould be able to Create user. Error: %v",
-						fail, err)
+						"\t%s\tshould be able to Create user. Error: %v%s",
+						fail, err, reset)
 				}
-				t.Logf("\t%s\tshould be able to Create user", succeed)
+				t.Logf("\t%s\tshould be able to Create user%s", succeed, reset)
 
 				{
 					expectedResult := tt.out
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
-							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"",
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
 							fail,
 							expectedResult.Email,
 							user.Email,
+							reset,
 						)
 						t.Fail()
 					}
 					if user.Balance != expectedResult.Balance {
 						t.Logf(
-							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d",
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d%s",
 							fail,
 							expectedResult.Balance,
 							user.Balance,
+							reset,
 						)
 						t.Fail()
 					}
 					if !t.Failed() {
-						t.Logf("\t%s\tall values should be equal to expected values", succeed)
+						t.Logf("\t%s\tall values should be equal to expected values%s", succeed, reset)
 					}
 				}
 			}
@@ -155,37 +158,39 @@ func TestCanGetUserByEmail(t *testing.T) {
 				user, err = GetByEmail(testDB, email)
 				if user == nil {
 					t.Fatalf(
-						"\t%s\tshould be able to get user. User response was nil",
-						fail)
+						"\t%s\tshould be able to get user. User response was nil%s",
+						fail, reset)
 				}
 				if err != nil {
-					t.Fatalf("\t%s\tshould be able to get user. Error: %v", fail, err)
+					t.Fatalf("\t%s\tshould be able to get user. Error: %v%s", fail, err, reset)
 				}
-				t.Logf("\t%s\tshould be able to get user", succeed)
+				t.Logf("\t%s\tshould be able to get user%s", succeed, reset)
 
 				{
 					expectedResult := tt.out
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
-							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"",
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
 							fail,
 							expectedResult.Email,
 							user.Email,
+							reset,
 						)
 						t.Fail()
 					}
 					if user.Balance != expectedResult.Balance {
 						t.Logf(
-							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d",
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d%s",
 							fail,
 							expectedResult.Balance,
 							user.Balance,
+							reset,
 						)
 						t.Fail()
 					}
 					if !t.Failed() {
-						t.Logf("\t%s\tall values should be equal to expected values", succeed)
+						t.Logf("\t%s\tall values should be equal to expected values%s", succeed, reset)
 					}
 				}
 			}
@@ -224,45 +229,47 @@ func TestCanGetUserByCredentials(t *testing.T) {
 			{
 				user, err := Create(testDB, tt.email, tt.password)
 				if user == nil {
-					t.Fatalf("\t%s\tshould be able to Create user. User response was nil", fail)
+					t.Fatalf("\t%s\tshould be able to Create user. User response was nil%s", fail, reset)
 				}
 				if err != nil {
-					t.Fatalf("\t%s\tshould be able to Create user. Error: %v", fail, err)
+					t.Fatalf("\t%s\tshould be able to Create user. Error: %v%s", fail, err, reset)
 				}
-				t.Logf("\t%s\tshould be able to Create user", succeed)
+				t.Logf("\t%s\tshould be able to Create user%s", succeed, reset)
 
 				user, err = GetByCredentials(testDB, tt.email, tt.password)
 				if user == nil {
-					t.Fatalf("\t%s\tshould be able to get user by credentials. User response was nil", fail)
+					t.Fatalf("\t%s\tshould be able to get user by credentials. User response was nil%s", fail, reset)
 				}
 				if err != nil {
-					t.Fatalf("\t%s\tshould be able to get user by credentials. Error: %v", fail, err)
+					t.Fatalf("\t%s\tshould be able to get user by credentials. Error: %v%s", fail, err, reset)
 				}
-				t.Logf("\t%s\tshould be able to get user by credentials", succeed)
+				t.Logf("\t%s\tshould be able to get user by credentials%s", succeed, reset)
 
 				{
 					expectedResult := tt.out
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
-							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"",
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
 							fail,
 							expectedResult.Email,
 							user.Email,
+							reset,
 						)
 						t.Fail()
 					}
 					if user.Balance != expectedResult.Balance {
 						t.Logf(
-							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d",
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d%s",
 							fail,
 							expectedResult.Balance,
 							user.Balance,
+							reset,
 						)
 						t.Fail()
 					}
 					if !t.Failed() {
-						t.Logf("\t%s\tall values should be equal to expected values", succeed)
+						t.Logf("\t%s\tall values should be equal to expected values%s", succeed, reset)
 					}
 				}
 			}

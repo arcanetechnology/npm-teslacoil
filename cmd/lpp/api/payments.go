@@ -61,9 +61,17 @@ type PayInvoiceResponse struct {
 // GetAllInvoices is a GET request that returns all the users in the database
 func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var filter payments.GetAllInvoicesData
+
+		if err := c.ShouldBindJSON(&filter); err != nil {
+			log.Error(err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
+			return
+		}
+
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 
-		t, err := payments.GetAll(r.db, claim.UserID)
+		t, err := payments.GetAll(r.db, claim.UserID, filter)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
