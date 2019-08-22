@@ -67,23 +67,18 @@ func GetAllUsers(r *RestServer) gin.HandlerFunc {
 
 // GetUser is a GET request that returns users that match the one specified in the body
 // This endpoint is no longer needed, as Login takes care of the logic
-/*
 func GetUser(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Remove ID and add jwt later
-		var req GetUserRequest
-
-		if err := c.ShouldBindJSON(req); err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{
-				"error": "request should only contain email {\"email\": \"email@domain.com\"}"})
-			return
-		}
-
-		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
+		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusNotFound, gin.H{"error": "User not found"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.Error(err)
+			c.JSONP(http.StatusInternalServerError, gin.H{"error": "internal server error, please try again or contact us"})
 		}
 
 		res := GetUserResponse{
@@ -98,7 +93,6 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 		c.JSONP(200, res)
 	}
 }
-*/
 
 // CreateUser is a POST request and inserts all the users in the body into the database
 func CreateUser(r *RestServer) gin.HandlerFunc {
