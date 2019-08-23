@@ -99,8 +99,6 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateUserRequest
 
-		log.Debugf("req: %v", req)
-
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusBadRequest, gin.H{
