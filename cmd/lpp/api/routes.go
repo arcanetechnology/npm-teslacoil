@@ -93,6 +93,7 @@ func RegisterUserRoutes(r *RestServer) {
 	users := r.Router.Group("")
 	users.Use(authenticateJWT)
 	users.GET("/users", GetAllUsers(r))
+	users.GET("/user", GetUser(r))
 	// users.GET("/users/:id", GetUser(r))
 }
 
@@ -116,7 +117,7 @@ func authenticateJWT(c *gin.Context) {
 
 	_, _, err := parseBearerJWT(tokenString)
 	if err != nil {
-		c.JSONP(http.StatusForbidden, gin.H{"error": err.Error()})
+		c.JSONP(http.StatusForbidden, gin.H{"error": "bad authorization"})
 		c.Abort() // cancels the following request
 		return
 	}

@@ -53,6 +53,20 @@ func All(d *sqlx.DB) ([]User, error) {
 	return queryResult, nil
 }
 
+// GetByID is a GET request that returns users that match the one specified
+// in the body
+func GetByID(d *sqlx.DB, id uint) (*UserResponse, error) {
+	userResult := UserResponse{}
+	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
+
+	if err := d.Get(&userResult, uQuery, id); err != nil {
+		return nil, errors.Wrapf(err, "GetByID(db, %d)", id)
+	}
+
+	return &userResult, nil
+}
+
 // GetByEmail is a GET request that returns users that match the one specified
 // in the body
 func GetByEmail(d *sqlx.DB, email string) (*UserResponse, error) {
@@ -63,8 +77,6 @@ func GetByEmail(d *sqlx.DB, email string) (*UserResponse, error) {
 	if err := d.Get(&userResult, uQuery, email); err != nil {
 		return nil, errors.Wrapf(err, "GetByEmail(db, %s)", email)
 	}
-
-	// log.Tracef("%s returned %v", uQuery, userResult)
 
 	return &userResult, nil
 }

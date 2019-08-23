@@ -276,3 +276,86 @@ func TestCanGetUserByCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestCanGetUserByID(t *testing.T) {
+	testDB, err := db.OpenTestDatabase()
+	if err != nil {
+		t.Fatalf("%+v\n", err)
+	}
+
+	const email = "test_userGetByID@example.com"
+	tests := []struct {
+		user User
+		out  UserResponse
+	}{
+		{
+			User{
+				Email:          email,
+				HashedPassword: []byte("SomePassword"),
+			},
+			UserResponse{
+				Email:   email,
+				Balance: 0,
+			},
+		},
+	}
+
+	t.Log("testing can get user by ID")
+	{
+		for i, tt := range tests {
+			t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
+
+			{
+				u, err := insertUser(testDB, User{
+					Email:          tt.user.Email,
+					HashedPassword: tt.user.HashedPassword,
+				})
+				if u == nil {
+					t.Log("User result was empty")
+				}
+				if err != nil {
+					t.Logf("%+v\n", err)
+				}
+
+				user, err := GetByID(testDB, u.ID)
+				if user == nil {
+					t.Fatalf(
+						"\t%s\tshould be able to get user. User response was nil%s",
+						fail, reset)
+				}
+				if err != nil {
+					t.Fatalf("\t%s\tshould be able to get user. Error: %v%s", fail, err, reset)
+				}
+				t.Logf("\t%s\tshould be able to get user%s", succeed, reset)
+
+				{
+					expectedResult := tt.out
+
+					if user.Email != expectedResult.Email {
+						t.Logf(
+							"\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
+							fail,
+							expectedResult.Email,
+							user.Email,
+							reset,
+						)
+						t.Fail()
+					}
+					if user.Balance != expectedResult.Balance {
+						t.Logf(
+							"\t%s\tBalance should be equal to expected Balance. Expected: %d, got: %d%s",
+							fail,
+							expectedResult.Balance,
+							user.Balance,
+							reset,
+						)
+						t.Fail()
+					}
+					if !t.Failed() {
+						t.Logf("\t%s\tall values should be equal to expected values%s", succeed, reset)
+					}
+				}
+			}
+		}
+	}
+}
