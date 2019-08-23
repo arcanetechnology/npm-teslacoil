@@ -58,6 +58,29 @@ type PayInvoiceResponse struct {
 	SettledAt      string             `json:"settled_at"`
 }
 
+func convertPaymentToGetInvoiceResponse(payments []payments.Payment) []GetInvoiceResponse {
+	var invResponse []GetInvoiceResponse
+
+	for _, payment := range payments {
+		invResponse = append(invResponse, GetInvoiceResponse{
+			ID:             payment.ID,
+			UserID:         payment.UserID,
+			PaymentRequest: payment.PaymentRequest,
+			Preimage:       *payment.Preimage,
+			Hash:           payment.HashedPreimage,
+			CallbackURL:    payment.CallbackURL,
+			Status:         payment.Status,
+			Memo:           payment.Memo,
+			Direction:      payment.Direction,
+			AmountSat:      payment.AmountSat,
+			AmountMSat:     payment.AmountMSat,
+			SettledAt:      payment.SettledAt.String(),
+		})
+	}
+
+	return invResponse
+}
+
 // GetAllInvoices is a GET request that returns all the users in the database
 func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -78,7 +101,7 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(200, convertPaymentToGetInvoiceResponse(t))
 	}
 }
 
