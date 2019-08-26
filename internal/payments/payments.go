@@ -37,18 +37,18 @@ const (
 type CreateInvoiceData struct {
 	Memo        string `json:"memo"`
 	Description string `json:"description"`
-	AmountSat   int64  `json:"amount_sat"`
+	AmountSat   int64  `json:"amountSat"`
 }
 
 // GetAllInvoicesData is the body for the GetAll endpoint
 type GetAllInvoicesData struct {
-	SkipFirst int `json:"skip_first"`
+	SkipFirst int `json:"skipFirst"`
 	Count     int `json:"count"`
 }
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
 type PayInvoiceData struct {
-	PaymentRequest string `json:"payment_request"`
+	PaymentRequest string `json:"paymentRequest"`
 	Description    string `json:"description"`
 	Memo           string `json:"memo"`
 }
@@ -156,10 +156,8 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	invoice, err := ln.AddInvoice(
 		lncli,
 		lnrpc.Invoice{
-			Memo:      invoiceData.Memo,
-			Value:     int64(invoiceData.AmountSat),
-			RPreimage: []byte("preimage"),
-			RHash:     []byte("someHash"),
+			Memo:  invoiceData.Memo,
+			Value: int64(invoiceData.AmountSat),
 		})
 	if err != nil {
 		// log.Error(err)

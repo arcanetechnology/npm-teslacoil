@@ -187,7 +187,7 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token
 func createJWTToken(email string, id uint) (string, error) {
-	expiresAt := time.Now().Add(5 * time.Minute).Unix()
+	expiresAt := time.Now().Add(5 * time.Hour).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		&JWTClaims{

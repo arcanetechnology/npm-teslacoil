@@ -29,7 +29,7 @@ func setMigrationsPath() {
 	splitPath := strings.SplitAfter(filename, "teslacoil/")
 	basePath := splitPath[0]
 
-	MigrationsPath = path.Join("file://", path.Dir(basePath), "/internal/platform/db/migrations")
+	MigrationsPath = path.Join(path.Dir(basePath), "/internal/platform/db/migrations")
 }
 
 // OpenDatabase fetched the database credentials from environment variables

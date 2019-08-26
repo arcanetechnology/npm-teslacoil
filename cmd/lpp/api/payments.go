@@ -16,49 +16,49 @@ type GetAllInvoicesResponse struct {
 // GetInvoiceResponse is the response for the /invoice/:id endpoint
 type GetInvoiceResponse struct {
 	ID             uint               `json:"id"`
-	UserID         uint               `json:"user_id"`
-	PaymentRequest string             `json:"payment_request"`
+	UserID         uint               `json:"userId"`
+	PaymentRequest string             `json:"paymentRequest"`
 	Preimage       string             `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callback_url"`
+	CallbackURL    *string            `json:"callbackUrl"`
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
-	AmountSat      int64              `json:"amount_sat"`
-	AmountMSat     int64              `json:"amount_msat"`
-	SettledAt      string             `json:"settled_at"`
+	AmountSat      int64              `json:"amountSat"`
+	AmountMSat     int64              `json:"amountMSat"`
+	SettledAt      string             `json:"settledAt"`
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
 	ID             uint            `json:"id"`
-	UserID         uint            `json:"user_id"`
-	PaymentRequest string          `json:"payment_request"`
-	HashedPreimage string          `json:"hashed_preimage"`
-	CallbackURL    *string         `json:"callback_url"`
+	UserID         uint            `json:"userId"`
+	PaymentRequest string          `json:"paymentRequest"`
+	HashedPreimage string          `json:"hashedPreimage"`
+	CallbackURL    *string         `json:"callbackUrl"`
 	Status         payments.Status `json:"status"`
 	Memo           string          `json:"memo"`
-	AmountSat      int64           `json:"amount_sat"`
-	AmountMSat     int64           `json:"amount_msat"`
+	AmountSat      int64           `json:"amountSat"`
+	AmountMSat     int64           `json:"amountMSat"`
 }
 
 // PayInvoiceResponse is the response for the /invoice/pay endpoint
 type PayInvoiceResponse struct {
 	ID             uint               `json:"id"`
-	UserID         uint               `json:"user_id"`
-	PaymentRequest string             `json:"payment_request"`
+	UserID         uint               `json:"userId"`
+	PaymentRequest string             `json:"paymentRequest"`
 	Preimage       string             `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callback_url"`
+	CallbackURL    *string            `json:"callbackUrl"`
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
-	AmountSat      int64              `json:"amount_sat"`
-	AmountMSat     int64              `json:"amount_msat"`
-	SettledAt      string             `json:"settled_at"`
+	AmountSat      int64              `json:"amountSat"`
+	AmountMSat     int64              `json:"amountMSat"`
+	SettledAt      string             `json:"settledAt"`
 }
 
-func convertPaymentToGetInvoiceResponse(payments []payments.Payment) []GetInvoiceResponse {
+func convertToGetInvoiceResponse(payments []payments.Payment) []GetInvoiceResponse {
 	var invResponse []GetInvoiceResponse
 
 	for _, payment := range payments {
@@ -84,12 +84,22 @@ func convertPaymentToGetInvoiceResponse(payments []payments.Payment) []GetInvoic
 // GetAllInvoices is a GET request that returns all the users in the database
 func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var filter payments.GetAllInvoicesData
-
-		if err := c.ShouldBindJSON(&filter); err != nil {
+		skipFirst, err := strconv.ParseInt(c.Param("skipFirst"), 10, 64)
+		if err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
+			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
+		}
+		count, err := strconv.ParseInt(c.Param("count"), 10, 64)
+		if err != nil {
+			log.Error(err)
+			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
+			return
+		}
+
+		filter := payments.GetAllInvoicesData{
+			SkipFirst: int(skipFirst),
+			Count:     int(count),
 		}
 
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
@@ -101,7 +111,7 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, convertPaymentToGetInvoiceResponse(t))
+		c.JSONP(200, convertToGetInvoiceResponse(t))
 	}
 }
 
