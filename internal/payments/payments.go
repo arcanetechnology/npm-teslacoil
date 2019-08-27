@@ -174,7 +174,6 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	// Insert the payment into the database. Should anything inside insertPayment
 	// fail, we use tx.Rollback() to revert any change made
 	tx := d.MustBegin()
-	invoicePreimage := hex.EncodeToString(invoice.RPreimage)
 	payment, err := insertPayment(tx,
 		// Payment struct with all required data to add to the DB
 		Payment{
@@ -185,7 +184,6 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 			AmountMSat:     invoiceData.AmountSat * 1000,
 			PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
 			HashedPreimage: hex.EncodeToString(invoice.RHash),
-			Preimage:       &invoicePreimage,
 			Status:         open,
 			Direction:      inbound,
 		})
@@ -224,7 +222,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		UserID:         userID,
 		Direction:      outbound,
 		PaymentRequest: strings.ToUpper(payInvoiceRequest.PaymentRequest),
-		Status:         succeeded,
+		Status:         open,
 		HashedPreimage: payreq.PaymentHash,
 		Memo:           payreq.Description,
 		AmountSat:      payreq.NumSatoshis,
