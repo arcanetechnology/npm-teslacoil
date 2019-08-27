@@ -9,11 +9,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
-// GetAllPaymentsResponse is used for the GET /payments/:skipFirst/:count endpoint
-type GetAllPaymentsResponse struct {
-	Payments []PaymentResponse
-}
-
 // PaymentResponse is the generic response for any GET /payment endpoint
 type PaymentResponse struct {
 	ID             uint               `json:"id"`
@@ -67,24 +62,29 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 }
 
 // GetAllPayments is a GET request that returns all the users in the database
+// Takes two URL-params on the form ?limit=kek&offset=kek
 func GetAllPayments(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		skipFirst, err := strconv.ParseInt(c.Param("skipFirst"), 10, 64)
+		URLParams := c.Request.URL.Query()
+		limitStr := URLParams.Get("limit")
+		offsetStr := URLParams.Get("offset")
+
+		limit, err := strconv.ParseInt(limitStr, 10, 64)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
+			c.JSONP(404, gin.H{"error": "url param \"limit\" should be a integer"})
 			return
 		}
-		count, err := strconv.ParseInt(c.Param("count"), 10, 64)
+		offset, err := strconv.ParseInt(offsetStr, 10, 64)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
+			c.JSONP(404, gin.H{"error": "url param \"offset\" should be a integer"})
 			return
 		}
 
 		filter := payments.GetAllInvoicesData{
-			SkipFirst: int(skipFirst),
-			Count:     int(count),
+			Limit:  int(limit),
+			Offset: int(offset),
 		}
 
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))

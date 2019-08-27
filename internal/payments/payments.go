@@ -42,8 +42,8 @@ type CreateInvoiceData struct {
 
 // GetAllInvoicesData is the body for the GetAll endpoint
 type GetAllInvoicesData struct {
-	SkipFirst int `json:"skipFirst"`
-	Count     int `json:"count"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
 }
 
 //PayInvoiceData is the required(and optional) fields for initiating a withdrawal
@@ -106,7 +106,7 @@ func GetAll(d *sqlx.DB, userID uint, filter GetAllInvoicesData) (
 		LIMIT $2
 		OFFSET $3`
 
-	err := d.Select(&payments, tQuery, userID, filter.Count, filter.SkipFirst)
+	err := d.Select(&payments, tQuery, userID, filter.Limit, filter.Offset)
 	if err != nil {
 		log.Error(err)
 		return payments, err

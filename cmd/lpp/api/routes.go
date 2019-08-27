@@ -102,8 +102,8 @@ func RegisterPaymentRoutes(r *RestServer) {
 	payments := r.Router.Group("")
 	// payments.Use(authenticateJWT)
 
-	payments.GET("/payments/:skipFirst/:count", GetAllPayments(r))
-	payments.GET("/payment/:id", GetPayment(r))
+	payments.GET("/payments", GetAllPayments(r))
+	payments.GET("/payments/:id", GetPayment(r))
 	payments.POST("/invoices/create", CreateInvoice(r))
 	payments.POST("/invoices/pay", PayInvoice(r))
 }
