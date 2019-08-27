@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -28,6 +29,7 @@ const (
 	fail    = "\u001b[31m\u2717"
 	reset   = "\u001b[0m"
 )
+
 
 type lightningMockClient struct {
 	InvoiceResponse         lnrpc.Invoice
@@ -113,10 +115,13 @@ func TestCreateInvoice(t *testing.T) {
 				Settled:        false,
 			},
 			Payment{
-				UserID:         user.ID,
-				AmountSat:      amount1,
-				AmountMSat:     amount1 * 1000,
-				Preimage:       &samplePreimage,
+				UserID:     user.ID,
+				AmountSat:  amount1,
+				AmountMSat: amount1 * 1000,
+				Preimage: sql.NullString{
+					String: samplePreimage,
+					Valid:  true,
+				},
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HiMisterHey",
 				Description:    "My personal description",
@@ -138,10 +143,13 @@ func TestCreateInvoice(t *testing.T) {
 				Settled:        false,
 			},
 			Payment{
-				UserID:         user.ID,
-				AmountSat:      amount2,
-				AmountMSat:     amount2 * 1000,
-				Preimage:       &samplePreimage,
+				UserID:     user.ID,
+				AmountSat:  amount2,
+				AmountMSat: amount2 * 1000,
+				Preimage: sql.NullString{
+					String: samplePreimage,
+					Valid:  true,
+				},
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HelloWorld",
 				Description:    "My personal description",
@@ -214,10 +222,13 @@ func TestGetByID(t *testing.T) {
 			email1,
 			password1,
 			Payment{
-				UserID:         user.ID,
-				AmountSat:      amount1,
-				AmountMSat:     amount1 * 1000,
-				Preimage:       &samplePreimage,
+				UserID:     user.ID,
+				AmountSat:  amount1,
+				AmountMSat: amount1 * 1000,
+				Preimage: sql.NullString{
+					String: samplePreimage,
+					Valid:  true,
+				},
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HiMisterHey",
 				Description:    "My personal description",
@@ -230,10 +241,13 @@ func TestGetByID(t *testing.T) {
 			email2,
 			password2,
 			Payment{
-				UserID:         user.ID,
-				AmountSat:      amount2,
-				AmountMSat:     amount2 * 1000,
-				Preimage:       &samplePreimage,
+				UserID:     user.ID,
+				AmountSat:  amount2,
+				AmountMSat: amount2 * 1000,
+				Preimage: sql.NullString{
+					String: samplePreimage,
+					Valid:  true,
+				},
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HelloWorld",
 				Description:    "My personal description",
@@ -392,10 +406,13 @@ func TestPayInvoice(t *testing.T) {
 			},
 			UserPaymentResponse{
 				Payment: Payment{
-					UserID:         u.ID,
-					AmountSat:      5000,
-					AmountMSat:     5000000,
-					Preimage:       &samplePreimage,
+					UserID:     u.ID,
+					AmountSat:  5000,
+					AmountMSat: 5000000,
+					Preimage: sql.NullString{
+						String: samplePreimage,
+						Valid:  true,
+					},
 					HashedPreimage: "SomeHash",
 					Memo:           "HelloPayment",
 					Description:    "My personal description",
@@ -512,12 +529,15 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      20000,
 					AmountMSat:     20000000,
-					Preimage:       &samplePreimage,
 					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Memo:           "HelloWorld",
-					Description:    "My description",
-					Status:         Status("SUCCEEDED"),
-					Direction:      Direction("INBOUND"),
+					Preimage: sql.NullString{
+						String: samplePreimage,
+						Valid:  true,
+					},
+					Memo:        "HelloWorld",
+					Description: "My description",
+					Status:      Status("SUCCEEDED"),
+					Direction:   Direction("INBOUND"),
 				},
 				User: UserResponse{
 					ID:      u.ID,
@@ -827,9 +847,9 @@ func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
 		t.Fail()
 	}
 
-	if *payment.Preimage != *expectedResult.Preimage {
+	if payment.Preimage.Valid && payment.Preimage.String != expectedResult.Preimage.String {
 		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%s\" got \"%s\"%s",
-			fail, *expectedResult.Preimage, *payment.Preimage, reset)
+			fail, expectedResult.Preimage.String, payment.Preimage.String, reset)
 		t.Fail()
 	}
 

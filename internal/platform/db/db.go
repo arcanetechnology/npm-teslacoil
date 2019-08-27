@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"net/url"
 	"os"
@@ -19,6 +20,7 @@ func init() {
 	// This is abstracted into a function because calling it directly inside
 	// creates the wrong path
 	setMigrationsPath()
+
 }
 
 func setMigrationsPath() {
@@ -105,8 +107,9 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 // CreateTestDatabase applies migrations to the DB. If already applied, drops
 // the db first, then applies migrations
 func CreateTestDatabase(testDB *sqlx.DB) error {
-	err := MigrateUp(MigrationsPath, testDB)
+	err := MigrateUp(path.Join("file://", MigrationsPath), testDB)
 
+	fmt.Println(MigrationsPath)
 	if err != nil {
 		if err.Error() == "no change" {
 			return ResetDB(testDB)
@@ -124,7 +127,7 @@ func CreateTestDatabase(testDB *sqlx.DB) error {
 
 // TeardownTestDB drops the database, removing all data and schemas
 func TeardownTestDB(testDB *sqlx.DB) error {
-	err := DropDatabase(MigrationsPath, testDB)
+	err := DropDatabase(path.Join("file://", MigrationsPath), testDB)
 	if err != nil {
 		return errors.Wrapf(err,
 			"teardownTestDB cannot connect to database %s with user %s",
@@ -146,4 +149,9 @@ func ResetDB(testDB *sqlx.DB) error {
 	}
 
 	return nil
+}
+
+//ToNullString invalidates a sql.NullString if empty, validates if not empty
+func ToNullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: true}
 }
