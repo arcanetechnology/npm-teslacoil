@@ -87,12 +87,14 @@ type UserResponse struct {
 
 //UserPaymentResponse is a user payment response
 type UserPaymentResponse struct {
-	Payment Payment
-	User    UserResponse
+	Payment Payment      `json:"payment"`
+	User    UserResponse `json:"user"`
 }
 
 // GetAll fetches all payments
-func GetAll(d *sqlx.DB, userID uint, filter GetAllInvoicesData) ([]Payment, error) {
+func GetAll(d *sqlx.DB, userID uint, filter GetAllInvoicesData) (
+	[]Payment, error) {
+
 	payments := []Payment{}
 
 	// Using OFFSET is not ideal, but until we start seeing
@@ -134,8 +136,6 @@ func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 		// log.Errorf(err.Error())
 		return Payment{}, err
 	}
-
-	// log.Debugf("query %s for user_id %d returned %v", tQuery, userID, txResult)
 
 	return txResult, nil
 }
@@ -223,7 +223,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 	p := Payment{
 		UserID:         userID,
 		Direction:      outbound,
-		PaymentRequest: payInvoiceRequest.PaymentRequest,
+		PaymentRequest: strings.ToUpper(payInvoiceRequest.PaymentRequest),
 		Status:         succeeded,
 		HashedPreimage: payreq.PaymentHash,
 		Memo:           payreq.Description,
@@ -282,15 +282,14 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 			err, "PayInvoice: Cound not commit")
 	}
 
-	result := UserPaymentResponse{
+	return UserPaymentResponse{
 		Payment: payment,
 		User:    user,
-	}
-
-	return result, nil
+	}, nil
 }
 
-// QueryExecutor is based on sqlx.DB, but is an interface that only requires "Query"
+// QueryExecutor is based on sqlx.DB, but is an interface that only requires
+// "Query"
 type QueryExecutor interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
@@ -316,6 +315,7 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
 			"UpdateUserBalance(): could not construct user update",
 		)
 	}
+	defer rows.Close()
 
 	user := UserResponse{}
 	if rows.Next() {
@@ -330,8 +330,6 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
 				err, "Could not scan user returned from db")
 		}
 	}
-	rows.Close()
-	// log.Tracef("%s inserted %v", updateBalanceQuery, user)
 
 	return user, nil
 }
@@ -368,7 +366,10 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 
 	// Define a custom response struct to include user details
 	payment := Payment{}
-	if err := database.Get(&payment, tQuery, strings.ToUpper(invoice.PaymentRequest)); err != nil {
+	if err := database.Get(
+		&payment,
+		tQuery,
+		strings.ToUpper(invoice.PaymentRequest)); err != nil {
 		return nil, errors.Wrapf(err,
 			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
 			invoice.PaymentRequest,
@@ -390,11 +391,11 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 	payment.Preimage = &preimage
 
 	updateOffchainTxQuery := `UPDATE offchaintx 
-				SET status = :status, settled_at = :settled_at, preimage = :preimage
-				WHERE hashed_preimage = :hashed_preimage
-				RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-						  memo, description, direction, status, amount_sat, amount_msat,
-						  created_at, updated_at`
+		SET status = :status, settled_at = :settled_at, preimage = :preimage
+		WHERE hashed_preimage = :hashed_preimage
+		RETURNING id, user_id, payment_request, preimage, hashed_preimage,
+	   			memo, description, direction, status, amount_sat, amount_msat,
+				created_at, updated_at`
 
 	tx := database.MustBegin()
 
@@ -406,6 +407,8 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 			payment,
 		)
 	}
+	defer rows.Close() // Free up the database connection
+
 	if rows.Next() {
 		if err = rows.Scan(
 			&payment.ID,
@@ -429,7 +432,6 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 			)
 		}
 	}
-	rows.Close() // Free up the database connection
 
 	updateUserBalanceQuery := `UPDATE users 
 				SET balance = :amount_sat + balance
@@ -445,6 +447,8 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 			user,
 		)
 	}
+	defer rows.Close() // Free up the database connection
+
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
@@ -459,7 +463,6 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 			)
 		}
 	}
-	rows.Close() // Free up the database connection
 	err = tx.Commit()
 	if err != nil {
 		return nil, errors.Wrap(
@@ -503,6 +506,8 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 			payment,
 		)
 	}
+	defer rows.Close() // Free up the database connection
+
 	var result Payment
 	if rows.Next() {
 		if err = rows.Scan(
@@ -526,9 +531,6 @@ func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
 		}
 
 	}
-	rows.Close() // Free up the database connection
-
-	// log.Debugf("query %s inserted %v", createOffchainTXQuery, payment)
 
 	return result, nil
 }
