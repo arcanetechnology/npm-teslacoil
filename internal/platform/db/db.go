@@ -20,7 +20,6 @@ func init() {
 	// This is abstracted into a function because calling it directly inside
 	// creates the wrong path
 	setMigrationsPath()
-
 }
 
 func setMigrationsPath() {
@@ -65,7 +64,7 @@ func OpenDatabase() (*sqlx.DB, error) {
 		)
 	}
 
-	log.Infof("opened connection to db")
+	// log.Infof("opened connection to db")
 
 	return d, nil
 }

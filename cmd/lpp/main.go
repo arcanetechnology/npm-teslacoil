@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"sort"
@@ -186,11 +185,6 @@ var (
 )
 
 func main() {
-
-	InitLogRotator(ln.CleanAndExpandPath(
-		path.Join(defaultLppDir, defaultLogFilename)), 10, 3)
-	SetLogLevels("info")
-
 	app := cli.NewApp()
 	app.Name = "lpp"
 	app.Usage = "Managing helper for developing lightning payment processor"

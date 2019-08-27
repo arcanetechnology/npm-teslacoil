@@ -56,10 +56,9 @@ type PayInvoiceData struct {
 
 // Payment is a database table
 type Payment struct {
-	ID             uint   `db:"id"`
-	UserID         uint   `db:"user_id"`
-	PaymentRequest string `db:"payment_request"`
-	// We use string and time pointers to make a nullable type
+	ID             uint           `db:"id"`
+	UserID         uint           `db:"user_id"`
+	PaymentRequest string         `db:"payment_request"`
 	Preimage       sql.NullString `db:"preimage"`
 	HashedPreimage string         `db:"hashed_preimage"`
 	CallbackURL    sql.NullString `db:"callback_url"`
@@ -400,7 +399,6 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 	user := UserResponse{}
 
 	if invoice.Settled == false {
-		log.Info("Invoice not settled")
 		return &UserPaymentResponse{
 			Payment: payment,
 			User:    user,
@@ -410,15 +408,10 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 	payment.SettledAt = &time
 	payment.Status = Status("SUCCEEDED")
 	preimage := hex.EncodeToString(invoice.RPreimage)
-	log.Infof("preimage: %s", preimage)
 	payment.Preimage = sql.NullString{
 		String: preimage,
 		Valid:  true,
 	}
-
-	log.Infof("payment.Preimage %v", payment.Preimage)
-
-	log.Infof("Invoice is settled %v", payment)
 
 	updateOffchainTxQuery := `UPDATE offchaintx 
 		SET status = :status, settled_at = :settled_at, preimage = :preimage
@@ -437,7 +430,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 			payment,
 		)
 	}
-	defer rows.Close() // Free up the database connection
+	rows.Close() // Free up the database connection
 
 	if rows.Next() {
 		if err = rows.Scan(
@@ -463,8 +456,6 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		}
 	}
 
-	log.Info("updated: ", payment)
-
 	updateUserBalanceQuery := `UPDATE users 
 				SET balance = :amount_sat + balance
 				WHERE id = :user_id
@@ -476,10 +467,9 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		return nil, errors.Wrapf(
 			err,
 			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %+v)",
-			user,
+			payment,
 		)
 	}
-	defer rows.Close() // Free up the database connection
 
 	if rows.Next() {
 		if err = rows.Scan(
@@ -495,6 +485,8 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 			)
 		}
 	}
+	rows.Close() // Free up the database connection
+
 	err = tx.Commit()
 	if err != nil {
 		return nil, errors.Wrap(

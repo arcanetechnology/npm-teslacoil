@@ -30,7 +30,6 @@ const (
 	reset   = "\u001b[0m"
 )
 
-
 type lightningMockClient struct {
 	InvoiceResponse         lnrpc.Invoice
 	SendPaymentSyncResponse lnrpc.SendResponse
@@ -119,7 +118,7 @@ func TestCreateInvoice(t *testing.T) {
 				AmountSat:  amount1,
 				AmountMSat: amount1 * 1000,
 				Preimage: sql.NullString{
-					String: samplePreimage,
+					String: "",
 					Valid:  true,
 				},
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
@@ -147,7 +146,7 @@ func TestCreateInvoice(t *testing.T) {
 				AmountSat:  amount2,
 				AmountMSat: amount2 * 1000,
 				Preimage: sql.NullString{
-					String: samplePreimage,
+					String: "",
 					Valid:  true,
 				},
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
