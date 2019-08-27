@@ -63,7 +63,7 @@ func OpenDatabase() (*sqlx.DB, error) {
 		)
 	}
 
-	log.Debugf("opened connection to db")
+	log.Infof("opened connection to db")
 
 	return d, nil
 }

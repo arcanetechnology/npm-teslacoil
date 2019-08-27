@@ -43,7 +43,7 @@ type LoginResponse struct {
 	AccessToken string `json:"accessToken"`
 	Email       string `json:"email"`
 	UserID      uint   `json:"userId"`
-	Balance     uint   `json:"balance"`
+	Balance     int    `json:"balance"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
@@ -163,6 +163,7 @@ func Login(r *RestServer) gin.HandlerFunc {
 			UserID:      user.ID,
 			Email:       user.Email,
 			AccessToken: tokenString,
+			Balance:     user.Balance,
 		}
 		log.Info("LoginResponse: ", res)
 
