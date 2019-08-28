@@ -627,8 +627,8 @@ func TestGetAll(t *testing.T) {
 				},
 			},
 			GetAllInvoicesData{
-				SkipFirst: 0,
-				Count:     50,
+				Offset: 0,
+				Limit:  50,
 			},
 			3,
 		},
@@ -649,8 +649,8 @@ func TestGetAll(t *testing.T) {
 				},
 			},
 			GetAllInvoicesData{
-				SkipFirst: 0,
-				Count:     2,
+				Offset: 0,
+				Limit:  2,
 			},
 			2,
 		},
@@ -671,8 +671,8 @@ func TestGetAll(t *testing.T) {
 				},
 			},
 			GetAllInvoicesData{
-				SkipFirst: 2,
-				Count:     50,
+				Offset: 2,
+				Limit:  50,
 			},
 			1,
 		},
@@ -741,7 +741,7 @@ func TestGetAll(t *testing.T) {
 					}
 
 					for i, invoice := range invoices {
-						if i < tt.filter.SkipFirst {
+						if i < tt.filter.Offset {
 							if tt.invoices[i].Memo == invoice.Memo {
 								t.Logf("\t%s\tMemo should not be equal to expected memo. Expected \"%s\" got \"%s\"%s",
 									fail,
@@ -755,7 +755,7 @@ func TestGetAll(t *testing.T) {
 									fail,
 									tt.invoices[i].Memo,
 									invoice.Memo,
-								reset)
+									reset)
 								t.Fail()
 							}
 							if invoice.UserID != u.ID {
@@ -763,7 +763,7 @@ func TestGetAll(t *testing.T) {
 									fail,
 									u.ID,
 									invoice.UserID,
-								reset)
+									reset)
 								t.Fail()
 							}
 						} else {
@@ -780,7 +780,7 @@ func TestGetAll(t *testing.T) {
 									fail,
 									tt.invoices[i].Memo,
 									invoice.Memo,
-								reset)
+									reset)
 								t.Fail()
 							}
 							if invoice.UserID != u.ID {

@@ -100,10 +100,10 @@ func RegisterUserRoutes(r *RestServer) {
 // RegisterPaymentRoutes registers all payment routes on the router
 func RegisterPaymentRoutes(r *RestServer) {
 	payments := r.Router.Group("")
-	payments.Use(authenticateJWT)
+	// payments.Use(authenticateJWT)
 
-	payments.GET("/payments", GetAllInvoices(r))
-	payments.GET("/payments/:id", GetInvoice(r))
+	payments.GET("/payments", GetAllPayments(r))
+	payments.GET("/payments/:id", GetPayment(r))
 	payments.POST("/invoices/create", CreateInvoice(r))
 	payments.POST("/invoices/pay", PayInvoice(r))
 }
@@ -187,7 +187,7 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token
 func createJWTToken(email string, id uint) (string, error) {
-	expiresAt := time.Now().Add(5 * time.Minute).Unix()
+	expiresAt := time.Now().Add(5 * time.Hour).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		&JWTClaims{

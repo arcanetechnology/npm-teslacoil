@@ -3,70 +3,88 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
-//GetAllInvoicesResponse is the type returned by the api to the front-end
-type GetAllInvoicesResponse struct {
-	Invoices []payments.Payment
-}
-
-// GetInvoiceResponse is the response for the /invoice/:id endpoint
-type GetInvoiceResponse struct {
+// PaymentResponse is the generic response for any GET /payment endpoint
+type PaymentResponse struct {
 	ID             uint               `json:"id"`
-	UserID         uint               `json:"user_id"`
-	PaymentRequest string             `json:"payment_request"`
-	Preimage       string             `json:"preimage"`
+	UserID         uint               `json:"userId"`
+	PaymentRequest string             `json:"paymentRequest"`
+	Preimage       *string            `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callback_url"`
+	CallbackURL    *string            `json:"callbackUrl"`
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
-	AmountSat      int64              `json:"amount_sat"`
-	AmountMSat     int64              `json:"amount_msat"`
-	SettledAt      string             `json:"settled_at"`
+	AmountSat      int64              `json:"amountSat"`
+	AmountMSat     int64              `json:"amountMSat"`
+	SettledAt      *time.Time         `json:"settledAt"`
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
 	ID             uint            `json:"id"`
-	UserID         uint            `json:"user_id"`
-	PaymentRequest string          `json:"payment_request"`
-	HashedPreimage string          `json:"hashed_preimage"`
-	CallbackURL    *string         `json:"callback_url"`
+	UserID         uint            `json:"userId"`
+	PaymentRequest string          `json:"paymentRequest"`
+	HashedPreimage string          `json:"hashedPreimage"`
+	CallbackURL    *string         `json:"callbackUrl"`
 	Status         payments.Status `json:"status"`
 	Memo           string          `json:"memo"`
-	AmountSat      int64           `json:"amount_sat"`
-	AmountMSat     int64           `json:"amount_msat"`
+	AmountSat      int64           `json:"amountSat"`
+	AmountMSat     int64           `json:"amountMSat"`
 }
 
-// PayInvoiceResponse is the response for the /invoice/pay endpoint
-type PayInvoiceResponse struct {
-	ID             uint               `json:"id"`
-	UserID         uint               `json:"user_id"`
-	PaymentRequest string             `json:"payment_request"`
-	Preimage       string             `json:"preimage"`
-	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callback_url"`
-	Status         payments.Status    `json:"status"`
-	Memo           string             `json:"memo"`
-	Direction      payments.Direction `json:"direction"`
-	AmountSat      int64              `json:"amount_sat"`
-	AmountMSat     int64              `json:"amount_msat"`
-	SettledAt      string             `json:"settled_at"`
+func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
+	var invResponse []PaymentResponse
+
+	for _, payment := range payments {
+		invResponse = append(invResponse, PaymentResponse{
+			ID:             payment.ID,
+			UserID:         payment.UserID,
+			PaymentRequest: payment.PaymentRequest,
+			Preimage:       payment.Preimage,
+			Hash:           payment.HashedPreimage,
+			CallbackURL:    payment.CallbackURL,
+			Status:         payment.Status,
+			Memo:           payment.Memo,
+			Direction:      payment.Direction,
+			AmountSat:      payment.AmountSat,
+			AmountMSat:     payment.AmountMSat,
+			SettledAt:      payment.SettledAt,
+		})
+	}
+
+	return invResponse
 }
 
-// GetAllInvoices is a GET request that returns all the users in the database
-func GetAllInvoices(r *RestServer) gin.HandlerFunc {
+// GetAllPayments is a GET request that returns all the users in the database
+// Takes two URL-params on the form ?limit=kek&offset=kek
+func GetAllPayments(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var filter payments.GetAllInvoicesData
+		URLParams := c.Request.URL.Query()
+		limitStr := URLParams.Get("limit")
+		offsetStr := URLParams.Get("offset")
 
-		if err := c.ShouldBindJSON(&filter); err != nil {
+		limit, err := strconv.ParseInt(limitStr, 10, 64)
+		if err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
+			c.JSONP(404, gin.H{"error": "url param \"limit\" should be a integer"})
 			return
+		}
+		offset, err := strconv.ParseInt(offsetStr, 10, 64)
+		if err != nil {
+			log.Error(err)
+			c.JSONP(404, gin.H{"error": "url param \"offset\" should be a integer"})
+			return
+		}
+
+		filter := payments.GetAllInvoicesData{
+			Limit:  int(limit),
+			Offset: int(offset),
 		}
 
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
@@ -78,12 +96,12 @@ func GetAllInvoices(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(200, convertToPaymentResponse(t))
 	}
 }
 
-// GetInvoice is a GET request that returns users that match the one specified in the body
-func GetInvoice(r *RestServer) gin.HandlerFunc {
+// GetPayment is a GET request that returns users that match the one specified in the body
+func GetPayment(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 
@@ -93,6 +111,8 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
+		log.Infof("find payment %d for user %d", id, claim.UserID)
+
 		t, err := payments.GetByID(r.db, uint(id), claim.UserID)
 		if err != nil {
 			c.JSONP(
@@ -101,19 +121,21 @@ func GetInvoice(r *RestServer) gin.HandlerFunc {
 			)
 			return
 		}
+
+		log.Infof("found payment %v", t)
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, &GetInvoiceResponse{
+		c.JSONP(200, &PaymentResponse{
 			ID:             t.ID,
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
-			Preimage:       *t.Preimage,
+			Preimage:       t.Preimage,
 			Hash:           t.HashedPreimage,
 			CallbackURL:    t.CallbackURL,
 			Status:         t.Status,
 			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
-			SettledAt:      t.SettledAt.String(),
+			SettledAt:      t.SettledAt,
 		})
 	}
 }
@@ -135,7 +157,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 				"error": "internal server error, please try again or contact support"})
 		}
 
-		log.Debugf("received new request for CreateInvoice for user_id %d: %v\n",
+		log.Infof("received new request for CreateInvoice for user_id %d: %v\n",
 			claims.UserID,
 			newInvoice)
 
@@ -198,17 +220,17 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 		}
 
 		// Return as much info as possible
-		c.JSONP(200, &PayInvoiceResponse{
+		c.JSONP(200, &PaymentResponse{
 			ID:             t.Payment.ID,
 			UserID:         t.User.ID,
 			PaymentRequest: t.Payment.PaymentRequest,
-			Preimage:       *t.Payment.Preimage,
+			Preimage:       t.Payment.Preimage,
 			Hash:           t.Payment.HashedPreimage,
 			Status:         t.Payment.Status,
 			Memo:           t.Payment.Memo,
 			AmountSat:      t.Payment.AmountSat,
 			AmountMSat:     t.Payment.AmountMSat,
-			SettledAt:      t.Payment.SettledAt.String(),
+			SettledAt:      t.Payment.SettledAt,
 		})
 	}
 }

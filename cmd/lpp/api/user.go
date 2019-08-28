@@ -40,15 +40,15 @@ type CreateUserResponse struct {
 
 // LoginResponse includes a jwt-token and the e-mail identifying the user
 type LoginResponse struct {
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"accessToken"`
 	Email       string `json:"email"`
-	UserID      uint   `json:"user_id"`
-	Balance     uint   `json:"balance"`
+	UserID      uint   `json:"userId"`
+	Balance     int    `json:"balance"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
 type RefreshTokenResponse struct {
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"accessToken"`
 }
 
 // GetAllUsers is a GET request that returns all the users in the database
@@ -57,7 +57,7 @@ func GetAllUsers(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userResponse, err := users.All(r.db)
 		if err != nil {
-			log.Error(err)
+			log.Critical(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
 			return
 		}
@@ -77,7 +77,7 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 
 		user, err := users.GetByID(r.db, claims.UserID)
 		if err != nil {
-			log.Error(err)
+			log.Critical(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{"error": "internal server error, please try again or contact us"})
 		}
 
@@ -112,6 +112,7 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 		// double check the email is unique
 		u, err := users.Create(r.db, req.Email, req.Password)
 		if err != nil {
+			log.Critical(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
 			return
@@ -144,6 +145,7 @@ func Login(r *RestServer) gin.HandlerFunc {
 
 		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
 		if err != nil {
+			log.Critical(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
 			return
@@ -161,6 +163,7 @@ func Login(r *RestServer) gin.HandlerFunc {
 			UserID:      user.ID,
 			Email:       user.Email,
 			AccessToken: tokenString,
+			Balance:     user.Balance,
 		}
 		log.Info("LoginResponse: ", res)
 
@@ -175,7 +178,7 @@ func RefreshToken(r *RestServer) gin.HandlerFunc {
 		// extract the email as it is required to create a new JWT.
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
-			log.Error(err)
+			log.Critical(err)
 			c.JSONP(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 		}
 
