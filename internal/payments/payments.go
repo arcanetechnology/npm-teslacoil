@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 // Direction is the direction of a lightning payment
@@ -77,18 +78,10 @@ type Payment struct {
 	DeletedAt *time.Time `db:"deleted_at"`
 }
 
-// UserResponse is
-type UserResponse struct {
-	ID        uint      `db:"id"`
-	Email     string    `db:"email"`
-	Balance   int       `db:"balance"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
 //UserPaymentResponse is a user payment response
 type UserPaymentResponse struct {
-	Payment Payment      `json:"payment"`
-	User    UserResponse `json:"user"`
+	Payment Payment            `json:"payment"`
+	User    users.UserResponse `json:"user"`
 }
 
 // GetAll fetches all payments
@@ -277,7 +270,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		return UserPaymentResponse{}, errors.New(paymentResponse.PaymentError)
 	}
 
-	user := UserResponse{}
+	user := users.UserResponse{}
 	if payment.Status == succeeded {
 		user, err = updateUserBalance(tx, p.UserID, payment.AmountSat)
 		if err != nil {
@@ -315,10 +308,10 @@ type QueryExecutor interface {
 }
 
 func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
-	UserResponse, error) {
+	users.UserResponse, error) {
 
 	if amountSat == 0 {
-		return UserResponse{}, errors.New(
+		return users.UserResponse{}, errors.New(
 			"No point in updating users balance with 0 satoshi")
 	}
 
@@ -330,14 +323,14 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
 	rows, err := queryEx.Query(updateBalanceQuery, amountSat, userID)
 	if err != nil {
 		// log.Error(err)
-		return UserResponse{}, errors.Wrap(
+		return users.UserResponse{}, errors.Wrap(
 			err,
 			"UpdateUserBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
 
-	user := UserResponse{}
+	user := users.UserResponse{}
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
@@ -346,7 +339,7 @@ func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
 			&user.UpdatedAt,
 		); err != nil {
 			// log.Error(err)
-			return UserResponse{}, errors.Wrap(
+			return users.UserResponse{}, errors.Wrap(
 				err, "Could not scan user returned from db")
 		}
 	}
@@ -396,12 +389,10 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		)
 	}
 
-	user := UserResponse{}
-
 	if invoice.Settled == false {
 		return &UserPaymentResponse{
 			Payment: payment,
-			User:    user,
+			User:    users.UserResponse{},
 		}, nil
 	}
 	time := time.Now()
@@ -456,36 +447,13 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		}
 	}
 
-	updateUserBalanceQuery := `UPDATE users 
-				SET balance = :amount_sat + balance
-				WHERE id = :user_id
-				RETURNING id, email, balance, updated_at`
-
-	rows, err = tx.NamedQuery(updateUserBalanceQuery, &payment)
+	user, err := users.DecreaseBalance(tx, payment.UserID, payment.AmountSat)
 	if err != nil {
-		_ = tx.Rollback()
 		return nil, errors.Wrapf(
 			err,
-			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %+v)",
-			payment,
-		)
+			"UpdateInvoiceStatus->users.DecreaseBalance(tx, %d, %d)",
+			payment.UserID, payment.AmountSat)
 	}
-
-	if rows.Next() {
-		if err = rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.Balance,
-			&user.UpdatedAt,
-		); err != nil {
-			_ = tx.Rollback()
-			return nil, errors.Wrap(
-				err,
-				"UpdateInvoiceStatus->rows.Scan()",
-			)
-		}
-	}
-	rows.Close() // Free up the database connection
 
 	err = tx.Commit()
 	if err != nil {
@@ -498,7 +466,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 
 	return &UserPaymentResponse{
 		Payment: payment,
-		User:    user,
+		User:    *user,
 	}, nil
 }
 

@@ -71,7 +71,9 @@ func OpenDatabase() (*sqlx.DB, error) {
 
 // OpenTestDatabase Fetches the database credentials from env vars and opens a
 // connection to the test db
-func OpenTestDatabase() (*sqlx.DB, error) {
+// we take the name as an argument because individual test files run in
+// parallell. For different tests to
+func OpenTestDatabase(name string) (*sqlx.DB, error) {
 
 	// Define SSL mode.
 	sslMode := "disable" // require
@@ -87,7 +89,7 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 			os.Getenv("DATABASE_TEST_USER"),
 			os.Getenv("DATABASE_TEST_PASSWORD")),
 		Host:     os.Getenv("DATABASE_TEST_HOST"),
-		Path:     os.Getenv("DATABASE_TEST_NAME"),
+		Path:     os.Getenv("DATABASE_TEST_NAME") + "_" + name,
 		RawQuery: q.Encode(),
 	}
 

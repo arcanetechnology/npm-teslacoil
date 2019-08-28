@@ -125,6 +125,104 @@ func Create(d *sqlx.DB, email, password string) (*UserResponse, error) {
 	return userResp, nil
 }
 
+// IncreaseBalance increases the balance of user id x by y satoshis
+func IncreaseBalance(tx *sqlx.Tx, userID uint, amountSat int64) (*UserResponse, error) {
+	if amountSat <= 0 {
+		return nil, errors.New("amount cant be less than or equal to 0")
+	}
+
+	updateUserBalanceQuery := `UPDATE users 
+				SET balance = :amount_sat + balance
+				WHERE id = :user_id
+				AND balance > :amount_sat
+				RETURNING id, email, balance, updated_at`
+
+	rows, err := tx.Query(updateUserBalanceQuery, struct {
+		amountSat int64 `db:"amount_sat"`
+		userID    uint  `db:"user_id"`
+	}{
+		amountSat: amountSat,
+		userID:    userID,
+	})
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, errors.Wrapf(
+			err,
+			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %d, %d)",
+			amountSat,
+			userID,
+		)
+	}
+
+	var user UserResponse
+	if rows.Next() {
+		if err = rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Balance,
+			&user.UpdatedAt,
+		); err != nil {
+			_ = tx.Rollback()
+			return nil, errors.Wrap(
+				err,
+				"UpdateInvoiceStatus->rows.Scan()",
+			)
+		}
+	}
+	rows.Close() // Free up the database connection
+
+	return &user, nil
+}
+
+// DecreaseBalance decreases the balance of user id x by y satoshis
+func DecreaseBalance(tx *sqlx.Tx, userID uint, amountSat int64) (*UserResponse, error) {
+	if amountSat <= 0 {
+		return nil, errors.New("amount cant be less than or equal to 0")
+	}
+
+	updateUserBalanceQuery := `UPDATE users 
+				SET balance = :amount_sat - balance
+				WHERE id = :user_id
+				AND balance > :amount_sat
+				RETURNING id, email, balance, updated_at`
+
+	rows, err := tx.Query(updateUserBalanceQuery, struct {
+		amountSat int64 `db:"amount_sat"`
+		userID    uint  `db:"user_id"`
+	}{
+		amountSat: amountSat,
+		userID:    userID,
+	})
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, errors.Wrapf(
+			err,
+			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %d, %d)",
+			amountSat,
+			userID,
+		)
+	}
+
+	var user UserResponse
+	if rows.Next() {
+		if err = rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Balance,
+			&user.UpdatedAt,
+		); err != nil {
+			_ = tx.Rollback()
+			return nil, errors.Wrap(
+				err,
+				"UpdateInvoiceStatus->rows.Scan()",
+			)
+		}
+	}
+	rows.Close() // Free up the database connection
+
+	return &user, nil
+}
+
 func hashAndSalt(pwd string) ([]byte, error) {
 	// Use GenerateFromPassword to hash & salt pwd.
 	// MinCost is just an integer constant provided by the bcrypt
@@ -156,7 +254,6 @@ func insertUser(d *sqlx.DB, user User) (*UserResponse, error) {
 			err, "users.Create(db, %s, %s)",
 			user.Email, string(user.HashedPassword))
 	}
-	defer rows.Close()
 
 	userResp := UserResponse{}
 	if rows.Next() {
@@ -168,5 +265,6 @@ func insertUser(d *sqlx.DB, user User) (*UserResponse, error) {
 		}
 	}
 
+	rows.Close()
 	return &userResp, nil
 }

@@ -23,12 +23,13 @@ var (
 func TestMain(m *testing.M) {
 	println("Configuring user test database")
 
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		return
 	}
 
+	db.TeardownTestDB(testDB)
 	if err = db.CreateTestDatabase(testDB); err != nil {
 		fmt.Println(err)
 		return
@@ -37,20 +38,20 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	result := m.Run()
 
-	db.TeardownTestDB(testDB)
 	os.Exit(result)
 }
 
 func TestCanCreateUser(t *testing.T) {
-	testDB, err := db.OpenTestDatabase()
+	t.Parallel()
+	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
 
 	const email = "test_userCanCreate@example.com"
 	tests := []struct {
-		email string
-		out   UserResponse
+		email          string
+		expectedResult UserResponse
 	}{
 		{
 			email,
@@ -84,7 +85,7 @@ func TestCanCreateUser(t *testing.T) {
 				t.Logf("\t%s\tshould be able to Create user%s", succeed, reset)
 
 				{
-					expectedResult := tt.out
+					expectedResult := tt.expectedResult
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
@@ -116,15 +117,16 @@ func TestCanCreateUser(t *testing.T) {
 }
 
 func TestCanGetUserByEmail(t *testing.T) {
-	testDB, err := db.OpenTestDatabase()
+	t.Parallel()
+	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
 
 	const email = "test_userGetByEmail@example.com"
 	tests := []struct {
-		user User
-		out  UserResponse
+		user           User
+		expectedResult UserResponse
 	}{
 		{
 			User{
@@ -167,7 +169,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 				t.Logf("\t%s\tshould be able to get user%s", succeed, reset)
 
 				{
-					expectedResult := tt.out
+					expectedResult := tt.expectedResult
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
@@ -199,17 +201,18 @@ func TestCanGetUserByEmail(t *testing.T) {
 }
 
 func TestCanGetUserByCredentials(t *testing.T) {
+	t.Parallel()
 
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
 
 	const email = "test_userByCredentials@example.com"
 	tests := []struct {
-		email    string
-		password string
-		out      UserResponse
+		email          string
+		password       string
+		expectedResult UserResponse
 	}{
 		{
 			email,
@@ -246,7 +249,7 @@ func TestCanGetUserByCredentials(t *testing.T) {
 				t.Logf("\t%s\tshould be able to get user by credentials%s", succeed, reset)
 
 				{
-					expectedResult := tt.out
+					expectedResult := tt.expectedResult
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
@@ -278,15 +281,16 @@ func TestCanGetUserByCredentials(t *testing.T) {
 }
 
 func TestCanGetUserByID(t *testing.T) {
-	testDB, err := db.OpenTestDatabase()
+	t.Parallel()
+	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
 
-	const email = "test_userGetByID@example.com"
+	const email = "test_userCanGetByID@example.com"
 	tests := []struct {
-		user User
-		out  UserResponse
+		user           User
+		expectedResult UserResponse
 	}{
 		{
 			User{
@@ -329,7 +333,7 @@ func TestCanGetUserByID(t *testing.T) {
 				t.Logf("\t%s\tshould be able to get user%s", succeed, reset)
 
 				{
-					expectedResult := tt.out
+					expectedResult := tt.expectedResult
 
 					if user.Email != expectedResult.Email {
 						t.Logf(
@@ -357,5 +361,344 @@ func TestCanGetUserByID(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestDecreaseBalance(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	testDB, err := db.OpenTestDatabase("users")
+	if err != nil {
+		t.Fatalf("%+v\n", err)
+	}
+	u, err := Create(testDB,
+		"test_userDecreaseBalance@example.com",
+		"password",
+	)
+	// Give initial balance of 100 000
+	tx := testDB.MustBegin()
+	u, err = IncreaseBalance(tx, u.ID, 100000)
+	if err != nil || u == nil {
+		t.Fatalf(
+			"\t%s\tShould be able to give user iniital balance by using IncreaseBalance. Error: %+v\n%s",
+			fail, err, reset)
+	}
+	tx.Commit()
+	t.Logf("\t%s\tShould be able to give user iniital balance by using IncreaseBalance%s", succeed, reset)
+
+	tests := []struct {
+		amountSat int64
+		userID    uint
+
+		expectedResult User
+	}{
+		{
+			20000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 80000,
+			},
+		},
+		{
+			20000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 60000,
+			},
+		},
+		{
+			60000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 0,
+			},
+		},
+		{
+			// This should fail because the users balance should already be 0
+			10,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 0,
+			},
+		},
+		{
+			// This should fail because it is illegal to increase balance by a negative amount
+			-30000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 0,
+			},
+		},
+	}
+
+	t.Log("testing decreasing user balance")
+	{
+		for i, tt := range tests {
+			t.Logf("\ttest: %d\twhen decreasing balance by %d for user %d",
+				i, tt.amountSat, tt.userID)
+			{
+				tx := testDB.MustBegin()
+				user, err := DecreaseBalance(tx, tt.userID, tt.amountSat)
+				if err != nil {
+					t.Fatalf(
+						"\t%s\tshould be able to DecreaseBalance. Error:  %+v\n%s",
+						fail, err, reset)
+				}
+				tx.Commit()
+				t.Logf("\t%s\tShould be able to DecreaseBalance%s", succeed, reset)
+
+				{
+					expectedResult := tt.expectedResult
+
+					if int64(u.Balance) < tt.amountSat {
+						if user == nil || err != nil {
+							t.Logf(
+								"\t%s\tDecreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v%s",
+								fail,
+								user,
+								err,
+								reset,
+							)
+							t.Fail()
+							return
+						}
+						t.Logf(
+							"\t%s\tDecreasing balance greater than balance should result in error%s",
+							succeed,
+							reset)
+						return
+					}
+
+					if tt.amountSat <= 0 {
+						if user != nil && err.Error() != "amount cant be less than or equal to 0" {
+							t.Logf(
+								"\t%s\tDecreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
+								fail,
+								user,
+								err,
+								reset,
+							)
+							t.Fail()
+							return
+						}
+						t.Logf(
+							"\t%s\tDecreasing balance by a negative amount should result in error.%s",
+							succeed,
+							reset)
+						return
+					}
+
+					if user.ID != expectedResult.ID {
+						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
+							fail,
+							expectedResult.ID,
+							user.ID,
+							reset,
+						)
+						t.Fail()
+					}
+
+					if user.Email != expectedResult.Email {
+						t.Logf("\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
+							fail,
+							expectedResult.Email,
+							user.Email,
+							reset,
+						)
+						t.Fail()
+					}
+
+					if user.Balance != expectedResult.Balance {
+						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
+							fail,
+							expectedResult.Balance,
+							user.Balance,
+							reset,
+						)
+						t.Fail()
+					}
+				}
+			}
+		}
+	}
+
+	// Fail tests after all assertions that will not interfere with eachother
+	// for improved test result readability.
+	if t.Failed() {
+		t.FailNow()
+	}
+}
+
+func TestIncreaseBalance(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	testDB, err := db.OpenTestDatabase("users")
+	if err != nil {
+		t.Fatalf("%+v\n", err)
+	}
+	u, err := Create(testDB,
+		"test_userIncreaseBalance@example.com",
+		"password",
+	)
+
+	tests := []struct {
+		amountSat int64
+		userID    uint
+
+		expectedResult User
+	}{
+		{
+			20000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 20000,
+			},
+		},
+		{
+			20000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 40000,
+			},
+		},
+		{
+			60000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 100000,
+			},
+		},
+		{
+			// This should fail because it is illegal to increase balance by a negative amount
+			-30000,
+			u.ID,
+
+			User{
+				ID:      u.ID,
+				Email:   u.Email,
+				Balance: 100000,
+			},
+		},
+	}
+
+	t.Log("testing increasing user balance")
+	{
+		for i, tt := range tests {
+			t.Logf("\ttest: %d\twhen increasing balance by %d for user %d",
+				i, tt.amountSat, tt.userID)
+			{
+				tx := testDB.MustBegin()
+				user, err := IncreaseBalance(tx, tt.userID, tt.amountSat)
+				if err != nil {
+					t.Fatalf(
+						"\t%s\tshould be able to IncreaseBalance. Error:  %+v\n%s",
+						fail, err, reset)
+				}
+				tx.Commit()
+				t.Logf("\t%s\tShould be able to IncreaseBalance%s", succeed, reset)
+
+				{
+					expectedResult := tt.expectedResult
+
+					if int64(u.Balance) < tt.amountSat {
+						if user == nil || err != nil {
+							t.Logf(
+								"\t%s\tIncreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v%s",
+								fail,
+								user,
+								err,
+								reset,
+							)
+							t.Fail()
+							return
+						}
+						t.Logf(
+							"\t%s\tIncreasing balance greater than balance should result in error%s",
+							succeed,
+							reset)
+						return
+					}
+
+					if tt.amountSat <= 0 {
+						if user != nil && err.Error() != "amount cant be less than or equal to 0" {
+							t.Logf(
+								"\t%s\tIncreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
+								fail,
+								user,
+								err,
+								reset,
+							)
+							t.Fail()
+							return
+						}
+						t.Logf(
+							"\t%s\tIncreasing balance by a negative amount should result in error.%s",
+							succeed,
+							reset)
+						return
+					}
+
+					if user.ID != expectedResult.ID {
+						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
+							fail,
+							expectedResult.ID,
+							user.ID,
+							reset,
+						)
+						t.Fail()
+					}
+
+					if user.Email != expectedResult.Email {
+						t.Logf("\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
+							fail,
+							expectedResult.Email,
+							user.Email,
+							reset,
+						)
+						t.Fail()
+					}
+
+					if user.Balance != expectedResult.Balance {
+						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
+							fail,
+							expectedResult.Balance,
+							user.Balance,
+							reset,
+						)
+						t.Fail()
+					}
+				}
+			}
+		}
+	}
+
+	// Fail tests after all assertions that will not interfere with eachother
+	// for improved test result readability.
+	if t.Failed() {
+		t.FailNow()
 	}
 }

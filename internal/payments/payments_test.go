@@ -59,12 +59,13 @@ func (client lightningMockClient) SendPaymentSync(ctx context.Context,
 }
 
 func TestMain(m *testing.M) {
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		return
 	}
 
+	db.TeardownTestDB(testDB)
 	if err = db.CreateTestDatabase(testDB); err != nil {
 		fmt.Println(err)
 		return
@@ -73,13 +74,13 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	result := m.Run()
 
-	db.TeardownTestDB(testDB)
 	os.Exit(result)
 }
 
 func TestCreateInvoice(t *testing.T) {
+	t.Parallel()
 	// Setup the database
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -193,8 +194,9 @@ func TestCreateInvoice(t *testing.T) {
 }
 
 func TestGetByID(t *testing.T) {
+	t.Parallel()
 	// Prepare
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -210,6 +212,9 @@ func TestGetByID(t *testing.T) {
 		"test_userGetByID@example.com",
 		"password",
 	)
+	if err != nil {
+		t.Fatalf("Should be able to create user, got error %v", err)
+	}
 
 	tests := []struct {
 		email    string
@@ -296,8 +301,9 @@ func TestGetByID(t *testing.T) {
 }
 
 func TestUpdateUserBalance(t *testing.T) {
+	t.Parallel()
 	// Prepare
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -312,12 +318,12 @@ func TestUpdateUserBalance(t *testing.T) {
 
 	tests := []struct {
 		amount int64
-		out    UserResponse
+		out    users.UserResponse
 	}{
 		{
 
 			10000,
-			UserResponse{
+			users.UserResponse{
 				ID:      u.ID,
 				Balance: 10000,
 			},
@@ -379,8 +385,9 @@ func TestUpdateUserBalance(t *testing.T) {
 }
 
 func TestPayInvoice(t *testing.T) {
+	t.Parallel()
 	// Setup the database
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -418,7 +425,7 @@ func TestPayInvoice(t *testing.T) {
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
-				User: UserResponse{
+				User: users.UserResponse{
 					ID:      u.ID,
 					Balance: 5000, // Test user starts with 100k satoshi
 				},
@@ -494,8 +501,9 @@ func TestPayInvoice(t *testing.T) {
 }
 
 func TestUpdateInvoiceStatus(t *testing.T) {
+	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -538,7 +546,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					Status:      Status("SUCCEEDED"),
 					Direction:   Direction("INBOUND"),
 				},
-				User: UserResponse{
+				User: users.UserResponse{
 					ID:      u.ID,
 					Balance: 20000, // Test user starts with 100k satoshi
 				},
@@ -613,9 +621,10 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 }
 
 func TestGetAll(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	// Setup the database
-	testDB, err := db.OpenTestDatabase()
+	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
