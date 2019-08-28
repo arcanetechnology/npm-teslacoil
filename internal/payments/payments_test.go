@@ -564,6 +564,8 @@ func TestPayInvoice(t *testing.T) {
 
 }
 
+// TODO: Add cases where the triggerInvoice .settled is false
+// This case should return the exact same payment and an empty UserResponse
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -657,6 +659,38 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					ID:      u.ID,
 					Balance: 70000,
 				},
+			},
+		},
+		{
+			lnrpc.Invoice{
+				PaymentRequest: "SomePayRequest3",
+				RHash:          []byte("SomeHash"),
+				RPreimage:      []byte("SomePreimage"),
+				Settled:        false,
+				Value:          amount1,
+			},
+			CreateInvoiceData{
+				Memo:        "HelloWorld",
+				Description: "My description",
+				AmountSat:   amount1,
+			},
+
+			UserPaymentResponse{
+				Payment: Payment{
+					UserID:         u.ID,
+					AmountSat:      amount1,
+					AmountMSat:     amount1 * 1000,
+					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
+					Preimage: sql.NullString{
+						String: samplePreimage,
+						Valid:  true,
+					},
+					Memo:        "HelloWorld",
+					Description: "My description",
+					Status:      Status("OPEN"),
+					Direction:   Direction("INBOUND"),
+				},
+				User: users.UserResponse{},
 			},
 		},
 	}
