@@ -516,26 +516,34 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		t.Fatalf("%+v\n", err)
 	}
 
+	amount1 := int64(50000)
+	amount2 := int64(20000)
+
 	tests := []struct {
-		triggerInvoice lnrpc.Invoice
+		triggerInvoice    lnrpc.Invoice
+		createInvoiceData CreateInvoiceData
 
 		out UserPaymentResponse
 	}{
 		{
-
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest1",
 				RHash:          []byte("SomeHash"),
 				RPreimage:      []byte("SomePreimage"),
 				Settled:        true,
-				Value:          20000,
+				Value:          amount1,
+			},
+			CreateInvoiceData{
+				Memo:        "HelloWorld",
+				Description: "My description",
+				AmountSat:   amount1,
 			},
 
 			UserPaymentResponse{
 				Payment: Payment{
 					UserID:         u.ID,
-					AmountSat:      20000,
-					AmountMSat:     20000000,
+					AmountSat:      amount1,
+					AmountMSat:     amount1 * 1000,
 					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
 					Preimage: sql.NullString{
 						String: samplePreimage,
@@ -548,7 +556,42 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				},
 				User: users.UserResponse{
 					ID:      u.ID,
-					Balance: 20000, // Test user starts with 100k satoshi
+					Balance: int(amount1),
+				},
+			},
+		},
+		{
+			lnrpc.Invoice{
+				PaymentRequest: "SomePayRequest2",
+				RHash:          []byte("SomeHash"),
+				RPreimage:      []byte("SomePreimage"),
+				Settled:        true,
+				Value:          amount2,
+			},
+			CreateInvoiceData{
+				Memo:        "HelloWorld",
+				Description: "My description",
+				AmountSat:   amount2,
+			},
+
+			UserPaymentResponse{
+				Payment: Payment{
+					UserID:         u.ID,
+					AmountSat:      amount2,
+					AmountMSat:     amount2 * 1000,
+					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
+					Preimage: sql.NullString{
+						String: samplePreimage,
+						Valid:  true,
+					},
+					Memo:        "HelloWorld",
+					Description: "My description",
+					Status:      Status("SUCCEEDED"),
+					Direction:   Direction("INBOUND"),
+				},
+				User: users.UserResponse{
+					ID:      u.ID,
+					Balance: 70000,
 				},
 			},
 		},
@@ -557,18 +600,14 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Log("testing updating invoice status")
 	{
 		for i, tt := range tests {
-			t.Logf("\ttest: %d\twhen updating invoice status %s for user %d",
-				i, tt.out.Payment.PaymentRequest, tt.out.User.ID)
+			t.Logf("\ttest: %d\twhen updating invoice with amout %d where balance should be %d after execution",
+				i, tt.createInvoiceData.AmountSat, tt.out.User.Balance)
 			{
 				_, err := CreateInvoice(testDB,
 					lightningMockClient{
 						InvoiceResponse: tt.triggerInvoice,
-					},
-					CreateInvoiceData{
-						Memo:        "HelloWorld",
-						Description: "My description",
-						AmountSat:   20000,
-					}, u.ID)
+					}, tt.createInvoiceData,
+					u.ID)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to CreateInvoice. Error:  %+v\n%s",
@@ -600,7 +639,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					}
 
 					if payment.User.Balance != expectedResult.Balance {
-						t.Logf("\t%s\tStatus should be equal to expected Status. Expected \"%d\" got \"%d\"%s",
+						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
 							fail,
 							expectedResult.Balance,
 							payment.User.Balance,

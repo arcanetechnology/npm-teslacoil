@@ -35,6 +35,12 @@ type UserResponse struct {
 	UpdatedAt      time.Time `db:"updated_at"`
 }
 
+// ChangeBalance is the type for increasing or decreasing the balance
+type ChangeBalance struct {
+	AmountSat int64 `db:"amountSat"`
+	UserID    uint  `db:"userID"`
+}
+
 // UsersTable is the tablename of users, as saved in the DB
 const UsersTable = "users"
 
@@ -117,44 +123,37 @@ func Create(d *sqlx.DB, email, password string) (*UserResponse, error) {
 		HashedPassword: hashedPassword,
 	}
 
-	userResp, err := insertUser(d, user)
+	tx := d.MustBegin()
+	userResp, err := insertUser(tx, user)
 	if err != nil {
 		return nil, err
 	}
+	tx.Commit()
 
 	return userResp, nil
 }
 
 // IncreaseBalance increases the balance of user id x by y satoshis
-func IncreaseBalance(tx *sqlx.Tx, userID uint, amountSat int64) (*UserResponse, error) {
-	if amountSat <= 0 {
+func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (*UserResponse, error) {
+	if cb.AmountSat <= 0 {
 		return nil, errors.New("amount cant be less than or equal to 0")
 	}
 
-	updateUserBalanceQuery := `UPDATE users 
-				SET balance = :amount_sat + balance
-				WHERE id = :user_id
-				AND balance > :amount_sat
-				RETURNING id, email, balance, updated_at`
+	updateBalanceQuery := `UPDATE users
+		SET balance = balance + $1
+		WHERE id = $2
+		RETURNING id, email, balance, updated_at`
 
-	rows, err := tx.Query(updateUserBalanceQuery, struct {
-		amountSat int64 `db:"amount_sat"`
-		userID    uint  `db:"user_id"`
-	}{
-		amountSat: amountSat,
-		userID:    userID,
-	})
+	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, errors.Wrapf(
+		return nil, errors.Wrap(
 			err,
-			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %d, %d)",
-			amountSat,
-			userID,
+			"UpdateUserBalance(): could not construct user update",
 		)
 	}
+	defer rows.Close()
 
-	var user UserResponse
+	user := UserResponse{}
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
@@ -162,48 +161,37 @@ func IncreaseBalance(tx *sqlx.Tx, userID uint, amountSat int64) (*UserResponse, 
 			&user.Balance,
 			&user.UpdatedAt,
 		); err != nil {
-			_ = tx.Rollback()
 			return nil, errors.Wrap(
-				err,
-				"UpdateInvoiceStatus->rows.Scan()",
-			)
+				err, "Could not scan user returned from db")
 		}
 	}
-	rows.Close() // Free up the database connection
 
 	return &user, nil
 }
 
+// Decrease ..
+
 // DecreaseBalance decreases the balance of user id x by y satoshis
-func DecreaseBalance(tx *sqlx.Tx, userID uint, amountSat int64) (*UserResponse, error) {
-	if amountSat <= 0 {
+func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (*UserResponse, error) {
+	if cb.AmountSat <= 0 {
 		return nil, errors.New("amount cant be less than or equal to 0")
 	}
 
-	updateUserBalanceQuery := `UPDATE users 
-				SET balance = :amount_sat - balance
-				WHERE id = :user_id
-				AND balance > :amount_sat
-				RETURNING id, email, balance, updated_at`
+	updateBalanceQuery := `UPDATE users
+		SET balance = balance - $1
+		WHERE id = $2
+		RETURNING id, email, balance, updated_at`
 
-	rows, err := tx.Query(updateUserBalanceQuery, struct {
-		amountSat int64 `db:"amount_sat"`
-		userID    uint  `db:"user_id"`
-	}{
-		amountSat: amountSat,
-		userID:    userID,
-	})
+	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, errors.Wrapf(
+		return nil, errors.Wrap(
 			err,
-			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %d, %d)",
-			amountSat,
-			userID,
+			"UpdateUserBalance(): could not construct user update",
 		)
 	}
+	defer rows.Close()
 
-	var user UserResponse
+	user := UserResponse{}
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
@@ -211,14 +199,10 @@ func DecreaseBalance(tx *sqlx.Tx, userID uint, amountSat int64) (*UserResponse, 
 			&user.Balance,
 			&user.UpdatedAt,
 		); err != nil {
-			_ = tx.Rollback()
 			return nil, errors.Wrap(
-				err,
-				"UpdateInvoiceStatus->rows.Scan()",
-			)
+				err, "Could not scan user returned from db")
 		}
 	}
-	rows.Close() // Free up the database connection
 
 	return &user, nil
 }
@@ -242,13 +226,13 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	return hash, nil
 }
 
-func insertUser(d *sqlx.DB, user User) (*UserResponse, error) {
+func insertUser(tx *sqlx.Tx, user User) (*UserResponse, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password)
 		VALUES (:email, 0, :hashed_password)
 		RETURNING id, email, balance, updated_at`
 
-	rows, err := d.NamedQuery(userCreateQuery, user)
+	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
 		return nil, errors.Wrapf(
 			err, "users.Create(db, %s, %s)",

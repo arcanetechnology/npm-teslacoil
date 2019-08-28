@@ -360,7 +360,9 @@ func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
 	}
 }
 
-// UpdateInvoiceStatus continually listens for messages and updated the user balance
+// UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
+// (newly added/settled invoices). If received payment was successful, updates
+// the payment stored in our db and increases the users balance
 // PS: This is most likely done in a horrible way. Must be refactored.
 // We also need to keep track of the last received messages from lnd
 // TODO: Give better error message if payment was just created, but not yet
@@ -447,7 +449,9 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		}
 	}
 
-	user, err := users.DecreaseBalance(tx, payment.UserID, payment.AmountSat)
+	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
+		AmountSat: payment.AmountSat,
+		UserID:    payment.UserID})
 	if err != nil {
 		return nil, errors.Wrapf(
 			err,

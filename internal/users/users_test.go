@@ -146,15 +146,17 @@ func TestCanGetUserByEmail(t *testing.T) {
 			t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
 
 			{
-				user, err := insertUser(testDB, User{
+				tx := testDB.MustBegin()
+				user, err := insertUser(tx, User{
 					Email:          tt.user.Email,
 					HashedPassword: tt.user.HashedPassword,
 				})
-				if user == nil {
-					t.Log("User result was empty")
-				}
+				err = tx.Commit()
 				if err != nil {
 					t.Logf("%+v\n", err)
+				}
+				if user == nil {
+					t.Log("User result was empty")
 				}
 
 				user, err = GetByEmail(testDB, email)
@@ -310,15 +312,17 @@ func TestCanGetUserByID(t *testing.T) {
 			t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
 
 			{
-				u, err := insertUser(testDB, User{
+				tx := testDB.MustBegin()
+				u, err := insertUser(tx, User{
 					Email:          tt.user.Email,
 					HashedPassword: tt.user.HashedPassword,
 				})
-				if u == nil {
-					t.Log("User result was empty")
-				}
+				err = tx.Commit()
 				if err != nil {
 					t.Logf("%+v\n", err)
+				}
+				if u == nil {
+					t.Log("User result was empty")
 				}
 
 				user, err := GetByID(testDB, u.ID)
@@ -377,7 +381,10 @@ func TestDecreaseBalance(t *testing.T) {
 	)
 	// Give initial balance of 100 000
 	tx := testDB.MustBegin()
-	u, err = IncreaseBalance(tx, u.ID, 100000)
+	u, err = IncreaseBalance(tx, ChangeBalance{
+		UserID:    u.ID,
+		AmountSat: 100000,
+	})
 	if err != nil || u == nil {
 		t.Fatalf(
 			"\t%s\tShould be able to give user iniital balance by using IncreaseBalance. Error: %+v\n%s",
@@ -387,14 +394,15 @@ func TestDecreaseBalance(t *testing.T) {
 	t.Logf("\t%s\tShould be able to give user iniital balance by using IncreaseBalance%s", succeed, reset)
 
 	tests := []struct {
-		amountSat int64
-		userID    uint
+		dec ChangeBalance
 
 		expectedResult User
 	}{
 		{
-			20000,
-			u.ID,
+			ChangeBalance{
+				AmountSat: 20000,
+				UserID:    u.ID,
+			},
 
 			User{
 				ID:      u.ID,
@@ -403,8 +411,10 @@ func TestDecreaseBalance(t *testing.T) {
 			},
 		},
 		{
-			20000,
-			u.ID,
+			ChangeBalance{
+				AmountSat: 20000,
+				UserID:    u.ID,
+			},
 
 			User{
 				ID:      u.ID,
@@ -413,8 +423,10 @@ func TestDecreaseBalance(t *testing.T) {
 			},
 		},
 		{
-			60000,
-			u.ID,
+			ChangeBalance{
+				AmountSat: 60000,
+				UserID:    u.ID,
+			},
 
 			User{
 				ID:      u.ID,
@@ -424,8 +436,10 @@ func TestDecreaseBalance(t *testing.T) {
 		},
 		{
 			// This should fail because the users balance should already be 0
-			10,
-			u.ID,
+			ChangeBalance{
+				AmountSat: 10,
+				UserID:    u.ID,
+			},
 
 			User{
 				ID:      u.ID,
@@ -435,8 +449,10 @@ func TestDecreaseBalance(t *testing.T) {
 		},
 		{
 			// This should fail because it is illegal to increase balance by a negative amount
-			-30000,
-			u.ID,
+			ChangeBalance{
+				AmountSat: -30000,
+				UserID:    u.ID,
+			},
 
 			User{
 				ID:      u.ID,
@@ -450,10 +466,53 @@ func TestDecreaseBalance(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen decreasing balance by %d for user %d",
-				i, tt.amountSat, tt.userID)
+				i, tt.dec.AmountSat, tt.dec.UserID)
 			{
+				user, err := GetByID(testDB, tt.expectedResult.ID)
+				if err != nil {
+					t.Fatalf("Should be able to GetByID")
+				}
 				tx := testDB.MustBegin()
-				user, err := DecreaseBalance(tx, tt.userID, tt.amountSat)
+				u, err = DecreaseBalance(tx, tt.dec)
+				if int64(user.Balance) < tt.dec.AmountSat {
+					log.Info("should be in here")
+					if user == nil || err == nil {
+						t.Logf(
+							"\t%s\tDecreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v%s",
+							fail,
+							user,
+							err,
+							reset,
+						)
+						t.Fail()
+						return
+					}
+					t.Logf(
+						"\t%s\tDecreasing balance greater than balance should result in error \"UpdateUserBalance(): could not construct user update: pw: new row for relation \"users\" violates check constraint \"users_balance_check\"\"\n						                                   got \"%v\"%s",
+						succeed,
+						err,
+						reset)
+					return
+				}
+
+				if tt.dec.AmountSat <= 0 {
+					if user != nil && err.Error() != "amount cant be less than or equal to 0" {
+						t.Logf(
+							"\t%s\tDecreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
+							fail,
+							user,
+							err,
+							reset,
+						)
+						t.Fail()
+						return
+					}
+					t.Logf(
+						"\t%s\tDecreasing balance by a negative amount should result in error.%s",
+						succeed,
+						reset)
+					return
+				}
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to DecreaseBalance. Error:  %+v\n%s",
@@ -465,69 +524,31 @@ func TestDecreaseBalance(t *testing.T) {
 				{
 					expectedResult := tt.expectedResult
 
-					if int64(u.Balance) < tt.amountSat {
-						if user == nil || err != nil {
-							t.Logf(
-								"\t%s\tDecreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v%s",
-								fail,
-								user,
-								err,
-								reset,
-							)
-							t.Fail()
-							return
-						}
-						t.Logf(
-							"\t%s\tDecreasing balance greater than balance should result in error%s",
-							succeed,
-							reset)
-						return
-					}
-
-					if tt.amountSat <= 0 {
-						if user != nil && err.Error() != "amount cant be less than or equal to 0" {
-							t.Logf(
-								"\t%s\tDecreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
-								fail,
-								user,
-								err,
-								reset,
-							)
-							t.Fail()
-							return
-						}
-						t.Logf(
-							"\t%s\tDecreasing balance by a negative amount should result in error.%s",
-							succeed,
-							reset)
-						return
-					}
-
-					if user.ID != expectedResult.ID {
+					if u.ID != expectedResult.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
 							fail,
 							expectedResult.ID,
-							user.ID,
+							u.ID,
 							reset,
 						)
 						t.Fail()
 					}
 
-					if user.Email != expectedResult.Email {
+					if u.Email != expectedResult.Email {
 						t.Logf("\t%s\tEmail should be equal to expected Email. Expected \"%s\" got \"%s\"%s",
 							fail,
 							expectedResult.Email,
-							user.Email,
+							u.Email,
 							reset,
 						)
 						t.Fail()
 					}
 
-					if user.Balance != expectedResult.Balance {
+					if u.Balance != expectedResult.Balance {
 						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
 							fail,
 							expectedResult.Balance,
-							user.Balance,
+							u.Balance,
 							reset,
 						)
 						t.Fail()
@@ -555,10 +576,11 @@ func TestIncreaseBalance(t *testing.T) {
 		"test_userIncreaseBalance@example.com",
 		"password",
 	)
+	log.Infof("created user %v", u)
 
 	tests := []struct {
-		amountSat int64
-		userID    uint
+		amountSat int64 `db:"amount_sat"`
+		userID    uint  `db:"user_id"`
 
 		expectedResult User
 	}{
@@ -612,7 +634,26 @@ func TestIncreaseBalance(t *testing.T) {
 				i, tt.amountSat, tt.userID)
 			{
 				tx := testDB.MustBegin()
-				user, err := IncreaseBalance(tx, tt.userID, tt.amountSat)
+				user, err := IncreaseBalance(tx, ChangeBalance{UserID: tt.userID, AmountSat: tt.amountSat})
+				if tt.amountSat <= 0 {
+					if user != nil && err.Error() != "amount cant be less than or equal to 0" {
+						t.Logf(
+							"\t%s\tIncreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
+							fail,
+							user,
+							err,
+							reset,
+						)
+						t.Fail()
+						return
+					}
+					t.Logf(
+						"\t%s\tIncreasing balance by a negative amount should result in error.%s",
+						succeed,
+						reset)
+					return
+				}
+
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to IncreaseBalance. Error:  %+v\n%s",
@@ -623,44 +664,6 @@ func TestIncreaseBalance(t *testing.T) {
 
 				{
 					expectedResult := tt.expectedResult
-
-					if int64(u.Balance) < tt.amountSat {
-						if user == nil || err != nil {
-							t.Logf(
-								"\t%s\tIncreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v%s",
-								fail,
-								user,
-								err,
-								reset,
-							)
-							t.Fail()
-							return
-						}
-						t.Logf(
-							"\t%s\tIncreasing balance greater than balance should result in error%s",
-							succeed,
-							reset)
-						return
-					}
-
-					if tt.amountSat <= 0 {
-						if user != nil && err.Error() != "amount cant be less than or equal to 0" {
-							t.Logf(
-								"\t%s\tIncreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
-								fail,
-								user,
-								err,
-								reset,
-							)
-							t.Fail()
-							return
-						}
-						t.Logf(
-							"\t%s\tIncreasing balance by a negative amount should result in error.%s",
-							succeed,
-							reset)
-						return
-					}
 
 					if user.ID != expectedResult.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
