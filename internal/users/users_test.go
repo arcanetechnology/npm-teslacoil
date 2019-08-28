@@ -72,11 +72,6 @@ func TestCanCreateUser(t *testing.T) {
 					email,
 					"password",
 				)
-				if user == nil {
-					t.Fatalf(
-						"\t%s\tshould be able to Create user. User response was nil%s",
-						fail, reset)
-				}
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to Create user. Error: %v%s",
@@ -155,16 +150,8 @@ func TestCanGetUserByEmail(t *testing.T) {
 				if err != nil {
 					t.Logf("%+v\n", err)
 				}
-				if user == nil {
-					t.Log("User result was empty")
-				}
 
 				user, err = GetByEmail(testDB, email)
-				if user == nil {
-					t.Fatalf(
-						"\t%s\tshould be able to get user. User response was nil%s",
-						fail, reset)
-				}
 				if err != nil {
 					t.Fatalf("\t%s\tshould be able to get user. Error: %v%s", fail, err, reset)
 				}
@@ -233,18 +220,12 @@ func TestCanGetUserByCredentials(t *testing.T) {
 
 			{
 				user, err := Create(testDB, tt.email, tt.password)
-				if user == nil {
-					t.Fatalf("\t%s\tshould be able to Create user. User response was nil%s", fail, reset)
-				}
 				if err != nil {
 					t.Fatalf("\t%s\tshould be able to Create user. Error: %v%s", fail, err, reset)
 				}
 				t.Logf("\t%s\tshould be able to Create user%s", succeed, reset)
 
 				user, err = GetByCredentials(testDB, tt.email, tt.password)
-				if user == nil {
-					t.Fatalf("\t%s\tshould be able to get user by credentials. User response was nil%s", fail, reset)
-				}
 				if err != nil {
 					t.Fatalf("\t%s\tshould be able to get user by credentials. Error: %v%s", fail, err, reset)
 				}
@@ -321,16 +302,8 @@ func TestCanGetUserByID(t *testing.T) {
 				if err != nil {
 					t.Logf("%+v\n", err)
 				}
-				if u == nil {
-					t.Log("User result was empty")
-				}
 
 				user, err := GetByID(testDB, u.ID)
-				if user == nil {
-					t.Fatalf(
-						"\t%s\tshould be able to get user. User response was nil%s",
-						fail, reset)
-				}
 				if err != nil {
 					t.Fatalf("\t%s\tshould be able to get user. Error: %v%s", fail, err, reset)
 				}
@@ -385,7 +358,7 @@ func TestDecreaseBalance(t *testing.T) {
 		UserID:    u.ID,
 		AmountSat: 100000,
 	})
-	if err != nil || u == nil {
+	if err != nil {
 		t.Fatalf(
 			"\t%s\tShould be able to give user iniital balance by using IncreaseBalance. Error: %+v\n%s",
 			fail, err, reset)
@@ -442,9 +415,7 @@ func TestDecreaseBalance(t *testing.T) {
 			},
 
 			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 0,
+				ID: u.ID,
 			},
 		},
 		{
@@ -455,9 +426,7 @@ func TestDecreaseBalance(t *testing.T) {
 			},
 
 			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 0,
+				ID: u.ID,
 			},
 		},
 	}
@@ -476,7 +445,7 @@ func TestDecreaseBalance(t *testing.T) {
 				u, err = DecreaseBalance(tx, tt.dec)
 				if int64(user.Balance) < tt.dec.AmountSat {
 					log.Info("should be in here")
-					if user == nil || err == nil {
+					if err == nil {
 						t.Logf(
 							"\t%s\tDecreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v%s",
 							fail,
@@ -496,7 +465,7 @@ func TestDecreaseBalance(t *testing.T) {
 				}
 
 				if tt.dec.AmountSat <= 0 {
-					if user != nil && err.Error() != "amount cant be less than or equal to 0" {
+					if err.Error() != "amount cant be less than or equal to 0" {
 						t.Logf(
 							"\t%s\tDecreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
 							fail,
@@ -620,9 +589,7 @@ func TestIncreaseBalance(t *testing.T) {
 			u.ID,
 
 			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 100000,
+				ID: u.ID,
 			},
 		},
 	}
@@ -636,7 +603,7 @@ func TestIncreaseBalance(t *testing.T) {
 				tx := testDB.MustBegin()
 				user, err := IncreaseBalance(tx, ChangeBalance{UserID: tt.userID, AmountSat: tt.amountSat})
 				if tt.amountSat <= 0 {
-					if user != nil && err.Error() != "amount cant be less than or equal to 0" {
+					if err.Error() != "amount cant be less than or equal to 0" {
 						t.Logf(
 							"\t%s\tIncreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v%s",
 							fail,

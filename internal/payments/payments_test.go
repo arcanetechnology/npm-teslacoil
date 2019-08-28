@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -88,7 +89,7 @@ func TestCreateInvoice(t *testing.T) {
 		"test_userCreateInvoice@example.com",
 		"password",
 	)
-	if err != nil || user == nil {
+	if err != nil {
 		fmt.Println("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
@@ -311,7 +312,7 @@ func TestUpdateUserBalance(t *testing.T) {
 		"test_userUpdateUserBalance@example.com",
 		"password",
 	)
-	if err != nil || u == nil {
+	if err != nil {
 		fmt.Println("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
@@ -395,26 +396,46 @@ func TestPayInvoice(t *testing.T) {
 		"test_userPayInvoice@example.com",
 		"password",
 	)
-	if err != nil || u == nil {
+	if err != nil {
 		fmt.Println("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
 
+	tx := testDB.MustBegin()
+	users.IncreaseBalance(tx, users.ChangeBalance{
+		UserID:    u.ID,
+		AmountSat: 5000,
+	})
+	err = tx.Commit()
+	if err != nil {
+		t.Fatalf(
+			"\t%s\tshould be able to PayInvoice. Error:  %+v\n%s",
+			fail, err, reset)
+	}
+
+	var amount1 int64 = 5000
+	var amount2 int64 = 2000
 	tests := []struct {
 		payInvoiceData PayInvoiceData
 
-		out UserPaymentResponse
+		decodePayReq lnrpc.PayReq
+		out          UserPaymentResponse
 	}{
 		{
 			PayInvoiceData{
-				PaymentRequest: "SomePaymentHash",
+				PaymentRequest: "SomePaymentRequest1",
 				Memo:           "HelloPayment",
+			},
+			lnrpc.PayReq{
+				PaymentHash: "SomeHash",
+				NumSatoshis: amount1,
+				Description: "HelloPayment",
 			},
 			UserPaymentResponse{
 				Payment: Payment{
 					UserID:     u.ID,
-					AmountSat:  5000,
-					AmountMSat: 5000000,
+					AmountSat:  amount1,
+					AmountMSat: amount1 * 1000,
 					Preimage: sql.NullString{
 						String: samplePreimage,
 						Valid:  true,
@@ -427,24 +448,37 @@ func TestPayInvoice(t *testing.T) {
 				},
 				User: users.UserResponse{
 					ID:      u.ID,
-					Balance: 5000, // Test user starts with 100k satoshi
+					Balance: 0,
 				},
 			},
 		},
-	}
-
-	// Create Mock LND client with preconfigured invoice response
-	mockLNcli := lightningMockClient{
-		InvoiceResponse: lnrpc.Invoice{},
-		SendPaymentSyncResponse: lnrpc.SendResponse{
-			PaymentPreimage: []byte("SomePreimage"),
-			PaymentHash:     []byte("SomeRHash"),
-		},
-		// We need to define what DecodePayReq returns
-		DecodePayReqRespons: lnrpc.PayReq{
-			PaymentHash: "SomeHash",
-			NumSatoshis: 5000,
-			Description: "HelloPayment",
+		{
+			PayInvoiceData{
+				PaymentRequest: "SomePaymentRequest2",
+				Memo:           "HelloPayment",
+			},
+			lnrpc.PayReq{
+				PaymentHash: "SomeHash",
+				NumSatoshis: amount2,
+				Description: "HelloPayment",
+			},
+			UserPaymentResponse{
+				Payment: Payment{
+					UserID:     u.ID,
+					AmountSat:  amount2,
+					AmountMSat: amount2 * 1000,
+					Preimage: sql.NullString{
+						String: samplePreimage,
+						Valid:  true,
+					},
+					HashedPreimage: "SomeHash",
+					Memo:           "HelloPayment",
+					Description:    "My personal description",
+					Status:         Status("SUCCEEDED"),
+					Direction:      Direction("OUTBOUND"),
+				},
+				User: users.UserResponse{},
+			},
 		},
 	}
 
@@ -454,8 +488,38 @@ func TestPayInvoice(t *testing.T) {
 			t.Logf("\ttest: %d\twhen paying invoice %s for user %d",
 				i, tt.out.Payment.PaymentRequest, tt.out.User.ID)
 			{
+				user, err := users.GetByID(testDB, u.ID)
+				if err != nil {
+					t.Fatalf(
+						"\t%s\tshould be able to GetByID. Error:  %+v\n%s",
+						fail, err, reset)
+				}
+
+				// Create Mock LND client with preconfigured invoice response
+				mockLNcli := lightningMockClient{
+					InvoiceResponse: lnrpc.Invoice{},
+					SendPaymentSyncResponse: lnrpc.SendResponse{
+						PaymentPreimage: []byte("SomePreimage"),
+						PaymentHash:     []byte("SomeRHash"),
+					},
+					DecodePayReqRespons: tt.decodePayReq,
+					// We need to define what DecodePayReq returns
+				}
 				payment, err := PayInvoice(
 					testDB, mockLNcli, tt.payInvoiceData, u.ID)
+				if int64(user.Balance) < tt.out.Payment.AmountSat {
+					if !strings.Contains(
+						err.Error(),
+						`could not construct user update: pq: new row for relation "users" violates check constraint "users_balance_check"`) {
+						t.Fatalf(
+							"\t%s\tshould fail when paying invoice greater than balance. Error:  %+v\n%s",
+							fail, err, reset)
+					}
+					t.Logf(
+						"\t%s\tshould fail when paying invoice greater than balance%s",
+						succeed, reset)
+					return
+				}
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to PayInvoice. Error:  %+v\n%s",
@@ -511,7 +575,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		"test_userUpdateInvoiceStatus@example.com",
 		"password",
 	)
-	if err != nil || u == nil {
+	if err != nil {
 		fmt.Println("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
@@ -755,7 +819,7 @@ func TestGetAll(t *testing.T) {
 					fmt.Sprintf("test_user%d@example.com", i),
 					"password",
 				)
-				if err != nil || u == nil {
+				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to CreateUser. Error:  %+v\n%s",
 						fail, err, reset)

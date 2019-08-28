@@ -270,9 +270,11 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		return UserPaymentResponse{}, errors.New(paymentResponse.PaymentError)
 	}
 
-	user := users.UserResponse{}
+	var user users.UserResponse
 	if payment.Status == succeeded {
-		user, err = updateUserBalance(tx, p.UserID, payment.AmountSat)
+		user, err = users.DecreaseBalance(tx, users.ChangeBalance{
+			UserID: p.UserID, AmountSat: payment.AmountSat,
+		})
 		if err != nil {
 			// log.Error(err)
 			tx.Rollback()
@@ -470,7 +472,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 
 	return &UserPaymentResponse{
 		Payment: payment,
-		User:    *user,
+		User:    user,
 	}, nil
 }
 
