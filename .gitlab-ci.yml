@@ -7,6 +7,7 @@ variables:
   POSTGRES_DB: $DATABASE_TEST_NAME
   POSTGRES_USER: $DATABASE_TEST_USER
   POSTGRES_PASSWORD: $DATABASE_TEST_PASSWORD
+  PGPASSWORD: $DATABASE_TEST_PASSWORD
 
 stages:
   - test
@@ -17,8 +18,7 @@ test job:
   - merge_requests
   stage: test
   script: GO111MODULE=on
-  script: go test ./... -v
-
+  script: make install && make test
 
 lint job:
   only:
