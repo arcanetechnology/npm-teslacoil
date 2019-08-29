@@ -269,7 +269,7 @@ func TestGetByID(t *testing.T) {
 				i, tt.out.UserID, tt.out.AmountSat)
 			{
 				tx := testDB.MustBegin()
-				payment, err := insertPayment(tx, tt.out)
+				payment, err := insert(tx, tt.out)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tShould be able to insertPayment. Error:  %+v\n%s",
@@ -289,90 +289,6 @@ func TestGetByID(t *testing.T) {
 
 				{
 					assertPaymentsAreEqual(t, payment, tt.out)
-				}
-			}
-		}
-	}
-
-	// Fail tests after all assertions that will not interfere with eachother
-	// for improved test result readability.
-	if t.Failed() {
-		t.FailNow()
-	}
-}
-
-func TestUpdateUserBalance(t *testing.T) {
-	t.Parallel()
-	// Prepare
-	testDB, err := db.OpenTestDatabase("payments")
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
-	u, err := users.Create(testDB,
-		"test_userUpdateUserBalance@example.com",
-		"password",
-	)
-	if err != nil {
-		fmt.Println("User result was empty")
-		t.Fatalf("%+v\n", err)
-	}
-
-	tests := []struct {
-		amount int64
-		out    users.UserResponse
-	}{
-		{
-
-			10000,
-			users.UserResponse{
-				ID:      u.ID,
-				Balance: 10000,
-			},
-		},
-	}
-
-	t.Log("testing getting payments by ID")
-	{
-		for i, tt := range tests {
-			t.Logf("\ttest: %d\twhen updating balance by %d for user %d",
-				i, tt.out.Balance, tt.out.ID)
-			{
-				tx := testDB.MustBegin()
-				user, err := updateUserBalance(tx, u.ID, tt.amount)
-				if err != nil {
-					t.Fatalf(
-						"\t%s\tshould be able to updateUserBalance. Error:  %+v\n%s",
-						fail, err, reset)
-				}
-				err = tx.Commit()
-				if err != nil {
-					t.Fatalf(
-						"\t%s\tShould be able to commit db tx. Error:  %+v\n%s",
-						fail, err, reset)
-				}
-				t.Logf("\t%s\tShould be able to updateUserBalance%s", succeed, reset)
-
-				{
-					expectedResult := tt.out
-					if user.ID != expectedResult.ID {
-						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
-							fail,
-							expectedResult.ID,
-							user.ID,
-							reset,
-						)
-						t.Fail()
-					}
-
-					if user.Balance != expectedResult.Balance {
-						t.Logf("\t%s\tStatus should be equal to expected Status. Expected \"%d\" got \"%d\"%s",
-							fail,
-							expectedResult.Balance,
-							user.Balance,
-							reset,
-						)
-						t.Fail()
-					}
 				}
 			}
 		}
@@ -506,8 +422,14 @@ func TestPayInvoice(t *testing.T) {
 					// We need to define what DecodePayReq returns
 				}
 				payment, err := PayInvoice(
-					testDB, mockLNcli, tt.payInvoiceData, u.ID)
+					testDB, &mockLNcli, tt.payInvoiceData, u.ID)
+				log.Errorf("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if int64(user.Balance) < tt.out.Payment.AmountSat {
+					if payment.Payment.Status == succeeded || payment.Payment.Preimage.Valid || payment.Payment.SettledAt != nil {
+						t.Fatalf(
+							"\t%s\tShit, the test failed. It paid the invoice without thinking twice about checking if the user had enough balance\n%s",
+							fail, reset)
+					}
 					if !strings.Contains(
 						err.Error(),
 						`could not construct user update: pq: new row for relation "users" violates check constraint "users_balance_check"`) {
@@ -771,7 +693,7 @@ func TestGetAll(t *testing.T) {
 		scenario string
 
 		invoices []CreateInvoiceData
-		filter   GetAllInvoicesData
+		filter   FilterGetAll
 
 		expectedNumberOfInvoices int
 	}{
@@ -791,7 +713,7 @@ func TestGetAll(t *testing.T) {
 					AmountSat: 20003,
 				},
 			},
-			GetAllInvoicesData{
+			FilterGetAll{
 				Offset: 0,
 				Limit:  50,
 			},
@@ -813,7 +735,7 @@ func TestGetAll(t *testing.T) {
 					AmountSat: 20003,
 				},
 			},
-			GetAllInvoicesData{
+			FilterGetAll{
 				Offset: 0,
 				Limit:  2,
 			},
@@ -835,7 +757,7 @@ func TestGetAll(t *testing.T) {
 					AmountSat: 20003,
 				},
 			},
-			GetAllInvoicesData{
+			FilterGetAll{
 				Offset: 2,
 				Limit:  50,
 			},

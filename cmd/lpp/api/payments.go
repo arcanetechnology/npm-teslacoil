@@ -91,7 +91,7 @@ func GetAllPayments(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		filter := payments.GetAllInvoicesData{
+		filter := payments.FilterGetAll{
 			Limit:  int(limit),
 			Offset: int(offset),
 		}
@@ -109,8 +109,8 @@ func GetAllPayments(r *RestServer) gin.HandlerFunc {
 	}
 }
 
-// GetPayment is a GET request that returns users that match the one specified in the body
-func GetPayment(r *RestServer) gin.HandlerFunc {
+// GetSinglePayment is a GET request that returns users that match the one specified in the body
+func GetSinglePayment(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 

@@ -8,6 +8,6 @@ var log = logrus.New()
 
 func init() {
 	log.WithFields(logrus.Fields{
-		"package": "db",
+		"package": "payments",
 	})
 }

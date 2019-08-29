@@ -44,9 +44,9 @@ type ChangeBalance struct {
 // UsersTable is the tablename of users, as saved in the DB
 const UsersTable = "users"
 
-// All is a GET request that returns all the users in the database
+// GetAll is a GET request that returns all the users in the database
 // TODO: This endpoint should be restricted to the admin
-func All(d *sqlx.DB) ([]User, error) {
+func GetAll(d *sqlx.DB) ([]User, error) {
 	// Equivalent to SELECT * from users;
 	queryResult := []User{}
 	err := d.Select(&queryResult, fmt.Sprintf("SELECT * FROM %s", UsersTable))

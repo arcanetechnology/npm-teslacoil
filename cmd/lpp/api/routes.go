@@ -103,7 +103,7 @@ func RegisterPaymentRoutes(r *RestServer) {
 	// payments.Use(authenticateJWT)
 
 	payments.GET("/payments", GetAllPayments(r))
-	payments.GET("/payments/:id", GetPayment(r))
+	payments.GET("/payments/:id", GetSinglePayment(r))
 	payments.POST("/invoices/create", CreateInvoice(r))
 	payments.POST("/invoices/pay", PayInvoice(r))
 }

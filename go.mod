@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/appleboy/gin-jwt v2.5.0+incompatible
 	github.com/boltdb/bolt v1.3.1 // indirect
+	github.com/breez/lnd v0.0.2
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
 	github.com/btcsuite/btclog v0.0.0-20170628155309-84c8d2346e9f
 	github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
@@ -47,10 +48,11 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/tidwall/gjson v1.3.2 // indirect
 	github.com/ugorji/go v1.1.7
-	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
-	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80 // indirect
-	golang.org/x/sys v0.0.0-20190801041406-cbf593c0f2f3
-	golang.org/x/tools v0.0.0-20190731214159-1e85ed8060aa // indirect
+	golang.org/x/crypto v0.0.0-20190829043050-9756ffdc2472
+	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297 // indirect
+	golang.org/x/sys v0.0.0-20190826190057-c7b8b68b1456
+	golang.org/x/tools v0.0.0-20190829051458-42f498d34c4d // indirect
+	golang.org/x/tools/gopls v0.1.3 // indirect
 	google.golang.org/grpc v1.20.1
 	gopkg.in/dgrijalva/jwt-go.v3 v3.2.0 // indirect
 	gopkg.in/go-playground/validator.v8 v8.18.2

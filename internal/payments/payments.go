@@ -42,8 +42,8 @@ type CreateInvoiceData struct {
 	AmountSat   int64  `json:"amountSat"`
 }
 
-// GetAllInvoicesData is the body for the GetAll endpoint
-type GetAllInvoicesData struct {
+// FilterGetAll is the body for the GetAll endpoint
+type FilterGetAll struct {
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
 }
@@ -84,14 +84,81 @@ type UserPaymentResponse struct {
 	User    users.UserResponse `json:"user"`
 }
 
-// GetAll fetches all payments
-func GetAll(d *sqlx.DB, userID uint, filter GetAllInvoicesData) (
-	[]Payment, error) {
+// insert persists the supplied payment to the database. Returns the payment,
+// as returned from the database
+func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
+	var createOffchainTXQuery string
 
+	if p.Preimage.Valid && p.HashedPreimage != "" {
+		return Payment{},
+			errors.New("cant supply both a preimage and a hashed preimage")
+	}
+
+	createOffchainTXQuery = `INSERT INTO 
+	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
+		description, direction, status, amount_sat,amount_msat)
+	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
+		    :memo, :description, :direction, :status, :amount_sat, :amount_msat)
+	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
+			  memo, description, direction, status, amount_sat, amount_msat,
+			  created_at, updated_at`
+
+	// Using the above query, NamedQuery() will extract VALUES from the payment
+	// variable and insert them into the query
+	rows, err := tx.NamedQuery(createOffchainTXQuery, p)
+	if err != nil {
+		// log.Error(err)
+		return Payment{}, errors.Wrapf(
+			err,
+			"insertPayment->tx.NamedQuery(%s, %+v)",
+			createOffchainTXQuery,
+			p,
+		)
+	}
+	defer rows.Close() // Free up the database connection
+
+	var result Payment
+	if rows.Next() {
+		if err = rows.Scan(
+			&result.ID,
+			&result.UserID,
+			&result.PaymentRequest,
+			&result.Preimage,
+			&result.HashedPreimage,
+			&result.Memo,
+			&result.Description,
+			&result.Direction,
+			&result.Status,
+			&result.AmountSat,
+			&result.AmountMSat,
+			&result.CreatedAt,
+			&result.UpdatedAt,
+		); err != nil {
+			// log.Error(err)
+			return result, errors.Wrapf(err,
+				"insertPayment->rows.Next(), Problem row = %+v", result)
+		}
+
+	}
+
+	// If nil is stored in the CallbackURL field, replace with ""
+	if !result.CallbackURL.Valid {
+		result.CallbackURL = db.ToNullString("")
+	}
+	if !result.Preimage.Valid {
+		result.Preimage = db.ToNullString("")
+	}
+
+	return result, nil
+}
+
+// GetAll selects all payments for given userID from the DB.
+func GetAll(d *sqlx.DB, userID uint, filter FilterGetAll) (
+	[]Payment, error) {
 	payments := []Payment{}
 
-	// Using OFFSET is not ideal, but until we start seeing
-	// problems, it is fine
+	// Using OFFSET is not ideal, but until we start seeing performance problems
+	// it's fine
 	tQuery := `SELECT *
 		FROM offchaintx
 		WHERE user_id=$1
@@ -108,8 +175,9 @@ func GetAll(d *sqlx.DB, userID uint, filter GetAllInvoicesData) (
 	return payments, nil
 }
 
-// GetByID returns a single invoice based on the id given
-// It only retrieves invoices whose user_id is the same as the supplied argument
+// GetByID performs this query:
+// "SELECT * FROM offchaintx WHERE id=id AND user_id=userID", where id is the
+// primary key of the table(autoincrementing)
 func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 	txResult := Payment{}
 	tQuery := fmt.Sprintf(
@@ -130,18 +198,20 @@ func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 		return Payment{}, err
 	}
 
+	// If nil is stored in the CallbackURL field, replace with ""
 	if !txResult.CallbackURL.Valid {
-		txResult.CallbackURL.String = ""
+		txResult.CallbackURL = db.ToNullString("")
 	}
 	if !txResult.Preimage.Valid {
-		txResult.Preimage.String = ""
+		txResult.Preimage = db.ToNullString("")
 	}
 
 	return txResult, nil
 }
 
-// CreateInvoice creates a new invoice using lnd based on the function parameter
-// and inserts the newly created invoice into the database
+// CreateInvoice creates and adds a new invoice to lnd and creates a new payment
+// with the paymentRequest and RHash returned from lnd. After creation, inserts
+// the payment into the database
 func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	invoiceData CreateInvoiceData, userID uint) (Payment, error) {
 
@@ -160,7 +230,8 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 			Value: int64(invoiceData.AmountSat),
 		})
 	if err != nil {
-		// log.Error(err)
+		err = errors.Wrap(err, "could not add invoice to lnd")
+		log.Error(err)
 		return Payment{}, err
 	}
 
@@ -174,19 +245,20 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	// Insert the payment into the database. Should anything inside insertPayment
 	// fail, we use tx.Rollback() to revert any change made
 	tx := d.MustBegin()
-	payment, err := insertPayment(tx,
-		// Payment struct with all required data to add to the DB
-		Payment{
-			UserID:         userID,
-			Memo:           invoiceData.Memo,
-			Description:    invoiceData.Description,
-			AmountSat:      invoiceData.AmountSat,
-			AmountMSat:     invoiceData.AmountSat * 1000,
-			PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
-			HashedPreimage: hex.EncodeToString(invoice.RHash),
-			Status:         open,
-			Direction:      inbound,
-		})
+	// We do not store the preimage until the payment is settled, to avoid the
+	// user getting the preimage before the invoice is settled
+	p := Payment{
+		UserID:         userID,
+		Memo:           invoiceData.Memo,
+		Description:    invoiceData.Description,
+		AmountSat:      invoiceData.AmountSat,
+		AmountMSat:     invoiceData.AmountSat * 1000,
+		PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
+		HashedPreimage: hex.EncodeToString(invoice.RHash),
+		Status:         open,
+		Direction:      inbound,
+	}
+	p, err = insert(tx, p)
 	if err != nil {
 		// log.Error(err)
 		tx.Rollback()
@@ -199,17 +271,25 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 		return Payment{}, err
 	}
 
-	if !payment.Preimage.Valid {
-		payment.Preimage = db.ToNullString("")
+	if !p.Preimage.Valid {
+		p.Preimage = db.ToNullString("")
 	}
-	if !payment.CallbackURL.Valid {
-		payment.CallbackURL = db.ToNullString("")
+	if !p.CallbackURL.Valid {
+		p.CallbackURL = db.ToNullString("")
 	}
 
-	return payment, nil
+	return p, nil
 }
 
-// PayInvoice pays an invoice on behalf of the user
+// PayInvoice first persists an outbound payment with the supplied invoice to
+// the database. Then attempts to pay the invoice using SendPaymentSync
+// Should the payment fail, we do not decrease the users balance.
+// This logic is completely fucked, as the user could initiate a payment for
+// 10 000 000 satoshis, and the logic wouldn't complain until AFTER the payment
+// is complete(that is, we no longer have the money)
+// TODO: Decrease the users balance BEFORE attempting to send the payment.
+// If at any point the payment/db transaction should fail, increase the users
+// balance.
 func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 	payInvoiceRequest PayInvoiceData, userID uint) (UserPaymentResponse, error) {
 
@@ -225,6 +305,10 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		PaymentRequest: payInvoiceRequest.PaymentRequest,
 	}
 
+	// We instantiate an empty struct fill up information as we go, and return
+	// all the information we have thus far should there be an error
+	var up UserPaymentResponse
+
 	p := Payment{
 		UserID:         userID,
 		Direction:      outbound,
@@ -235,26 +319,28 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		AmountSat:      payreq.NumSatoshis,
 		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
+	up.Payment = p
 
 	tx := d.MustBegin()
 
 	// We insert the transaction in the DB before we attempt to send it to
 	// avoid issues with attempte updates to the payment before it is added to
 	// the DB
-	payment, err := insertPayment(tx, p)
+	payment, err := insert(tx, p)
 	if err != nil {
-		// log.Error(err)
+		log.Error(err)
 		tx.Rollback()
-		return UserPaymentResponse{}, errors.Wrapf(
+		return up, errors.Wrapf(
 			err, "insertPayment(db, %+v)", p)
 	}
+	up.Payment = payment
 	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
 	// See logic in lightningspin-api for possible solution
 	paymentResponse, err := lncli.SendPaymentSync(
 		context.Background(), sendRequest)
 	if err != nil {
-		// log.Error(err)
-		return UserPaymentResponse{}, err
+		log.Error(err)
+		return up, err
 	}
 
 	if paymentResponse.PaymentError == "" {
@@ -267,8 +353,9 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 	} else {
 		tx.Rollback()
 		p.Status = failed
-		return UserPaymentResponse{}, errors.New(paymentResponse.PaymentError)
+		return up, errors.New(paymentResponse.PaymentError)
 	}
+	up.Payment = payment
 
 	var user users.UserResponse
 	if payment.Status == succeeded {
@@ -276,17 +363,18 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 			UserID: p.UserID, AmountSat: payment.AmountSat,
 		})
 		if err != nil {
-			// log.Error(err)
+			log.Error(err)
 			tx.Rollback()
-			return UserPaymentResponse{}, errors.Wrapf(err,
+			return up, errors.Wrapf(err,
 				"PayInvoice->updateUserBalance(tx, %d, %d)",
 				p.UserID, -payment.AmountSat)
 		}
 	}
+	up.User = user
 
 	if err = tx.Commit(); err != nil {
 		// log.Error(err)
-		return UserPaymentResponse{}, errors.Wrap(
+		return up, errors.Wrap(
 			err, "PayInvoice: Cound not commit")
 	}
 
@@ -301,52 +389,6 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		Payment: payment,
 		User:    user,
 	}, nil
-}
-
-// QueryExecutor is based on sqlx.DB, but is an interface that only requires
-// "Query"
-type QueryExecutor interface {
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-}
-
-func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
-	users.UserResponse, error) {
-
-	if amountSat == 0 {
-		return users.UserResponse{}, errors.New(
-			"No point in updating users balance with 0 satoshi")
-	}
-
-	updateBalanceQuery := `UPDATE users
-		SET balance = balance + $1
-		WHERE id = $2
-		RETURNING id, email, balance, updated_at`
-
-	rows, err := queryEx.Query(updateBalanceQuery, amountSat, userID)
-	if err != nil {
-		// log.Error(err)
-		return users.UserResponse{}, errors.Wrap(
-			err,
-			"UpdateUserBalance(): could not construct user update",
-		)
-	}
-	defer rows.Close()
-
-	user := users.UserResponse{}
-	if rows.Next() {
-		if err = rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.Balance,
-			&user.UpdatedAt,
-		); err != nil {
-			// log.Error(err)
-			return users.UserResponse{}, errors.Wrap(
-				err, "Could not scan user returned from db")
-		}
-	}
-
-	return user, nil
 }
 
 // InvoiceStatusListener is
@@ -474,61 +516,4 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		Payment: payment,
 		User:    user,
 	}, nil
-}
-
-// insertPayment persists a payment to the database
-func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
-	var createOffchainTXQuery string
-
-	if payment.Preimage.Valid && payment.HashedPreimage != "" {
-	}
-
-	createOffchainTXQuery = `INSERT INTO 
-	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
-		description, direction, status, amount_sat,amount_msat)
-	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
-		    :memo, :description, :direction, :status, :amount_sat, :amount_msat)
-	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-			  memo, description, direction, status, amount_sat, amount_msat,
-			  created_at, updated_at`
-
-	// Using the above query, NamedQuery() will extract VALUES from the payment
-	// variable and insert them into the query
-	rows, err := tx.NamedQuery(createOffchainTXQuery, payment)
-	if err != nil {
-		// log.Error(err)
-		return Payment{}, errors.Wrapf(
-			err,
-			"insertPayment->tx.NamedQuery(%s, %+v)",
-			createOffchainTXQuery,
-			payment,
-		)
-	}
-	defer rows.Close() // Free up the database connection
-
-	var result Payment
-	if rows.Next() {
-		if err = rows.Scan(
-			&result.ID,
-			&result.UserID,
-			&result.PaymentRequest,
-			&result.Preimage,
-			&result.HashedPreimage,
-			&result.Memo,
-			&result.Description,
-			&result.Direction,
-			&result.Status,
-			&result.AmountSat,
-			&result.AmountMSat,
-			&result.CreatedAt,
-			&result.UpdatedAt,
-		); err != nil {
-			// log.Error(err)
-			return result, errors.Wrapf(err,
-				"insertPayment->rows.Next(), Problem row = %+v", result)
-		}
-
-	}
-
-	return result, nil
 }

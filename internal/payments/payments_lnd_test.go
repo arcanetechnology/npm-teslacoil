@@ -1,5 +1,3 @@
-// +build lnd
-
 package payments
 
 import "testing"

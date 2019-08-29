@@ -55,7 +55,7 @@ type RefreshTokenResponse struct {
 // TODO: Restrict this to only the admin user
 func GetAllUsers(r *RestServer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userResponse, err := users.All(r.db)
+		userResponse, err := users.GetAll(r.db)
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
