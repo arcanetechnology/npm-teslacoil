@@ -17,7 +17,7 @@ type UserNew struct {
 
 // User is a database table
 type User struct {
-	ID             uint       `db:"id"`
+	ID             int        `db:"id"`
 	Email          string     `db:"email"`
 	Balance        int        `db:"balance"`
 	HashedPassword []byte     `db:"hashed_password" json:"-"`
@@ -28,17 +28,17 @@ type User struct {
 
 // UserResponse is a database table
 type UserResponse struct {
-	ID             uint      `db:"id"`
+	ID             int       `db:"id"`
 	Email          string    `db:"email"`
 	Balance        int       `db:"balance"`
 	HashedPassword []byte    `db:"hashed_password"`
 	UpdatedAt      time.Time `db:"updated_at"`
 }
 
-// ChangeBalance is the type for increasing or decreasing the balance
+// ChangeBalance is the struct for changing a users balance
 type ChangeBalance struct {
-	AmountSat int64 `db:"amountSat"`
-	UserID    uint  `db:"userID"`
+	UserID    int `json:"userId"`
+	AmountSat int `json:"amountSat"`
 }
 
 // UsersTable is the tablename of users, as saved in the DB
@@ -54,14 +54,12 @@ func GetAll(d *sqlx.DB) ([]User, error) {
 		return queryResult, err
 	}
 
-	// log.Tracef("SELECT * from users received %v from DB", queryResult)
-
 	return queryResult, nil
 }
 
 // GetByID is a GET request that returns users that match the one specified
 // in the body
-func GetByID(d *sqlx.DB, id uint) (UserResponse, error) {
+func GetByID(d *sqlx.DB, id int) (UserResponse, error) {
 	userResult := UserResponse{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
 		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
@@ -134,6 +132,9 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 }
 
 // IncreaseBalance increases the balance of user id x by y satoshis
+// This is using a struct as a parameter because it is a critical operation
+// and placing the arguments in the wrong order leads to increasing the wrong
+// users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
 		return UserResponse{}, errors.New("amount cant be less than or equal to 0")
@@ -243,7 +244,7 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 			&userResp.Email,
 			&userResp.Balance,
 			&userResp.UpdatedAt); err != nil {
-			return UserResponse{}, errors.Wrap(err, "users.Create- rows.Scan() failed")
+			return UserResponse{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
 		}
 	}
 

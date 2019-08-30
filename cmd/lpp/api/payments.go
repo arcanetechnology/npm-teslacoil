@@ -11,8 +11,8 @@ import (
 
 // PaymentResponse is the generic response for any GET /payment endpoint
 type PaymentResponse struct {
-	ID             uint               `json:"id"`
-	UserID         uint               `json:"userId"`
+	ID             int                `json:"id"`
+	UserID         int                `json:"userId"`
 	PaymentRequest string             `json:"paymentRequest"`
 	Preimage       string             `json:"preimage"`
 	Hash           string             `json:"hash"`
@@ -20,22 +20,22 @@ type PaymentResponse struct {
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
-	AmountSat      int64              `json:"amountSat"`
-	AmountMSat     int64              `json:"amountMSat"`
+	AmountSat      int                `json:"amountSat"`
+	AmountMSat     int                `json:"amountMSat"`
 	SettledAt      *time.Time         `json:"settledAt"`
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
-	ID             uint            `json:"id"`
-	UserID         uint            `json:"userId"`
+	ID             int             `json:"id"`
+	UserID         int             `json:"userId"`
 	PaymentRequest string          `json:"paymentRequest"`
 	HashedPreimage string          `json:"hashedPreimage"`
 	CallbackURL    string          `json:"callbackUrl"`
 	Status         payments.Status `json:"status"`
 	Memo           string          `json:"memo"`
-	AmountSat      int64           `json:"amountSat"`
-	AmountMSat     int64           `json:"amountMSat"`
+	AmountSat      int             `json:"amountSat"`
+	AmountMSat     int             `json:"amountMSat"`
 }
 
 func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
@@ -72,7 +72,7 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 
 // GetAllPayments is a GET request that returns all the users in the database
 // Takes two URL-params on the form ?limit=kek&offset=kek
-func GetAllPayments(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		URLParams := c.Request.URL.Query()
 		limitStr := URLParams.Get("limit")
@@ -91,14 +91,11 @@ func GetAllPayments(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		filter := payments.FilterGetAll{
-			Limit:  int(limit),
-			Offset: int(offset),
-		}
-
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 
-		t, err := payments.GetAll(r.db, claim.UserID, filter)
+		// TODO: Make sure conversion from int64 to int is always safe and does
+		// not overflow if limit > MAXINT32 {abort} if offset > MAXINT32 {abort}
+		t, err := payments.GetAll(r.db, claim.UserID, int(limit), int(offset))
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
@@ -110,7 +107,7 @@ func GetAllPayments(r *RestServer) gin.HandlerFunc {
 }
 
 // GetSinglePayment is a GET request that returns users that match the one specified in the body
-func GetSinglePayment(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 
@@ -122,7 +119,7 @@ func GetSinglePayment(r *RestServer) gin.HandlerFunc {
 		}
 		log.Infof("find payment %d for user %d", id, claim.UserID)
 
-		t, err := payments.GetByID(r.db, uint(id), claim.UserID)
+		t, err := payments.GetByID(r.db, int(id), claim.UserID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
@@ -133,7 +130,7 @@ func GetSinglePayment(r *RestServer) gin.HandlerFunc {
 
 		log.Infof("found payment %v", t)
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, &PaymentResponse{
+		c.JSONP(200, PaymentResponse{
 			ID:             t.ID,
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
@@ -150,7 +147,7 @@ func GetSinglePayment(r *RestServer) gin.HandlerFunc {
 }
 
 // CreateInvoice creates a new invoice on behalf of a user
-func CreateInvoice(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newInvoice payments.CreateInvoiceData
 
@@ -201,7 +198,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 }
 
 // PayInvoice pays a valid invoice on behalf of a user
-func PayInvoice(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newPayment payments.PayInvoiceData
 

@@ -39,7 +39,7 @@ const (
 type CreateInvoiceData struct {
 	Memo        string `json:"memo"`
 	Description string `json:"description"`
-	AmountSat   int64  `json:"amountSat"`
+	AmountSat   int    `json:"amountSat"`
 }
 
 // FilterGetAll is the body for the GetAll endpoint
@@ -57,8 +57,8 @@ type PayInvoiceData struct {
 
 // Payment is a database table
 type Payment struct {
-	ID             uint           `db:"id"`
-	UserID         uint           `db:"user_id"`
+	ID             int            `db:"id"`
+	UserID         int            `db:"user_id"`
 	PaymentRequest string         `db:"payment_request"`
 	Preimage       sql.NullString `db:"preimage"`
 	HashedPreimage string         `db:"hashed_preimage"`
@@ -67,8 +67,8 @@ type Payment struct {
 	Memo           string         `db:"memo"`
 	Description    string         `db:"description"`
 	Direction      Direction      `db:"direction"`
-	AmountSat      int64          `db:"amount_sat"`
-	AmountMSat     int64          `db:"amount_msat"`
+	AmountSat      int            `db:"amount_sat"`
+	AmountMSat     int            `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
 	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the
@@ -153,7 +153,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 }
 
 // GetAll selects all payments for given userID from the DB.
-func GetAll(d *sqlx.DB, userID uint, filter FilterGetAll) (
+func GetAll(d *sqlx.DB, userID int, limit int, offset int) (
 	[]Payment, error) {
 	payments := []Payment{}
 
@@ -166,7 +166,7 @@ func GetAll(d *sqlx.DB, userID uint, filter FilterGetAll) (
 		LIMIT $2
 		OFFSET $3`
 
-	err := d.Select(&payments, tQuery, userID, filter.Limit, filter.Offset)
+	err := d.Select(&payments, tQuery, userID, limit, offset)
 	if err != nil {
 		log.Error(err)
 		return payments, err
@@ -178,7 +178,11 @@ func GetAll(d *sqlx.DB, userID uint, filter FilterGetAll) (
 // GetByID performs this query:
 // "SELECT * FROM offchaintx WHERE id=id AND user_id=userID", where id is the
 // primary key of the table(autoincrementing)
-func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
+func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
+	if id < 0 || userID < 0 {
+		return Payment{}, errors.New("GetByID(): neither id nor userID can be less than 0")
+	}
+
 	txResult := Payment{}
 	tQuery := fmt.Sprintf(
 		"SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
@@ -213,7 +217,7 @@ func GetByID(d *sqlx.DB, id uint, userID uint) (Payment, error) {
 // with the paymentRequest and RHash returned from lnd. After creation, inserts
 // the payment into the database
 func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
-	invoiceData CreateInvoiceData, userID uint) (Payment, error) {
+	invoiceData CreateInvoiceData, userID int) (Payment, error) {
 
 	if invoiceData.AmountSat <= 0 {
 		return Payment{}, errors.New("amount cant be less than or equal to 0")
@@ -291,7 +295,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 // If at any point the payment/db transaction should fail, increase the users
 // balance.
 func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
-	payInvoiceRequest PayInvoiceData, userID uint) (UserPaymentResponse, error) {
+	payInvoiceRequest PayInvoiceData, userID int) (UserPaymentResponse, error) {
 
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
@@ -307,7 +311,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 
 	// We instantiate an empty struct fill up information as we go, and return
 	// all the information we have thus far should there be an error
-	var up UserPaymentResponse
+	var upr UserPaymentResponse
 
 	p := Payment{
 		UserID:         userID,
@@ -316,31 +320,47 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 		Status:         open,
 		HashedPreimage: payreq.PaymentHash,
 		Memo:           payreq.Description,
-		AmountSat:      payreq.NumSatoshis,
-		AmountMSat:     payreq.NumSatoshis * 1000,
+		// TODO: Make sure conversion from int64 to int is always safe and does
+		// not overflow if limit > MAXINT32 {abort} if offset > MAXINT32 {abort}
+		AmountSat:  int(payreq.NumSatoshis),
+		AmountMSat: int(payreq.NumSatoshis * 1000),
 	}
-	up.Payment = p
+	upr.Payment = p
 
 	tx := d.MustBegin()
 
+	var user users.UserResponse
+	user, err = users.DecreaseBalance(tx, users.ChangeBalance{
+		UserID:    p.UserID,
+		AmountSat: p.AmountSat,
+	})
+	if err != nil {
+		log.Error(err)
+		tx.Rollback()
+		return upr, errors.Wrapf(err,
+			"PayInvoice->updateUserBalance(tx, %d, %d)",
+			p.UserID, p.AmountSat)
+	}
+	upr.User = user
+
 	// We insert the transaction in the DB before we attempt to send it to
-	// avoid issues with attempte updates to the payment before it is added to
+	// avoid issues with attempted updates to the payment before it is added to
 	// the DB
 	payment, err := insert(tx, p)
 	if err != nil {
 		log.Error(err)
 		tx.Rollback()
-		return up, errors.Wrapf(
+		return upr, errors.Wrapf(
 			err, "insertPayment(db, %+v)", p)
 	}
-	up.Payment = payment
+	upr.Payment = payment
 	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
 	// See logic in lightningspin-api for possible solution
 	paymentResponse, err := lncli.SendPaymentSync(
 		context.Background(), sendRequest)
 	if err != nil {
 		log.Error(err)
-		return up, err
+		return upr, err
 	}
 
 	if paymentResponse.PaymentError == "" {
@@ -353,28 +373,13 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 	} else {
 		tx.Rollback()
 		p.Status = failed
-		return up, errors.New(paymentResponse.PaymentError)
+		return upr, errors.New(paymentResponse.PaymentError)
 	}
-	up.Payment = payment
-
-	var user users.UserResponse
-	if payment.Status == succeeded {
-		user, err = users.DecreaseBalance(tx, users.ChangeBalance{
-			UserID: p.UserID, AmountSat: payment.AmountSat,
-		})
-		if err != nil {
-			log.Error(err)
-			tx.Rollback()
-			return up, errors.Wrapf(err,
-				"PayInvoice->updateUserBalance(tx, %d, %d)",
-				p.UserID, -payment.AmountSat)
-		}
-	}
-	up.User = user
+	upr.Payment = payment
 
 	if err = tx.Commit(); err != nil {
 		// log.Error(err)
-		return up, errors.Wrap(
+		return upr, errors.Wrap(
 			err, "PayInvoice: Cound not commit")
 	}
 

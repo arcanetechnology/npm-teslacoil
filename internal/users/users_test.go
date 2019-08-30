@@ -443,7 +443,7 @@ func TestDecreaseBalance(t *testing.T) {
 				}
 				tx := testDB.MustBegin()
 				u, err = DecreaseBalance(tx, tt.dec)
-				if int64(user.Balance) < tt.dec.AmountSat {
+				if user.Balance < tt.dec.AmountSat {
 					log.Info("should be in here")
 					if err == nil {
 						t.Logf(
@@ -548,8 +548,8 @@ func TestIncreaseBalance(t *testing.T) {
 	log.Infof("created user %v", u)
 
 	tests := []struct {
-		amountSat int64 `db:"amount_sat"`
-		userID    uint  `db:"user_id"`
+		amountSat int `db:"amount_sat"`
+		userID    int `db:"user_id"`
 
 		expectedResult User
 	}{

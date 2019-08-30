@@ -152,7 +152,7 @@ func ResetDB(testDB *sqlx.DB) error {
 	return nil
 }
 
-//ToNullString invalidates a sql.NullString if empty, validates if not empty
+//ToNullString converts the argument s to a sql.NullString
 func ToNullString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
 }
