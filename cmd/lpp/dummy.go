@@ -37,10 +37,9 @@ func FillWithDummyData(d *sqlx.DB, lncli lnrpc.LightningClient) error {
 		paymentCount := gofakeit.Number(1, 20)
 
 		for index := 1; index <= paymentCount; index++ {
-			_, err = payments.CreateInvoice(d, lncli, payments.CreateInvoiceData{
-				Memo:      "Dummy data " + string(index),
-				AmountSat: gofakeit.Number(50, 10000),
-			}, user.ID)
+			_, err = payments.CreateInvoice(d, lncli, user.ID,
+				gofakeit.Number(50, 100000), "Dummy description"+string(index),
+				"Dummy memo"+string(index))
 			if err != nil {
 				return err
 			}

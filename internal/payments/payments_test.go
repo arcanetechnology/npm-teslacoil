@@ -98,16 +98,16 @@ func TestCreateInvoice(t *testing.T) {
 	amount2 := rand.Intn(4294967)
 
 	tests := []struct {
-		createInvoiceData CreateInvoiceData
-		lndInvoice        lnrpc.Invoice
-		out               Payment
+		memo      string
+		amountSat int
+
+		lndInvoice lnrpc.Invoice
+		out        Payment
 	}{
 		{
+			"HiMisterHey",
+			amount1,
 
-			CreateInvoiceData{
-				Memo:      "HiMisterHey",
-				AmountSat: amount1,
-			},
 			lnrpc.Invoice{
 				Value:          int64(amount1),
 				PaymentRequest: "SomePayRequest",
@@ -131,11 +131,9 @@ func TestCreateInvoice(t *testing.T) {
 			},
 		},
 		{
+			"HelloWorld",
+			amount2,
 
-			CreateInvoiceData{
-				Memo:      "HelloWorld",
-				AmountSat: amount2,
-			},
 			lnrpc.Invoice{
 				Value:          int64(amount2),
 				PaymentRequest: "SomePayRequest",
@@ -164,14 +162,15 @@ func TestCreateInvoice(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\tTest: %d\tWhen creating invoice with amount %d and memo %s",
-				i, tt.createInvoiceData.AmountSat, tt.createInvoiceData.Memo)
+				i, tt.amountSat, tt.memo)
 			{
 				// Create Mock LND client with preconfigured invoice response
 				mockLNcli := lightningMockClient{
 					InvoiceResponse: tt.lndInvoice,
 				}
 
-				payment, err := CreateInvoice(testDB, mockLNcli, tt.createInvoiceData, tt.out.UserID)
+				payment, err := CreateInvoice(testDB, mockLNcli, tt.out.UserID,
+					tt.amountSat, "", tt.memo)
 				if err != nil {
 					t.Fatalf("\t%s\tShould be able to CreateInvoice %+v\n%s", fail, err, reset)
 				}
@@ -343,16 +342,16 @@ func TestPayInvoice(t *testing.T) {
 	amount1 := 5000
 	amount2 := 2000
 	tests := []struct {
-		payInvoiceData PayInvoiceData
+		paymentRequest string
+		memo           string
 
 		decodePayReq lnrpc.PayReq
 		out          UserPaymentResponse
 	}{
 		{
-			PayInvoiceData{
-				PaymentRequest: "SomePaymentRequest1",
-				Memo:           "HelloPayment",
-			},
+			"SomePaymentRequest1",
+			"HelloPayment",
+
 			lnrpc.PayReq{
 				PaymentHash: "SomeHash",
 				NumSatoshis: int64(amount1),
@@ -380,10 +379,9 @@ func TestPayInvoice(t *testing.T) {
 			},
 		},
 		{
-			PayInvoiceData{
-				PaymentRequest: "SomePaymentRequest2",
-				Memo:           "HelloPayment",
-			},
+			"SomePaymentRequest2",
+			"HelloPayment",
+
 			lnrpc.PayReq{
 				PaymentHash: "SomeHash",
 				NumSatoshis: int64(amount2),
@@ -433,7 +431,7 @@ func TestPayInvoice(t *testing.T) {
 					// We need to define what DecodePayReq returns
 				}
 				payment, err := PayInvoice(
-					testDB, &mockLNcli, tt.payInvoiceData, u.ID)
+					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
 				log.Errorf("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if user.Balance < tt.out.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage.Valid || payment.Payment.SettledAt != nil {
@@ -523,8 +521,10 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	amount2 := 20000
 
 	tests := []struct {
-		triggerInvoice    lnrpc.Invoice
-		createInvoiceData CreateInvoiceData
+		triggerInvoice lnrpc.Invoice
+		memo           string
+		description    string
+		amountSat      int
 
 		out UserPaymentResponse
 	}{
@@ -536,11 +536,9 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				Settled:        true,
 				Value:          int64(amount1),
 			},
-			CreateInvoiceData{
-				Memo:        "HelloWorld",
-				Description: "My description",
-				AmountSat:   amount1,
-			},
+			"HelloWorld",
+			"My description",
+			amount1,
 
 			UserPaymentResponse{
 				Payment: Payment{
@@ -571,11 +569,9 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				Settled:        true,
 				Value:          int64(amount2),
 			},
-			CreateInvoiceData{
-				Memo:        "HelloWorld",
-				Description: "My description",
-				AmountSat:   amount2,
-			},
+			"HelloWorld",
+			"My description",
+			amount2,
 
 			UserPaymentResponse{
 				Payment: Payment{
@@ -606,11 +602,9 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				Settled:        false,
 				Value:          int64(amount1),
 			},
-			CreateInvoiceData{
-				Memo:        "HelloWorld",
-				Description: "My description",
-				AmountSat:   amount1,
-			},
+			"HelloWorld",
+			"My description",
+			amount1,
 
 			UserPaymentResponse{
 				Payment: Payment{
@@ -636,13 +630,12 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen updating invoice with amout %d where balance should be %d after execution",
-				i, tt.createInvoiceData.AmountSat, tt.out.User.Balance)
+				i, tt.amountSat, tt.out.User.Balance)
 			{
 				_, err := CreateInvoice(testDB,
 					lightningMockClient{
 						InvoiceResponse: tt.triggerInvoice,
-					}, tt.createInvoiceData,
-					u.ID)
+					}, u.ID, tt.amountSat, tt.description, tt.memo)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to CreateInvoice. Error:  %+v\n%s",
@@ -707,24 +700,33 @@ func TestGetAll(t *testing.T) {
 	tests := []struct {
 		scenario string
 
-		invoices []CreateInvoiceData
-		limit    int
-		offset   int
+		invoices []struct {
+			Memo      string
+			AmountSat int
+		}
+
+		limit  int
+		offset int
 
 		expectedNumberOfInvoices int
 	}{
 		{
 			"adding 3 invoices, and getting first 50",
-			[]CreateInvoiceData{
-				CreateInvoiceData{
+
+			[]struct {
+				Memo      string
+				AmountSat int
+			}{
+				{
 					Memo:      "1",
 					AmountSat: 20001,
 				},
-				CreateInvoiceData{
+				{
+
 					Memo:      "2",
 					AmountSat: 20002,
 				},
-				CreateInvoiceData{
+				{
 					Memo:      "3",
 					AmountSat: 20003,
 				},
@@ -736,16 +738,21 @@ func TestGetAll(t *testing.T) {
 		},
 		{
 			"adding 3 invoices, and only gets two",
-			[]CreateInvoiceData{
-				CreateInvoiceData{
+
+			[]struct {
+				Memo      string
+				AmountSat int
+			}{
+
+				{
 					Memo:      "1",
 					AmountSat: 20001,
 				},
-				CreateInvoiceData{
+				{
 					Memo:      "2",
 					AmountSat: 20002,
 				},
-				CreateInvoiceData{
+				{
 					Memo:      "3",
 					AmountSat: 20003,
 				},
@@ -757,16 +764,21 @@ func TestGetAll(t *testing.T) {
 		},
 		{
 			"adding 3 invoices, and skips first 2",
-			[]CreateInvoiceData{
-				CreateInvoiceData{
+
+			[]struct {
+				Memo      string
+				AmountSat int
+			}{
+
+				{
 					Memo:      "1",
 					AmountSat: 20001,
 				},
-				CreateInvoiceData{
+				{
 					Memo:      "2",
 					AmountSat: 20002,
 				},
-				CreateInvoiceData{
+				{
 					Memo:      "3",
 					AmountSat: 20003,
 				},
@@ -810,7 +822,8 @@ func TestGetAll(t *testing.T) {
 					}
 
 					_, err := CreateInvoice(
-						testDB, mockLNcli, invoice, u.ID)
+						testDB, mockLNcli, u.ID, invoice.AmountSat, "",
+						invoice.Memo)
 
 					if err != nil {
 						t.Fatalf(

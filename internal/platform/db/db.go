@@ -36,7 +36,6 @@ func setMigrationsPath() {
 // OpenDatabase fetched the database credentials from environment variables
 // and stars creates the gorm database object
 func OpenDatabase() (*sqlx.DB, error) {
-
 	// Define SSL mode.
 	sslMode := "disable" // require
 
@@ -63,8 +62,7 @@ func OpenDatabase() (*sqlx.DB, error) {
 			os.Getenv("DATABASE_USER"),
 		)
 	}
-
-	// log.Infof("opened connection to db")
+	log.Infof("opened connection to db")
 
 	return d, nil
 }

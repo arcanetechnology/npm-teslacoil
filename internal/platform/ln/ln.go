@@ -2,6 +2,7 @@ package ln
 
 import (
 	"context"
+	"encoding/hex"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -102,8 +103,8 @@ func NewLNDClient(options LightningConfig) (
 	lnrpc.LightningClient, error) {
 	cfg := LightningConfig{
 		LndDir:       options.LndDir,
-		TLSCertPath:  CleanAndExpandPath(options.TLSCertPath),
-		MacaroonPath: CleanAndExpandPath(options.MacaroonPath),
+		TLSCertPath:  cleanAndExpandPath(options.TLSCertPath),
+		MacaroonPath: cleanAndExpandPath(options.MacaroonPath),
 		Network:      options.Network,
 		RPCServer:    options.RPCServer,
 	}
@@ -148,15 +149,15 @@ func NewLNDClient(options LightningConfig) (
 	}
 	client := lnrpc.NewLightningClient(conn)
 
-	// log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
+	log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
 
 	return client, nil
 }
 
-// CleanAndExpandPath expands environment variables and leading ~ in the
+// cleanAndExpandPath expands environment variables and leading ~ in the
 // passed path, cleans the result, and returns it.
 // This function is taken from https://github.com/btcsuite/btcd
-func CleanAndExpandPath(path string) string {
+func cleanAndExpandPath(path string) string {
 	if path == "" {
 		return ""
 	}
@@ -197,7 +198,7 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 		return &lnrpc.Invoice{}, err
 	}
 
-	// log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
+	log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
 
 	return invoice, nil
 }
@@ -221,7 +222,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 			// log.Error(err)
 			return err
 		}
-		// log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
+		log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
 		msgCh <- invoice
 	}
 }

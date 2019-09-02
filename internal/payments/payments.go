@@ -35,26 +35,6 @@ const (
 	OffchainTXTable = "offchaintx"
 )
 
-// CreateInvoiceData is a deposit
-type CreateInvoiceData struct {
-	Memo        string `json:"memo"`
-	Description string `json:"description"`
-	AmountSat   int    `json:"amountSat"`
-}
-
-// FilterGetAll is the body for the GetAll endpoint
-type FilterGetAll struct {
-	Limit  int `json:"limit"`
-	Offset int `json:"offset"`
-}
-
-//PayInvoiceData is the required(and optional) fields for initiating a withdrawal
-type PayInvoiceData struct {
-	PaymentRequest string `json:"paymentRequest"`
-	Description    string `json:"description"`
-	Memo           string `json:"memo"`
-}
-
 // Payment is a database table
 type Payment struct {
 	ID             int            `db:"id"`
@@ -216,13 +196,13 @@ func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
 // CreateInvoice creates and adds a new invoice to lnd and creates a new payment
 // with the paymentRequest and RHash returned from lnd. After creation, inserts
 // the payment into the database
-func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
-	invoiceData CreateInvoiceData, userID int) (Payment, error) {
+func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
+	amountSat int, description, memo string) (Payment, error) {
 
-	if invoiceData.AmountSat <= 0 {
+	if amountSat <= 0 {
 		return Payment{}, errors.New("amount cant be less than or equal to 0")
 	}
-	if len(invoiceData.Memo) > 256 {
+	if len(memo) > 256 {
 		return Payment{}, errors.New("memo cant be longer than 256 characters")
 	}
 
@@ -230,8 +210,8 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	invoice, err := ln.AddInvoice(
 		lncli,
 		lnrpc.Invoice{
-			Memo:  invoiceData.Memo,
-			Value: int64(invoiceData.AmountSat),
+			Memo:  memo,
+			Value: int64(amountSat),
 		})
 	if err != nil {
 		err = errors.Wrap(err, "could not add invoice to lnd")
@@ -240,7 +220,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	}
 
 	// Sanity check the invoice we just created
-	if invoice.Value != int64(invoiceData.AmountSat) {
+	if invoice.Value != int64(amountSat) {
 		err = errors.New("could not insert invoice, created invoice amount not equal request.Amount")
 		// log.Error(err)
 		return Payment{}, err
@@ -253,10 +233,10 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 	// user getting the preimage before the invoice is settled
 	p := Payment{
 		UserID:         userID,
-		Memo:           invoiceData.Memo,
-		Description:    invoiceData.Description,
-		AmountSat:      invoiceData.AmountSat,
-		AmountMSat:     invoiceData.AmountSat * 1000,
+		Memo:           memo,
+		Description:    description,
+		AmountSat:      amountSat,
+		AmountMSat:     amountSat * 1000,
 		PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
 		HashedPreimage: hex.EncodeToString(invoice.RHash),
 		Status:         open,
@@ -294,19 +274,19 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient,
 // TODO: Decrease the users balance BEFORE attempting to send the payment.
 // If at any point the payment/db transaction should fail, increase the users
 // balance.
-func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
-	payInvoiceRequest PayInvoiceData, userID int) (UserPaymentResponse, error) {
+func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
+	paymentRequest, description, memo string) (UserPaymentResponse, error) {
 
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
-		&lnrpc.PayReqString{PayReq: payInvoiceRequest.PaymentRequest})
+		&lnrpc.PayReqString{PayReq: paymentRequest})
 	if err != nil {
 		// log.Error(err)
 		return UserPaymentResponse{}, err
 	}
 
 	sendRequest := &lnrpc.SendRequest{
-		PaymentRequest: payInvoiceRequest.PaymentRequest,
+		PaymentRequest: paymentRequest,
 	}
 
 	// We instantiate an empty struct fill up information as we go, and return
@@ -316,7 +296,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient,
 	p := Payment{
 		UserID:         userID,
 		Direction:      outbound,
-		PaymentRequest: strings.ToUpper(payInvoiceRequest.PaymentRequest),
+		PaymentRequest: strings.ToUpper(paymentRequest),
 		Status:         open,
 		HashedPreimage: payreq.PaymentHash,
 		Memo:           payreq.Description,
@@ -412,17 +392,6 @@ func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
 // UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
 // (newly added/settled invoices). If received payment was successful, updates
 // the payment stored in our db and increases the users balance
-// PS: This is most likely done in a horrible way. Must be refactored.
-// We also need to keep track of the last received messages from lnd
-// TODO: Give better error message if payment was just created, but not yet
-// inserted into the database
-// This happens because the flow is this:
-// 1. Payment is created
-// 2. A notification is sent to the SubscribeInvoices stream
-// 3. UpdateInvoiceStatus is run, looking for the newly created payment. It
-// errors with 'sql: no rows in result set' on the first database.Get() because
-// the invoice is not yet inserted into the database.
-// 4. Payment is inserted into the database
 func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 	*UserPaymentResponse, error) {
 

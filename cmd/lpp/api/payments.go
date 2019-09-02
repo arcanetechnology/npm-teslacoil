@@ -25,6 +25,13 @@ type PaymentResponse struct {
 	SettledAt      *time.Time         `json:"settledAt"`
 }
 
+// CreateInvoiceRequest is a deposit
+type CreateInvoiceRequest struct {
+	Memo        string `json:"memo"`
+	Description string `json:"description"`
+	AmountSat   int    `json:"amountSat"`
+}
+
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
 type CreateInvoiceResponse struct {
 	ID             int             `json:"id"`
@@ -36,6 +43,14 @@ type CreateInvoiceResponse struct {
 	Memo           string          `json:"memo"`
 	AmountSat      int             `json:"amountSat"`
 	AmountMSat     int             `json:"amountMSat"`
+}
+
+// PayInvoiceRequest is the required(and optional) fields for initiating a
+// withdrawal
+type PayInvoiceRequest struct {
+	PaymentRequest string `json:"paymentRequest"`
+	Description    string `json:"description"`
+	Memo           string `json:"memo"`
 }
 
 func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
@@ -106,7 +121,8 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	}
 }
 
-// GetSinglePayment is a GET request that returns users that match the one specified in the body
+// GetSinglePayment is a GET request that returns users that match the one
+// specified in the body
 func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
@@ -149,7 +165,7 @@ func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 // CreateInvoice creates a new invoice on behalf of a user
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var newInvoice payments.CreateInvoiceData
+		var newInvoice CreateInvoiceRequest
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {
 			log.Error(err)
@@ -168,7 +184,8 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			newInvoice)
 
 		t, err := payments.CreateInvoice(
-			r.db, *r.lncli, newInvoice, claims.UserID)
+			r.db, *r.lncli, claims.UserID, newInvoice.AmountSat,
+			newInvoice.Description, newInvoice.Memo)
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
@@ -200,9 +217,9 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 // PayInvoice pays a valid invoice on behalf of a user
 func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var newPayment payments.PayInvoiceData
+		var req PayInvoiceRequest
 
-		if err := c.ShouldBindJSON(&newPayment); err != nil {
+		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "bad request, see documentation"})
@@ -218,7 +235,8 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
-		t, err := payments.PayInvoice(r.db, *r.lncli, newPayment, claims.UserID)
+		t, err := payments.PayInvoice(r.db, *r.lncli, claims.UserID,
+			req.PaymentRequest, req.Description, req.Memo)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, could not pay invoice"})

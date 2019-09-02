@@ -69,7 +69,7 @@ func TestCanCreateUser(t *testing.T) {
 
 			{
 				user, err := Create(testDB,
-					email,
+					tt.email,
 					"password",
 				)
 				if err != nil {
