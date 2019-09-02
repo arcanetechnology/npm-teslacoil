@@ -20,8 +20,8 @@ type PaymentResponse struct {
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
-	AmountSat      int                `json:"amountSat"`
-	AmountMSat     int                `json:"amountMSat"`
+	AmountSat      int64              `json:"amountSat"`
+	AmountMSat     int64              `json:"amountMSat"`
 	SettledAt      *time.Time         `json:"settledAt"`
 }
 
@@ -29,7 +29,7 @@ type PaymentResponse struct {
 type CreateInvoiceRequest struct {
 	Memo        string `json:"memo"`
 	Description string `json:"description"`
-	AmountSat   int    `json:"amountSat"`
+	AmountSat   int64  `json:"amountSat"`
 }
 
 // CreateInvoiceResponse is the request for the /invoice/create endpoint
@@ -41,8 +41,8 @@ type CreateInvoiceResponse struct {
 	CallbackURL    string          `json:"callbackUrl"`
 	Status         payments.Status `json:"status"`
 	Memo           string          `json:"memo"`
-	AmountSat      int             `json:"amountSat"`
-	AmountMSat     int             `json:"amountMSat"`
+	AmountSat      int64           `json:"amountSat"`
+	AmountMSat     int64           `json:"amountMSat"`
 }
 
 // PayInvoiceRequest is the required(and optional) fields for initiating a

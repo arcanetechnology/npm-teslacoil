@@ -548,14 +548,14 @@ func TestIncreaseBalance(t *testing.T) {
 	log.Infof("created user %v", u)
 
 	tests := []struct {
-		amountSat int `db:"amount_sat"`
-		userID    int `db:"user_id"`
+		userID    int   `db:"user_id"`
+		amountSat int64 `db:"amount_sat"`
 
 		expectedResult User
 	}{
 		{
-			20000,
 			u.ID,
+			20000,
 
 			User{
 				ID:      u.ID,
@@ -564,8 +564,8 @@ func TestIncreaseBalance(t *testing.T) {
 			},
 		},
 		{
-			20000,
 			u.ID,
+			20000,
 
 			User{
 				ID:      u.ID,
@@ -574,8 +574,8 @@ func TestIncreaseBalance(t *testing.T) {
 			},
 		},
 		{
-			60000,
 			u.ID,
+			60000,
 
 			User{
 				ID:      u.ID,
@@ -585,8 +585,8 @@ func TestIncreaseBalance(t *testing.T) {
 		},
 		{
 			// This should fail because it is illegal to increase balance by a negative amount
-			-30000,
 			u.ID,
+			-30000,
 
 			User{
 				ID: u.ID,

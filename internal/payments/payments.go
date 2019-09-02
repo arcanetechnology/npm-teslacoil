@@ -47,8 +47,8 @@ type Payment struct {
 	Memo           string         `db:"memo"`
 	Description    string         `db:"description"`
 	Direction      Direction      `db:"direction"`
-	AmountSat      int            `db:"amount_sat"`
-	AmountMSat     int            `db:"amount_msat"`
+	AmountSat      int64          `db:"amount_sat"`
+	AmountMSat     int64          `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
 	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the
@@ -197,7 +197,7 @@ func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
 // with the paymentRequest and RHash returned from lnd. After creation, inserts
 // the payment into the database
 func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
-	amountSat int, description, memo string) (Payment, error) {
+	amountSat int64, description, memo string) (Payment, error) {
 
 	if amountSat <= 0 {
 		return Payment{}, errors.New("amount cant be less than or equal to 0")
@@ -302,8 +302,8 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 		Memo:           payreq.Description,
 		// TODO: Make sure conversion from int64 to int is always safe and does
 		// not overflow if limit > MAXINT32 {abort} if offset > MAXINT32 {abort}
-		AmountSat:  int(payreq.NumSatoshis),
-		AmountMSat: int(payreq.NumSatoshis * 1000),
+		AmountSat:  payreq.NumSatoshis,
+		AmountMSat: payreq.NumSatoshis * 1000,
 	}
 	upr.Payment = p
 

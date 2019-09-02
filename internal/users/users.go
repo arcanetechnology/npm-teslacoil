@@ -19,7 +19,7 @@ type UserNew struct {
 type User struct {
 	ID             int        `db:"id"`
 	Email          string     `db:"email"`
-	Balance        int        `db:"balance"`
+	Balance        int64      `db:"balance"`
 	HashedPassword []byte     `db:"hashed_password" json:"-"`
 	CreatedAt      time.Time  `db:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at"`
@@ -30,15 +30,15 @@ type User struct {
 type UserResponse struct {
 	ID             int       `db:"id"`
 	Email          string    `db:"email"`
-	Balance        int       `db:"balance"`
+	Balance        int64     `db:"balance"`
 	HashedPassword []byte    `db:"hashed_password"`
 	UpdatedAt      time.Time `db:"updated_at"`
 }
 
 // ChangeBalance is the struct for changing a users balance
 type ChangeBalance struct {
-	UserID    int `json:"userId"`
-	AmountSat int `json:"amountSat"`
+	UserID    int   `json:"userId"`
+	AmountSat int64 `json:"amountSat"`
 }
 
 // UsersTable is the tablename of users, as saved in the DB
@@ -240,6 +240,9 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 
 	userResp := UserResponse{}
 	if rows.Next() {
+		// if err = rows.Scan(&userResp); err != nil {
+		// return UserResponse{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
+		// }
 		if err = rows.Scan(&userResp.ID,
 			&userResp.Email,
 			&userResp.Balance,

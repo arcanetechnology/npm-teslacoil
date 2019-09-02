@@ -7,24 +7,17 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
-// GetUserResponse is the type returned by the api to the front-end
-type GetUserResponse struct {
+// UserResponse is the type returned by the api to the front-end
+type UserResponse struct {
 	ID      int    `json:"id"`
 	Email   string `json:"email"`
-	Balance int    `json:"balance"`
+	Balance int64  `json:"balance"`
 }
 
 // CreateUserRequest is the expected type to create a new user
 type CreateUserRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password" binding:"required"`
-}
-
-// CreateUserResponse is the type returned by the api to the front-end
-type CreateUserResponse struct {
-	ID      int    `json:"id"`
-	Email   string `json:"email"`
-	Balance int    `json:"balance"`
 }
 
 // LoginRequest is the expected type to find a user in the DB
@@ -38,7 +31,7 @@ type LoginResponse struct {
 	AccessToken string `json:"accessToken"`
 	Email       string `json:"email"`
 	UserID      int    `json:"userId"`
-	Balance     int    `json:"balance"`
+	Balance     int64  `json:"balance"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
@@ -75,7 +68,7 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 			c.JSONP(http.StatusInternalServerError, gin.H{"error": "internal server error, please try again or contact us"})
 		}
 
-		res := GetUserResponse{
+		res := UserResponse{
 			ID:      user.ID,
 			Email:   user.Email,
 			Balance: user.Balance,
@@ -112,7 +105,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 			return
 		}
 
-		res := CreateUserResponse{
+		res := UserResponse{
 			ID:      u.ID,
 			Email:   u.Email,
 			Balance: u.Balance,

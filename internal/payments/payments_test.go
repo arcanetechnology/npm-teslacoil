@@ -94,12 +94,12 @@ func TestCreateInvoice(t *testing.T) {
 		t.Fatalf("%+v\n", err)
 	}
 
-	amount1 := rand.Intn(4294967)
-	amount2 := rand.Intn(4294967)
+	amount1 := rand.Int63n(4294967)
+	amount2 := rand.Int63n(4294967)
 
 	tests := []struct {
 		memo      string
-		amountSat int
+		amountSat int64
 
 		lndInvoice lnrpc.Invoice
 		out        Payment
@@ -205,8 +205,8 @@ func TestGetByID(t *testing.T) {
 	const password1 = "password1"
 	const email2 = "email2@example.com"
 	const password2 = "password2"
-	amount1 := rand.Intn(4294967)
-	amount2 := rand.Intn(4294967)
+	amount1 := rand.Int63n(4294967)
+	amount2 := rand.Int63n(4294967)
 
 	user, err := users.Create(testDB,
 		"test_userGetByID@example.com",
@@ -339,8 +339,8 @@ func TestPayInvoice(t *testing.T) {
 			fail, err, reset)
 	}
 
-	amount1 := 5000
-	amount2 := 2000
+	var amount1 int64 = 5000
+	var amount2 int64 = 2000
 	tests := []struct {
 		paymentRequest string
 		memo           string
@@ -517,14 +517,14 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		t.Fatalf("%+v\n", err)
 	}
 
-	amount1 := 50000
-	amount2 := 20000
+	var amount1 int64 = 50000
+	var amount2 int64 = 20000
 
 	tests := []struct {
 		triggerInvoice lnrpc.Invoice
 		memo           string
 		description    string
-		amountSat      int
+		amountSat      int64
 
 		out UserPaymentResponse
 	}{
@@ -702,7 +702,7 @@ func TestGetAll(t *testing.T) {
 
 		invoices []struct {
 			Memo      string
-			AmountSat int
+			AmountSat int64
 		}
 
 		limit  int
@@ -715,7 +715,7 @@ func TestGetAll(t *testing.T) {
 
 			[]struct {
 				Memo      string
-				AmountSat int
+				AmountSat int64
 			}{
 				{
 					Memo:      "1",
@@ -741,7 +741,7 @@ func TestGetAll(t *testing.T) {
 
 			[]struct {
 				Memo      string
-				AmountSat int
+				AmountSat int64
 			}{
 
 				{
@@ -767,7 +767,7 @@ func TestGetAll(t *testing.T) {
 
 			[]struct {
 				Memo      string
-				AmountSat int
+				AmountSat int64
 			}{
 
 				{
