@@ -907,7 +907,7 @@ func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
 		t.Fail()
 	}
 
-	if *payment.Preimage != *expectedResult.Preimage {
+	if payment.Preimage != nil && expectedResult.Preimage != nil && *payment.Preimage != *expectedResult.Preimage {
 		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%v\" got \"%v\"%s",
 			fail, expectedResult.Preimage, payment.Preimage, reset)
 		t.Fail()
