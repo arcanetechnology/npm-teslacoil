@@ -340,6 +340,7 @@ func TestCanGetUserByID(t *testing.T) {
 		}
 	}
 }
+<<<<<<< Updated upstream
 
 func TestDecreaseBalance(t *testing.T) {
 	t.Parallel()
@@ -672,3 +673,5 @@ func TestIncreaseBalance(t *testing.T) {
 		t.FailNow()
 	}
 }
+=======
+>>>>>>> Stashed changes

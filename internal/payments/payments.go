@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -333,15 +334,63 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 	upr.Payment = payment
 
 	if err = tx.Commit(); err != nil {
-		log.Error(err)
-		return upr, errors.Wrap(
-			err, "PayInvoice: Cound not commit")
+		// log.Error(err)
+		return UserPaymentResponse{}, errors.Wrap(
+			err, "PayInvoice: could not commit")
 	}
 
 	return UserPaymentResponse{
 		Payment: payment,
 		User:    user,
-	}, nil
+	}
+
+	return result, nil
+}
+
+// QueryExecutor is based on sqlx.DB, but is an interface that only requires "Query"
+type QueryExecutor interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func updateUserBalance(queryEx QueryExecutor, userID uint, amountSat int64) (
+	UserResponse, error) {
+
+	if amountSat == 0 {
+		return UserResponse{}, errors.New(
+			"no point in updating users balance with 0 satoshi")
+	}
+
+	updateBalanceQuery := `UPDATE users
+		SET balance = balance + $1
+		WHERE id = $2
+		RETURNING id, email, balance, updated_at`
+
+	rows, err := queryEx.Query(updateBalanceQuery, amountSat, userID)
+	if err != nil {
+		// log.Error(err)
+		return UserResponse{}, errors.Wrap(
+			err,
+			"UpdateUserBalance(): could not construct user update",
+		)
+	}
+
+	user := UserResponse{}
+	if rows.Next() {
+		if err = rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Balance,
+			&user.UpdatedAt,
+		); err != nil {
+			// log.Error(err)
+			return UserResponse{}, errors.Wrap(
+				err, "could not scan user returned from db")
+		}
+	}
+	rows.Close()
+	// log.Tracef("%s inserted %v", updateBalanceQuery, user)
+
+	return user, nil
 }
 
 // InvoiceStatusListener is
@@ -455,4 +504,83 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		Payment: payment,
 		User:    user,
 	}, nil
+}
+
+// insertPayment persists a payment to the database
+func insertPayment(tx *sqlx.Tx, payment Payment) (Payment, error) {
+	var createOffchainTXQuery string
+
+	if payment.Preimage != nil && payment.HashedPreimage != "" {
+	}
+
+	createOffchainTXQuery = `INSERT INTO 
+	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
+		description, direction, status, amount_sat,amount_msat)
+	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
+		    :memo, :description, :direction, :status, :amount_sat, :amount_msat)
+	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
+			  memo, description, direction, status, amount_sat, amount_msat,
+			  created_at, updated_at`
+
+	// Using the above query, NamedQuery() will extract VALUES from the payment
+	// variable and insert them into the query
+	rows, err := tx.NamedQuery(createOffchainTXQuery, payment)
+	if err != nil {
+		// log.Error(err)
+		return Payment{}, errors.Wrapf(
+			err,
+			"insertPayment->tx.NamedQuery(%s, %+v)",
+			createOffchainTXQuery,
+			payment,
+		)
+	}
+	var result Payment
+	if rows.Next() {
+		if err = rows.Scan(
+			&result.ID,
+			&result.UserID,
+			&result.PaymentRequest,
+			&result.Preimage,
+			&result.HashedPreimage,
+			&result.Memo,
+			&result.Description,
+			&result.Direction,
+			&result.Status,
+			&result.AmountSat,
+			&result.AmountMSat,
+			&result.CreatedAt,
+			&result.UpdatedAt,
+		); err != nil {
+			// log.Error(err)
+			return result, errors.Wrapf(err,
+				"insertPayment->rows.Next(), Problem row = %+v", result)
+		}
+
+	}
+	rows.Close() // Free up the database connection
+
+	// log.Debugf("query %s inserted %v", createOffchainTXQuery, payment)
+
+	return result, nil
+}
+
+func (p Payment) String() string {
+	str := fmt.Sprintf("ID: %d\n", p.ID)
+	str += fmt.Sprintf("UserID: %d\n", p.UserID)
+	str += fmt.Sprintf("PaymentRequest: %s\n", p.PaymentRequest)
+	str += fmt.Sprintf("Preimage: %v\n", p.Preimage)
+	str += fmt.Sprintf("HashedPreimage: %s\n", p.HashedPreimage)
+	str += fmt.Sprintf("CallbackURL: %v\n", p.CallbackURL)
+	str += fmt.Sprintf("Status: %s\n", p.Status)
+	str += fmt.Sprintf("Memo: %s\n", p.Memo)
+	str += fmt.Sprintf("Description: %s\n", p.Description)
+	str += fmt.Sprintf("Direction: %s\n", p.Direction)
+	str += fmt.Sprintf("AmountSat: %d\n", p.AmountSat)
+	str += fmt.Sprintf("AmountMSat: %d\n", p.AmountMSat)
+	str += fmt.Sprintf("SettledAt: %v\n", p.SettledAt)
+	str += fmt.Sprintf("CreatedAt: %v\n", p.CreatedAt)
+	str += fmt.Sprintf("UpdatedAt: %v\n", p.UpdatedAt)
+	str += fmt.Sprintf("DeletedAt: %v\n", p.DeletedAt)
+
+	return str
 }

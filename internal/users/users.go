@@ -251,3 +251,15 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 	rows.Close()
 	return userResp, nil
 }
+
+func (u User) String() string {
+	str := fmt.Sprintf("ID: %d\n", u.ID)
+	str += fmt.Sprintf("Email: %s\n", u.Email)
+	str += fmt.Sprintf("Balance: %d\n", u.Balance)
+	str += fmt.Sprintf("HashedPassword: %v\n", u.HashedPassword)
+	str += fmt.Sprintf("CreatedAt: %v\n", u.CreatedAt)
+	str += fmt.Sprintf("UpdatedAt: %v\n", u.UpdatedAt)
+	str += fmt.Sprintf("DeletedAt: %v\n", u.DeletedAt)
+
+	return str
+}

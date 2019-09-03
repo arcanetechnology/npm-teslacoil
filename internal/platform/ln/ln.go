@@ -3,6 +3,7 @@ package ln
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -13,6 +14,7 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/macaroon.v2"
@@ -86,7 +88,8 @@ var (
 	// DefaultTLSCertPath is the default location of tls.cert
 	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
 	// DefaultMacaroonPath is the default dir of x.macaroon
-	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin", DefaultNetwork, "admin.macaroon")
+	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin",
+		DefaultNetwork, "admin.macaroon")
 
 	// DefaultCfg is a config interface with default values
 	DefaultCfg = LightningConfig{
@@ -119,19 +122,19 @@ func NewLNDClient(options LightningConfig) (
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
 	if err != nil {
-		// log.Errorf("Cannot get node tls credentials %v", err)
+		err = errors.Wrap(err, "Cannot get node tls credentials")
 		return nil, err
 	}
 
 	macaroonBytes, err := ioutil.ReadFile(cfg.MacaroonPath)
 	if err != nil {
-		// log.Errorf("Cannot read macaroon file %v", err)
+		err = errors.Wrap(err, "Cannot read macaroon file")
 		return nil, err
 	}
 
 	mac := &macaroon.Macaroon{}
 	if err = mac.UnmarshalBinary(macaroonBytes); err != nil {
-		// log.Errorf("Cannot unmarshal macaroon %v", err)
+		err = errors.Wrap(err, "Cannot unmarshal macaroon")
 		return nil, err
 	}
 
@@ -144,12 +147,12 @@ func NewLNDClient(options LightningConfig) (
 
 	conn, err := grpc.Dial(cfg.RPCServer, opts...)
 	if err != nil {
-		// log.Errorf("cannot dial to lnd: %v", err)
+		err = errors.Wrap(err, "cannot dial to lnd")
 		return nil, err
 	}
 	client := lnrpc.NewLightningClient(conn)
 
-	log.Debugf("opened connection to lnd on %s", cfg.RPCServer)
+	log.Infof("opened connection to lnd on %s", cfg.RPCServer)
 
 	return client, nil
 }
@@ -187,24 +190,26 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	ctx := context.Background()
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
-		log.Error(err)
-		return &lnrpc.Invoice{}, err
+		err = errors.Wrap(err, "could not add invoice using lncli.AddInvoice()")
+		return nil, err
 	}
 	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
 		RHash: inv.RHash,
 	})
 	if err != nil {
-		log.Error(err)
-		return &lnrpc.Invoice{}, err
+		err = errors.Wrap(err,
+			"could not lookup invoice using lncli.LookupInvoice()")
+		return nil, err
 	}
 
-	log.Debugf("added invoice %s with hash %s", inv.PaymentRequest, hex.EncodeToString(inv.RHash))
+	log.Infof("added invoice %s with hash %s",
+		inv.PaymentRequest, hex.EncodeToString(inv.RHash))
 
 	return invoice, nil
 }
 
 // ListenInvoices subscribes to lnd invoices
-func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error {
+func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) {
 	invoiceSubDetails := &lnrpc.InvoiceSubscription{}
 
 	invoiceClient, err := lncli.SubscribeInvoices(
@@ -212,7 +217,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 		invoiceSubDetails)
 	if err != nil {
 		log.Error(err)
-		return err
+		return
 	}
 
 	for {
@@ -220,9 +225,21 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) error
 		err := invoiceClient.RecvMsg(&invoice)
 		if err != nil {
 			log.Error(err)
-			return err
+			return
 		}
-		log.Debugf("invoice %s with hash %s was updated", invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
+		log.Infof("invoice %s with hash %s was updated",
+			invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
+
 		msgCh <- invoice
 	}
+}
+
+func (l LightningConfig) String() string {
+	str := fmt.Sprintf("LndDir: %s\n", l.LndDir)
+	str += fmt.Sprintf("TLSCertPath: %s\n", l.TLSCertPath)
+	str += fmt.Sprintf("MacaroonPath: %s\n", l.MacaroonPath)
+	str += fmt.Sprintf("Network: %s\n", l.Network)
+	str += fmt.Sprintf("RPCServer: %s\n", l.RPCServer)
+
+	return str
 }
