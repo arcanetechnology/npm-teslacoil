@@ -214,7 +214,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	// than the MinCost (4)
 	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), 12)
 	if err != nil {
-		// log.Error(err)
+		log.Error(err)
 		return nil, err
 	}
 
@@ -240,9 +240,6 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 
 	userResp := UserResponse{}
 	if rows.Next() {
-		// if err = rows.Scan(&userResp); err != nil {
-		// return UserResponse{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
-		// }
 		if err = rows.Scan(&userResp.ID,
 			&userResp.Email,
 			&userResp.Balance,

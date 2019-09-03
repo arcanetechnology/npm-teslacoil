@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 
 	db.TeardownTestDB(testDB)
 	if err = db.CreateTestDatabase(testDB); err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		return
 	}
 

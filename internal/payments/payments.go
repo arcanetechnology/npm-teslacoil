@@ -2,7 +2,6 @@ package payments
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
@@ -37,18 +35,19 @@ const (
 
 // Payment is a database table
 type Payment struct {
-	ID             int            `db:"id"`
-	UserID         int            `db:"user_id"`
-	PaymentRequest string         `db:"payment_request"`
-	Preimage       sql.NullString `db:"preimage"`
-	HashedPreimage string         `db:"hashed_preimage"`
-	CallbackURL    sql.NullString `db:"callback_url"`
-	Status         Status         `db:"status"`
-	Memo           string         `db:"memo"`
-	Description    string         `db:"description"`
-	Direction      Direction      `db:"direction"`
-	AmountSat      int64          `db:"amount_sat"`
-	AmountMSat     int64          `db:"amount_msat"`
+	ID             int    `db:"id"`
+	UserID         int    `db:"user_id"`
+	PaymentRequest string `db:"payment_request"`
+	// A pointer to a string means the type is nullable
+	Preimage       *string   `db:"preimage"`
+	HashedPreimage string    `db:"hashed_preimage"`
+	CallbackURL    *string   `db:"callback_url"`
+	Status         Status    `db:"status"`
+	Memo           string    `db:"memo"`
+	Description    string    `db:"description"`
+	Direction      Direction `db:"direction"`
+	AmountSat      int64     `db:"amount_sat"`
+	AmountMSat     int64     `db:"amount_msat"`
 	// SettledAt is a pointer because it can be null, and inserting null in
 	// something not a pointer when querying the db is not possible
 	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the
@@ -69,7 +68,7 @@ type UserPaymentResponse struct {
 func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 	var createOffchainTXQuery string
 
-	if p.Preimage.Valid && p.HashedPreimage != "" {
+	if p.Preimage != nil && p.HashedPreimage != "" {
 		return Payment{},
 			errors.New("cant supply both a preimage and a hashed preimage")
 	}
@@ -87,7 +86,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 	// variable and insert them into the query
 	rows, err := tx.NamedQuery(createOffchainTXQuery, p)
 	if err != nil {
-		// log.Error(err)
+		log.Error(err)
 		return Payment{}, errors.Wrapf(
 			err,
 			"insertPayment->tx.NamedQuery(%s, %+v)",
@@ -114,19 +113,11 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			&result.CreatedAt,
 			&result.UpdatedAt,
 		); err != nil {
-			// log.Error(err)
+			log.Error(err)
 			return result, errors.Wrapf(err,
 				"insertPayment->rows.Next(), Problem row = %+v", result)
 		}
 
-	}
-
-	// If nil is stored in the CallbackURL field, replace with ""
-	if !result.CallbackURL.Valid {
-		result.CallbackURL = db.ToNullString("")
-	}
-	if !result.Preimage.Valid {
-		result.Preimage = db.ToNullString("")
 	}
 
 	return result, nil
@@ -156,7 +147,7 @@ func GetAll(d *sqlx.DB, userID int, limit int, offset int) (
 }
 
 // GetByID performs this query:
-// "SELECT * FROM offchaintx WHERE id=id AND user_id=userID", where id is the
+// `SELECT * FROM offchaintx WHERE id=id AND user_id=userID`, where id is the
 // primary key of the table(autoincrementing)
 func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
 	if id < 0 || userID < 0 {
@@ -168,7 +159,7 @@ func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
 		"SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
 
 	if err := d.Get(&txResult, tQuery, id, userID); err != nil {
-		// log.Error(err)
+		log.Error(err)
 		return txResult, errors.Wrap(err, "could not get payment")
 	}
 
@@ -178,16 +169,8 @@ func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
 			fmt.Sprintf(
 				"db query retrieved unexpected value, expected payment with user_id %d but got %d",
 				userID, txResult.UserID))
-		// log.Errorf(err.Error())
+		log.Errorf(err.Error())
 		return Payment{}, err
-	}
-
-	// If nil is stored in the CallbackURL field, replace with ""
-	if !txResult.CallbackURL.Valid {
-		txResult.CallbackURL = db.ToNullString("")
-	}
-	if !txResult.Preimage.Valid {
-		txResult.Preimage = db.ToNullString("")
 	}
 
 	return txResult, nil
@@ -222,7 +205,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	// Sanity check the invoice we just created
 	if invoice.Value != int64(amountSat) {
 		err = errors.New("could not insert invoice, created invoice amount not equal request.Amount")
-		// log.Error(err)
+		log.Error(err)
 		return Payment{}, err
 	}
 
@@ -244,22 +227,15 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	}
 	p, err = insert(tx, p)
 	if err != nil {
-		// log.Error(err)
+		log.Error(err)
 		tx.Rollback()
 		return Payment{}, err
 	}
 
 	if err = tx.Commit(); err != nil {
-		// log.Error(err)
+		log.Error(err)
 		tx.Rollback()
 		return Payment{}, err
-	}
-
-	if !p.Preimage.Valid {
-		p.Preimage = db.ToNullString("")
-	}
-	if !p.CallbackURL.Valid {
-		p.CallbackURL = db.ToNullString("")
 	}
 
 	return p, nil
@@ -281,7 +257,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
 	if err != nil {
-		// log.Error(err)
+		log.Error(err)
 		return UserPaymentResponse{}, err
 	}
 
@@ -347,9 +323,8 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 		t := time.Now()
 		payment.SettledAt = &t
 		payment.Status = succeeded
-		payment.Preimage = sql.NullString{
-			String: hex.EncodeToString(paymentResponse.PaymentPreimage),
-			Valid:  true}
+		preimage := hex.EncodeToString(paymentResponse.PaymentPreimage)
+		payment.Preimage = &preimage
 	} else {
 		tx.Rollback()
 		p.Status = failed
@@ -358,16 +333,9 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 	upr.Payment = payment
 
 	if err = tx.Commit(); err != nil {
-		// log.Error(err)
+		log.Error(err)
 		return upr, errors.Wrap(
 			err, "PayInvoice: Cound not commit")
-	}
-
-	if !payment.CallbackURL.Valid {
-		payment.CallbackURL = db.ToNullString("")
-	}
-	if !payment.Preimage.Valid {
-		payment.Preimage = db.ToNullString("")
 	}
 
 	return UserPaymentResponse{
@@ -419,10 +387,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 	payment.SettledAt = &time
 	payment.Status = Status("SUCCEEDED")
 	preimage := hex.EncodeToString(invoice.RPreimage)
-	payment.Preimage = sql.NullString{
-		String: preimage,
-		Valid:  true,
-	}
+	payment.Preimage = &preimage
 
 	updateOffchainTxQuery := `UPDATE offchaintx 
 		SET status = :status, settled_at = :settled_at, preimage = :preimage

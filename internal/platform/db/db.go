@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
 	"net/url"
 	"os"
 	"path"
@@ -108,12 +107,12 @@ func OpenTestDatabase(name string) (*sqlx.DB, error) {
 func CreateTestDatabase(testDB *sqlx.DB) error {
 	err := MigrateUp(path.Join("file://", MigrationsPath), testDB)
 
-	fmt.Println(MigrationsPath)
+	log.Error(MigrationsPath)
 	if err != nil {
 		if err.Error() == "no change" {
 			return ResetDB(testDB)
 		}
-		fmt.Println(err)
+		log.Error(err)
 		return errors.Wrapf(err,
 			"Cannot connect to database %s with user %s",
 			os.Getenv("DATABASE_TEST_NAME"),

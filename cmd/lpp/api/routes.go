@@ -168,19 +168,19 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	if !ok {
 		return nil, nil, errors.New("invalid token, could not extract email from claim")
 	}
-	// TODO: This needs to be more robust... Never know what type the client sends!
-	id, ok := mapClaims["user_id"].(int)
-	if !ok {
-		return nil, nil, errors.New("invalid token, could not extract user_id from claim")
-	}
 
-	if id < 0 {
-		return nil, nil, errors.New("parseBearerJWT(): id can not be less than 0")
+	// TODO(bo): For some reason, the UserID is converted to a float64 when extracted
+	// We need to write tests for this, to make sure it always is the case the
+	// UserID is a float64, not an int/int64 etc.
+	id, ok := mapClaims["user_id"].(float64)
+	if !ok {
+		log.Error(id)
+		return nil, nil, errors.New("invalid token, could not extract user_id from claim")
 	}
 
 	jwtClaims := &JWTClaims{
 		Email:  email,
-		UserID: id,
+		UserID: int(id),
 	}
 
 	return token, jwtClaims, nil

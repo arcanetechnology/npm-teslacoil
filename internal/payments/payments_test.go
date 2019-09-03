@@ -2,7 +2,6 @@ package payments
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -68,7 +67,7 @@ func TestMain(m *testing.M) {
 
 	db.TeardownTestDB(testDB)
 	if err = db.CreateTestDatabase(testDB); err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		return
 	}
 
@@ -90,7 +89,7 @@ func TestCreateInvoice(t *testing.T) {
 		"password",
 	)
 	if err != nil {
-		fmt.Println("User result was empty")
+		log.Error("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
 
@@ -116,13 +115,9 @@ func TestCreateInvoice(t *testing.T) {
 				Settled:        false,
 			},
 			Payment{
-				UserID:     user.ID,
-				AmountSat:  amount1,
-				AmountMSat: amount1 * 1000,
-				Preimage: sql.NullString{
-					String: "",
-					Valid:  true,
-				},
+				UserID:         user.ID,
+				AmountSat:      amount1,
+				AmountMSat:     amount1 * 1000,
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HiMisterHey",
 				Description:    "My personal description",
@@ -142,13 +137,9 @@ func TestCreateInvoice(t *testing.T) {
 				Settled:        false,
 			},
 			Payment{
-				UserID:     user.ID,
-				AmountSat:  amount2,
-				AmountMSat: amount2 * 1000,
-				Preimage: sql.NullString{
-					String: "",
-					Valid:  true,
-				},
+				UserID:         user.ID,
+				AmountSat:      amount2,
+				AmountMSat:     amount2 * 1000,
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HelloWorld",
 				Description:    "My personal description",
@@ -226,13 +217,9 @@ func TestGetByID(t *testing.T) {
 			email1,
 			password1,
 			Payment{
-				UserID:     user.ID,
-				AmountSat:  amount1,
-				AmountMSat: amount1 * 1000,
-				Preimage: sql.NullString{
-					String: samplePreimage,
-					Valid:  true,
-				},
+				UserID:         user.ID,
+				AmountSat:      amount1,
+				AmountMSat:     amount1 * 1000,
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HiMisterHey",
 				Description:    "My personal description",
@@ -245,13 +232,9 @@ func TestGetByID(t *testing.T) {
 			email2,
 			password2,
 			Payment{
-				UserID:     user.ID,
-				AmountSat:  amount2,
-				AmountMSat: amount2 * 1000,
-				Preimage: sql.NullString{
-					String: samplePreimage,
-					Valid:  true,
-				},
+				UserID:         user.ID,
+				AmountSat:      amount2,
+				AmountMSat:     amount2 * 1000,
 				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
 				Memo:           "HelloWorld",
 				Description:    "My personal description",
@@ -269,7 +252,7 @@ func TestGetByID(t *testing.T) {
 			{
 				tx := testDB.MustBegin()
 				payment, err := insert(tx, tt.out)
-				if tt.out.HashedPreimage != "" && tt.out.Preimage.Valid {
+				if tt.out.HashedPreimage != "" && tt.out.Preimage != nil {
 					if !strings.Contains(err.Error(), "cant supply both a preimage and a hashed preimage") {
 						t.Error("Is in there")
 						t.Fatalf(
@@ -323,7 +306,7 @@ func TestPayInvoice(t *testing.T) {
 		"password",
 	)
 	if err != nil {
-		fmt.Println("User result was empty")
+		log.Error("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
 
@@ -359,13 +342,10 @@ func TestPayInvoice(t *testing.T) {
 			},
 			UserPaymentResponse{
 				Payment: Payment{
-					UserID:     u.ID,
-					AmountSat:  amount1,
-					AmountMSat: amount1 * 1000,
-					Preimage: sql.NullString{
-						String: samplePreimage,
-						Valid:  true,
-					},
+					UserID:         u.ID,
+					AmountSat:      amount1,
+					AmountMSat:     amount1 * 1000,
+					Preimage:       &samplePreimage,
 					HashedPreimage: "SomeHash",
 					Memo:           "HelloPayment",
 					Description:    "My personal description",
@@ -389,13 +369,10 @@ func TestPayInvoice(t *testing.T) {
 			},
 			UserPaymentResponse{
 				Payment: Payment{
-					UserID:     u.ID,
-					AmountSat:  amount2,
-					AmountMSat: amount2 * 1000,
-					Preimage: sql.NullString{
-						String: samplePreimage,
-						Valid:  true,
-					},
+					UserID:         u.ID,
+					AmountSat:      amount2,
+					AmountMSat:     amount2 * 1000,
+					Preimage:       &samplePreimage,
 					HashedPreimage: "SomeHash",
 					Memo:           "HelloPayment",
 					Description:    "My personal description",
@@ -413,6 +390,7 @@ func TestPayInvoice(t *testing.T) {
 			t.Logf("\ttest: %d\twhen paying invoice %s for user %d",
 				i, tt.out.Payment.PaymentRequest, tt.out.User.ID)
 			{
+				log.Info("preimage value is... ", tt.out.Payment.Preimage)
 				user, err := users.GetByID(testDB, u.ID)
 				if err != nil {
 					t.Fatalf(
@@ -434,7 +412,7 @@ func TestPayInvoice(t *testing.T) {
 					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
 				log.Errorf("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if user.Balance < tt.out.Payment.AmountSat {
-					if payment.Payment.Status == succeeded || payment.Payment.Preimage.Valid || payment.Payment.SettledAt != nil {
+					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 						t.Fatalf(
 							"\t%s\tshould not pay invoice when the users balance is too low\n%s",
 							fail, reset)
@@ -513,7 +491,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		"password",
 	)
 	if err != nil {
-		fmt.Println("User result was empty")
+		log.Error("User result was empty")
 		t.Fatalf("%+v\n", err)
 	}
 
@@ -546,14 +524,11 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
 					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Preimage: sql.NullString{
-						String: samplePreimage,
-						Valid:  true,
-					},
-					Memo:        "HelloWorld",
-					Description: "My description",
-					Status:      Status("SUCCEEDED"),
-					Direction:   Direction("INBOUND"),
+					Preimage:       &samplePreimage,
+					Memo:           "HelloWorld",
+					Description:    "My description",
+					Status:         Status("SUCCEEDED"),
+					Direction:      Direction("INBOUND"),
 				},
 				User: users.UserResponse{
 					ID:      u.ID,
@@ -579,14 +554,11 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					AmountSat:      amount2,
 					AmountMSat:     amount2 * 1000,
 					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Preimage: sql.NullString{
-						String: samplePreimage,
-						Valid:  true,
-					},
-					Memo:        "HelloWorld",
-					Description: "My description",
-					Status:      Status("SUCCEEDED"),
-					Direction:   Direction("INBOUND"),
+					Preimage:       &samplePreimage,
+					Memo:           "HelloWorld",
+					Description:    "My description",
+					Status:         Status("SUCCEEDED"),
+					Direction:      Direction("INBOUND"),
 				},
 				User: users.UserResponse{
 					ID:      u.ID,
@@ -612,14 +584,11 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
 					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Preimage: sql.NullString{
-						String: samplePreimage,
-						Valid:  true,
-					},
-					Memo:        "HelloWorld",
-					Description: "My description",
-					Status:      Status("OPEN"),
-					Direction:   Direction("INBOUND"),
+					Preimage:       &samplePreimage,
+					Memo:           "HelloWorld",
+					Description:    "My description",
+					Status:         Status("OPEN"),
+					Direction:      Direction("INBOUND"),
 				},
 				User: users.UserResponse{},
 			},
@@ -938,9 +907,9 @@ func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
 		t.Fail()
 	}
 
-	if payment.Preimage.Valid && payment.Preimage.String != expectedResult.Preimage.String {
-		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Preimage.String, payment.Preimage.String, reset)
+	if *payment.Preimage != *expectedResult.Preimage {
+		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%v\" got \"%v\"%s",
+			fail, expectedResult.Preimage, payment.Preimage, reset)
 		t.Fail()
 	}
 
