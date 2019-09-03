@@ -17,7 +17,17 @@ See here if you are using a different shell https://direnv.net/docs/hook.md
    create database lpp with owner lpp;
    grant all privileges on database lpp to lpp;
    ```
-4. Migrate the db: `lpp db up`
+4. Create a password for the postgres user: This step is necessary to interact with the DB through bash commands. We need to be able to do this because we want to be able to run tests in parallell, which is easiest by creating one database per test package
+
+   ```
+   sudo -u postgres psql template1
+   alter user postgres with encrypted password 'password';
+   \q
+   sudo systemctl restart postgresql.service
+   ```
+
+5. Add the password to your .envrc file, like `export PGPASSWORD="password"`
+6. Migrate the db: `lpp db up`
 
 Run: `go get` to install dependencies
 
@@ -35,8 +45,8 @@ Fill inn instructions here.
 
 ## Testing
 
-To run basic tests use `go test ./...`.
+To run basic tests use `make test`.
 
-To run tests using lnd on simnet use `go test ./... --tags="lnd"`.
+To run tests using lnd on simnet use `make test tags="lnd"`.
 This does however require you to have one or two simnet lnd nodes running.
 See instructions above.

@@ -22,46 +22,50 @@ var (
 	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
 		os.Getenv("GOPATH"))
 	defaultLogFilename = "lpp.log"
-)
+	serveCommand       = cli.Command{
+		Name:  "serve",
+		Usage: "Starts the lightning payment processing api",
+		Action: func(c *cli.Context) error {
+			database, err := db.OpenDatabase()
+			if err != nil {
+				log.Fatal(err)
+				return err
+			}
 
-func askForConfirmation() bool {
-	var response string
-	_, err := fmt.Scan(&response)
-	if err != nil {
-		log.Fatal(err)
+			config := api.Config{
+				LightningConfig: ln.LightningConfig{
+					LndDir:       c.GlobalString("lnddir"),
+					TLSCertPath:  c.GlobalString("tlscertpath"),
+					MacaroonPath: c.GlobalString("macaroonpath"),
+					Network:      c.GlobalString("network"),
+					RPCServer:    c.GlobalString("lndrpcserver"),
+				},
+
+				DebugLevel: c.GlobalString("debuglevel"),
+			}
+			defer database.Close()
+			a, err := api.NewApp(database, config)
+			if err != nil {
+				log.Fatal(err)
+				return err
+			}
+
+			address := ":" + c.String("port")
+			err = a.Router.Run(address)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+
+		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  "port",
+				Value: "8080",
+				Usage: "Port number to listen on",
+			},
+		},
 	}
-	okayResponses := []string{"y", "Y", "yes", "Yes", "YES"}
-	nokayResponses := []string{"n", "N", "no", "No", "NO"}
-	if containsString(okayResponses, response) {
-		return true
-	} else if containsString(nokayResponses, response) {
-		return false
-	} else {
-		fmt.Println("Please type yes or no and then press enter:")
-		return askForConfirmation()
-	}
-}
-
-// You might want to put the following two functions in a separate utility
-// package.
-
-// posString returns the first index of element in slice.
-// If slice does not contain element, returns -1.
-func posString(slice []string, element string) int {
-	for index, elem := range slice {
-		if elem == element {
-			return index
-		}
-	}
-	return -1
-}
-
-// containsString returns true iff slice contains element
-func containsString(slice []string, element string) bool {
-	return !(posString(slice, element) == -1)
-}
-
-var (
 	dbCommand = cli.Command{
 		Name:    "db",
 		Aliases: []string{"db"},
@@ -184,6 +188,42 @@ var (
 	}
 )
 
+// You might want to put the following two functions in a separate utility
+// package.
+// posString returns the first index of element in slice.
+// If slice does not contain element, returns -1.
+func posString(slice []string, element string) int {
+	for index, elem := range slice {
+		if elem == element {
+			return index
+		}
+	}
+	return -1
+}
+
+// containsString returns true iff slice contains element
+func containsString(slice []string, element string) bool {
+	return !(posString(slice, element) == -1)
+}
+
+func askForConfirmation() bool {
+	var response string
+	_, err := fmt.Scan(&response)
+	if err != nil {
+		log.Fatal(err)
+	}
+	okayResponses := []string{"y", "Y", "yes", "Yes", "YES"}
+	nokayResponses := []string{"n", "N", "no", "No", "NO"}
+	if containsString(okayResponses, response) {
+		return true
+	} else if containsString(nokayResponses, response) {
+		return false
+	} else {
+		fmt.Println("Please type yes or no and then press enter:")
+		return askForConfirmation()
+	}
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "lpp"
@@ -223,52 +263,10 @@ func main() {
 	}
 
 	app.Commands = []cli.Command{
-		cli.Command{
-			Name:  "serve",
-			Usage: "Starts the lightning payment processing api",
-			Action: func(c *cli.Context) error {
-				database, err := db.OpenDatabase()
-				if err != nil {
-					log.Fatal(err)
-					return err
-				}
-
-				config := api.Config{
-					LightningConfig: ln.LightningConfig{
-						LndDir:       c.GlobalString("lnddir"),
-						TLSCertPath:  c.GlobalString("tlscertpath"),
-						MacaroonPath: c.GlobalString("macaroonpath"),
-						Network:      c.GlobalString("network"),
-						RPCServer:    c.GlobalString("lndrpcserver"),
-					},
-
-					DebugLevel: c.GlobalString("debuglevel"),
-				}
-				defer database.Close()
-				a, err := api.NewApp(database, config)
-				if err != nil {
-					log.Fatal(err)
-					return err
-				}
-
-				address := ":" + c.String("port")
-				err = a.Router.Run(address)
-				if err != nil {
-					return err
-				}
-				return nil
-			},
-
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "port",
-					Value: "8080",
-					Usage: "Port number to listen on",
-				},
-			},
-		},
+		serveCommand,
 		dbCommand,
 	}
+
 	sort.Sort(cli.CommandsByName(app.Commands))
 	err := app.Run(os.Args)
 	if err != nil {

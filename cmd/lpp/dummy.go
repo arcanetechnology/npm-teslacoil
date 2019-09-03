@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/brianvoe/gofakeit"
@@ -34,13 +35,12 @@ func FillWithDummyData(d *sqlx.DB, lncli lnrpc.LightningClient) error {
 			return err
 		}
 
-		paymentCount := gofakeit.Number(1, 20)
+		paymentCount := rand.Intn(20)
 
 		for index := 1; index <= paymentCount; index++ {
-			_, err = payments.CreateInvoice(d, lncli, payments.CreateInvoiceData{
-				Memo:      "Dummy data " + string(index),
-				AmountSat: int64(gofakeit.Number(50, 10000)),
-			}, user.ID)
+			_, err = payments.CreateInvoice(d, lncli, user.ID,
+				rand.Int63n(4294967), "Dummy description"+string(index),
+				"Dummy memo"+string(index))
 			if err != nil {
 				return err
 			}

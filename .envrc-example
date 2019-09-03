@@ -8,3 +8,4 @@ export DATABASE_TEST_NAME="lpp_test"
 export DATABASE_TEST_HOST="localhost"
 
 export GO111MODULE=on
+export PGPASSWORD="password"

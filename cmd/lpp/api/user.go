@@ -7,43 +7,31 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
-//GetUserRequest is the expected type to find a user in the DB
-type GetUserRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+// UserResponse is the type returned by the api to the front-end
+type UserResponse struct {
+	ID      int    `json:"id"`
+	Email   string `json:"email"`
+	Balance int64  `json:"balance"`
 }
 
-//CreateUserRequest is the expected type to create a new user
+// CreateUserRequest is the expected type to create a new user
 type CreateUserRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password" binding:"required"`
 }
 
-//GetAllUsersResponse is the type returned by the api to the front-end
-type GetAllUsersResponse struct {
-	Users []users.User
-}
-
-//GetUserResponse is the type returned by the api to the front-end
-type GetUserResponse struct {
-	ID      uint   `db:"id"`
-	Email   string `db:"email"`
-	Balance int    `db:"balance"`
-}
-
-//CreateUserResponse is the type returned by the api to the front-end
-type CreateUserResponse struct {
-	ID      uint   `db:"id"`
-	Email   string `db:"email"`
-	Balance int    `db:"balance"`
+// LoginRequest is the expected type to find a user in the DB
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 // LoginResponse includes a jwt-token and the e-mail identifying the user
 type LoginResponse struct {
 	AccessToken string `json:"accessToken"`
 	Email       string `json:"email"`
-	UserID      uint   `json:"userId"`
-	Balance     int    `json:"balance"`
+	UserID      int    `json:"userId"`
+	Balance     int64  `json:"balance"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
@@ -53,9 +41,9 @@ type RefreshTokenResponse struct {
 
 // GetAllUsers is a GET request that returns all the users in the database
 // TODO: Restrict this to only the admin user
-func GetAllUsers(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userResponse, err := users.All(r.db)
+		userResponse, err := users.GetAll(r.db)
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
@@ -66,8 +54,7 @@ func GetAllUsers(r *RestServer) gin.HandlerFunc {
 }
 
 // GetUser is a GET request that returns users that match the one specified in the body
-// This endpoint is no longer needed, as Login takes care of the logic
-func GetUser(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
@@ -81,7 +68,7 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 			c.JSONP(http.StatusInternalServerError, gin.H{"error": "internal server error, please try again or contact us"})
 		}
 
-		res := GetUserResponse{
+		res := UserResponse{
 			ID:      user.ID,
 			Email:   user.Email,
 			Balance: user.Balance,
@@ -95,7 +82,7 @@ func GetUser(r *RestServer) gin.HandlerFunc {
 }
 
 // CreateUser is a POST request and inserts all the users in the body into the database
-func CreateUser(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) CreateUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateUserRequest
 
@@ -118,7 +105,7 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 			return
 		}
 
-		res := CreateUserResponse{
+		res := UserResponse{
 			ID:      u.ID,
 			Email:   u.Email,
 			Balance: u.Balance,
@@ -130,9 +117,10 @@ func CreateUser(r *RestServer) gin.HandlerFunc {
 }
 
 //Login logs in
-func Login(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) Login() gin.HandlerFunc {
+
 	return func(c *gin.Context) {
-		var req GetUserRequest
+		var req LoginRequest
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
@@ -172,7 +160,7 @@ func Login(r *RestServer) gin.HandlerFunc {
 }
 
 // RefreshToken refreshes a jwt-token
-func RefreshToken(r *RestServer) gin.HandlerFunc {
+func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.

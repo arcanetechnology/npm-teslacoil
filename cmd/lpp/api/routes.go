@@ -32,7 +32,7 @@ type RestServer struct {
 // JWTClaims is the common form for our jwts
 type JWTClaims struct {
 	Email  string `json:"email"`
-	UserID uint   `json:"user_id"`
+	UserID int    `json:"user_id"`
 	jwt.StandardClaims
 }
 
@@ -54,7 +54,7 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 		return RestServer{}, err
 	}
 
-	restServer := RestServer{
+	r := RestServer{
 		Router: g,
 		db:     d,
 		lncli:  &lncli,
@@ -67,45 +67,44 @@ func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
 
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login
-	restServer.Router.POST("/login", Login(&restServer))
-	RegisterAuthRoutes(&restServer)
-	RegisterUserRoutes(&restServer)
-	RegisterPaymentRoutes(&restServer)
+	r.Router.POST("/login", r.Login())
+	r.RegisterAuthRoutes()
+	r.RegisterUserRoutes()
+	r.RegisterPaymentRoutes()
 
-	return restServer, nil
+	return r, nil
 }
 
 // RegisterAuthRoutes registers all auth routes
-func RegisterAuthRoutes(r *RestServer) {
+func (r *RestServer) RegisterAuthRoutes() {
 	auth := r.Router.Group("")
 	auth.Use(authenticateJWT)
 
-	auth.GET("/auth/refresh_token", RefreshToken(r))
+	auth.GET("/auth/refresh_token", r.RefreshToken())
 }
 
 // RegisterUserRoutes registers all user routes on the router
-func RegisterUserRoutes(r *RestServer) {
+func (r *RestServer) RegisterUserRoutes() {
 	// Creating a user doesn't require a JWT
-	r.Router.POST("/users", CreateUser(r))
+	r.Router.POST("/users", r.CreateUser())
 
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read
 	users := r.Router.Group("")
 	users.Use(authenticateJWT)
-	users.GET("/users", GetAllUsers(r))
-	users.GET("/user", GetUser(r))
-	// users.GET("/users/:id", GetUser(r))
+	users.GET("/users", r.GetAllUsers())
+	users.GET("/user", r.GetUser())
 }
 
 // RegisterPaymentRoutes registers all payment routes on the router
-func RegisterPaymentRoutes(r *RestServer) {
+func (r *RestServer) RegisterPaymentRoutes() {
 	payments := r.Router.Group("")
-	// payments.Use(authenticateJWT)
+	payments.Use(authenticateJWT)
 
-	payments.GET("/payments", GetAllPayments(r))
-	payments.GET("/payments/:id", GetPayment(r))
-	payments.POST("/invoices/create", CreateInvoice(r))
-	payments.POST("/invoices/pay", PayInvoice(r))
+	payments.GET("/payments", r.GetAllPayments())
+	payments.GET("/payments/:id", r.GetSinglePayment())
+	payments.POST("/invoices/create", r.CreateInvoice())
+	payments.POST("/invoices/pay", r.PayInvoice())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate
@@ -169,15 +168,19 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	if !ok {
 		return nil, nil, errors.New("invalid token, could not extract email from claim")
 	}
-	// TODO: This needs to be more robust... Never know what type the client sends!
+
+	// TODO(bo): For some reason, the UserID is converted to a float64 when extracted
+	// We need to write tests for this, to make sure it always is the case the
+	// UserID is a float64, not an int/int64 etc.
 	id, ok := mapClaims["user_id"].(float64)
 	if !ok {
+		log.Error(id)
 		return nil, nil, errors.New("invalid token, could not extract user_id from claim")
 	}
 
 	jwtClaims := &JWTClaims{
 		Email:  email,
-		UserID: uint(id),
+		UserID: int(id),
 	}
 
 	return token, jwtClaims, nil
@@ -186,7 +189,7 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 // createJWTToken creates a new JWT token with the supplied email as the
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token
-func createJWTToken(email string, id uint) (string, error) {
+func createJWTToken(email string, id int) (string, error) {
 	expiresAt := time.Now().Add(5 * time.Hour).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,

@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
 	"net/url"
 	"os"
 	"path"
@@ -36,7 +35,6 @@ func setMigrationsPath() {
 // OpenDatabase fetched the database credentials from environment variables
 // and stars creates the gorm database object
 func OpenDatabase() (*sqlx.DB, error) {
-
 	// Define SSL mode.
 	sslMode := "disable" // require
 
@@ -63,15 +61,16 @@ func OpenDatabase() (*sqlx.DB, error) {
 			os.Getenv("DATABASE_USER"),
 		)
 	}
-
-	// log.Infof("opened connection to db")
+	log.Infof("opened connection to db")
 
 	return d, nil
 }
 
 // OpenTestDatabase Fetches the database credentials from env vars and opens a
 // connection to the test db
-func OpenTestDatabase() (*sqlx.DB, error) {
+// we take the name as an argument because individual test files run in
+// parallell. For different tests to
+func OpenTestDatabase(name string) (*sqlx.DB, error) {
 
 	// Define SSL mode.
 	sslMode := "disable" // require
@@ -87,7 +86,7 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 			os.Getenv("DATABASE_TEST_USER"),
 			os.Getenv("DATABASE_TEST_PASSWORD")),
 		Host:     os.Getenv("DATABASE_TEST_HOST"),
-		Path:     os.Getenv("DATABASE_TEST_NAME"),
+		Path:     os.Getenv("DATABASE_TEST_NAME") + "_" + name,
 		RawQuery: q.Encode(),
 	}
 
@@ -108,12 +107,12 @@ func OpenTestDatabase() (*sqlx.DB, error) {
 func CreateTestDatabase(testDB *sqlx.DB) error {
 	err := MigrateUp(path.Join("file://", MigrationsPath), testDB)
 
-	fmt.Println(MigrationsPath)
+	log.Error(MigrationsPath)
 	if err != nil {
 		if err.Error() == "no change" {
 			return ResetDB(testDB)
 		}
-		fmt.Println(err)
+		log.Error(err)
 		return errors.Wrapf(err,
 			"Cannot connect to database %s with user %s",
 			os.Getenv("DATABASE_TEST_NAME"),
@@ -150,7 +149,7 @@ func ResetDB(testDB *sqlx.DB) error {
 	return nil
 }
 
-//ToNullString invalidates a sql.NullString if empty, validates if not empty
+//ToNullString converts the argument s to a sql.NullString
 func ToNullString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
 }
