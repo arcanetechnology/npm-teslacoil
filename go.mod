@@ -44,6 +44,7 @@ require (
 	github.com/roasbeef/btcutil v0.0.0-20180406014609-dfb640c57141 // indirect
 	github.com/roasbeef/btcwallet v0.0.0-20180426223453-30affec83c18 // indirect
 	github.com/rs/cors v1.7.0
+	github.com/sirupsen/logrus v1.4.2
 	github.com/tidwall/gjson v1.3.2 // indirect
 	github.com/ugorji/go v1.1.7
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4

@@ -14,9 +14,9 @@ type PaymentResponse struct {
 	ID             uint               `json:"id"`
 	UserID         uint               `json:"userId"`
 	PaymentRequest string             `json:"paymentRequest"`
-	Preimage       *string            `json:"preimage"`
+	Preimage       string             `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callbackUrl"`
+	CallbackURL    string             `json:"callbackUrl"`
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
 	Direction      payments.Direction `json:"direction"`
@@ -31,7 +31,7 @@ type CreateInvoiceResponse struct {
 	UserID         uint            `json:"userId"`
 	PaymentRequest string          `json:"paymentRequest"`
 	HashedPreimage string          `json:"hashedPreimage"`
-	CallbackURL    *string         `json:"callbackUrl"`
+	CallbackURL    string          `json:"callbackUrl"`
 	Status         payments.Status `json:"status"`
 	Memo           string          `json:"memo"`
 	AmountSat      int64           `json:"amountSat"`
@@ -42,13 +42,22 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 	var invResponse []PaymentResponse
 
 	for _, payment := range payments {
+		var preimage, callbackURL string
+		if payment.Preimage.Valid {
+			preimage = payment.Preimage.String
+		}
+
+		if payment.CallbackURL.Valid {
+			callbackURL = payment.CallbackURL.String
+		}
+
 		invResponse = append(invResponse, PaymentResponse{
 			ID:             payment.ID,
 			UserID:         payment.UserID,
 			PaymentRequest: payment.PaymentRequest,
-			Preimage:       payment.Preimage,
+			Preimage:       preimage,
 			Hash:           payment.HashedPreimage,
-			CallbackURL:    payment.CallbackURL,
+			CallbackURL:    callbackURL,
 			Status:         payment.Status,
 			Memo:           payment.Memo,
 			Direction:      payment.Direction,
@@ -128,9 +137,9 @@ func GetPayment(r *RestServer) gin.HandlerFunc {
 			ID:             t.ID,
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
-			Preimage:       t.Preimage,
+			Preimage:       t.Preimage.String,
 			Hash:           t.HashedPreimage,
-			CallbackURL:    t.CallbackURL,
+			CallbackURL:    t.CallbackURL.String,
 			Status:         t.Status,
 			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
@@ -182,7 +191,7 @@ func CreateInvoice(r *RestServer) gin.HandlerFunc {
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
 			HashedPreimage: t.HashedPreimage,
-			CallbackURL:    t.CallbackURL,
+			CallbackURL:    t.CallbackURL.String,
 			Status:         t.Status,
 			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
@@ -224,7 +233,7 @@ func PayInvoice(r *RestServer) gin.HandlerFunc {
 			ID:             t.Payment.ID,
 			UserID:         t.User.ID,
 			PaymentRequest: t.Payment.PaymentRequest,
-			Preimage:       t.Payment.Preimage,
+			Preimage:       t.Payment.Preimage.String,
 			Hash:           t.Payment.HashedPreimage,
 			Status:         t.Payment.Status,
 			Memo:           t.Payment.Memo,

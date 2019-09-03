@@ -207,7 +207,7 @@ func createJWTToken(email string, id uint) (string, error) {
 		return "", err
 	}
 
-	log.Info("signed token making tokenString %s", tokenString)
+	log.Infof("signed token making tokenString %s", tokenString)
 
 	return "Bearer " + tokenString, nil
 }
