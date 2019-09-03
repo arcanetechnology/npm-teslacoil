@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
@@ -17,6 +18,14 @@ import (
 const (
 	defaultLoggingLevel = "trace"
 )
+
+var log = logrus.New()
+
+func init() {
+	log.WithFields(logrus.Fields{
+		"package": "main",
+	})
+}
 
 var (
 	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",

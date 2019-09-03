@@ -105,7 +105,7 @@ func GetByCredentials(d *sqlx.DB, email string, password string) (
 		return UserResponse{}, errors.Wrap(err, "password authentication failed")
 	}
 
-	// log.Tracef("%s received user %v", uQuery, userResult)
+	log.Tracef("%s received user %v", uQuery, userResult)
 
 	return userResult, nil
 }
@@ -220,7 +220,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 	// bcrypt returns a base64 encoded hash, therefore string(hash) works for
 	// converting the password to a readable format
-	// log.Tracef("generated password %s", string(hash))
+	 log.Tracef("generated password %s", string(hash))
 
 	return hash, nil
 }

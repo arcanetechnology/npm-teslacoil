@@ -22,7 +22,6 @@ var (
 
 func TestMain(m *testing.M) {
 	println("Configuring user test database")
-
 	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
 		fmt.Printf("%+v\n", err)
@@ -340,7 +339,6 @@ func TestCanGetUserByID(t *testing.T) {
 		}
 	}
 }
-<<<<<<< Updated upstream
 
 func TestDecreaseBalance(t *testing.T) {
 	t.Parallel()
@@ -673,5 +671,3 @@ func TestIncreaseBalance(t *testing.T) {
 		t.FailNow()
 	}
 }
-=======
->>>>>>> Stashed changes
