@@ -17,25 +17,68 @@ import (
 
 const (
 	defaultLoggingLevel = "trace"
+	defaultPostgresPort = 5432
 )
 
-var log *logrus.Entry
+// Reads the `DATABASE_PORT` env var, falls back to
+// 5432
+func getDatabasePort() int {
+	databasePortStr := os.Getenv("DATABASE_PORT")
+	if len(databasePortStr) != 0 {
+		databasePort, err := strconv.Atoi(databasePortStr)
+		if err != nil {
+			log.Fatalf("given database port (%s) is not a valid int", databasePortStr)
+		}
+
+		return databasePort
+
+	}
+	return defaultPostgresPort
+}
+
+var (
+	// DatabaseName is the database being used to run the API
+	DatabaseName string
+	// DatabaseUser is the user being used to run the API
+	DatabaseUser string
+	// DatabaseHost is the host we connect to to run the API
+	DatabaseHost string
+	// DatabasePassword is the password we use while running
+	// the API
+	DatabasePassword string
+
+	// DatabasePort is the port we use to connect to the database
+	DatabasePort = getDatabasePort()
+)
+
+func getEnvOrFail(env string) string {
+	found := os.Getenv(env)
+	if len(found) == 0 {
+		log.Fatalf("%s is not set!", env)
+	}
+	return found
+}
 
 func init() {
 	log = logrus.New().WithFields(logrus.Fields{
 		"package": "main",
 	})
+
+	databaseConfig = db.DatabaseConfig{User: DatabaseUser,
+		Password: DatabasePassword, Host: DatabaseHost, Port: DatabasePort}
 }
 
 var (
-	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
+	log            *logrus.Entry
+	databaseConfig db.DatabaseConfig
+	defaultLppDir  = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
 		os.Getenv("GOPATH"))
 	defaultLogFilename = "lpp.log"
 	serveCommand       = cli.Command{
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Action: func(c *cli.Context) error {
-			database, err := db.OpenDatabase()
+			database, err := db.OpenDatabase(databaseConfig)
 			if err != nil {
 				log.Fatal(err)
 				return err
@@ -91,7 +134,7 @@ var (
 							22,
 						)
 					}
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -109,7 +152,7 @@ var (
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -123,7 +166,7 @@ var (
 				Aliases: []string{"s"},
 				Usage:   "check migrations status and version number",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -149,7 +192,7 @@ var (
 				Aliases: []string{"dr"},
 				Usage:   "drops the entire database.",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -170,7 +213,7 @@ var (
 				Aliases: []string{"dd"},
 				Usage:   "fills the database with dummy data",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}

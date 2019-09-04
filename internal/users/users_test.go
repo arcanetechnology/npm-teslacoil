@@ -3,7 +3,6 @@ package users
 import (
 	"encoding/hex"
 	"flag"
-	"fmt"
 	"os"
 	"testing"
 
@@ -21,21 +20,30 @@ const (
 
 var (
 	samplePreimage = hex.EncodeToString([]byte("SomePreimage"))
+	databaseConfig = db.DatabaseConfig{
+		User:     "lpp_test",
+		Password: "password",
+		Host:     "localhost",
+		Port:     5434,
+		Name:     "lpp_users",
+	}
 )
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
 
-	println("Configuring user test database")
-	testDB, err := db.OpenTestDatabase("users")
+	log.Info("Configuring user test database")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
-		fmt.Printf("%+v\n", err)
-		return
+		log.Fatalf("Could not open test database: %+v\n", err)
 	}
 
-	db.TeardownTestDB(testDB)
-	if err = db.CreateTestDatabase(testDB); err != nil {
-		log.Error(err)
+	if err = db.TeardownTestDB(testDB, databaseConfig); err != nil {
+		log.Fatalf("Could not tear down test database: %v", err)
+	}
+
+	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
+		log.Fatalf("Could not create test database: %v", err)
 		return
 	}
 
@@ -47,7 +55,7 @@ func TestMain(m *testing.M) {
 
 func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -117,7 +125,7 @@ func TestCanCreateUser(t *testing.T) {
 
 func TestCanGetUserByEmail(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -196,7 +204,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 func TestCanGetUserByCredentials(t *testing.T) {
 	t.Parallel()
 
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -269,7 +277,7 @@ func TestCanGetUserByCredentials(t *testing.T) {
 
 func TestCanGetUserByID(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -348,7 +356,7 @@ func TestCanGetUserByID(t *testing.T) {
 func TestDecreaseBalance(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -541,7 +549,7 @@ func TestDecreaseBalance(t *testing.T) {
 func TestIncreaseBalance(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}

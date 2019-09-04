@@ -20,11 +20,20 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
-var sampleRPreimage = []byte("SomePreimage")
-var samplePreimage = hex.EncodeToString(sampleRPreimage)
-var migrationsPath = path.Join("file://",
-	os.Getenv("GOPATH"),
-	"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
+var (
+	sampleRPreimage = []byte("SomePreimage")
+	samplePreimage  = hex.EncodeToString(sampleRPreimage)
+	migrationsPath  = path.Join("file://",
+		os.Getenv("GOPATH"),
+		"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
+	databaseConfig = db.DatabaseConfig{
+		User:     "lpp_test",
+		Password: "password",
+		Host:     "localhost",
+		Port:     5434,
+		Name:     "lpp_payments",
+	}
+)
 
 const (
 	succeed = "\u001b[32m\u2713"
@@ -63,16 +72,18 @@ func (client lightningMockClient) SendPaymentSync(ctx context.Context,
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
 
-	testDB, err := db.OpenTestDatabase("payments")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
-		fmt.Printf("%+v\n", err)
-		return
+		log.Fatalf("Could not create connection to DB: %+v\n", err)
 	}
 
-	db.TeardownTestDB(testDB)
-	if err = db.CreateTestDatabase(testDB); err != nil {
-		log.Error(err)
-		return
+	err = db.TeardownTestDB(testDB, databaseConfig)
+	if err != nil {
+		log.Fatalf("Could not tear down test DB: %v", err)
+	}
+
+	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
+		log.Fatalf("Could not create test DB: %v\n", err)
 	}
 
 	flag.Parse()
@@ -84,7 +95,7 @@ func TestMain(m *testing.M) {
 func TestCreateInvoice(t *testing.T) {
 	t.Parallel()
 	// Setup the database
-	testDB, err := db.OpenTestDatabase("payments")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -191,7 +202,7 @@ func TestCreateInvoice(t *testing.T) {
 func TestGetByID(t *testing.T) {
 	t.Parallel()
 	// Prepare
-	testDB, err := db.OpenTestDatabase("payments")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -301,7 +312,7 @@ func TestGetByID(t *testing.T) {
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 	// Setup the database
-	testDB, err := db.OpenTestDatabase("payments")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -486,7 +497,7 @@ func TestPayInvoice(t *testing.T) {
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenTestDatabase("payments")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -664,7 +675,7 @@ func TestGetAll(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	// Setup the database
-	testDB, err := db.OpenTestDatabase("payments")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
