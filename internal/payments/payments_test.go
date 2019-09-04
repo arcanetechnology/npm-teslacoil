@@ -185,9 +185,10 @@ func TestCreateInvoice(t *testing.T) {
 
 				// Assertions
 				{
-					expectedResult := tt.want
+					got := payment
+					want := tt.want
 
-					assertPaymentsAreEqual(t, payment, expectedResult)
+					assertPaymentsAreEqual(t, got, want)
 				}
 			}
 		}
@@ -461,24 +462,25 @@ func TestPayInvoice(t *testing.T) {
 				t.Logf("\t%s\tShould be able to PayInvoice%s", succeed, reset)
 
 				{
-					expectedResult := tt.want.User
+					got := payment
+					want := tt.want
 
-					assertPaymentsAreEqual(t, payment.Payment, tt.want.Payment)
+					assertPaymentsAreEqual(t, got.Payment, want.Payment)
 
-					if payment.User.ID != expectedResult.ID {
+					if got.User.ID != want.User.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.ID,
+							want.User.ID,
 							payment.User.ID,
 							reset,
 						)
 						t.Fail()
 					}
 
-					if payment.User.Balance != expectedResult.Balance {
+					if got.User.Balance != want.User.Balance {
 						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.Balance,
+							want.User.Balance,
 							payment.User.Balance,
 							reset,
 						)
@@ -641,24 +643,25 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				t.Logf("\t%s\tShould be able to UpdateInvoiceStatus%s", succeed, reset)
 
 				{
-					expectedResult := tt.want.User
+					got := payment.Payment
+					want := tt.want
 
-					assertPaymentsAreEqual(t, payment.Payment, tt.want.Payment)
+					assertPaymentsAreEqual(t, got, want.Payment)
 
-					if payment.User.ID != expectedResult.ID {
+					if payment.User.ID != want.User.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.ID,
+							want.User.ID,
 							payment.User.ID,
 							reset,
 						)
 						t.Fail()
 					}
 
-					if payment.User.Balance != expectedResult.Balance {
+					if payment.User.Balance != want.User.Balance {
 						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.Balance,
+							want.User.Balance,
 							payment.User.Balance,
 							reset,
 						)
@@ -907,52 +910,52 @@ func TestGetAll(t *testing.T) {
 	}
 }
 
-func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
-	if payment.UserID != expectedResult.UserID {
+func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
+	if got.UserID != want.UserID {
 		t.Logf("\t%s\tUserID should be equal to expected UserID. Expected \"%d\" got \"%d\"%s",
-			fail, expectedResult.UserID, payment.UserID, reset)
+			fail, want.UserID, got.UserID, reset)
 		t.Fail()
 	}
 
-	if payment.AmountSat != expectedResult.AmountSat {
+	if got.AmountSat != want.AmountSat {
 		t.Logf("\t%s\tAmountSat should be equal to expected AmountSat. Expected \"%d\" got \"%d\"%s",
-			fail, expectedResult.AmountSat, payment.AmountSat, reset)
+			fail, want.AmountSat, got.AmountSat, reset)
 		t.Fail()
 	}
 
-	if payment.AmountMSat != expectedResult.AmountMSat {
+	if got.AmountMSat != want.AmountMSat {
 		t.Logf("\t%s\tAmountMSat should be equal to expected AmountMSat. Expected \"%d\" got \"%d\"%s",
-			fail, expectedResult.AmountMSat, payment.AmountMSat, reset)
+			fail, want.AmountMSat, got.AmountMSat, reset)
 		t.Fail()
 	}
 
-	if payment.Preimage != nil && expectedResult.Preimage != nil && *payment.Preimage != *expectedResult.Preimage {
+	if got.Preimage != nil && want.Preimage != nil && *got.Preimage != *want.Preimage {
 		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%v\" got \"%v\"%s",
-			fail, *expectedResult.Preimage, *payment.Preimage, reset)
+			fail, want.Preimage, got.Preimage, reset)
 		t.Fail()
 	}
 
-	if payment.HashedPreimage != expectedResult.HashedPreimage {
+	if got.HashedPreimage != want.HashedPreimage {
 		t.Logf("\t%s\tHashedPreimage should be equal to expected HashedPreimage. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.HashedPreimage, payment.HashedPreimage, reset)
+			fail, want.HashedPreimage, got.HashedPreimage, reset)
 		t.Fail()
 	}
 
-	if payment.Memo != expectedResult.Memo {
+	if got.Memo != want.Memo {
 		t.Logf("\t%s\tMemo should be equal to expected Memo. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Memo, payment.Memo, reset)
+			fail, want.Memo, got.Memo, reset)
 		t.Fail()
 	}
 
-	if payment.Status != expectedResult.Status {
+	if got.Status != want.Status {
 		t.Logf("\t%s\tStatus should be equal to expected Status. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Status, payment.Status, reset)
+			fail, want.Status, got.Status, reset)
 		t.Fail()
 	}
 
-	if payment.Direction != expectedResult.Direction {
+	if got.Direction != want.Direction {
 		t.Logf("\t%s\tDirection should be equal to expected Direction. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Direction, payment.Direction, reset)
+			fail, want.Direction, got.Direction, reset)
 		t.Fail()
 	}
 	if !t.Failed() {
