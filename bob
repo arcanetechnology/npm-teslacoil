@@ -1,0 +1,2 @@
+#! /usr/bin/env bash
+lncli --lnddir=docker/.bob --network simnet $@

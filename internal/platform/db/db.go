@@ -2,10 +2,12 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"net/url"
 	"os"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
@@ -32,6 +34,24 @@ func setMigrationsPath() {
 	MigrationsPath = path.Join(path.Dir(basePath), "/internal/platform/db/migrations")
 }
 
+const defaultPostgresPort = 5432
+
+// Reads the `DATABASE_PORT` env var, falls back to
+// 5432
+func getDatabasePort() (int, error) {
+	databasePortStr := os.Getenv("DATABASE_PORT")
+	if len(databasePortStr) != 0 {
+		databasePort, err := strconv.Atoi(databasePortStr)
+		if err != nil {
+			return 0, errors.Errorf("given database port (%s) is not a valid int", databasePortStr)
+		}
+
+		return databasePort, nil
+
+	}
+	return defaultPostgresPort, nil
+}
+
 // OpenDatabase fetched the database credentials from environment variables
 // and stars creates the gorm database object
 func OpenDatabase() (*sqlx.DB, error) {
@@ -43,12 +63,18 @@ func OpenDatabase() (*sqlx.DB, error) {
 	q.Set("sslmode", sslMode)
 	q.Set("timezone", "utc")
 
+	databasePort, err := getDatabasePort()
+	if err != nil {
+		return nil, err
+	}
+
+	databaseHost := fmt.Sprintf("localhost:%d", databasePort)
 	databaseURL := url.URL{
 		Scheme: "postgres",
 		User: url.UserPassword(
 			os.Getenv("DATABASE_USER"),
 			os.Getenv("DATABASE_PASSWORD")),
-		Host:     "localhost",
+		Host:     databaseHost,
 		Path:     os.Getenv("DATABASE_NAME"),
 		RawQuery: q.Encode(),
 	}
@@ -56,12 +82,14 @@ func OpenDatabase() (*sqlx.DB, error) {
 	d, err := sqlx.Open("postgres", databaseURL.String())
 	if err != nil {
 		return nil, errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
+			"Cannot connect to database %s with user %s at %s",
 			os.Getenv("DATABASE_NAME"),
 			os.Getenv("DATABASE_USER"),
+			databaseHost,
 		)
 	}
-	log.Infof("opened connection to db")
+
+	log.Infof("opened connection to DB at %s", databaseHost)
 
 	return d, nil
 }

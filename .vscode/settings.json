@@ -1,0 +1,6 @@
+{
+  "files.associations": {
+    ".envrc": "ini",
+    ".envrc-example": "ini"
+  }
+}

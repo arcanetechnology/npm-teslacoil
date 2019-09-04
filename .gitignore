@@ -1,4 +1,8 @@
 .envrc
 logs/
+
+# Local node directories
+.alice/
+.bob/
 node_0/
 node_1/
