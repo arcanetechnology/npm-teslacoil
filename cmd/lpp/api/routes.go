@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -134,7 +135,7 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	// a malicious actor will just create an invalid jwt-token if anything other
 	// then Bearer is passed as the first 7 characters
 	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
-		return nil, nil, errors.New(
+		return nil, nil, fmt.Errorf(
 			"invalid jwt-token, please include token on form 'Bearer xx.xx.xx")
 	}
 
@@ -154,19 +155,19 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 
 	if !token.Valid {
 		log.Errorf("jwt-token invalid %s", tokenString)
-		return nil, nil, errors.New("invalid token, restricted endpoint. log in first")
+		return nil, nil, fmt.Errorf("invalid token, restricted endpoint. log in first")
 	}
 
 	// convert Claims to a map-type we can extract fields from
 	mapClaims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, nil, errors.New("invalid token, could not extract claims")
+		return nil, nil, fmt.Errorf("invalid token, could not extract claims")
 	}
 
 	// Extract fields from claims, and check they are of the correct type
 	email, ok := mapClaims["email"].(string)
 	if !ok {
-		return nil, nil, errors.New("invalid token, could not extract email from claim")
+		return nil, nil, fmt.Errorf("invalid token, could not extract email from claim")
 	}
 
 	// TODO(bo): For some reason, the UserID is converted to a float64 when extracted
@@ -175,7 +176,7 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	id, ok := mapClaims["user_id"].(float64)
 	if !ok {
 		log.Error(id)
-		return nil, nil, errors.New("invalid token, could not extract user_id from claim")
+		return nil, nil, fmt.Errorf("invalid token, could not extract user_id from claim")
 	}
 
 	jwtClaims := &JWTClaims{

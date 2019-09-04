@@ -117,7 +117,7 @@ func TestCreateInvoice(t *testing.T) {
 		amountSat int64
 
 		lndInvoice lnrpc.Invoice
-		out        Payment
+		want       Payment
 	}{
 		{
 			"HiMisterHey",
@@ -176,7 +176,7 @@ func TestCreateInvoice(t *testing.T) {
 					InvoiceResponse: tt.lndInvoice,
 				}
 
-				payment, err := CreateInvoice(testDB, mockLNcli, tt.out.UserID,
+				payment, err := CreateInvoice(testDB, mockLNcli, tt.want.UserID,
 					tt.amountSat, "", tt.memo)
 				if err != nil {
 					t.Fatalf("\t%s\tShould be able to CreateInvoice %+v\n%s", fail, err, reset)
@@ -185,7 +185,7 @@ func TestCreateInvoice(t *testing.T) {
 
 				// Assertions
 				{
-					expectedResult := tt.out
+					expectedResult := tt.want
 
 					assertPaymentsAreEqual(t, payment, expectedResult)
 				}
@@ -226,7 +226,7 @@ func TestGetByID(t *testing.T) {
 	tests := []struct {
 		email    string
 		password string
-		out      Payment
+		want     Payment
 	}{
 		{
 
@@ -264,11 +264,11 @@ func TestGetByID(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen inserting payment for user %d and amount %d",
-				i, tt.out.UserID, tt.out.AmountSat)
+				i, tt.want.UserID, tt.want.AmountSat)
 			{
 				tx := testDB.MustBegin()
-				payment, err := insert(tx, tt.out)
-				if tt.out.HashedPreimage != "" && tt.out.Preimage != nil {
+				payment, err := insert(tx, tt.want)
+				if tt.want.HashedPreimage != "" && tt.want.Preimage != nil {
 					if !strings.Contains(err.Error(), "cant supply both a preimage and a hashed preimage") {
 						t.Error("Is in there")
 						t.Fatalf(
@@ -288,7 +288,7 @@ func TestGetByID(t *testing.T) {
 				t.Logf("\t%s\tShould be able to insertPayment%s", succeed, reset)
 
 				// Act
-				payment, err = GetByID(testDB, payment.ID, tt.out.UserID)
+				payment, err = GetByID(testDB, payment.ID, tt.want.UserID)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tShould be able to GetByID. Error: %+v\n%s",
@@ -297,7 +297,7 @@ func TestGetByID(t *testing.T) {
 				t.Logf("\t%s\tShould be able to GetByID%s", succeed, reset)
 
 				{
-					assertPaymentsAreEqual(t, payment, tt.out)
+					assertPaymentsAreEqual(t, payment, tt.want)
 				}
 			}
 		}
@@ -349,7 +349,7 @@ func TestPayInvoice(t *testing.T) {
 		memo           string
 
 		decodePayReq lnrpc.PayReq
-		out          UserPaymentResponse
+		want         UserPaymentResponse
 	}{
 		{
 			"SomePaymentRequest1",
@@ -408,9 +408,9 @@ func TestPayInvoice(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen paying invoice %s for user %d",
-				i, tt.out.Payment.PaymentRequest, tt.out.User.ID)
+				i, tt.want.Payment.PaymentRequest, tt.want.User.ID)
 			{
-				log.Info("preimage value is... ", tt.out.Payment.Preimage)
+				log.Info("preimage value is... ", tt.want.Payment.Preimage)
 				user, err := users.GetByID(testDB, u.ID)
 				if err != nil {
 					t.Fatalf(
@@ -430,7 +430,8 @@ func TestPayInvoice(t *testing.T) {
 				}
 				payment, err := PayInvoice(
 					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
-				if user.Balance < tt.out.Payment.AmountSat {
+				log.Infof("invoice response is %+v", mockLNcli.InvoiceResponse)
+				if user.Balance < tt.want.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 						t.Fatalf(
 							"\t%s\tshould not pay invoice when the users balance is too low\n%s",
@@ -460,9 +461,9 @@ func TestPayInvoice(t *testing.T) {
 				t.Logf("\t%s\tShould be able to PayInvoice%s", succeed, reset)
 
 				{
-					expectedResult := tt.out.User
+					expectedResult := tt.want.User
 
-					assertPaymentsAreEqual(t, payment.Payment, tt.out.Payment)
+					assertPaymentsAreEqual(t, payment.Payment, tt.want.Payment)
 
 					if payment.User.ID != expectedResult.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
@@ -523,7 +524,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		description    string
 		amountSat      int64
 
-		out UserPaymentResponse
+		want UserPaymentResponse
 	}{
 		{
 			lnrpc.Invoice{
@@ -618,7 +619,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen updating invoice with amout %d where balance should be %d after execution",
-				i, tt.amountSat, tt.out.User.Balance)
+				i, tt.amountSat, tt.want.User.Balance)
 			{
 				_, err := CreateInvoice(testDB,
 					lightningMockClient{
@@ -640,9 +641,9 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				t.Logf("\t%s\tShould be able to UpdateInvoiceStatus%s", succeed, reset)
 
 				{
-					expectedResult := tt.out.User
+					expectedResult := tt.want.User
 
-					assertPaymentsAreEqual(t, payment.Payment, tt.out.Payment)
+					assertPaymentsAreEqual(t, payment.Payment, tt.want.Payment)
 
 					if payment.User.ID != expectedResult.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",

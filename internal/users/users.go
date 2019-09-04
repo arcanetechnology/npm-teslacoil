@@ -142,7 +142,7 @@ func Create(d *db.DB, email, password string) (UserResponse, error) {
 // users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
-		return UserResponse{}, errors.New("amount cant be less than or equal to 0")
+		return UserResponse{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
@@ -179,7 +179,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
 		return UserResponse{},
-			errors.New("amount cant be less than or equal to 0")
+			fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users

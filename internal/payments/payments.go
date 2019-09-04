@@ -70,7 +70,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 
 	if p.Preimage != nil && p.HashedPreimage != "" {
 		return Payment{},
-			errors.New("cant supply both a preimage and a hashed preimage")
+			fmt.Errorf("cant supply both a preimage and a hashed preimage")
 	}
 
 	createOffchainTXQuery = `INSERT INTO 
@@ -151,7 +151,7 @@ func GetAll(d *db.DB, userID int, limit int, offset int) (
 // primary key of the table(autoincrementing)
 func GetByID(d *db.DB, id int, userID int) (Payment, error) {
 	if id < 0 || userID < 0 {
-		return Payment{}, errors.New("GetByID(): neither id nor userID can be less than 0")
+		return Payment{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
 	}
 
 	txResult := Payment{}
@@ -165,10 +165,9 @@ func GetByID(d *db.DB, id int, userID int) (Payment, error) {
 
 	// sanity check the query
 	if txResult.UserID != userID {
-		err := errors.New(
-			fmt.Sprintf(
-				"db query retrieved unexpected value, expected payment with user_id %d but got %d",
-				userID, txResult.UserID))
+		err := fmt.Errorf(
+			"db query retrieved unexpected value, expected payment with user_id %d but got %d",
+			userID, txResult.UserID)
 		log.Errorf(err.Error())
 		return Payment{}, err
 	}
@@ -183,11 +182,10 @@ func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	amountSat int64, description, memo string) (Payment, error) {
 
 	if amountSat <= 0 {
-		msg := fmt.Sprintf("amount cant be less than or equal to 0, got: %d", amountSat)
-		return Payment{}, errors.New(msg)
+		return Payment{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
 	if len(memo) > 256 {
-		return Payment{}, errors.New("memo cant be longer than 256 characters")
+		return Payment{}, fmt.Errorf("memo cant be longer than 256 characters")
 	}
 
 	// First we add an invoice given the given parameters using the ln package
@@ -205,7 +203,7 @@ func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 
 	// Sanity check the invoice we just created
 	if invoice.Value != int64(amountSat) {
-		err = errors.New("could not insert invoice, created invoice amount not equal request.Amount")
+		err = fmt.Errorf("could not insert invoice, created invoice amount not equal request.Amount")
 		log.Error(err)
 		return Payment{}, err
 	}
