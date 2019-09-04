@@ -9,9 +9,9 @@ A custodial payment processor running in the lightning network using lnd.
    See here if you are using a different shell https://direnv.net/docs/hook.md
 
 2. Create `.envrc` and fill in details (see defaults in `.envrc-example`)
-4. Build and install `lpp`: `go install ./...`
-5. Start the LND/`btcd`/Postgres cluster: `docker-compose up -d`
-6. Migrate the db: `lpp db up`
+3. Build and install `lpp`: `go install ./...`
+4. Start the LND/`btcd`/Postgres cluster: `docker-compose up -d`
+5. Migrate the db: `lpp db up`
 
 Run: `go get` to install dependencies
 
@@ -62,11 +62,15 @@ $ ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
 
 ## Docker
 
+### Spinning up cluster
+
 Spinning up local cluster with `btcd`, two LND nodes and Postgres DB:
 
 ```bash
 $ docker-compose up --detach # can also use -d
 ```
+
+### Logs
 
 Viewing logs from instances:
 
@@ -75,6 +79,8 @@ $ docker-compose logs # all logs
 $ docker-compose logs alice # just alice
 $ docker-compose logs -f bob #  trail bobs logs
 ```
+
+### Winding cluster down
 
 Winding cluster down:
 
@@ -90,3 +96,20 @@ $ rm -rf docker/.{alice,bob}/*
 
 Be careful to not delete the `.alice` and `.bob` directories themselves, though. That's
 going to screw up permissions once the containers get started.
+
+### Deleting specific volumes
+
+#### VSCode
+
+In Docker tab (Docker extension), "volumes" section at the bottom.
+Right click, and then remove. Note that container must be removed
+first.
+
+#### Terminal
+
+Easiest way I've found (assuming you want to delete Postgres data):
+
+```bash
+$ docker-compose rm db #
+$ docker volume rm teslacoil_postgres # name is teslacoil_ + service name
+```

@@ -1,4 +1,4 @@
-version: "2"
+version: "2.2"
 services:
   btc:
     build:
@@ -11,15 +11,15 @@ services:
       - RPCPASS
       - NETWORK
 
-  db: 
+  db:
     container_name: postgres
-    build: 
+    build:
       context: docker/postgres
-    volumes: 
+    volumes:
       - postgres:/var/lib/postgresql
-    environment: 
+    environment:
       - DATABASE_USER
-    ports: 
+    ports:
       # expose default Postgres port as 5434 on host
       - 5434:5432
   btcd:
@@ -41,11 +41,11 @@ services:
   lnd:
     build:
       context: docker/lnd
-      args: 
+      args:
         # we want UID and GID to be the same as the current user
-        # this is so permissions work out nicely when reading macaroon 
-        # files. By default Docker containers run as root, which 
-        # prevents us from reading the files we need 
+        # this is so permissions work out nicely when reading macaroon
+        # files. By default Docker containers run as root, which
+        # prevents us from reading the files we need
         UID: $UID
         GID: $GID
         LND_VERSION: "0.7.1-beta"

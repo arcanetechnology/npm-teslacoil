@@ -13,12 +13,12 @@ ENV GODEBUG netdns=cgo
 RUN apk add --no-cache --update alpine-sdk \
     git \
     make \
-&&  mkdir -p $GOPATH/src/github.com/lightningnetwork/lnd \
-&&  cd $GOPATH/src/github.com/lightningnetwork/lnd \
-&&  git clone https://github.com/lightningnetwork/lnd.git . \ 
-&&  git checkout "v$LND_VERSION" \
-&&  make \
-&&  make install tags="signrpc walletrpc chainrpc invoicesrpc routerrpc"
+    &&  mkdir -p $GOPATH/src/github.com/lightningnetwork/lnd \
+    &&  cd $GOPATH/src/github.com/lightningnetwork/lnd \
+    &&  git clone https://github.com/lightningnetwork/lnd.git . \ 
+    &&  git checkout "v$LND_VERSION" \
+    &&  make \
+    &&  make install tags="signrpc walletrpc chainrpc invoicesrpc routerrpc"
 
 # Start a new, final image to reduce size.
 FROM alpine as final
@@ -41,10 +41,16 @@ ARG UID
 # group ID
 ARG GID
 
-# Create new user
+# Create new user, but only if the default user name
+# is not overriden. If that is overriden, it's because
+# we're running in a CI (or similar) environment. 
+# This whole add-new-user thing is really a hacky 
+# workaround to get permissions to work properly, 
+# but if everything is running as root (as on CI), 
+# this is not an issue. 
 ARG UNAME=lnd
-RUN addgroup -g $GID $UNAME
-RUN adduser -u $UID -G $UNAME -D -s /bin/bash $UNAME
+RUN if [[ $UNAME = "lnd" ]]; then addgroup -g $GID $UNAME; fi
+RUN if [[ $UNAME = "lnd" ]]; then adduser -u $UID -G $UNAME -D -s /bin/bash $UNAME; fi
 
 # Run as newly created user
 USER $UNAME

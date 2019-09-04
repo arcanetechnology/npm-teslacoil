@@ -24,14 +24,16 @@ func init() {
 }
 
 func setMigrationsPath() {
-	_, filename, _, ok := runtime.Caller(1)
+	_, filename, _, ok := runtime.Caller(0)
 	if ok == false {
-		panic(errors.New("could not find path to migrations files"))
+		log.Fatal("Could not find path to migrations files")
 	}
-	splitPath := strings.SplitAfter(filename, "teslacoil/")
+
+	splitPath := strings.SplitAfter(filename, "db")
 	basePath := splitPath[0]
 
-	MigrationsPath = path.Join(path.Dir(basePath), "/internal/platform/db/migrations")
+	MigrationsPath = path.Join(path.Clean(basePath), "migrations")
+
 }
 
 // DatabaseConfig has all the values we need to connect to a
@@ -108,9 +110,10 @@ func TeardownTestDB(testDB *sqlx.DB, conf DatabaseConfig) error {
 	err := DropDatabase(path.Join("file://", MigrationsPath), testDB)
 	if err != nil {
 		return errors.Wrapf(err,
-			"teardownTestDB cannot connect to database %s with user %s",
+			"teardownTestDB cannot connect to database %s with user %s at %s",
 			conf.Name,
 			conf.User,
+			conf.Host,
 		)
 	}
 

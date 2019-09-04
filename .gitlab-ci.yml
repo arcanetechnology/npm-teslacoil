@@ -1,30 +1,62 @@
-image: golang:1.12.3
-
-services:
-  - postgres:latest
-
-variables:
-  POSTGRES_DB: $DATABASE_TEST_NAME
-  POSTGRES_USER: $DATABASE_TEST_USER
-  POSTGRES_PASSWORD: $DATABASE_TEST_PASSWORD
-  PGPASSWORD: $DATABASE_TEST_PASSWORD
-
 stages:
-  - test
   - lint
+  - build
+  - test
 
-test job:
+test:
+  image: golang:1.12
+  services:
+    - name: registry.gitlab.com/arcanecrypto/teslacoil/postgres
+      # otherwise the host is name of the image
+      alias: postgres
   only:
-  - merge_requests
+    - merge_requests
   stage: test
-  script: GO111MODULE=on
-  script: make install && make test
+  # This is a hack, but that's because GitLab doesn't respect GOPATH etc
+  # https://medium.com/@Extrawurst/golang-and-gitlab-ci-da97d11bafe1
+  cache:
+    paths:
+      - .cache
+  variables:
+    DATABASE_HOST: postgres
+  script:
+    - mkdir -p $CI_PROJECT_DIR/.cache
+    - export GOPATH="$CI_PROJECT_DIR/.cache"
+    - export GO111MODULE=on
+    - make test
 
-lint job:
+build:
+  image: docker:latest
+  services:
+    - docker:dind
   only:
-  - merge_requests
+    - merge_requests
+  stage: build
+  variables:
+    POSTGRES: registry.gitlab.com/arcanecrypto/teslacoil/postgres
+  script:
+    # https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#authenticating-to-the-container-registry
+    # Torkel has reistered a token on GitLab for pushing to the registry
+    - docker login -u torkelrogstad -p $CI_REGISTRY_TOKEN $CI_REGISTRY
+    - cd docker/postgres
+    - docker pull $POSTGRES
+    - docker build -t $POSTGRES .
+    - docker push $POSTGRES
+
+lint:
+  image: golang:1.12
+  only:
+    - merge_requests
+  allow_failure: true
   stage: lint
-  script: GO111MODULE=on
-  script: go get golang.org/x/lint/golint && golint -set_exit_status ./...
-
-
+  # This is a hack, but that's because GitLab doesn't respect GOPATH etc
+  # https://medium.com/@Extrawurst/golang-and-gitlab-ci-da97d11bafe1
+  cache:
+    paths:
+      - .cache
+  script:
+    - mkdir -p $CI_PROJECT_DIR/.cache
+    - export GOPATH="$CI_PROJECT_DIR/.cache"
+    - export GO111MODULE=on
+    - go get golang.org/x/lint/golint
+    - golint -set_exit_status ./...

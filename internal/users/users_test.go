@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/util"
 )
 
 const (
@@ -23,8 +24,8 @@ var (
 	databaseConfig = db.DatabaseConfig{
 		User:     "lpp_test",
 		Password: "password",
-		Host:     "localhost",
-		Port:     5434,
+		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
+		Port:     util.GetDatabasePort(),
 		Name:     "lpp_users",
 	}
 )

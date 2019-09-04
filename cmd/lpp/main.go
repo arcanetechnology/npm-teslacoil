@@ -12,29 +12,13 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/util"
 	"gopkg.in/urfave/cli.v1"
 )
 
 const (
 	defaultLoggingLevel = "trace"
-	defaultPostgresPort = 5432
 )
-
-// Reads the `DATABASE_PORT` env var, falls back to
-// 5432
-func getDatabasePort() int {
-	databasePortStr := os.Getenv("DATABASE_PORT")
-	if len(databasePortStr) != 0 {
-		databasePort, err := strconv.Atoi(databasePortStr)
-		if err != nil {
-			log.Fatalf("given database port (%s) is not a valid int", databasePortStr)
-		}
-
-		return databasePort
-
-	}
-	return defaultPostgresPort
-}
 
 var (
 	// DatabaseName is the database being used to run the API
@@ -48,21 +32,17 @@ var (
 	DatabasePassword string
 
 	// DatabasePort is the port we use to connect to the database
-	DatabasePort = getDatabasePort()
+	DatabasePort = util.GetDatabasePort()
 )
-
-func getEnvOrFail(env string) string {
-	found := os.Getenv(env)
-	if len(found) == 0 {
-		log.Fatalf("%s is not set!", env)
-	}
-	return found
-}
 
 func init() {
 	log = logrus.New().WithFields(logrus.Fields{
 		"package": "main",
 	})
+
+	DatabaseUser = util.GetEnvOrFail("DATABASE_USER")
+	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
+	DatabaseHost = util.GetEnvOrElse("DATABASE_HOST", "localhost")
 
 	databaseConfig = db.DatabaseConfig{User: DatabaseUser,
 		Password: DatabasePassword, Host: DatabaseHost, Port: DatabasePort}

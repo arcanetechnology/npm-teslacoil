@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path"
 	"strings"
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/util"
 	"google.golang.org/grpc"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -23,14 +23,11 @@ import (
 var (
 	sampleRPreimage = []byte("SomePreimage")
 	samplePreimage  = hex.EncodeToString(sampleRPreimage)
-	migrationsPath  = path.Join("file://",
-		os.Getenv("GOPATH"),
-		"/src/gitlab.com/arcanecrypto/teslacoil/internal/platform/migrations")
-	databaseConfig = db.DatabaseConfig{
+	databaseConfig  = db.DatabaseConfig{
 		User:     "lpp_test",
 		Password: "password",
-		Host:     "localhost",
-		Port:     5434,
+		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
+		Port:     util.GetDatabasePort(),
 		Name:     "lpp_payments",
 	}
 )
