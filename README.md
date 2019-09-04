@@ -66,3 +66,12 @@ Lets move on to the second strategy for handling errors. For errors that represe
 Third, if progress is impossible, the caller can print the error and stop the program gracefully, but this course of action should generally be reserved for the main package of a program.
 
 So, all error logging occurs in the top level package.
+
+## Shell autocomplete
+
+### Fish
+
+```shell
+$ ln -sf $PWD/contrib/lpp.fish $HOME/.config/fish/completions/lpp.fish
+$ ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
+```
