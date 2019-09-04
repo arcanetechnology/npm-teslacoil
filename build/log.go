@@ -9,7 +9,10 @@ var Log = logrus.New()
 
 func init() {
 	Log.SetLevel(logrus.TraceLevel)
-	Log.SetFormatter(&logrus.JSONFormatter{})
+	formatter := logrus.TextFormatter{
+		ForceColors: true,
+	}
+	Log.SetFormatter(&formatter)
 }
 
 // SetLogLevel sets the log level for the whole application

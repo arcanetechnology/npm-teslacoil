@@ -149,7 +149,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if err != nil {
 		return UserResponse{}, errors.Wrap(
 			err,
-			"UpdateUserBalance(): could not construct user update",
+			"IncreaseBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
@@ -173,7 +173,8 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 // DecreaseBalance decreases the balance of user id x by y satoshis
 func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
-		return UserResponse{}, errors.New("amount cant be less than or equal to 0")
+		return UserResponse{},
+			errors.New("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
@@ -185,7 +186,7 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if err != nil {
 		return UserResponse{}, errors.Wrap(
 			err,
-			"UpdateUserBalance(): could not construct user update",
+			"DecreaseBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
@@ -220,7 +221,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 	// bcrypt returns a base64 encoded hash, therefore string(hash) works for
 	// converting the password to a readable format
-	 log.Tracef("generated password %s", string(hash))
+	log.Tracef("generated password %s", string(hash))
 
 	return hash, nil
 }

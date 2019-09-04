@@ -88,8 +88,8 @@ var (
 	// DefaultTLSCertPath is the default location of tls.cert
 	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
 	// DefaultMacaroonPath is the default dir of x.macaroon
-	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data/chain/bitcoin",
-		DefaultNetwork, "admin.macaroon")
+	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data", "chain",
+		"bitcoin", DefaultNetwork, "admin.macaroon")
 
 	// DefaultCfg is a config interface with default values
 	DefaultCfg = LightningConfig{

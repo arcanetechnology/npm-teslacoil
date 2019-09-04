@@ -53,6 +53,9 @@ See instructions above.
 
 ## General coding guidelines
 
+There is a max length of 80 characters. The only exception is
+strings
+
 #### Errors
 
 Because error messages are frequently chained together, message strings should NOT be capitalized, should NOT end with a ., and should avoid newlines. When designing error messages, be deliberate, so that each one is a meaningful description of the problem with sufficient and relevant detail. Also, be consistent, so that errors returned by the same function/package are similar in form and can be dealt with in the same way.

@@ -19,10 +19,10 @@ const (
 	defaultLoggingLevel = "trace"
 )
 
-var log = logrus.New()
+var log *logrus.Entry
 
 func init() {
-	log.WithFields(logrus.Fields{
+	log = logrus.New().WithFields(logrus.Fields{
 		"package": "main",
 	})
 }

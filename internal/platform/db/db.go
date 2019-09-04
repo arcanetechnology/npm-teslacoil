@@ -107,7 +107,6 @@ func OpenTestDatabase(name string) (*sqlx.DB, error) {
 func CreateTestDatabase(testDB *sqlx.DB) error {
 	err := MigrateUp(path.Join("file://", MigrationsPath), testDB)
 
-	log.Error(MigrationsPath)
 	if err != nil {
 		if err.Error() == "no change" {
 			return ResetDB(testDB)

@@ -293,7 +293,6 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 		AmountSat: p.AmountSat,
 	})
 	if err != nil {
-		log.Error(err)
 		tx.Rollback()
 		return upr, errors.Wrapf(err,
 			"PayInvoice->updateUserBalance(tx, %d, %d)",
@@ -335,7 +334,6 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 	upr.Payment = payment
 
 	if err = tx.Commit(); err != nil {
-		// log.Error(err)
 		return UserPaymentResponse{}, errors.Wrap(
 			err, "PayInvoice: could not commit")
 	}

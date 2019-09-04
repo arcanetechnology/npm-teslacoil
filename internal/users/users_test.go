@@ -7,6 +7,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 )
 
@@ -21,6 +24,8 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	build.SetLogLevel(logrus.ErrorLevel)
+
 	println("Configuring user test database")
 	testDB, err := db.OpenTestDatabase("users")
 	if err != nil {
