@@ -43,7 +43,7 @@ ARG GID
 
 # Create new user
 ARG UNAME=lnd
-RUN addgroup --gid $GID $UNAME
+RUN addgroup -g $GID $UNAME
 RUN adduser -u $UID -G $UNAME -D -s /bin/bash $UNAME
 
 # Run as newly created user
