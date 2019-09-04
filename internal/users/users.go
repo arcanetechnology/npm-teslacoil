@@ -105,7 +105,7 @@ func GetByCredentials(d *sqlx.DB, email string, password string) (
 		return UserResponse{}, errors.Wrap(err, "password authentication failed")
 	}
 
-	// log.Tracef("%s received user %v", uQuery, userResult)
+	log.Tracef("%s received user %v", uQuery, userResult)
 
 	return userResult, nil
 }
@@ -149,7 +149,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if err != nil {
 		return UserResponse{}, errors.Wrap(
 			err,
-			"UpdateUserBalance(): could not construct user update",
+			"IncreaseBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
@@ -173,7 +173,8 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 // DecreaseBalance decreases the balance of user id x by y satoshis
 func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
-		return UserResponse{}, errors.New("amount cant be less than or equal to 0")
+		return UserResponse{},
+			errors.New("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
@@ -185,7 +186,7 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if err != nil {
 		return UserResponse{}, errors.Wrap(
 			err,
-			"UpdateUserBalance(): could not construct user update",
+			"DecreaseBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
@@ -220,7 +221,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 	// bcrypt returns a base64 encoded hash, therefore string(hash) works for
 	// converting the password to a readable format
-	// log.Tracef("generated password %s", string(hash))
+	log.Tracef("generated password %s", string(hash))
 
 	return hash, nil
 }
@@ -250,4 +251,16 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 
 	rows.Close()
 	return userResp, nil
+}
+
+func (u User) String() string {
+	str := fmt.Sprintf("ID: %d\n", u.ID)
+	str += fmt.Sprintf("Email: %s\n", u.Email)
+	str += fmt.Sprintf("Balance: %d\n", u.Balance)
+	str += fmt.Sprintf("HashedPassword: %v\n", u.HashedPassword)
+	str += fmt.Sprintf("CreatedAt: %v\n", u.CreatedAt)
+	str += fmt.Sprintf("UpdatedAt: %v\n", u.UpdatedAt)
+	str += fmt.Sprintf("DeletedAt: %v\n", u.DeletedAt)
+
+	return str
 }

@@ -232,6 +232,8 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 		return Payment{}, err
 	}
 
+	log.Infof("CreateInvoice payment: %v", p)
+
 	if err = tx.Commit(); err != nil {
 		log.Error(err)
 		tx.Rollback()
@@ -291,7 +293,6 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 		AmountSat: p.AmountSat,
 	})
 	if err != nil {
-		log.Error(err)
 		tx.Rollback()
 		return upr, errors.Wrapf(err,
 			"PayInvoice->updateUserBalance(tx, %d, %d)",
@@ -333,9 +334,8 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 	upr.Payment = payment
 
 	if err = tx.Commit(); err != nil {
-		log.Error(err)
-		return upr, errors.Wrap(
-			err, "PayInvoice: Cound not commit")
+		return UserPaymentResponse{}, errors.Wrap(
+			err, "PayInvoice: could not commit")
 	}
 
 	return UserPaymentResponse{
@@ -455,4 +455,27 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		Payment: payment,
 		User:    user,
 	}, nil
+}
+
+func (p Payment) String() string {
+	str := "Payment: {\n"
+	str += fmt.Sprintf("\tID: %d\n", p.ID)
+	str += fmt.Sprintf("\tUserID: %d\n", p.UserID)
+	str += fmt.Sprintf("\tPaymentRequest: %s\n", p.PaymentRequest)
+	str += fmt.Sprintf("\tPreimage: %v\n", p.Preimage)
+	str += fmt.Sprintf("\tHashedPreimage: %s\n", p.HashedPreimage)
+	str += fmt.Sprintf("\tCallbackURL: %v\n", p.CallbackURL)
+	str += fmt.Sprintf("\tStatus: %s\n", p.Status)
+	str += fmt.Sprintf("\tMemo: %s\n", p.Memo)
+	str += fmt.Sprintf("\tDescription: %s\n", p.Description)
+	str += fmt.Sprintf("\tDirection: %s\n", p.Direction)
+	str += fmt.Sprintf("\tAmountSat: %d\n", p.AmountSat)
+	str += fmt.Sprintf("\tAmountMSat: %d\n", p.AmountMSat)
+	str += fmt.Sprintf("\tSettledAt: %v\n", p.SettledAt)
+	str += fmt.Sprintf("\tCreatedAt: %v\n", p.CreatedAt)
+	str += fmt.Sprintf("\tUpdatedAt: %v\n", p.UpdatedAt)
+	str += fmt.Sprintf("\tDeletedAt: %v\n", p.DeletedAt)
+	str += "}"
+
+	return str
 }

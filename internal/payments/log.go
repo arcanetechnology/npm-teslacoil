@@ -1,13 +1,8 @@
+
 package payments
 
 import (
-	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
-var log = logrus.New()
-
-func init() {
-	log.WithFields(logrus.Fields{
-		"package": "payments",
-	})
-}
+var log = build.Log

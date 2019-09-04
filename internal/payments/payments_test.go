@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"google.golang.org/grpc"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -59,6 +61,8 @@ func (client lightningMockClient) SendPaymentSync(ctx context.Context,
 }
 
 func TestMain(m *testing.M) {
+	build.SetLogLevel(logrus.ErrorLevel)
+
 	testDB, err := db.OpenTestDatabase("payments")
 	if err != nil {
 		fmt.Printf("%+v\n", err)
@@ -410,7 +414,7 @@ func TestPayInvoice(t *testing.T) {
 				}
 				payment, err := PayInvoice(
 					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
-				log.Errorf("invoice response is %+v", mockLNcli.InvoiceResponse)
+				log.Infof("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if user.Balance < tt.out.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 						t.Fatalf(
