@@ -7,11 +7,11 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 )
 
@@ -25,7 +25,7 @@ type Config struct {
 // a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
 	Router *gin.Engine
-	db     *sqlx.DB
+	db     *db.DB
 	lncli  *lnrpc.LightningClient
 }
 
@@ -37,7 +37,7 @@ type JWTClaims struct {
 }
 
 //NewApp creates a new app
-func NewApp(d *sqlx.DB, config Config) (RestServer, error) {
+func NewApp(d *db.DB, config Config) (RestServer, error) {
 	g := gin.Default()
 
 	g.Use(cors.New(cors.Config{

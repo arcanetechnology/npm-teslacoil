@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 )
@@ -47,9 +49,14 @@ type DatabaseConfig struct {
 	Name string
 }
 
-// OpenDatabase fetched the database credentials from environment variables
+// DB is our local DB struct
+type DB struct {
+	*sqlx.DB
+}
+
+// Open fetched the database credentials from environment variables
 // and stars creates the gorm database object
-func OpenDatabase(conf DatabaseConfig) (*sqlx.DB, error) {
+func Open(conf DatabaseConfig) (*DB, error) {
 	// Define SSL mode.
 	sslMode := "disable" // require
 
@@ -82,31 +89,31 @@ func OpenDatabase(conf DatabaseConfig) (*sqlx.DB, error) {
 
 	log.Infof("opened connection to DB at %s", databaseHostWithPort)
 
-	return d, nil
+	return &DB{d}, nil
 }
 
-// CreateTestDatabase applies migrations to the DB. If already applied, drops
+// Create applies migrations to the DB. If already applied, drops
 // the db first, then applies migrations
-func CreateTestDatabase(testDB *sqlx.DB, conf DatabaseConfig) error {
-	err := MigrateUp(path.Join("file://", MigrationsPath), testDB)
+func (d *DB) Create(conf DatabaseConfig) error {
+	err := d.MigrateUp(path.Join("file://", MigrationsPath))
 
 	if err != nil {
 		if err.Error() == "no change" {
-			return ResetDB(testDB, conf)
+			return d.Reset(conf)
 		}
 		log.Error(err)
 		return errors.Wrapf(err,
 			"Cannot connect to database %v",
-			testDB,
+			d,
 		)
 	}
 
 	return nil
 }
 
-// TeardownTestDB drops the database, removing all data and schemas
-func TeardownTestDB(testDB *sqlx.DB, conf DatabaseConfig) error {
-	err := DropDatabase(path.Join("file://", MigrationsPath), testDB)
+// Teardown drops the database, removing all data and schemas
+func (d *DB) Teardown(conf DatabaseConfig) error {
+	err := d.Drop(path.Join("file://", MigrationsPath))
 	if err != nil {
 		return errors.Wrapf(err,
 			"teardownTestDB cannot connect to database %s with user %s at %s",
@@ -119,12 +126,12 @@ func TeardownTestDB(testDB *sqlx.DB, conf DatabaseConfig) error {
 	return nil
 }
 
-// ResetDB first drops the DB, then applies migrations
-func ResetDB(testDB *sqlx.DB, conf DatabaseConfig) error {
-	if err := TeardownTestDB(testDB, conf); err != nil {
+// Reset first drops the DB, then applies migrations
+func (d *DB) Reset(conf DatabaseConfig) error {
+	if err := d.Teardown(conf); err != nil {
 		return err
 	}
-	if err := CreateTestDatabase(testDB, conf); err != nil {
+	if err := d.Create(conf); err != nil {
 		return err
 	}
 
@@ -134,4 +141,28 @@ func ResetDB(testDB *sqlx.DB, conf DatabaseConfig) error {
 //ToNullString converts the argument s to a sql.NullString
 func ToNullString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
+}
+
+// Drop drops the existing database
+func (d *DB) Drop(migrationsPath string) error {
+	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
+	if err != nil {
+		return err
+	}
+
+	migrator, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	if err = migrator.Drop(); err != nil {
+		return err
+	}
+
+	return nil
 }

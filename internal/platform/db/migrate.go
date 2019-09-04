@@ -14,14 +14,13 @@ import (
 	// Necessary for migratiing
 	_ "github.com/golang-migrate/migrate/v4/source/github"
 	"github.com/iancoleman/strcase"
-	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 )
 
 // MigrationStatus prints the migrations verison number
-func MigrationStatus(migrationsPath string, d *sqlx.DB) error {
+func (d *DB) MigrationStatus(migrationsPath string) error {
 
-	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
 		return err
 	}
@@ -45,9 +44,8 @@ func MigrationStatus(migrationsPath string, d *sqlx.DB) error {
 }
 
 // MigrateUp Migrates everything up
-func MigrateUp(migrationsPath string, d *sqlx.DB) error {
-
-	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+func (d *DB) MigrateUp(migrationsPath string) error {
+	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
 		return err
 	}
@@ -65,8 +63,8 @@ func MigrateUp(migrationsPath string, d *sqlx.DB) error {
 }
 
 // MigrateDown migrates down
-func MigrateDown(migrationsPath string, d *sqlx.DB, steps int) error {
-	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
+func (d *DB) MigrateDown(migrationsPath string, steps int) error {
+	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
 		return err
 	}
@@ -108,29 +106,5 @@ func CreateMigration(migrationsPath string, migrationText string) error {
 	if err := newMigrationFile(fileNameDown); err != nil {
 		return err
 	}
-	return nil
-}
-
-// DropDatabase drops the existing database
-func DropDatabase(migrationsPath string, d *sqlx.DB) error {
-	driver, err := postgres.WithInstance(d.DB, &postgres.Config{})
-	if err != nil {
-		return err
-	}
-
-	migrator, err := migrate.NewWithDatabaseInstance(
-		migrationsPath,
-		"postgres",
-		driver,
-	)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-
-	if err = migrator.Drop(); err != nil {
-		return err
-	}
-
 	return nil
 }

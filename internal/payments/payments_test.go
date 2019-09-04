@@ -83,13 +83,8 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Could not create connection to DB: %+v\n", err)
 	}
 
-	err = db.TeardownTestDB(testDB, databaseConfig)
-	if err != nil {
+	if err = testDB.Create(databaseConfig); err != nil {
 		log.Fatalf("Could not tear down test DB: %v", err)
-	}
-
-	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
-		log.Fatalf("Could not create test DB: %v\n", err)
 	}
 
 	flag.Parse()

@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
@@ -123,7 +124,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 }
 
 // GetAll selects all payments for given userID from the DB.
-func GetAll(d *sqlx.DB, userID int, limit int, offset int) (
+func GetAll(d *db.DB, userID int, limit int, offset int) (
 	[]Payment, error) {
 	payments := []Payment{}
 
@@ -148,7 +149,7 @@ func GetAll(d *sqlx.DB, userID int, limit int, offset int) (
 // GetByID performs this query:
 // `SELECT * FROM offchaintx WHERE id=id AND user_id=userID`, where id is the
 // primary key of the table(autoincrementing)
-func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
+func GetByID(d *db.DB, id int, userID int) (Payment, error) {
 	if id < 0 || userID < 0 {
 		return Payment{}, errors.New("GetByID(): neither id nor userID can be less than 0")
 	}
@@ -178,7 +179,7 @@ func GetByID(d *sqlx.DB, id int, userID int) (Payment, error) {
 // CreateInvoice creates and adds a new invoice to lnd and creates a new payment
 // with the paymentRequest and RHash returned from lnd. After creation, inserts
 // the payment into the database
-func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
+func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	amountSat int64, description, memo string) (Payment, error) {
 
 	if amountSat <= 0 {
@@ -252,7 +253,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 // TODO: Decrease the users balance BEFORE attempting to send the payment.
 // If at any point the payment/db transaction should fail, increase the users
 // balance.
-func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
+func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 	paymentRequest, description, memo string) (UserPaymentResponse, error) {
 
 	payreq, err := lncli.DecodePayReq(
@@ -346,7 +347,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 
 // InvoiceStatusListener is
 func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
-	database *sqlx.DB) {
+	database *db.DB) {
 
 	for {
 		invoice := <-invoiceUpdatesCh
@@ -361,7 +362,7 @@ func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
 // UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
 // (newly added/settled invoices). If received payment was successful, updates
 // the payment stored in our db and increases the users balance
-func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
+func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 	*UserPaymentResponse, error) {
 
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"

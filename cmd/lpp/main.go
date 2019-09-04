@@ -61,7 +61,7 @@ var (
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Action: func(c *cli.Context) error {
-			database, err := db.OpenDatabase(databaseConfig)
+			database, err := db.Open(databaseConfig)
 			if err != nil {
 				log.Fatal(err)
 				return err
@@ -117,7 +117,7 @@ var (
 							22,
 						)
 					}
-					database, err := db.OpenDatabase(databaseConfig)
+					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -126,8 +126,8 @@ var (
 					if err != nil {
 						return err
 					}
-					return db.MigrateDown(
-						path.Join("file://", db.MigrationsPath), database, steps)
+					return database.MigrateDown(
+						path.Join("file://", db.MigrationsPath), steps)
 				},
 			},
 			{
@@ -135,28 +135,28 @@ var (
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase(databaseConfig)
+					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
 					defer database.Close()
 
-					return db.MigrateUp(
-						path.Join("file://", db.MigrationsPath), database)
+					return database.MigrateUp(
+						path.Join("file://", db.MigrationsPath))
 				},
 			}, {
 				Name:    "status",
 				Aliases: []string{"s"},
 				Usage:   "check migrations status and version number",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase(databaseConfig)
+					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
 					defer database.Close()
 
-					return db.MigrationStatus(
-						path.Join("file://", db.MigrationsPath), database)
+					return database.MigrationStatus(
+						path.Join("file://", db.MigrationsPath))
 				},
 			}, {
 				Name:    "newmigration",
@@ -178,7 +178,7 @@ var (
 				Aliases: []string{"dr"},
 				Usage:   "drops the entire database.",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase(databaseConfig)
+					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -187,8 +187,8 @@ var (
 					fmt.Println(
 						"Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
-						return db.DropDatabase(
-							path.Join("file://", db.MigrationsPath), database)
+						return database.Drop(
+							path.Join("file://", db.MigrationsPath))
 					}
 
 					return nil
@@ -199,7 +199,7 @@ var (
 				Aliases: []string{"dd"},
 				Usage:   "fills the database with dummy data",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase(databaseConfig)
+					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}

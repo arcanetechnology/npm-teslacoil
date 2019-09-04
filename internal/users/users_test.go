@@ -37,13 +37,9 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Could not open test database: %+v\n", err)
 	}
 
-	if err = db.TeardownTestDB(testDB, databaseConfig); err != nil {
-		log.Fatalf("Could not tear down test database: %v", err)
-	}
-
-	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
+	testDB.Teardown()
+	if err = testDB.Create(); err != nil {
 		log.Fatalf("Could not create test database: %v", err)
-		return
 	}
 
 	flag.Parse()
