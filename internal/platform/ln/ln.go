@@ -57,8 +57,7 @@ func configDefaultLndDir() string {
 }
 
 func configDefaultLndNet() string {
-	env := os.Getenv("LND_NETWORK")
-	if len(env) != 0 {
+	if env := os.Getenv("LND_NETWORK"); env != "" {
 		switch env {
 		case "mainnet", "testnet", "regtest", "simnet":
 			return env
@@ -67,8 +66,8 @@ func configDefaultLndNet() string {
 		}
 	}
 	return "testnet"
-
 }
+
 func configDefaultLndPort() int {
 	env := os.Getenv("LND_PORT")
 	if len(env) != 0 {

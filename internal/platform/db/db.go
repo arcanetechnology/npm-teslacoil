@@ -36,8 +36,7 @@ func setMigrationsPath() {
 
 }
 
-// DatabaseConfig has all the values we need to connect to a
-// DB
+// DatabaseConfig has all the values we need to connect to a DB
 type DatabaseConfig struct {
 	// The user to use when connecting
 	User     string

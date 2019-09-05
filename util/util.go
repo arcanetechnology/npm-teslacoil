@@ -11,11 +11,9 @@ import (
 
 const defaultPostgresPort = 5432
 
-// GetDatabasePort the `DATABASE_PORT` env var, falls back to
-// 5432
+// GetDatabasePort the `DATABASE_PORT` env var, falls back to 5432
 func GetDatabasePort() int {
-	databasePortStr := os.Getenv("DATABASE_PORT")
-	if len(databasePortStr) != 0 {
+	if databasePortStr := os.Getenv("DATABASE_PORT"); databasePortStr != "" {
 		databasePort, err := strconv.Atoi(databasePortStr)
 		if err != nil {
 			log.Fatalf("given database port (%s) is not a valid int", databasePortStr)
@@ -47,10 +45,10 @@ func GetEnvAsBool(env string) bool {
 // GetEnvOrElse returns the value of the given environment
 // variable, or the provided default value if the env variable
 // does not exist
-func GetEnvOrElse(env string, defaultt string) string {
+func GetEnvOrElse(env string, defaultValue string) string {
 	found := os.Getenv(env)
 	if len(found) == 0 {
-		return defaultt
+		return defaultValue
 	}
 	return found
 }
