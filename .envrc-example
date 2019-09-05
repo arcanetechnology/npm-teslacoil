@@ -1,6 +1,7 @@
 export DATABASE_USER="lpp"
 export DATABASE_PASSWORD="password"
 export DATABASE_NAME="lpp"
+export DATABASE_PORT=5432
 
 export GO111MODULE=on
 export UID=1001 # This should be your user ID: `id -u`

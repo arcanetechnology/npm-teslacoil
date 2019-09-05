@@ -26,24 +26,22 @@ var (
 		Port:     util.GetDatabasePort(),
 		Name:     "lpp_users",
 	}
+	testDB *db.DB
 )
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
+	var err error
 
 	log.Info("Configuring user test database")
-	testDB, err := db.OpenDatabase(databaseConfig)
+	testDB, err = db.Open(databaseConfig)
 	if err != nil {
 		log.Fatalf("Could not open test database: %+v\n", err)
 	}
 
-	if err = db.TeardownTestDB(testDB, databaseConfig); err != nil {
-		log.Fatalf("Could not tear down test database: %v", err)
-	}
-
-	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
+	testDB.Teardown(databaseConfig)
+	if err = testDB.Create(databaseConfig); err != nil {
 		log.Fatalf("Could not create test database: %v", err)
-		return
 	}
 
 	flag.Parse()
@@ -54,10 +52,6 @@ func TestMain(m *testing.M) {
 
 func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	const email = "test_userCanCreate@example.com"
 	tests := []struct {
@@ -124,10 +118,6 @@ func TestCanCreateUser(t *testing.T) {
 
 func TestCanGetUserByEmail(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	const email = "test_userGetByEmail@example.com"
 	tests := []struct {
@@ -207,11 +197,6 @@ func TestCanGetUserByEmail(t *testing.T) {
 func TestCanGetUserByCredentials(t *testing.T) {
 	t.Parallel()
 
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
-
 	const email = "test_userByCredentials@example.com"
 	tests := []struct {
 		email          string
@@ -280,10 +265,6 @@ func TestCanGetUserByCredentials(t *testing.T) {
 
 func TestCanGetUserByID(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	const email = "test_userCanGetByID@example.com"
 	tests := []struct {
@@ -363,10 +344,6 @@ func TestCanGetUserByID(t *testing.T) {
 func TestDecreaseBalance(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := Create(testDB,
 		"test_userDecreaseBalance@example.com",
 		"password",
@@ -568,18 +545,16 @@ func TestDecreaseBalance(t *testing.T) {
 func TestIncreaseBalance(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := Create(testDB,
 		"test_userIncreaseBalance@example.com",
 		"password",
 	)
 	if err != nil {
-		t.Fatalf("Could not create user: %v", err)
+		t.Fatalf(
+			"\t%s\tcould not create user%s",
+			fail,
+			reset)
 	}
-
 	log.Infof("created user %v", u)
 
 	tests := []struct {

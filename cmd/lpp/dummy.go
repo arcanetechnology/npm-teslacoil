@@ -5,14 +5,14 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
-	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 // FillWithDummyData creates three entries in each table
-func FillWithDummyData(d *sqlx.DB, lncli lnrpc.LightningClient) error {
+func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
 	gofakeit.Seed(time.Now().UnixNano())
 
 	// Initial user

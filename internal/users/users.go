@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -46,7 +47,7 @@ const UsersTable = "users"
 
 // GetAll is a GET request that returns all the users in the database
 // TODO: This endpoint should be restricted to the admin
-func GetAll(d *sqlx.DB) ([]User, error) {
+func GetAll(d *db.DB) ([]User, error) {
 	// Equivalent to SELECT * from users;
 	queryResult := []User{}
 	err := d.Select(&queryResult, fmt.Sprintf("SELECT * FROM %s", UsersTable))
@@ -59,7 +60,7 @@ func GetAll(d *sqlx.DB) ([]User, error) {
 
 // GetByID is a GET request that returns users that match the one specified
 // in the body
-func GetByID(d *sqlx.DB, id int) (UserResponse, error) {
+func GetByID(d *db.DB, id int) (UserResponse, error) {
 	userResult := UserResponse{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
 		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
@@ -73,7 +74,7 @@ func GetByID(d *sqlx.DB, id int) (UserResponse, error) {
 
 // GetByEmail is a GET request that returns users that match the one specified
 // in the body
-func GetByEmail(d *sqlx.DB, email string) (UserResponse, error) {
+func GetByEmail(d *db.DB, email string) (UserResponse, error) {
 	userResult := UserResponse{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
@@ -87,7 +88,7 @@ func GetByEmail(d *sqlx.DB, email string) (UserResponse, error) {
 
 // GetByCredentials retrieves a user from the database using the email and
 // the salted/hashed password
-func GetByCredentials(d *sqlx.DB, email string, password string) (
+func GetByCredentials(d *db.DB, email string, password string) (
 	UserResponse, error) {
 
 	userResult := UserResponse{}
@@ -111,7 +112,7 @@ func GetByCredentials(d *sqlx.DB, email string, password string) (
 }
 
 // Create is a POST request and inserts the user in the body into the database
-func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
+func Create(d *db.DB, email, password string) (UserResponse, error) {
 	hashedPassword, err := hashAndSalt(password)
 	if err != nil {
 		return UserResponse{}, err
@@ -141,7 +142,7 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 // users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
-		return UserResponse{}, errors.New("amount cant be less than or equal to 0")
+		return UserResponse{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
@@ -178,7 +179,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 	if cb.AmountSat <= 0 {
 		return UserResponse{},
-			errors.New("amount cant be less than or equal to 0")
+			fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users

@@ -39,6 +39,7 @@ var (
 		Port:     util.GetDatabasePort(),
 		Name:     "lpp_payments",
 	}
+	testDB *db.DB
 )
 
 const (
@@ -77,19 +78,15 @@ func (client lightningMockClient) SendPaymentSync(ctx context.Context,
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
+	var err error
 
-	testDB, err := db.OpenDatabase(databaseConfig)
+	testDB, err = db.Open(databaseConfig)
 	if err != nil {
 		log.Fatalf("Could not create connection to DB: %+v\n", err)
 	}
 
-	err = db.TeardownTestDB(testDB, databaseConfig)
-	if err != nil {
+	if err = testDB.Create(databaseConfig); err != nil {
 		log.Fatalf("Could not tear down test DB: %v", err)
-	}
-
-	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
-		log.Fatalf("Could not create test DB: %v\n", err)
 	}
 
 	flag.Parse()
@@ -100,11 +97,6 @@ func TestMain(m *testing.M) {
 
 func TestCreateInvoice(t *testing.T) {
 	t.Parallel()
-	// Setup the database
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	user, err := users.Create(testDB,
 		"test_userCreateInvoice@example.com",
 		"password",
@@ -122,7 +114,7 @@ func TestCreateInvoice(t *testing.T) {
 		amountSat int64
 
 		lndInvoice lnrpc.Invoice
-		out        Payment
+		want       Payment
 	}{
 		{
 			"HiMisterHey",
@@ -181,7 +173,7 @@ func TestCreateInvoice(t *testing.T) {
 					InvoiceResponse: tt.lndInvoice,
 				}
 
-				payment, err := CreateInvoice(testDB, mockLNcli, tt.out.UserID,
+				payment, err := CreateInvoice(testDB, mockLNcli, tt.want.UserID,
 					tt.amountSat, "", tt.memo)
 				if err != nil {
 					t.Fatalf("\t%s\tShould be able to CreateInvoice %+v\n%s", fail, err, reset)
@@ -190,9 +182,10 @@ func TestCreateInvoice(t *testing.T) {
 
 				// Assertions
 				{
-					expectedResult := tt.out
+					got := payment
+					want := tt.want
 
-					assertPaymentsAreEqual(t, payment, expectedResult)
+					assertPaymentsAreEqual(t, got, want)
 				}
 			}
 		}
@@ -207,11 +200,6 @@ func TestCreateInvoice(t *testing.T) {
 
 func TestGetByID(t *testing.T) {
 	t.Parallel()
-	// Prepare
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	const email1 = "email1@example.com"
 	const password1 = "password1"
@@ -231,7 +219,7 @@ func TestGetByID(t *testing.T) {
 	tests := []struct {
 		email    string
 		password string
-		out      Payment
+		want     Payment
 	}{
 		{
 
@@ -269,11 +257,11 @@ func TestGetByID(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen inserting payment for user %d and amount %d",
-				i, tt.out.UserID, tt.out.AmountSat)
+				i, tt.want.UserID, tt.want.AmountSat)
 			{
 				tx := testDB.MustBegin()
-				payment, err := insert(tx, tt.out)
-				if tt.out.HashedPreimage != "" && tt.out.Preimage != nil {
+				payment, err := insert(tx, tt.want)
+				if tt.want.HashedPreimage != "" && tt.want.Preimage != nil {
 					if !strings.Contains(err.Error(), "cant supply both a preimage and a hashed preimage") {
 						t.Error("Is in there")
 						t.Fatalf(
@@ -293,7 +281,7 @@ func TestGetByID(t *testing.T) {
 				t.Logf("\t%s\tShould be able to insertPayment%s", succeed, reset)
 
 				// Act
-				payment, err = GetByID(testDB, payment.ID, tt.out.UserID)
+				payment, err = GetByID(testDB, payment.ID, tt.want.UserID)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tShould be able to GetByID. Error: %+v\n%s",
@@ -302,7 +290,7 @@ func TestGetByID(t *testing.T) {
 				t.Logf("\t%s\tShould be able to GetByID%s", succeed, reset)
 
 				{
-					assertPaymentsAreEqual(t, payment, tt.out)
+					assertPaymentsAreEqual(t, payment, tt.want)
 				}
 			}
 		}
@@ -318,10 +306,6 @@ func TestGetByID(t *testing.T) {
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 	// Setup the database
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := users.Create(testDB,
 		"test_userPayInvoice@example.com",
 		"password",
@@ -354,7 +338,7 @@ func TestPayInvoice(t *testing.T) {
 		memo           string
 
 		decodePayReq lnrpc.PayReq
-		out          UserPaymentResponse
+		want         UserPaymentResponse
 	}{
 		{
 			"SomePaymentRequest1",
@@ -413,9 +397,9 @@ func TestPayInvoice(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen paying invoice %s for user %d",
-				i, tt.out.Payment.PaymentRequest, tt.out.User.ID)
+				i, tt.want.Payment.PaymentRequest, tt.want.User.ID)
 			{
-				log.Info("preimage value is... ", tt.out.Payment.Preimage)
+				log.Info("preimage value is... ", tt.want.Payment.Preimage)
 				user, err := users.GetByID(testDB, u.ID)
 				if err != nil {
 					t.Fatalf(
@@ -435,7 +419,8 @@ func TestPayInvoice(t *testing.T) {
 				}
 				payment, err := PayInvoice(
 					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
-				if user.Balance < tt.out.Payment.AmountSat {
+				log.Infof("invoice response is %+v", mockLNcli.InvoiceResponse)
+				if user.Balance < tt.want.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 						t.Fatalf(
 							"\t%s\tshould not pay invoice when the users balance is too low\n%s",
@@ -465,24 +450,25 @@ func TestPayInvoice(t *testing.T) {
 				t.Logf("\t%s\tShould be able to PayInvoice%s", succeed, reset)
 
 				{
-					expectedResult := tt.out.User
+					got := payment
+					want := tt.want
 
-					assertPaymentsAreEqual(t, payment.Payment, tt.out.Payment)
+					assertPaymentsAreEqual(t, got.Payment, want.Payment)
 
-					if payment.User.ID != expectedResult.ID {
+					if got.User.ID != want.User.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.ID,
+							want.User.ID,
 							payment.User.ID,
 							reset,
 						)
 						t.Fail()
 					}
 
-					if payment.User.Balance != expectedResult.Balance {
+					if got.User.Balance != want.User.Balance {
 						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.Balance,
+							want.User.Balance,
 							payment.User.Balance,
 							reset,
 						)
@@ -506,10 +492,6 @@ func TestPayInvoice(t *testing.T) {
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := users.Create(testDB,
 		"test_userUpdateInvoiceStatus@example.com",
 		"password",
@@ -528,7 +510,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		description    string
 		amountSat      int64
 
-		out UserPaymentResponse
+		want UserPaymentResponse
 	}{
 		{
 			lnrpc.Invoice{
@@ -623,7 +605,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	{
 		for i, tt := range tests {
 			t.Logf("\ttest: %d\twhen updating invoice with amout %d where balance should be %d after execution",
-				i, tt.amountSat, tt.out.User.Balance)
+				i, tt.amountSat, tt.want.User.Balance)
 			{
 				_, err := CreateInvoice(testDB,
 					lightningMockClient{
@@ -645,24 +627,25 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				t.Logf("\t%s\tShould be able to UpdateInvoiceStatus%s", succeed, reset)
 
 				{
-					expectedResult := tt.out.User
+					got := payment.Payment
+					want := tt.want
 
-					assertPaymentsAreEqual(t, payment.Payment, tt.out.Payment)
+					assertPaymentsAreEqual(t, got, want.Payment)
 
-					if payment.User.ID != expectedResult.ID {
+					if payment.User.ID != want.User.ID {
 						t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.ID,
+							want.User.ID,
 							payment.User.ID,
 							reset,
 						)
 						t.Fail()
 					}
 
-					if payment.User.Balance != expectedResult.Balance {
+					if payment.User.Balance != want.User.Balance {
 						t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
 							fail,
-							expectedResult.Balance,
+							want.User.Balance,
 							payment.User.Balance,
 							reset,
 						)
@@ -682,12 +665,6 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 func TestGetAll(t *testing.T) {
 	t.Parallel()
-	// Arrange
-	// Setup the database
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	tests := []struct {
 		scenario string
@@ -911,52 +888,52 @@ func TestGetAll(t *testing.T) {
 	}
 }
 
-func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
-	if payment.UserID != expectedResult.UserID {
+func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
+	if got.UserID != want.UserID {
 		t.Logf("\t%s\tUserID should be equal to expected UserID. Expected \"%d\" got \"%d\"%s",
-			fail, expectedResult.UserID, payment.UserID, reset)
+			fail, want.UserID, got.UserID, reset)
 		t.Fail()
 	}
 
-	if payment.AmountSat != expectedResult.AmountSat {
+	if got.AmountSat != want.AmountSat {
 		t.Logf("\t%s\tAmountSat should be equal to expected AmountSat. Expected \"%d\" got \"%d\"%s",
-			fail, expectedResult.AmountSat, payment.AmountSat, reset)
+			fail, want.AmountSat, got.AmountSat, reset)
 		t.Fail()
 	}
 
-	if payment.AmountMSat != expectedResult.AmountMSat {
+	if got.AmountMSat != want.AmountMSat {
 		t.Logf("\t%s\tAmountMSat should be equal to expected AmountMSat. Expected \"%d\" got \"%d\"%s",
-			fail, expectedResult.AmountMSat, payment.AmountMSat, reset)
+			fail, want.AmountMSat, got.AmountMSat, reset)
 		t.Fail()
 	}
 
-	if payment.Preimage != nil && expectedResult.Preimage != nil && *payment.Preimage != *expectedResult.Preimage {
+	if got.Preimage != nil && want.Preimage != nil && *got.Preimage != *want.Preimage {
 		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%v\" got \"%v\"%s",
-			fail, *expectedResult.Preimage, *payment.Preimage, reset)
+			fail, want.Preimage, got.Preimage, reset)
 		t.Fail()
 	}
 
-	if payment.HashedPreimage != expectedResult.HashedPreimage {
+	if got.HashedPreimage != want.HashedPreimage {
 		t.Logf("\t%s\tHashedPreimage should be equal to expected HashedPreimage. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.HashedPreimage, payment.HashedPreimage, reset)
+			fail, want.HashedPreimage, got.HashedPreimage, reset)
 		t.Fail()
 	}
 
-	if payment.Memo != expectedResult.Memo {
+	if got.Memo != want.Memo {
 		t.Logf("\t%s\tMemo should be equal to expected Memo. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Memo, payment.Memo, reset)
+			fail, want.Memo, got.Memo, reset)
 		t.Fail()
 	}
 
-	if payment.Status != expectedResult.Status {
+	if got.Status != want.Status {
 		t.Logf("\t%s\tStatus should be equal to expected Status. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Status, payment.Status, reset)
+			fail, want.Status, got.Status, reset)
 		t.Fail()
 	}
 
-	if payment.Direction != expectedResult.Direction {
+	if got.Direction != want.Direction {
 		t.Logf("\t%s\tDirection should be equal to expected Direction. Expected \"%s\" got \"%s\"%s",
-			fail, expectedResult.Direction, payment.Direction, reset)
+			fail, want.Direction, got.Direction, reset)
 		t.Fail()
 	}
 	if !t.Failed() {
