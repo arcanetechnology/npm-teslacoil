@@ -23,7 +23,7 @@ test:
     - mkdir -p $CI_PROJECT_DIR/.cache
     - export GOPATH="$CI_PROJECT_DIR/.cache"
     - export GO111MODULE=on
-    - make test
+    - make test_verbose
 
 build:
   image: docker:latest

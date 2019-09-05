@@ -17,4 +17,7 @@ test-only:
 	go test ./... -run ${TEST_ARGS}
 
 test:
-	go test ./...  
+	go test ./...
+
+test_verbose:
+	go test ./... -v
