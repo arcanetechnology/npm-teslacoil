@@ -25,7 +25,7 @@ func init() {
 
 func setMigrationsPath() {
 	_, filename, _, ok := runtime.Caller(0)
-	if ok == false {
+	if !ok {
 		log.Fatal("Could not find path to migrations files")
 	}
 

@@ -120,6 +120,10 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
+		if err != nil {
+			log.Errorf("Could not parse bearer JWT: %v", err)
+			c.JSONP(404, gin.H{"error": "Bearer JWT was invalid"})
+		}
 
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
@@ -168,6 +172,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 			return
 		}
+		log.Infof("NewInvoice: %v\n", newInvoice)
 
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {

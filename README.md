@@ -56,8 +56,8 @@ So, all error logging occurs in the top level package.
 ### Fish
 
 ```shell
-$ ln -sf $PWD/contrib/lpp.fish $HOME/.config/fish/completions/lpp.fish
-$ ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
+ln -sf $PWD/contrib/lpp.fish $HOME/.config/fish/completions/lpp.fish
+ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
 ```
 
 ## Docker
@@ -75,9 +75,9 @@ $ docker-compose up --detach # can also use -d
 Viewing logs from instances:
 
 ```bash
-$ docker-compose logs # all logs
-$ docker-compose logs alice # just alice
-$ docker-compose logs -f bob #  trail bobs logs
+docker-compose logs # all logs
+docker-compose logs alice # just alice
+docker-compose logs -f bob #  trail bobs logs
 ```
 
 ### Winding cluster down
@@ -85,13 +85,13 @@ $ docker-compose logs -f bob #  trail bobs logs
 Winding cluster down:
 
 ```bash
-$ docker-compose down
+docker-compose down
 ```
 
 If you want to reset the state of your cluster, do:
 
 ```bash
-$ rm -rf docker/.{alice,bob}/*
+rm -rf docker/.{alice,bob}/*
 ```
 
 Be careful to not delete the `.alice` and `.bob` directories themselves, though. That's
@@ -110,6 +110,6 @@ first.
 Easiest way I've found (assuming you want to delete Postgres data):
 
 ```bash
-$ docker-compose rm db #
-$ docker volume rm teslacoil_postgres # name is teslacoil_ + service name
+docker-compose rm db #
+docker volume rm teslacoil_postgres # name is teslacoil_ + service name
 ```

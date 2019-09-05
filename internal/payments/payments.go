@@ -26,7 +26,6 @@ const (
 
 	succeeded Status = "SUCCEEDED"
 	failed    Status = "FAILED"
-	inflight  Status = "IN-FLIGHT"
 	open      Status = "OPEN"
 
 	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
@@ -183,7 +182,8 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	amountSat int64, description, memo string) (Payment, error) {
 
 	if amountSat <= 0 {
-		return Payment{}, errors.New("amount cant be less than or equal to 0")
+		msg := fmt.Sprintf("amount cant be less than or equal to 0, got: %d", amountSat)
+		return Payment{}, errors.New(msg)
 	}
 	if len(memo) > 256 {
 		return Payment{}, errors.New("memo cant be longer than 256 characters")
@@ -228,7 +228,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	p, err = insert(tx, p)
 	if err != nil {
 		log.Error(err)
-		tx.Rollback()
+		_ = tx.Rollback()
 		return Payment{}, err
 	}
 
@@ -236,7 +236,7 @@ func CreateInvoice(d *sqlx.DB, lncli ln.AddLookupInvoiceClient, userID int,
 
 	if err = tx.Commit(); err != nil {
 		log.Error(err)
-		tx.Rollback()
+		_ = tx.Rollback()
 		return Payment{}, err
 	}
 
@@ -271,7 +271,7 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 	// all the information we have thus far should there be an error
 	var upr UserPaymentResponse
 
-	p := Payment{
+	upr.Payment = Payment{
 		UserID:         userID,
 		Direction:      outbound,
 		PaymentRequest: strings.ToUpper(paymentRequest),
@@ -283,34 +283,31 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 		AmountSat:  payreq.NumSatoshis,
 		AmountMSat: payreq.NumSatoshis * 1000,
 	}
-	upr.Payment = p
 
 	tx := d.MustBegin()
 
-	var user users.UserResponse
-	user, err = users.DecreaseBalance(tx, users.ChangeBalance{
-		UserID:    p.UserID,
-		AmountSat: p.AmountSat,
+	upr.User, err = users.DecreaseBalance(tx, users.ChangeBalance{
+		UserID:    upr.Payment.UserID,
+		AmountSat: upr.Payment.AmountSat,
 	})
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return upr, errors.Wrapf(err,
 			"PayInvoice->updateUserBalance(tx, %d, %d)",
-			p.UserID, p.AmountSat)
+			upr.Payment.UserID, upr.Payment.AmountSat)
 	}
-	upr.User = user
 
 	// We insert the transaction in the DB before we attempt to send it to
 	// avoid issues with attempted updates to the payment before it is added to
 	// the DB
-	payment, err := insert(tx, p)
+	upr.Payment, err = insert(tx, upr.Payment)
 	if err != nil {
 		log.Error(err)
-		tx.Rollback()
+		_ = tx.Rollback()
 		return upr, errors.Wrapf(
-			err, "insertPayment(db, %+v)", p)
+			err, "insertPayment(db, %+v)", upr.Payment)
 	}
-	upr.Payment = payment
+
 	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
 	// See logic in lightningspin-api for possible solution
 	paymentResponse, err := lncli.SendPaymentSync(
@@ -322,16 +319,19 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 
 	if paymentResponse.PaymentError == "" {
 		t := time.Now()
-		payment.SettledAt = &t
-		payment.Status = succeeded
+		upr.Payment.SettledAt = &t
+		upr.Payment.Status = succeeded
 		preimage := hex.EncodeToString(paymentResponse.PaymentPreimage)
-		payment.Preimage = &preimage
+		upr.Payment.Preimage = &preimage
 	} else {
-		tx.Rollback()
-		p.Status = failed
+		err = tx.Rollback()
+		if err != nil {
+			return upr, errors.Wrap(err, "could not rollback DB")
+		}
+
+		upr.Payment.Status = failed
 		return upr, errors.New(paymentResponse.PaymentError)
 	}
-	upr.Payment = payment
 
 	if err = tx.Commit(); err != nil {
 		return UserPaymentResponse{}, errors.Wrap(
@@ -339,8 +339,8 @@ func PayInvoice(d *sqlx.DB, lncli ln.DecodeSendClient, userID int,
 	}
 
 	return UserPaymentResponse{
-		Payment: payment,
-		User:    user,
+		Payment: upr.Payment,
+		User:    upr.User,
 	}, nil
 }
 
@@ -352,6 +352,7 @@ func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
 		invoice := <-invoiceUpdatesCh
 		_, err := UpdateInvoiceStatus(invoice, database)
 		if err != nil {
+			log.Errorf("Error when updating invoice status: %v", err)
 			// TODO: Here we need to handle the errors from UpdateInvoiceStatus
 		}
 	}
@@ -377,7 +378,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *sqlx.DB) (
 		)
 	}
 
-	if invoice.Settled == false {
+	if !invoice.Settled {
 		return &UserPaymentResponse{
 			Payment: payment,
 			User:    users.UserResponse{},

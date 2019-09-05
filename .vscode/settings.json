@@ -2,5 +2,7 @@
   "files.associations": {
     ".envrc": "ini",
     ".envrc-example": "ini"
-  }
+  },
+  "go.lintTool": "golangci-lint",
+  "go.lintFlags": ["--fast"]
 }

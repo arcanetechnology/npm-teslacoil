@@ -157,7 +157,11 @@ func NewLNDClient(options LightningConfig) (
 		grpc.WithTimeout(5 * time.Second),
 	}
 
-	conn, err := grpc.Dial(cfg.RPCServer, opts...)
+	backgroundContext := context.Background()
+	withTimeout, cancel := context.WithTimeout(backgroundContext, 5*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(withTimeout, cfg.RPCServer, opts...)
 	if err != nil {
 		err = errors.Wrap(err, "cannot dial to lnd")
 		return nil, err

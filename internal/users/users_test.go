@@ -1,7 +1,6 @@
 package users
 
 import (
-	"encoding/hex"
 	"flag"
 	"os"
 	"testing"
@@ -20,7 +19,6 @@ const (
 )
 
 var (
-	samplePreimage = hex.EncodeToString([]byte("SomePreimage"))
 	databaseConfig = db.DatabaseConfig{
 		User:     "lpp_test",
 		Password: "password",
@@ -159,6 +157,10 @@ func TestCanGetUserByEmail(t *testing.T) {
 					Email:          tt.user.Email,
 					HashedPassword: tt.user.HashedPassword,
 				})
+				if err != nil {
+					t.Fatalf("Could not insert user: %v", err)
+				}
+
 				err = tx.Commit()
 				if err != nil {
 					t.Logf("%+v\n", err)
@@ -311,6 +313,10 @@ func TestCanGetUserByID(t *testing.T) {
 					Email:          tt.user.Email,
 					HashedPassword: tt.user.HashedPassword,
 				})
+				if err != nil {
+					t.Fatalf("Could not insert user: %v", err)
+				}
+
 				err = tx.Commit()
 				if err != nil {
 					t.Logf("%+v\n", err)
@@ -365,6 +371,10 @@ func TestDecreaseBalance(t *testing.T) {
 		"test_userDecreaseBalance@example.com",
 		"password",
 	)
+	if err != nil {
+		t.Fatalf("Could not create user: %v", err)
+	}
+
 	// Give initial balance of 100 000
 	tx := testDB.MustBegin()
 	u, err = IncreaseBalance(tx, ChangeBalance{
@@ -376,7 +386,11 @@ func TestDecreaseBalance(t *testing.T) {
 			"\t%s\tShould be able to give user iniital balance by using IncreaseBalance. Error: %+v\n%s",
 			fail, err, reset)
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		t.Fatalf("Could not commit balance decrease: %v", err)
+	}
+
 	t.Logf("\t%s\tShould be able to give user iniital balance by using IncreaseBalance%s", succeed, reset)
 
 	tests := []struct {
@@ -500,7 +514,11 @@ func TestDecreaseBalance(t *testing.T) {
 						"\t%s\tshould be able to DecreaseBalance. Error:  %+v\n%s",
 						fail, err, reset)
 				}
-				tx.Commit()
+				err = tx.Commit()
+				if err != nil {
+					t.Fatalf("Could not commit balance decrease: %v", err)
+				}
+
 				t.Logf("\t%s\tShould be able to DecreaseBalance%s", succeed, reset)
 
 				{
@@ -558,6 +576,10 @@ func TestIncreaseBalance(t *testing.T) {
 		"test_userIncreaseBalance@example.com",
 		"password",
 	)
+	if err != nil {
+		t.Fatalf("Could not create user: %v", err)
+	}
+
 	log.Infof("created user %v", u)
 
 	tests := []struct {
@@ -639,7 +661,11 @@ func TestIncreaseBalance(t *testing.T) {
 						"\t%s\tshould be able to IncreaseBalance. Error:  %+v\n%s",
 						fail, err, reset)
 				}
-				tx.Commit()
+
+				err = tx.Commit()
+				if err != nil {
+					t.Fatalf("Could not commit: %v", err)
+				}
 				t.Logf("\t%s\tShould be able to IncreaseBalance%s", succeed, reset)
 
 				{

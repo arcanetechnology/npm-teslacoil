@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -44,17 +45,19 @@ func init() {
 	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
 	DatabaseHost = util.GetEnvOrElse("DATABASE_HOST", "localhost")
 
-	databaseConfig = db.DatabaseConfig{User: DatabaseUser,
-		Password: DatabasePassword, Host: DatabaseHost, Port: DatabasePort}
+	databaseConfig = db.DatabaseConfig{
+		User:     DatabaseUser,
+		Password: DatabasePassword,
+		Host:     DatabaseHost,
+		Port:     DatabasePort,
+		Name:     DatabaseName,
+	}
 }
 
 var (
 	log            *logrus.Entry
 	databaseConfig db.DatabaseConfig
-	defaultLppDir  = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
-		os.Getenv("GOPATH"))
-	defaultLogFilename = "lpp.log"
-	serveCommand       = cli.Command{
+	serveCommand   = cli.Command{
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Action: func(c *cli.Context) error {
@@ -163,6 +166,9 @@ var (
 
 					migrationText := c.Args().First() // get the filename
 					if migrationText == "" {
+						// What's the best way of handling this error? This way
+						// doesn't lead to pretty console output
+						return errors.New("You must provide a file name for the migration!")
 					}
 
 					return db.CreateMigration(db.MigrationsPath, migrationText)

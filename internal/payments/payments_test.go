@@ -2,6 +2,7 @@ package payments
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -21,9 +22,17 @@ import (
 )
 
 var (
-	sampleRPreimage = []byte("SomePreimage")
-	samplePreimage  = hex.EncodeToString(sampleRPreimage)
-	databaseConfig  = db.DatabaseConfig{
+	samplePreimage = func() []byte {
+		encoded, _ := hex.DecodeString(samplePreimageHex)
+		return encoded
+	}()
+	samplePreimageHex = "0123456789abcdef0123456789abcdef"
+	sampleHash        = func() [32]byte {
+		first := sha256.Sum256(samplePreimage)
+		return sha256.Sum256(first[:])
+	}()
+	sampleHashHex  = hex.EncodeToString(sampleHash[:])
+	databaseConfig = db.DatabaseConfig{
 		User:     "lpp_test",
 		Password: "password",
 		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
@@ -122,15 +131,15 @@ func TestCreateInvoice(t *testing.T) {
 			lnrpc.Invoice{
 				Value:          int64(amount1),
 				PaymentRequest: "SomePayRequest",
-				RHash:          []byte("SomeRHash"),
-				RPreimage:      sampleRPreimage,
+				RHash:          sampleHash[:],
+				RPreimage:      samplePreimage,
 				Settled:        false,
 			},
 			Payment{
 				UserID:         user.ID,
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
-				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+				HashedPreimage: sampleHashHex,
 				Memo:           "HiMisterHey",
 				Description:    "My personal description",
 				Status:         Status("OPEN"),
@@ -144,15 +153,15 @@ func TestCreateInvoice(t *testing.T) {
 			lnrpc.Invoice{
 				Value:          int64(amount2),
 				PaymentRequest: "SomePayRequest",
-				RHash:          []byte("SomeRHash"),
-				RPreimage:      sampleRPreimage,
+				RHash:          sampleHash[:],
+				RPreimage:      samplePreimage,
 				Settled:        false,
 			},
 			Payment{
 				UserID:         user.ID,
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
-				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+				HashedPreimage: sampleHashHex,
 				Memo:           "HelloWorld",
 				Description:    "My personal description",
 				Status:         Status("OPEN"),
@@ -232,7 +241,7 @@ func TestGetByID(t *testing.T) {
 				UserID:         user.ID,
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
-				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+				HashedPreimage: sampleHashHex,
 				Memo:           "HiMisterHey",
 				Description:    "My personal description",
 				Status:         Status("OPEN"),
@@ -247,7 +256,7 @@ func TestGetByID(t *testing.T) {
 				UserID:         user.ID,
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
-				HashedPreimage: hex.EncodeToString([]byte("SomeRHash")),
+				HashedPreimage: sampleHashHex,
 				Memo:           "HelloWorld",
 				Description:    "My personal description",
 				Status:         Status("OPEN"),
@@ -280,7 +289,7 @@ func TestGetByID(t *testing.T) {
 						"\t%s\tShould be able to insertPayment. Error:  %+v\n%s",
 						fail, err, reset)
 				}
-				tx.Commit()
+				_ = tx.Commit()
 				t.Logf("\t%s\tShould be able to insertPayment%s", succeed, reset)
 
 				// Act
@@ -323,10 +332,14 @@ func TestPayInvoice(t *testing.T) {
 	}
 
 	tx := testDB.MustBegin()
-	users.IncreaseBalance(tx, users.ChangeBalance{
+	_, err = users.IncreaseBalance(tx, users.ChangeBalance{
 		UserID:    u.ID,
 		AmountSat: 5000,
 	})
+	if err != nil {
+		t.Fatalf("\t%s\tshould be able to PayInvoice. Error: %+v%s\n", fail, err, reset)
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		t.Fatalf(
@@ -348,7 +361,7 @@ func TestPayInvoice(t *testing.T) {
 			"HelloPayment",
 
 			lnrpc.PayReq{
-				PaymentHash: "SomeHash",
+				PaymentHash: sampleHashHex,
 				NumSatoshis: int64(amount1),
 				Description: "HelloPayment",
 			},
@@ -357,8 +370,8 @@ func TestPayInvoice(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
-					Preimage:       &samplePreimage,
-					HashedPreimage: "SomeHash",
+					Preimage:       &samplePreimageHex,
+					HashedPreimage: sampleHashHex,
 					Memo:           "HelloPayment",
 					Description:    "My personal description",
 					Status:         Status("SUCCEEDED"),
@@ -375,7 +388,7 @@ func TestPayInvoice(t *testing.T) {
 			"HelloPayment",
 
 			lnrpc.PayReq{
-				PaymentHash: "SomeHash",
+				PaymentHash: sampleHashHex,
 				NumSatoshis: int64(amount2),
 				Description: "HelloPayment",
 			},
@@ -384,8 +397,8 @@ func TestPayInvoice(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount2,
 					AmountMSat:     amount2 * 1000,
-					Preimage:       &samplePreimage,
-					HashedPreimage: "SomeHash",
+					Preimage:       &samplePreimageHex,
+					HashedPreimage: sampleHashHex,
 					Memo:           "HelloPayment",
 					Description:    "My personal description",
 					Status:         Status("SUCCEEDED"),
@@ -414,15 +427,14 @@ func TestPayInvoice(t *testing.T) {
 				mockLNcli := lightningMockClient{
 					InvoiceResponse: lnrpc.Invoice{},
 					SendPaymentSyncResponse: lnrpc.SendResponse{
-						PaymentPreimage: []byte("SomePreimage"),
-						PaymentHash:     []byte("SomeRHash"),
+						PaymentPreimage: samplePreimage,
+						PaymentHash:     sampleHash[:],
 					},
 					DecodePayReqRespons: tt.decodePayReq,
 					// We need to define what DecodePayReq returns
 				}
 				payment, err := PayInvoice(
 					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
-				log.Infof("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if user.Balance < tt.out.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 						t.Fatalf(
@@ -521,8 +533,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		{
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest1",
-				RHash:          []byte("SomeHash"),
-				RPreimage:      []byte("SomePreimage"),
+				RHash:          sampleHash[:],
+				RPreimage:      samplePreimage,
 				Settled:        true,
 				Value:          int64(amount1),
 			},
@@ -535,8 +547,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
-					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Preimage:       &samplePreimage,
+					HashedPreimage: sampleHashHex,
+					Preimage:       &samplePreimageHex,
 					Memo:           "HelloWorld",
 					Description:    "My description",
 					Status:         Status("SUCCEEDED"),
@@ -551,8 +563,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		{
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest2",
-				RHash:          []byte("SomeHash"),
-				RPreimage:      []byte("SomePreimage"),
+				RHash:          sampleHash[:],
+				RPreimage:      samplePreimage,
 				Settled:        true,
 				Value:          int64(amount2),
 			},
@@ -565,8 +577,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount2,
 					AmountMSat:     amount2 * 1000,
-					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Preimage:       &samplePreimage,
+					HashedPreimage: sampleHashHex,
+					Preimage:       &samplePreimageHex,
 					Memo:           "HelloWorld",
 					Description:    "My description",
 					Status:         Status("SUCCEEDED"),
@@ -581,8 +593,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		{
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest3",
-				RHash:          []byte("SomeHash"),
-				RPreimage:      []byte("SomePreimage"),
+				RHash:          sampleHash[:],
+				RPreimage:      samplePreimage,
 				Settled:        false,
 				Value:          int64(amount1),
 			},
@@ -595,8 +607,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
-					HashedPreimage: hex.EncodeToString([]byte("SomeHash")),
-					Preimage:       &samplePreimage,
+					HashedPreimage: sampleHashHex,
+					Preimage:       &samplePreimageHex,
 					Memo:           "HelloWorld",
 					Description:    "My description",
 					Status:         Status("OPEN"),
@@ -677,7 +689,6 @@ func TestGetAll(t *testing.T) {
 		t.Fatalf("%+v\n", err)
 	}
 
-	const amount = 20000
 	tests := []struct {
 		scenario string
 
@@ -795,8 +806,8 @@ func TestGetAll(t *testing.T) {
 							Value: int64(invoice.AmountSat),
 							PaymentRequest: fmt.Sprintf("PayRequest_%d_%d",
 								u.ID, i),
-							RHash:     []byte("SomeRHash"),
-							RPreimage: []byte("SomePreimage"),
+							RHash:     sampleHash[:],
+							RPreimage: samplePreimage,
 							Memo:      invoice.Memo,
 							Settled:   false,
 						},
@@ -921,7 +932,7 @@ func assertPaymentsAreEqual(t *testing.T, payment, expectedResult Payment) {
 
 	if payment.Preimage != nil && expectedResult.Preimage != nil && *payment.Preimage != *expectedResult.Preimage {
 		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%v\" got \"%v\"%s",
-			fail, expectedResult.Preimage, payment.Preimage, reset)
+			fail, *expectedResult.Preimage, *payment.Preimage, reset)
 		t.Fail()
 	}
 

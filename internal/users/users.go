@@ -126,7 +126,11 @@ func Create(d *sqlx.DB, email, password string) (UserResponse, error) {
 	if err != nil {
 		return UserResponse{}, err
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		log.Errorf("Could not commit user creation: %v\n", err)
+		return UserResponse{}, err
+	}
 
 	return userResp, nil
 }

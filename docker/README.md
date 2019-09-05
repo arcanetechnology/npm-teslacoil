@@ -8,4 +8,4 @@ Files/directories:
 - `lnd`: Dockerfile and start script for our LND image
 - `btcd`: Dockerfile and start script four our `btcd` and `btcctl` images
 - `postgres`: Dockerfile and start script for Postgres container
-- `ci`: Docker image that can run our tests on CI
+- `golangci-lint`: Image that can invoke [`golangci-lint`](https://github.com/golangci/golangci-lint)
