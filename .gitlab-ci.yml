@@ -44,7 +44,7 @@ build:
     - docker push $POSTGRES
 
 lint:
-  image: registry.gitlab.com/arcanecrypto/teslacoil/golangci-lint
+  image: golangci/golangci-lint
   only:
     - merge_requests
   allow_failure: true
@@ -57,4 +57,6 @@ lint:
   script:
     - mkdir -p $CI_PROJECT_DIR/.cache
     - export GOPATH="$CI_PROJECT_DIR/.cache"
+    - export GO111MODULE=on
+    - go get ./...
     - golangci-lint run

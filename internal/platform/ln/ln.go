@@ -153,7 +153,6 @@ func NewLNDClient(options LightningConfig) (
 		grpc.WithTransportCredentials(tlsCreds),
 		grpc.WithBlock(),
 		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
-		grpc.WithTimeout(5 * time.Second),
 	}
 
 	backgroundContext := context.Background()
