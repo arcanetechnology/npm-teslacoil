@@ -39,6 +39,7 @@ var (
 		Port:     util.GetDatabasePort(),
 		Name:     "lpp_payments",
 	}
+	testDB *db.DB
 )
 
 const (
@@ -77,8 +78,9 @@ func (client lightningMockClient) SendPaymentSync(ctx context.Context,
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
+	var err error
 
-	testDB, err := db.OpenDatabase(databaseConfig)
+	testDB, err = db.Open(databaseConfig)
 	if err != nil {
 		log.Fatalf("Could not create connection to DB: %+v\n", err)
 	}
@@ -95,11 +97,6 @@ func TestMain(m *testing.M) {
 
 func TestCreateInvoice(t *testing.T) {
 	t.Parallel()
-	// Setup the database
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	user, err := users.Create(testDB,
 		"test_userCreateInvoice@example.com",
 		"password",
@@ -203,11 +200,6 @@ func TestCreateInvoice(t *testing.T) {
 
 func TestGetByID(t *testing.T) {
 	t.Parallel()
-	// Prepare
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	const email1 = "email1@example.com"
 	const password1 = "password1"
@@ -314,10 +306,6 @@ func TestGetByID(t *testing.T) {
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 	// Setup the database
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := users.Create(testDB,
 		"test_userPayInvoice@example.com",
 		"password",
@@ -504,10 +492,6 @@ func TestPayInvoice(t *testing.T) {
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := users.Create(testDB,
 		"test_userUpdateInvoiceStatus@example.com",
 		"password",
@@ -681,12 +665,6 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 func TestGetAll(t *testing.T) {
 	t.Parallel()
-	// Arrange
-	// Setup the database
-	testDB, err := db.OpenDatabase(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 
 	tests := []struct {
 		scenario string
