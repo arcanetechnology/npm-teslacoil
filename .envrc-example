@@ -2,10 +2,6 @@ export DATABASE_USER="lpp"
 export DATABASE_PASSWORD="password"
 export DATABASE_NAME="lpp"
 
-export DATABASE_TEST_USER="lpp_test"
-export DATABASE_TEST_PASSWORD="password"
-export DATABASE_TEST_NAME="lpp_test"
-export DATABASE_TEST_HOST="localhost"
-
 export GO111MODULE=on
-export PGPASSWORD="password"
+export UID=1001 # This should be your user ID: `id -u`
+export GID=1001 # This should be your group ID: `id -g`

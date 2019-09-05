@@ -3,17 +3,19 @@ package db
 import (
 	"database/sql"
 	"net/url"
-	"os"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 )
 
-// MigrationsPath is the migration path
-var MigrationsPath string
+var (
+	// MigrationsPath is the migration path
+	MigrationsPath string
+)
 
 func init() {
 	// This is abstracted into a function because calling it directly inside
@@ -22,19 +24,32 @@ func init() {
 }
 
 func setMigrationsPath() {
-	_, filename, _, ok := runtime.Caller(1)
-	if ok == false {
-		panic(errors.New("could not find path to migrations files"))
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatal("Could not find path to migrations files")
 	}
-	splitPath := strings.SplitAfter(filename, "teslacoil/")
+
+	splitPath := strings.SplitAfter(filename, "db")
 	basePath := splitPath[0]
 
-	MigrationsPath = path.Join(path.Dir(basePath), "/internal/platform/db/migrations")
+	MigrationsPath = path.Join(path.Clean(basePath), "migrations")
+
+}
+
+// DatabaseConfig has all the values we need to connect to a DB
+type DatabaseConfig struct {
+	// The user to use when connecting
+	User     string
+	Password string
+	Host     string
+	Port     int
+	// The name of the DB to connect to
+	Name string
 }
 
 // OpenDatabase fetched the database credentials from environment variables
 // and stars creates the gorm database object
-func OpenDatabase() (*sqlx.DB, error) {
+func OpenDatabase(conf DatabaseConfig) (*sqlx.DB, error) {
 	// Define SSL mode.
 	sslMode := "disable" // require
 
@@ -43,79 +58,46 @@ func OpenDatabase() (*sqlx.DB, error) {
 	q.Set("sslmode", sslMode)
 	q.Set("timezone", "utc")
 
+	databaseHostWithPort := conf.Host + ":" + strconv.Itoa(conf.Port)
 	databaseURL := url.URL{
 		Scheme: "postgres",
 		User: url.UserPassword(
-			os.Getenv("DATABASE_USER"),
-			os.Getenv("DATABASE_PASSWORD")),
-		Host:     "localhost",
-		Path:     os.Getenv("DATABASE_NAME"),
+			conf.User,
+			conf.Password,
+		),
+		Host:     databaseHostWithPort,
+		Path:     conf.Name,
 		RawQuery: q.Encode(),
 	}
 
 	d, err := sqlx.Open("postgres", databaseURL.String())
 	if err != nil {
 		return nil, errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_NAME"),
-			os.Getenv("DATABASE_USER"),
+			"Cannot connect to database %s with user %s at %s",
+			conf.Name,
+			conf.User,
+			databaseHostWithPort,
 		)
 	}
-	log.Infof("opened connection to db")
 
-	return d, nil
-}
-
-// OpenTestDatabase Fetches the database credentials from env vars and opens a
-// connection to the test db
-// we take the name as an argument because individual test files run in
-// parallell. For different tests to
-func OpenTestDatabase(name string) (*sqlx.DB, error) {
-
-	// Define SSL mode.
-	sslMode := "disable" // require
-
-	// Query parameters.
-	q := make(url.Values)
-	q.Set("sslmode", sslMode)
-	q.Set("timezone", "utc")
-
-	databaseURL := url.URL{
-		Scheme: "postgres",
-		User: url.UserPassword(
-			os.Getenv("DATABASE_TEST_USER"),
-			os.Getenv("DATABASE_TEST_PASSWORD")),
-		Host:     os.Getenv("DATABASE_TEST_HOST"),
-		Path:     os.Getenv("DATABASE_TEST_NAME") + "_" + name,
-		RawQuery: q.Encode(),
-	}
-
-	d, err := sqlx.Open("postgres", databaseURL.String())
-	if err != nil {
-		return nil, errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
-		)
-	}
+	log.Infof("opened connection to DB at %s", databaseHostWithPort)
 
 	return d, nil
 }
 
 // CreateTestDatabase applies migrations to the DB. If already applied, drops
 // the db first, then applies migrations
-func CreateTestDatabase(testDB *sqlx.DB) error {
+func CreateTestDatabase(testDB *sqlx.DB, conf DatabaseConfig) error {
 	err := MigrateUp(path.Join("file://", MigrationsPath), testDB)
 
 	if err != nil {
 		if err.Error() == "no change" {
-			return ResetDB(testDB)
+			return ResetDB(testDB, conf)
 		}
 		log.Error(err)
 		return errors.Wrapf(err,
-			"Cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
+			"Cannot connect to database %v",
+			testDB,
 		)
 	}
 
@@ -123,13 +105,14 @@ func CreateTestDatabase(testDB *sqlx.DB) error {
 }
 
 // TeardownTestDB drops the database, removing all data and schemas
-func TeardownTestDB(testDB *sqlx.DB) error {
+func TeardownTestDB(testDB *sqlx.DB, conf DatabaseConfig) error {
 	err := DropDatabase(path.Join("file://", MigrationsPath), testDB)
 	if err != nil {
 		return errors.Wrapf(err,
-			"teardownTestDB cannot connect to database %s with user %s",
-			os.Getenv("DATABASE_TEST_NAME"),
-			os.Getenv("DATABASE_TEST_USER"),
+			"teardownTestDB cannot connect to database %s with user %s at %s",
+			conf.Name,
+			conf.User,
+			conf.Host,
 		)
 	}
 
@@ -137,11 +120,11 @@ func TeardownTestDB(testDB *sqlx.DB) error {
 }
 
 // ResetDB first drops the DB, then applies migrations
-func ResetDB(testDB *sqlx.DB) error {
-	if err := TeardownTestDB(testDB); err != nil {
+func ResetDB(testDB *sqlx.DB, conf DatabaseConfig) error {
+	if err := TeardownTestDB(testDB, conf); err != nil {
 		return err
 	}
-	if err := CreateTestDatabase(testDB); err != nil {
+	if err := CreateTestDatabase(testDB, conf); err != nil {
 		return err
 	}
 

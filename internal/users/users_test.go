@@ -1,9 +1,7 @@
 package users
 
 import (
-	"encoding/hex"
 	"flag"
-	"fmt"
 	"os"
 	"testing"
 
@@ -11,6 +9,7 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/util"
 )
 
 const (
@@ -20,22 +19,30 @@ const (
 )
 
 var (
-	samplePreimage = hex.EncodeToString([]byte("SomePreimage"))
+	databaseConfig = db.DatabaseConfig{
+		User:     "lpp_test",
+		Password: "password",
+		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
+		Port:     util.GetDatabasePort(),
+		Name:     "lpp_users",
+	}
 )
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
 
-	println("Configuring user test database")
-	testDB, err := db.OpenTestDatabase("users")
+	log.Info("Configuring user test database")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
-		fmt.Printf("%+v\n", err)
-		return
+		log.Fatalf("Could not open test database: %+v\n", err)
 	}
 
-	db.TeardownTestDB(testDB)
-	if err = db.CreateTestDatabase(testDB); err != nil {
-		log.Error(err)
+	if err = db.TeardownTestDB(testDB, databaseConfig); err != nil {
+		log.Fatalf("Could not tear down test database: %v", err)
+	}
+
+	if err = db.CreateTestDatabase(testDB, databaseConfig); err != nil {
+		log.Fatalf("Could not create test database: %v", err)
 		return
 	}
 
@@ -47,7 +54,7 @@ func TestMain(m *testing.M) {
 
 func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -117,7 +124,7 @@ func TestCanCreateUser(t *testing.T) {
 
 func TestCanGetUserByEmail(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -150,6 +157,10 @@ func TestCanGetUserByEmail(t *testing.T) {
 					Email:          tt.user.Email,
 					HashedPassword: tt.user.HashedPassword,
 				})
+				if err != nil {
+					t.Fatalf("Could not insert user: %v", err)
+				}
+
 				err = tx.Commit()
 				if err != nil {
 					t.Logf("%+v\n", err)
@@ -196,7 +207,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 func TestCanGetUserByCredentials(t *testing.T) {
 	t.Parallel()
 
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -269,7 +280,7 @@ func TestCanGetUserByCredentials(t *testing.T) {
 
 func TestCanGetUserByID(t *testing.T) {
 	t.Parallel()
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -302,6 +313,10 @@ func TestCanGetUserByID(t *testing.T) {
 					Email:          tt.user.Email,
 					HashedPassword: tt.user.HashedPassword,
 				})
+				if err != nil {
+					t.Fatalf("Could not insert user: %v", err)
+				}
+
 				err = tx.Commit()
 				if err != nil {
 					t.Logf("%+v\n", err)
@@ -348,7 +363,7 @@ func TestCanGetUserByID(t *testing.T) {
 func TestDecreaseBalance(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -356,6 +371,10 @@ func TestDecreaseBalance(t *testing.T) {
 		"test_userDecreaseBalance@example.com",
 		"password",
 	)
+	if err != nil {
+		t.Fatalf("Could not create user: %v", err)
+	}
+
 	// Give initial balance of 100 000
 	tx := testDB.MustBegin()
 	u, err = IncreaseBalance(tx, ChangeBalance{
@@ -367,7 +386,11 @@ func TestDecreaseBalance(t *testing.T) {
 			"\t%s\tShould be able to give user iniital balance by using IncreaseBalance. Error: %+v\n%s",
 			fail, err, reset)
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		t.Fatalf("Could not commit balance decrease: %v", err)
+	}
+
 	t.Logf("\t%s\tShould be able to give user iniital balance by using IncreaseBalance%s", succeed, reset)
 
 	tests := []struct {
@@ -491,7 +514,11 @@ func TestDecreaseBalance(t *testing.T) {
 						"\t%s\tshould be able to DecreaseBalance. Error:  %+v\n%s",
 						fail, err, reset)
 				}
-				tx.Commit()
+				err = tx.Commit()
+				if err != nil {
+					t.Fatalf("Could not commit balance decrease: %v", err)
+				}
+
 				t.Logf("\t%s\tShould be able to DecreaseBalance%s", succeed, reset)
 
 				{
@@ -541,7 +568,7 @@ func TestDecreaseBalance(t *testing.T) {
 func TestIncreaseBalance(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	testDB, err := db.OpenTestDatabase("users")
+	testDB, err := db.OpenDatabase(databaseConfig)
 	if err != nil {
 		t.Fatalf("%+v\n", err)
 	}
@@ -549,6 +576,10 @@ func TestIncreaseBalance(t *testing.T) {
 		"test_userIncreaseBalance@example.com",
 		"password",
 	)
+	if err != nil {
+		t.Fatalf("Could not create user: %v", err)
+	}
+
 	log.Infof("created user %v", u)
 
 	tests := []struct {
@@ -630,7 +661,11 @@ func TestIncreaseBalance(t *testing.T) {
 						"\t%s\tshould be able to IncreaseBalance. Error:  %+v\n%s",
 						fail, err, reset)
 				}
-				tx.Commit()
+
+				err = tx.Commit()
+				if err != nil {
+					t.Fatalf("Could not commit: %v", err)
+				}
 				t.Logf("\t%s\tShould be able to IncreaseBalance%s", succeed, reset)
 
 				{

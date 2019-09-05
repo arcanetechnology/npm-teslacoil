@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,17 +57,27 @@ func configDefaultLndDir() string {
 }
 
 func configDefaultLndNet() string {
-	if len(os.Getenv("LND_NETWORK")) != 0 {
-		return os.Getenv("LND_NETWORK")
+	if env := os.Getenv("LND_NETWORK"); env != "" {
+		switch env {
+		case "mainnet", "testnet", "regtest", "simnet":
+			return env
+		default:
+			log.Fatalf("Environment variable LND_NETWORK is not a valid network: %s", env)
+		}
 	}
 	return "testnet"
-
 }
-func configDefaultLndPort() string {
-	if len(os.Getenv("LND_PORT")) != 0 {
-		return os.Getenv("LND_PORT")
+
+func configDefaultLndPort() int {
+	env := os.Getenv("LND_PORT")
+	if len(env) != 0 {
+		port, err := strconv.Atoi(env)
+		if err != nil {
+			log.Fatalf("Environment variable LND_PORT is not a valid int: %s", env)
+		}
+		return port
 	}
-	return "10009"
+	return 10009
 }
 
 var (
@@ -75,7 +86,7 @@ var (
 	// DefaultPort is the default lnd port (10009)
 	DefaultPort = configDefaultLndPort()
 	// DefaultRPCHostPort is the default host port of lnd
-	DefaultRPCHostPort = "localhost:" + DefaultPort
+	DefaultRPCHostPort = fmt.Sprintf("localhost:%d", DefaultPort)
 	// DefaultTLSCertFileName is the default filename of the tls certificate
 	DefaultTLSCertFileName = "tls.cert"
 )
@@ -145,7 +156,11 @@ func NewLNDClient(options LightningConfig) (
 		grpc.WithTimeout(5 * time.Second),
 	}
 
-	conn, err := grpc.Dial(cfg.RPCServer, opts...)
+	backgroundContext := context.Background()
+	withTimeout, cancel := context.WithTimeout(backgroundContext, 5*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(withTimeout, cfg.RPCServer, opts...)
 	if err != nil {
 		err = errors.Wrap(err, "cannot dial to lnd")
 		return nil, err

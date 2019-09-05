@@ -4,30 +4,14 @@ A custodial payment processor running in the lightning network using lnd.
 
 ## Installation
 
-1. Install direnv `sudo apt install direnv` and add `direnv hook fish | source` to your ./config.fish
+1. Install direnv `sudo apt install direnv` and add `direnv hook fish | source`
+   to your Fish config file (`$HOME/.config/fish/config.fish`)
+   See here if you are using a different shell https://direnv.net/docs/hook.md
 
-See here if you are using a different shell https://direnv.net/docs/hook.md
-
-2. Create .envrc and fill inn details (see defaults in .envrc-example)
-3. Install postgres and create a user and a sample DB by running these commands:
-   ```
-   sudo apt update && sudo apt install postgresql postgresql-contrib
-   sudo -u postgres psql
-   create user lpp with encrypted password 'password';
-   create database lpp with owner lpp;
-   grant all privileges on database lpp to lpp;
-   ```
-4. Create a password for the postgres user: This step is necessary to interact with the DB through bash commands. We need to be able to do this because we want to be able to run tests in parallell, which is easiest by creating one database per test package
-
-   ```
-   sudo -u postgres psql template1
-   alter user postgres with encrypted password 'password';
-   \q
-   sudo systemctl restart postgresql.service
-   ```
-
-5. Add the password to your .envrc file, like `export PGPASSWORD="password"`
-6. Migrate the db: `lpp db up`
+2. Create `.envrc` and fill in details (see defaults in `.envrc-example`)
+3. Build and install `lpp`: `go install ./...`
+4. Start the LND/`btcd`/Postgres cluster: `docker-compose up -d`
+5. Migrate the db: `lpp db up`
 
 Run: `go get` to install dependencies
 
@@ -72,6 +56,60 @@ So, all error logging occurs in the top level package.
 ### Fish
 
 ```shell
-$ ln -sf $PWD/contrib/lpp.fish $HOME/.config/fish/completions/lpp.fish
-$ ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
+ln -sf $PWD/contrib/lpp.fish $HOME/.config/fish/completions/lpp.fish
+ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
+```
+
+## Docker
+
+### Spinning up cluster
+
+Spinning up local cluster with `btcd`, two LND nodes and Postgres DB:
+
+```bash
+$ docker-compose up --detach # can also use -d
+```
+
+### Logs
+
+Viewing logs from instances:
+
+```bash
+docker-compose logs # all logs
+docker-compose logs alice # just alice
+docker-compose logs -f bob #  trail bobs logs
+```
+
+### Winding cluster down
+
+Winding cluster down:
+
+```bash
+docker-compose down
+```
+
+If you want to reset the state of your cluster, do:
+
+```bash
+rm -rf docker/.{alice,bob}/*
+```
+
+Be careful to not delete the `.alice` and `.bob` directories themselves, though. That's
+going to screw up permissions once the containers get started.
+
+### Deleting specific volumes
+
+#### VSCode
+
+In Docker tab (Docker extension), "volumes" section at the bottom.
+Right click, and then remove. Note that container must be removed
+first.
+
+#### Terminal
+
+Easiest way I've found (assuming you want to delete Postgres data):
+
+```bash
+docker-compose rm db #
+docker volume rm teslacoil_postgres # name is teslacoil_ + service name
 ```

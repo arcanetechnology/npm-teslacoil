@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -12,6 +13,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/util"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -19,23 +21,47 @@ const (
 	defaultLoggingLevel = "trace"
 )
 
-var log *logrus.Entry
+var (
+	// DatabaseName is the database being used to run the API
+	DatabaseName string
+	// DatabaseUser is the user being used to run the API
+	DatabaseUser string
+	// DatabaseHost is the host we connect to to run the API
+	DatabaseHost string
+	// DatabasePassword is the password we use while running
+	// the API
+	DatabasePassword string
+
+	// DatabasePort is the port we use to connect to the database
+	DatabasePort = util.GetDatabasePort()
+)
 
 func init() {
 	log = logrus.New().WithFields(logrus.Fields{
 		"package": "main",
 	})
+
+	DatabaseUser = util.GetEnvOrFail("DATABASE_USER")
+	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
+	DatabaseHost = util.GetEnvOrElse("DATABASE_HOST", "localhost")
+
+	databaseConfig = db.DatabaseConfig{
+		User:     DatabaseUser,
+		Password: DatabasePassword,
+		Host:     DatabaseHost,
+		Port:     DatabasePort,
+		Name:     DatabaseName,
+	}
 }
 
 var (
-	defaultLppDir = fmt.Sprintf("%s/src/gitlab.com/arcanecrypto/teslacoil/logs/",
-		os.Getenv("GOPATH"))
-	defaultLogFilename = "lpp.log"
-	serveCommand       = cli.Command{
+	log            *logrus.Entry
+	databaseConfig db.DatabaseConfig
+	serveCommand   = cli.Command{
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Action: func(c *cli.Context) error {
-			database, err := db.OpenDatabase()
+			database, err := db.OpenDatabase(databaseConfig)
 			if err != nil {
 				log.Fatal(err)
 				return err
@@ -91,7 +117,7 @@ var (
 							22,
 						)
 					}
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -109,7 +135,7 @@ var (
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -123,7 +149,7 @@ var (
 				Aliases: []string{"s"},
 				Usage:   "check migrations status and version number",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -140,6 +166,9 @@ var (
 
 					migrationText := c.Args().First() // get the filename
 					if migrationText == "" {
+						// What's the best way of handling this error? This way
+						// doesn't lead to pretty console output
+						return errors.New("You must provide a file name for the migration!")
 					}
 
 					return db.CreateMigration(db.MigrationsPath, migrationText)
@@ -149,7 +178,7 @@ var (
 				Aliases: []string{"dr"},
 				Usage:   "drops the entire database.",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
@@ -170,7 +199,7 @@ var (
 				Aliases: []string{"dd"},
 				Usage:   "fills the database with dummy data",
 				Action: func(c *cli.Context) error {
-					database, err := db.OpenDatabase()
+					database, err := db.OpenDatabase(databaseConfig)
 					if err != nil {
 						return err
 					}
