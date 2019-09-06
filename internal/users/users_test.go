@@ -75,7 +75,7 @@ func TestCanCreateUser(t *testing.T) {
 			"password",
 		)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		expectedResult := tt.expectedResult
@@ -125,16 +125,16 @@ func TestCanGetUserByEmail(t *testing.T) {
 		tx := testDB.MustBegin()
 		user, err := insertUser(tx, tt.user)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		if err = tx.Commit(); err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		user, err = GetByEmail(testDB, email)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		expectedResult := tt.expectedResult
@@ -186,12 +186,12 @@ func TestCanGetUserByCredentials(t *testing.T) {
 
 		user, err := Create(testDB, tt.email, tt.password)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		user, err = GetByCredentials(testDB, tt.email, tt.password)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		expectedResult := tt.expectedResult
@@ -242,17 +242,17 @@ func TestCanGetUserByID(t *testing.T) {
 		tx := testDB.MustBegin()
 		u, err := insertUser(tx, tt.user)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		err = tx.Commit()
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		user, err := GetByID(testDB, u.ID)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		expectedResult := tt.expectedResult
@@ -288,7 +288,7 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 		"password",
 	)
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	// Give initial balance of 100 000
@@ -298,12 +298,12 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 		AmountSat: 100000,
 	})
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	test := struct {
@@ -343,7 +343,7 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 		"password",
 	)
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	// Give initial balance of 100 000
@@ -353,7 +353,7 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 		AmountSat: 100000,
 	})
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	test := struct {
@@ -390,7 +390,7 @@ func TestDecreaseBalance(t *testing.T) {
 		"password",
 	)
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	// Give initial balance of 100 000
@@ -400,12 +400,12 @@ func TestDecreaseBalance(t *testing.T) {
 		AmountSat: 100000,
 	})
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		testutil.FatalErr(t, err)
+		testutil.FatalMsg(t, err)
 	}
 
 	tests := []struct {
@@ -457,13 +457,13 @@ func TestDecreaseBalance(t *testing.T) {
 
 		_, err := GetByID(testDB, tt.expectedResult.ID)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		tx := testDB.MustBegin()
 		u, err = DecreaseBalance(tx, tt.dec)
 		if err != nil {
-			testutil.FatalErr(t, err)
+			testutil.FatalMsg(t, err)
 		}
 
 		err = tx.Commit()

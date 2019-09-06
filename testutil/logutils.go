@@ -24,18 +24,22 @@ const (
 	cross     = "❌"
 )
 
-// FatalErr fails the test immediately, printing a red
-// error message containing the test name and the given error
-func FatalErr(t *testing.T, err error) {
+// FatalMsg fails the test immedetialy, printing a red
+// error message containing the given test message
+func FatalMsg(t *testing.T, message interface{}) {
 	t.Helper()
-	FatalMsgf(t, "%v", err)
-}
+	var msg string
 
-// FatalMsg fails the test immedetialy, printing a red error message containing
-// the given test message
-func FatalMsg(t *testing.T, message string) {
-	t.Helper()
-	FatalMsgf(t, message)
+	switch message := message.(type) {
+	case error:
+		msg = message.Error()
+	case fmt.Stringer:
+		msg = message.String()
+	case string:
+		msg = message
+	}
+
+	FatalMsgf(t, msg)
 }
 
 // FatalMsgf fails the test immediately, printing a red error message containing
