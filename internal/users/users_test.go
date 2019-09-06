@@ -53,11 +53,6 @@ func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		testutil.FatalErr(t, err)
-	}
-
 	const email = "test_userCanCreate@example.com"
 	tests := []struct {
 		email          string
@@ -106,11 +101,6 @@ func TestCanGetUserByEmail(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		testutil.FatalErr(t, err)
-	}
-
 	const email = "test_userGetByEmail@example.com"
 	tests := []struct {
 		user           User
@@ -133,10 +123,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
 
 		tx := testDB.MustBegin()
-		user, err := insertUser(tx, User{
-			Email:          tt.user.Email,
-			HashedPassword: tt.user.HashedPassword,
-		})
+		user, err := insertUser(tx, tt.user)
 		if err != nil {
 			testutil.FatalErr(t, err)
 		}
@@ -175,11 +162,6 @@ func TestCanGetUserByEmail(t *testing.T) {
 func TestCanGetUserByCredentials(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		testutil.FatalErr(t, err)
-	}
 
 	const email = "test_userByCredentials@example.com"
 	tests := []struct {
@@ -236,10 +218,6 @@ func TestCanGetUserByCredentials(t *testing.T) {
 func TestCanGetUserByID(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		testutil.FatalErr(t, err)
-	}
 
 	const email = "test_userCanGetByID@example.com"
 	tests := []struct {
@@ -262,10 +240,7 @@ func TestCanGetUserByID(t *testing.T) {
 		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
 
 		tx := testDB.MustBegin()
-		u, err := insertUser(tx, User{
-			Email:          tt.user.Email,
-			HashedPassword: tt.user.HashedPassword,
-		})
+		u, err := insertUser(tx, tt.user)
 		if err != nil {
 			testutil.FatalErr(t, err)
 		}
@@ -308,10 +283,6 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := Create(testDB,
 		"test_userDecreaseBalanceNegativeSats@example.com",
 		"password",
@@ -367,10 +338,6 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
 	u, err := Create(testDB,
 		"test_userDecreaseBalanceBelowZero@example.com",
 		"password",
@@ -404,7 +371,6 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 	}
 
 	user, err := DecreaseBalance(tx, test.change)
-
 	if err == nil {
 		testutil.FatalMsgf(t,
 			"Decreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v",
@@ -549,12 +515,6 @@ func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		t.Fatalf("%+v\n", err)
-	}
-	tx := testDB.MustBegin()
-
 	u, err := Create(testDB,
 		"test_userIncreaseBalanceNegativeSats@example.com",
 		"password",
@@ -564,6 +524,7 @@ func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
 			"Could not create user: %v", err)
 	}
 
+	tx := testDB.MustBegin()
 	user, err := IncreaseBalance(tx, ChangeBalance{UserID: u.ID, AmountSat: -300})
 	if !strings.Contains(err.Error(), "less than or equal to 0") {
 		testutil.FatalMsgf(
@@ -580,10 +541,6 @@ func TestIncreaseBalance(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	testDB, err := db.Open(databaseConfig)
-	if err != nil {
-		testutil.FatalErr(t, err)
-	}
 	u, err := Create(testDB,
 		"test_userIncreaseBalance@example.com",
 		"password",
