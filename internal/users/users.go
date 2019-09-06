@@ -258,6 +258,46 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 	return userResp, nil
 }
 
+// UpdateEmail updates the users email
+func (u UserResponse) UpdateEmail(db *db.DB, email string) (User, error) {
+	var out User
+	if u.ID == 0 {
+		return out, errors.New("User ID cannot be 0!")
+	}
+
+	queryUser := User{
+		ID:    u.ID,
+		Email: email,
+	}
+
+	rows, err := db.NamedQuery(
+		`UPDATE users SET email = :email WHERE id = :id RETURNING id, email`,
+		queryUser,
+	)
+
+	if err != nil {
+		return out, errors.Wrap(err, "could not update email")
+	}
+
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+
+	if !rows.Next() {
+		return out, errors.Errorf("did not find user with ID %d", u.ID)
+	}
+
+	if err = rows.Scan(&out.ID,
+		&out.Email); err != nil {
+		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
+		return out, errors.Wrap(err, msg)
+	}
+
+	rows.Close()
+	return out, nil
+
+}
+
 func (u User) String() string {
 	str := fmt.Sprintf("ID: %d\n", u.ID)
 	str += fmt.Sprintf("Email: %s\n", u.Email)
