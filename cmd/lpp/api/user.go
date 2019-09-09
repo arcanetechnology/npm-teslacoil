@@ -53,19 +53,66 @@ func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 	}
 }
 
+var (
+	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
+	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
+)
+
+func (r *RestServer) UpdateUser() gin.HandlerFunc {
+
+	type UpdateUserRequest struct {
+		Email string
+	}
+
+	return func(c *gin.Context) {
+		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		if err != nil {
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		var request UpdateUserRequest
+		if err = c.ShouldBindJSON(&request); err != nil {
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		updated, err := user.UpdateEmail(r.db, request.Email)
+		if err != nil {
+			log.Errorf("Could not update user email: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		response := UserResponse{ID: updated.ID,
+			Email:   updated.Email,
+			Balance: updated.Balance,
+		}
+
+		c.JSONP(http.StatusOK, response)
+
+	}
+}
+
 // GetUser is a GET request that returns users that match the one specified in the body
 func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
 		}
 
 		user, err := users.GetByID(r.db, claims.UserID)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": "internal server error, please try again or contact us"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 		}
 
 		res := UserResponse{
@@ -88,8 +135,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{
-				"error": "bad request, see documentation"})
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
@@ -100,8 +146,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 		u, err := users.Create(r.db, req.Email, req.Password)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
@@ -124,8 +169,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "bad request, see documentation"})
+			c.JSON(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
@@ -134,16 +178,14 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 		log.Info("found user: ", user)
 
 		tokenString, err := createJWTToken(req.Email, user.ID)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
@@ -167,13 +209,12 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
 		}
 
 		tokenString, err := createJWTToken(claims.Email, claims.UserID)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 		}
 
 		res := &RefreshTokenResponse{
