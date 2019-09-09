@@ -92,9 +92,9 @@ func Open(conf DatabaseConfig) (*DB, error) {
 	return &DB{d}, nil
 }
 
-// Create applies migrations to the DB. If already applied, drops
+// MigrateOrReset applies migrations to the DB. If already applied, drops
 // the db first, then applies migrations
-func (d *DB) Create(conf DatabaseConfig) error {
+func (d *DB) MigrateOrReset(conf DatabaseConfig) error {
 	err := d.MigrateUp(path.Join("file://", MigrationsPath))
 
 	if err != nil {
@@ -131,7 +131,7 @@ func (d *DB) Reset(conf DatabaseConfig) error {
 	if err := d.Teardown(conf); err != nil {
 		return err
 	}
-	if err := d.Create(conf); err != nil {
+	if err := d.MigrateOrReset(conf); err != nil {
 		return err
 	}
 

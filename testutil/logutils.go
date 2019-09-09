@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
 const (
@@ -23,6 +25,8 @@ const (
 	checkmark = "✔️"
 	cross     = "❌"
 )
+
+var log = build.Log
 
 // FatalMsg fails the test immedetialy, printing a red
 // error message containing the given test message

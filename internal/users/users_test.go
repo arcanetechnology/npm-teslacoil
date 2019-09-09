@@ -12,37 +12,19 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
-	"gitlab.com/arcanecrypto/teslacoil/util"
 )
 
 var (
-	databaseConfig = db.DatabaseConfig{
-		User:     "lpp_test",
-		Password: "password",
-		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
-		Port:     util.GetDatabasePort(),
-		Name:     "lpp_users",
-	}
-	testDB *db.DB
+	databaseConfig = testutil.GetDatabaseConfig("users")
+	testDB         *db.DB
 )
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
-	var err error
+
+	testDB = testutil.InitDatabase(databaseConfig)
 
 	log.Info("Configuring user test database")
-	testDB, err = db.Open(databaseConfig)
-	if err != nil {
-		log.Fatalf("Could not open test database: %+v\n", err)
-	}
-
-	if err = testDB.Teardown(databaseConfig); err != nil {
-		log.Fatalf("Could not tear down test DB: %v", err)
-	}
-
-	if err = testDB.Create(databaseConfig); err != nil {
-		log.Fatalf("Could not create test database: %v", err)
-	}
 
 	flag.Parse()
 	result := m.Run()
@@ -78,6 +60,18 @@ func TestUpdateEmail(t *testing.T) {
 		testutil.FatalMsgf(t,
 			"UpdateEmail did not change to expected result! Expected %s, got %s",
 			newEmail, updated.Email)
+	}
+}
+
+func TestFailToUpdateNonExistingUser(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	email := getTestEmail(t)
+	user := UserResponse{ID: 99999}
+	_, err := user.UpdateEmail(testDB, email)
+
+	if err == nil {
+		testutil.FatalMsg(t, "Was able to update email of non existant user!")
 	}
 }
 
