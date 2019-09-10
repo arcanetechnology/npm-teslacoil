@@ -80,19 +80,26 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 		limit, err := strconv.ParseInt(limitStr, 10, 64)
 		if err != nil {
 			log.Errorf(`Couldn't parse "limit" to an integer: %v`, err)
-			c.JSONP(404, gin.H{"error": "url param \"limit\" should be a integer"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param \"limit\" should be a integer"})
 			return
 		}
 		offset, err := strconv.ParseInt(offsetStr, 10, 64)
 		if err != nil {
 			log.Errorf(`Couldn't parse "offset" to an integer: %v`, offset)
-			c.JSONP(404, gin.H{"error": "url param \"offset\" should be a integer"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param \"offset\" should be a integer"})
 			return
 		}
 
-		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
+		auth := c.GetHeader("Authorization")
+		_, claim, err := parseBearerJWT(auth)
 		if err != nil {
-			log.Errorf("Couldn't parse auth header: %s", err)
+			log.Errorf("GetAllPayments()->ParseBearerJWT(%s): Couldn't parse auth header: %+v",
+				auth, err)
+			c.JSONP(http.StatusBadRequest,
+				gin.H{
+					"error": "bad authorization header, should be bearer auth (JWT)",
+				})
+			return
 		}
 
 		// TODO: Make sure conversion from int64 to int is always safe and does
