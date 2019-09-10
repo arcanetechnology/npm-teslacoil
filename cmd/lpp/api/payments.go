@@ -14,15 +14,18 @@ type PaymentResponse struct {
 	ID             int                `json:"id"`
 	UserID         int                `json:"userId"`
 	PaymentRequest string             `json:"paymentRequest"`
-	Preimage       *string            `json:"preimage,omitempty"`
+	Preimage       *string            `json:"preimage"`
 	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callbackUrl,omitempty"`
+	CallbackURL    *string            `json:"callbackUrl"`
 	Status         payments.Status    `json:"status"`
 	Memo           string             `json:"memo"`
+	Description    string             `json:"description"`
+	Expiry         int64              `json:"expiry"`
 	Direction      payments.Direction `json:"direction"`
 	AmountSat      int64              `json:"amountSat"`
 	AmountMSat     int64              `json:"amountMSat"`
 	SettledAt      *time.Time         `json:"settledAt"`
+	CreatedAt      time.Time          `json:"createdAt"`
 }
 
 // CreateInvoiceRequest is a deposit
@@ -30,19 +33,6 @@ type CreateInvoiceRequest struct {
 	Memo        string `json:"memo"`
 	Description string `json:"description"`
 	AmountSat   int64  `json:"amountSat"`
-}
-
-// CreateInvoiceResponse is the request for the /invoice/create endpoint
-type CreateInvoiceResponse struct {
-	ID             int             `json:"id"`
-	UserID         int             `json:"userId"`
-	PaymentRequest string          `json:"paymentRequest"`
-	HashedPreimage string          `json:"hashedPreimage"`
-	CallbackURL    *string         `json:"callbackUrl"`
-	Status         payments.Status `json:"status"`
-	Memo           string          `json:"memo"`
-	AmountSat      int64           `json:"amountSat"`
-	AmountMSat     int64           `json:"amountMSat"`
 }
 
 // PayInvoiceRequest is the required(and optional) fields for initiating a
@@ -56,20 +46,22 @@ type PayInvoiceRequest struct {
 func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 	invResponse := []PaymentResponse{}
 
-	for _, payment := range payments {
+	for _, p := range payments {
 		invResponse = append(invResponse, PaymentResponse{
-			ID:             payment.ID,
-			UserID:         payment.UserID,
-			PaymentRequest: payment.PaymentRequest,
-			Preimage:       payment.Preimage,
-			Hash:           payment.HashedPreimage,
-			CallbackURL:    payment.CallbackURL,
-			Status:         payment.Status,
-			Memo:           payment.Memo,
-			Direction:      payment.Direction,
-			AmountSat:      payment.AmountSat,
-			AmountMSat:     payment.AmountMSat,
-			SettledAt:      payment.SettledAt,
+			ID:             p.ID,
+			UserID:         p.UserID,
+			PaymentRequest: p.PaymentRequest,
+			Preimage:       p.Preimage,
+			Hash:           p.HashedPreimage,
+			Expiry:         p.Expiry,
+			CallbackURL:    p.CallbackURL,
+			Status:         p.Status,
+			Memo:           p.Memo,
+			Direction:      p.Direction,
+			AmountSat:      p.AmountSat,
+			AmountMSat:     p.AmountMSat,
+			SettledAt:      p.SettledAt,
+			CreatedAt:      p.CreatedAt,
 		})
 	}
 
@@ -152,12 +144,14 @@ func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 			PaymentRequest: t.PaymentRequest,
 			Preimage:       t.Preimage,
 			Hash:           t.HashedPreimage,
+			Expiry:         t.Expiry,
 			CallbackURL:    t.CallbackURL,
 			Status:         t.Status,
 			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
 			SettledAt:      t.SettledAt,
+			CreatedAt:      t.CreatedAt,
 		})
 	}
 }
@@ -203,16 +197,21 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		}
 
 		// Return as much info as possible
-		c.JSONP(200, &CreateInvoiceResponse{
+		c.JSONP(200, &PaymentResponse{
 			ID:             t.ID,
 			UserID:         t.UserID,
 			PaymentRequest: t.PaymentRequest,
-			HashedPreimage: t.HashedPreimage,
+			Hash:           t.HashedPreimage,
+			Preimage:       t.Preimage,
 			CallbackURL:    t.CallbackURL,
 			Status:         t.Status,
 			Memo:           t.Memo,
+			Description:    t.Description,
+			Expiry:         t.Expiry,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
+			SettledAt:      t.SettledAt,
+			CreatedAt:      t.CreatedAt,
 		})
 	}
 }
@@ -253,11 +252,11 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			PaymentRequest: t.Payment.PaymentRequest,
 			Preimage:       t.Payment.Preimage,
 			Hash:           t.Payment.HashedPreimage,
+			Expiry:         t.Payment.Expiry,
 			Status:         t.Payment.Status,
 			Memo:           t.Payment.Memo,
 			AmountSat:      t.Payment.AmountSat,
 			AmountMSat:     t.Payment.AmountMSat,
-			SettledAt:      t.Payment.SettledAt,
 		})
 	}
 }

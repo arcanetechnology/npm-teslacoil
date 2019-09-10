@@ -42,6 +42,7 @@ type Payment struct {
 	Preimage       *string   `db:"preimage"`
 	HashedPreimage string    `db:"hashed_preimage"`
 	CallbackURL    *string   `db:"callback_url"`
+	Expiry         int64     `db:"expiry"`
 	Status         Status    `db:"status"`
 	Memo           string    `db:"memo"`
 	Description    string    `db:"description"`
@@ -75,11 +76,11 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 
 	createOffchainTXQuery = `INSERT INTO 
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
-		description, direction, status, amount_sat,amount_msat)
+		description, expiry, direction, status, amount_sat,amount_msat)
 	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
-		    :memo, :description, :direction, :status, :amount_sat, :amount_msat)
+		    :memo, :description, :expiry, :direction, :status, :amount_sat, :amount_msat)
 	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-			  memo, description, direction, status, amount_sat, amount_msat,
+			  memo, description, expiry, direction, status, amount_sat, amount_msat,
 			  created_at, updated_at`
 
 	// Using the above query, NamedQuery() will extract VALUES from the payment
@@ -106,6 +107,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			&result.HashedPreimage,
 			&result.Memo,
 			&result.Description,
+			&result.Expiry,
 			&result.Direction,
 			&result.Status,
 			&result.AmountSat,
@@ -117,7 +119,6 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			return result, errors.Wrapf(err,
 				"insertPayment->rows.Next(), Problem row = %+v", result)
 		}
-
 	}
 
 	return result, nil
@@ -219,6 +220,7 @@ func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 		Description:    description,
 		AmountSat:      amountSat,
 		AmountMSat:     amountSat * 1000,
+		Expiry:         invoice.Expiry,
 		PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
 		HashedPreimage: hex.EncodeToString(invoice.RHash),
 		Status:         open,
@@ -393,7 +395,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 		SET status = :status, settled_at = :settled_at, preimage = :preimage
 		WHERE hashed_preimage = :hashed_preimage
 		RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-	   			memo, description, direction, status, amount_sat, amount_msat,
+	   			memo, description, expiry, direction, status, amount_sat, amount_msat,
 				created_at, updated_at`
 
 	tx := database.MustBegin()
@@ -419,6 +421,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 			&payment.Description,
 			&payment.Direction,
 			&payment.Status,
+			&payment.Expiry,
 			&payment.AmountSat,
 			&payment.AmountMSat,
 			&payment.CreatedAt,
@@ -468,6 +471,7 @@ func (p Payment) String() string {
 	str += fmt.Sprintf("\tStatus: %s\n", p.Status)
 	str += fmt.Sprintf("\tMemo: %s\n", p.Memo)
 	str += fmt.Sprintf("\tDescription: %s\n", p.Description)
+	str += fmt.Sprintf("\tExpiry: %d\n", p.Expiry)
 	str += fmt.Sprintf("\tDirection: %s\n", p.Direction)
 	str += fmt.Sprintf("\tAmountSat: %d\n", p.AmountSat)
 	str += fmt.Sprintf("\tAmountMSat: %d\n", p.AmountMSat)
