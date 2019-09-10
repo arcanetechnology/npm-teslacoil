@@ -2,6 +2,7 @@ package users
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -11,37 +12,20 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
-	"gitlab.com/arcanecrypto/teslacoil/util"
 )
 
 var (
-	databaseConfig = db.DatabaseConfig{
-		User:     "lpp_test",
-		Password: "password",
-		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
-		Port:     util.GetDatabasePort(),
-		Name:     "lpp_users",
-	}
-	testDB *db.DB
+	databaseConfig = testutil.GetDatabaseConfig("users")
+	testDB         *db.DB
 )
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
-	var err error
+
+	testDB = testutil.InitDatabase(databaseConfig)
+	defer testDB.Close()
 
 	log.Info("Configuring user test database")
-	testDB, err = db.Open(databaseConfig)
-	if err != nil {
-		log.Fatalf("Could not open test database: %+v\n", err)
-	}
-
-	if err = testDB.Teardown(databaseConfig); err != nil {
-		log.Fatalf("Could not tear down test DB: %v", err)
-	}
-
-	if err = testDB.Create(databaseConfig); err != nil {
-		log.Fatalf("Could not create test database: %v", err)
-	}
 
 	flag.Parse()
 	result := m.Run()
@@ -49,18 +33,61 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
+func getTestEmail(t *testing.T) string {
+	return fmt.Sprintf("%s@example.com", t.Name())
+}
+
+func TestUpdateEmail(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	email := getTestEmail(t)
+
+	user, err := Create(testDB, email, "password")
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	newEmail := "new-" + email
+	updated, err := user.UpdateEmail(testDB, newEmail)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	if updated.Email == email {
+		testutil.FatalMsg(t, "UpdateEmail did not change emails!")
+	}
+
+	if updated.Email != newEmail {
+		testutil.FatalMsgf(t,
+			"UpdateEmail did not change to expected result! Expected %s, got %s",
+			newEmail, updated.Email)
+	}
+}
+
+func TestFailToUpdateNonExistingUser(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	email := getTestEmail(t)
+	user := User{ID: 99999}
+	_, err := user.UpdateEmail(testDB, email)
+
+	if err == nil {
+		testutil.FatalMsg(t, "Was able to update email of non existant user!")
+	}
+}
+
 func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	const email = "test_userCanCreate@example.com"
+	email := getTestEmail(t)
 	tests := []struct {
 		email          string
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			email,
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -101,17 +128,17 @@ func TestCanGetUserByEmail(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	const email = "test_userGetByEmail@example.com"
+	email := getTestEmail(t)
 	tests := []struct {
 		user           User
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			User{
 				Email:          email,
 				HashedPassword: []byte("SomePassword"),
 			},
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -163,16 +190,16 @@ func TestCanGetUserByCredentials(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	const email = "test_userByCredentials@example.com"
+	email := getTestEmail(t)
 	tests := []struct {
 		email          string
 		password       string
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			email,
 			"password",
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -219,17 +246,17 @@ func TestCanGetUserByID(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	const email = "test_userCanGetByID@example.com"
+	email := getTestEmail(t)
 	tests := []struct {
 		user           User
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			User{
 				Email:          email,
 				HashedPassword: []byte("SomePassword"),
 			},
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -284,7 +311,7 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		"test_userDecreaseBalanceNegativeSats@example.com",
+		getTestEmail(t),
 		"password",
 	)
 	if err != nil {
@@ -339,7 +366,7 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		"test_userDecreaseBalanceBelowZero@example.com",
+		getTestEmail(t),
 		"password",
 	)
 	if err != nil {
@@ -386,7 +413,7 @@ func TestDecreaseBalance(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		"test_userDecreaseBalance@example.com",
+		getTestEmail(t),
 		"password",
 	)
 	if err != nil {
@@ -516,7 +543,7 @@ func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		"test_userIncreaseBalanceNegativeSats@example.com",
+		getTestEmail(t),
 		"password",
 	)
 	if err != nil {
@@ -542,7 +569,7 @@ func TestIncreaseBalance(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		"test_userIncreaseBalance@example.com",
+		getTestEmail(t),
 		"password",
 	)
 	if err != nil {

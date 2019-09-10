@@ -43,7 +43,11 @@ func NewApp(d *db.DB, config Config) (RestServer, error) {
 
 	g.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"http://127.0.0.1:3000"},
-		AllowMethods: []string{"PUT", "GET", "POST", "PATCH", "DELETE"},
+		AllowMethods: []string{
+			http.MethodPut, http.MethodGet,
+			http.MethodPost, http.MethodPatch,
+			http.MethodDelete,
+		},
 		AllowHeaders: []string{
 			"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
 			"Authorization"},
@@ -95,6 +99,7 @@ func (r *RestServer) RegisterUserRoutes() {
 	users.Use(authenticateJWT)
 	users.GET("/users", r.GetAllUsers())
 	users.GET("/user", r.GetUser())
+	users.PUT("/user", r.UpdateUser())
 }
 
 // RegisterPaymentRoutes registers all payment routes on the router

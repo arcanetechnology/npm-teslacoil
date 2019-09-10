@@ -159,6 +159,9 @@ func NewLNDClient(options LightningConfig) (
 	withTimeout, cancel := context.WithTimeout(backgroundContext, 5*time.Second)
 	defer cancel()
 
+	log.Infof("Connecting to LND with lnddir=%v, tlsCertPath=%v, macaroonPath=%v, network=%v, rpcServer=%v",
+		cfg.LndDir, cfg.TLSCertPath, cfg.MacaroonPath, cfg.Network, cfg.RPCServer)
+
 	conn, err := grpc.DialContext(withTimeout, cfg.RPCServer, opts...)
 	if err != nil {
 		err = errors.Wrap(err, "cannot dial to lnd")

@@ -27,15 +27,6 @@ type User struct {
 	DeletedAt      *time.Time `db:"deleted_at"`
 }
 
-// UserResponse is a database table
-type UserResponse struct {
-	ID             int       `db:"id"`
-	Email          string    `db:"email"`
-	Balance        int64     `db:"balance"`
-	HashedPassword []byte    `db:"hashed_password"`
-	UpdatedAt      time.Time `db:"updated_at"`
-}
-
 // ChangeBalance is the struct for changing a users balance
 type ChangeBalance struct {
 	UserID    int   `json:"userId"`
@@ -60,13 +51,13 @@ func GetAll(d *db.DB) ([]User, error) {
 
 // GetByID is a GET request that returns users that match the one specified
 // in the body
-func GetByID(d *db.DB, id int) (UserResponse, error) {
-	userResult := UserResponse{}
+func GetByID(d *db.DB, id int) (User, error) {
+	userResult := User{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
 		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
-		return UserResponse{}, errors.Wrapf(err, "GetByID(db, %d)", id)
+		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
 	}
 
 	return userResult, nil
@@ -74,13 +65,13 @@ func GetByID(d *db.DB, id int) (UserResponse, error) {
 
 // GetByEmail is a GET request that returns users that match the one specified
 // in the body
-func GetByEmail(d *db.DB, email string) (UserResponse, error) {
-	userResult := UserResponse{}
+func GetByEmail(d *db.DB, email string) (User, error) {
+	userResult := User{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		return UserResponse{}, errors.Wrapf(err, "GetByEmail(db, %s)", email)
+		return User{}, errors.Wrapf(err, "GetByEmail(db, %s)", email)
 	}
 
 	return userResult, nil
@@ -89,21 +80,21 @@ func GetByEmail(d *db.DB, email string) (UserResponse, error) {
 // GetByCredentials retrieves a user from the database using the email and
 // the salted/hashed password
 func GetByCredentials(d *db.DB, email string, password string) (
-	UserResponse, error) {
+	User, error) {
 
-	userResult := UserResponse{}
+	userResult := User{}
 	uQuery := fmt.Sprintf(`SELECT id, email, balance, hashed_password, updated_at
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		return UserResponse{}, errors.Wrapf(
+		return User{}, errors.Wrapf(
 			err, "GetByCredentials(db, %s, **password_not_logged**)", email)
 	}
 
 	err := bcrypt.CompareHashAndPassword(
 		userResult.HashedPassword, []byte(password))
 	if err != nil {
-		return UserResponse{}, errors.Wrap(err, "password authentication failed")
+		return User{}, errors.Wrap(err, "password authentication failed")
 	}
 
 	log.Tracef("%s received user %v", uQuery, userResult)
@@ -112,10 +103,10 @@ func GetByCredentials(d *db.DB, email string, password string) (
 }
 
 // Create is a POST request and inserts the user in the body into the database
-func Create(d *db.DB, email, password string) (UserResponse, error) {
+func Create(d *db.DB, email, password string) (User, error) {
 	hashedPassword, err := hashAndSalt(password)
 	if err != nil {
-		return UserResponse{}, err
+		return User{}, err
 	}
 	user := User{
 		Email:          email,
@@ -125,12 +116,12 @@ func Create(d *db.DB, email, password string) (UserResponse, error) {
 	tx := d.MustBegin()
 	userResp, err := insertUser(tx, user)
 	if err != nil {
-		return UserResponse{}, err
+		return User{}, err
 	}
 	err = tx.Commit()
 	if err != nil {
 		log.Errorf("Could not commit user creation: %v\n", err)
-		return UserResponse{}, err
+		return User{}, err
 	}
 
 	return userResp, nil
@@ -140,9 +131,9 @@ func Create(d *db.DB, email, password string) (UserResponse, error) {
 // This is using a struct as a parameter because it is a critical operation
 // and placing the arguments in the wrong order leads to increasing the wrong
 // users balance
-func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
+func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	if cb.AmountSat <= 0 {
-		return UserResponse{}, fmt.Errorf("amount cant be less than or equal to 0")
+		return User{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
@@ -152,14 +143,14 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
-		return UserResponse{}, errors.Wrap(
+		return User{}, errors.Wrap(
 			err,
 			"IncreaseBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
 
-	user := UserResponse{}
+	user := User{}
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
@@ -167,7 +158,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 			&user.Balance,
 			&user.UpdatedAt,
 		); err != nil {
-			return UserResponse{}, errors.Wrap(
+			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
 		}
 	}
@@ -176,9 +167,9 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 }
 
 // DecreaseBalance decreases the balance of user id x by y satoshis
-func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
+func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	if cb.AmountSat <= 0 {
-		return UserResponse{},
+		return User{},
 			fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
@@ -189,14 +180,14 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
-		return UserResponse{}, errors.Wrap(
+		return User{}, errors.Wrap(
 			err,
 			"DecreaseBalance(): could not construct user update",
 		)
 	}
 	defer rows.Close()
 
-	user := UserResponse{}
+	user := User{}
 	if rows.Next() {
 		if err = rows.Scan(
 			&user.ID,
@@ -204,7 +195,7 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (UserResponse, error) {
 			&user.Balance,
 			&user.UpdatedAt,
 		); err != nil {
-			return UserResponse{}, errors.Wrap(
+			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
 		}
 	}
@@ -231,7 +222,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	return hash, nil
 }
 
-func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
+func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password)
 		VALUES (:email, 0, :hashed_password)
@@ -239,23 +230,63 @@ func insertUser(tx *sqlx.Tx, user User) (UserResponse, error) {
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
-		return UserResponse{}, errors.Wrapf(
+		return User{}, errors.Wrapf(
 			err, "users.Create(db, %s, %s)",
 			user.Email, string(user.HashedPassword))
 	}
 
-	userResp := UserResponse{}
+	userResp := User{}
 	if rows.Next() {
 		if err = rows.Scan(&userResp.ID,
 			&userResp.Email,
 			&userResp.Balance,
 			&userResp.UpdatedAt); err != nil {
-			return UserResponse{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
+			return User{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
 		}
 	}
 
 	rows.Close()
 	return userResp, nil
+}
+
+// UpdateEmail updates the users email
+func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
+	var out User
+	if u.ID == 0 {
+		return out, errors.New("User ID cannot be 0!")
+	}
+
+	queryUser := User{
+		ID:    u.ID,
+		Email: email,
+	}
+
+	rows, err := db.NamedQuery(
+		`UPDATE users SET email = :email WHERE id = :id RETURNING id, email`,
+		queryUser,
+	)
+
+	if err != nil {
+		return out, errors.Wrap(err, "could not update email")
+	}
+
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+
+	if !rows.Next() {
+		return out, errors.Errorf("did not find user with ID %d", u.ID)
+	}
+
+	if err = rows.Scan(&out.ID,
+		&out.Email); err != nil {
+		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
+		return out, errors.Wrap(err, msg)
+	}
+
+	rows.Close()
+	return out, nil
+
 }
 
 func (u User) String() string {
