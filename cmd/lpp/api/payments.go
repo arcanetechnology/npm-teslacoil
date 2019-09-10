@@ -54,7 +54,7 @@ type PayInvoiceRequest struct {
 }
 
 func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
-	var invResponse []PaymentResponse
+	invResponse := []PaymentResponse{}
 
 	for _, payment := range payments {
 		invResponse = append(invResponse, PaymentResponse{
@@ -76,8 +76,8 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 	return invResponse
 }
 
-// GetAllPayments is a GET request that returns all the users in the database
-// Takes two URL-params on the form ?limit=kek&offset=kek
+// GetAllPayments finds all payments for the given user. Takes two URL
+// parameters, `limit` and `offset`
 func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		URLParams := c.Request.URL.Query()
@@ -86,32 +86,34 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 
 		limit, err := strconv.ParseInt(limitStr, 10, 64)
 		if err != nil {
-			log.Error(err)
+			log.Errorf(`Couldn't parse "limit" to an integer: %v`, err)
 			c.JSONP(404, gin.H{"error": "url param \"limit\" should be a integer"})
 			return
 		}
 		offset, err := strconv.ParseInt(offsetStr, 10, 64)
 		if err != nil {
-			log.Error(err)
+			log.Errorf(`Couldn't parse "offset" to an integer: %v`, offset)
 			c.JSONP(404, gin.H{"error": "url param \"offset\" should be a integer"})
 			return
 		}
 
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
-			log.Fatal(err)
+			log.Errorf("Couldn't parse auth header: %v")
 		}
 
 		// TODO: Make sure conversion from int64 to int is always safe and does
 		// not overflow if limit > MAXINT32 {abort} if offset > MAXINT32 {abort}
 		t, err := payments.GetAll(r.db, claim.UserID, int(limit), int(offset))
 		if err != nil {
+			log.Errorf("Couldn't get payments: %v", err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
 			return
 		}
 
-		c.JSONP(200, convertToPaymentResponse(t))
+		json := convertToPaymentResponse(t)
+		c.JSONP(200, json)
 	}
 }
 
