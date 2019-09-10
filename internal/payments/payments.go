@@ -78,7 +78,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
 		description, expiry, direction, status, amount_sat,amount_msat)
 	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
-		    :memo, :description, :direction, :status, :amount_sat, :amount_msat)
+		    :memo, :description, :expiry, :direction, :status, :amount_sat, :amount_msat)
 	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
 			  memo, description, expiry, direction, status, amount_sat, amount_msat,
 			  created_at, updated_at`
@@ -107,10 +107,10 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			&result.HashedPreimage,
 			&result.Memo,
 			&result.Description,
+			&result.Expiry,
 			&result.Direction,
 			&result.Status,
 			&result.AmountSat,
-			&result.Expiry,
 			&result.AmountMSat,
 			&result.CreatedAt,
 			&result.UpdatedAt,
@@ -119,7 +119,6 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			return result, errors.Wrapf(err,
 				"insertPayment->rows.Next(), Problem row = %+v", result)
 		}
-
 	}
 
 	return result, nil

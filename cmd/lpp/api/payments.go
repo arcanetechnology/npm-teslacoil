@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -23,7 +24,8 @@ type PaymentResponse struct {
 	Direction      payments.Direction `json:"direction"`
 	AmountSat      int64              `json:"amountSat"`
 	AmountMSat     int64              `json:"amountMSat"`
-	SettledAt      *string            `json:"settledAt"`
+	SettledAt      *time.Time         `json:"settledAt"`
+	CreatedAt      time.Time          `json:"createdAt"`
 }
 
 // CreateInvoiceRequest is a deposit
@@ -58,6 +60,8 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 			Direction:      p.Direction,
 			AmountSat:      p.AmountSat,
 			AmountMSat:     p.AmountMSat,
+			SettledAt:      p.SettledAt,
+			CreatedAt:      p.CreatedAt,
 		})
 	}
 
@@ -144,6 +148,8 @@ func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 			Memo:           t.Memo,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
+			SettledAt:      t.SettledAt,
+			CreatedAt:      t.CreatedAt,
 		})
 	}
 }
@@ -188,14 +194,6 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			})
 		}
 
-		var settledAt *string
-		if t.SettledAt == nil {
-			settledAt = nil
-		} else {
-			settled := t.SettledAt.String()
-			settledAt = &settled
-		}
-
 		// Return as much info as possible
 		c.JSONP(200, &PaymentResponse{
 			ID:             t.ID,
@@ -210,7 +208,8 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			Expiry:         t.Expiry,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
-			SettledAt:      settledAt,
+			SettledAt:      t.SettledAt,
+			CreatedAt:      t.CreatedAt,
 		})
 	}
 }
@@ -256,7 +255,6 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			Memo:           t.Payment.Memo,
 			AmountSat:      t.Payment.AmountSat,
 			AmountMSat:     t.Payment.AmountMSat,
-			// SettledAt:      t.Payment.SettledAt,
 		})
 	}
 }
