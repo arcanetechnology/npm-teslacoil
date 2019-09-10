@@ -18,8 +18,8 @@ type PaymentResponse struct {
 	Hash           string             `json:"hash"`
 	CallbackURL    *string            `json:"callbackUrl"`
 	Status         payments.Status    `json:"status"`
-	Memo           string             `json:"memo"`
-	Description    string             `json:"description"`
+	Memo           *string            `json:"memo,omitempty"`
+	Description    *string            `json:"description,omitempty"`
 	Expiry         int64              `json:"expiry"`
 	Direction      payments.Direction `json:"direction"`
 	AmountSat      int64              `json:"amountSat"`
@@ -30,9 +30,9 @@ type PaymentResponse struct {
 
 // CreateInvoiceRequest is a deposit
 type CreateInvoiceRequest struct {
-	Memo        string `json:"memo"`
-	Description string `json:"description"`
-	AmountSat   int64  `json:"amountSat"`
+	Memo        *string `json:"memo,omitempty"`
+	Description *string `json:"description,omitempty"`
+	AmountSat   int64   `json:"amountSat"`
 }
 
 // PayInvoiceRequest is the required(and optional) fields for initiating a
@@ -57,6 +57,7 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 			CallbackURL:    p.CallbackURL,
 			Status:         p.Status,
 			Memo:           p.Memo,
+			Description:    p.Description,
 			Direction:      p.Direction,
 			AmountSat:      p.AmountSat,
 			AmountMSat:     p.AmountMSat,
@@ -91,7 +92,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
-			log.Errorf("Couldn't parse auth header: %v")
+			log.Errorf("Couldn't parse auth header: %s", err)
 		}
 
 		// TODO: Make sure conversion from int64 to int is always safe and does
@@ -148,6 +149,7 @@ func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
 			CallbackURL:    t.CallbackURL,
 			Status:         t.Status,
 			Memo:           t.Memo,
+			Description:    t.Description,
 			AmountSat:      t.AmountSat,
 			AmountMSat:     t.AmountMSat,
 			SettledAt:      t.SettledAt,
@@ -255,6 +257,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			Expiry:         t.Payment.Expiry,
 			Status:         t.Payment.Status,
 			Memo:           t.Payment.Memo,
+			Description:    t.Payment.Description,
 			AmountSat:      t.Payment.AmountSat,
 			AmountMSat:     t.Payment.AmountMSat,
 		})
