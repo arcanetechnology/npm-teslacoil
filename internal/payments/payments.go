@@ -59,8 +59,8 @@ type Payment struct {
 
 //UserPaymentResponse is a user payment response
 type UserPaymentResponse struct {
-	Payment Payment            `json:"payment"`
-	User    users.UserResponse `json:"user"`
+	Payment Payment    `json:"payment"`
+	User    users.User `json:"user"`
 }
 
 // insert persists the supplied payment to the database. Returns the payment,
@@ -380,7 +380,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 	if !invoice.Settled {
 		return &UserPaymentResponse{
 			Payment: payment,
-			User:    users.UserResponse{},
+			User:    users.User{},
 		}, nil
 	}
 	time := time.Now()

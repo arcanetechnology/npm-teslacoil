@@ -70,16 +70,16 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
+		var request UpdateUserRequest
+
+		if err = c.ShouldBindJSON(&request); err != nil {
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
 
 		user, err := users.GetByID(r.db, claims.UserID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
-			return
-		}
-
-		var request UpdateUserRequest
-		if err = c.ShouldBindJSON(&request); err != nil {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
@@ -90,7 +90,8 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
-		response := UserResponse{ID: updated.ID,
+		response := UserResponse{
+			ID:      updated.ID,
 			Email:   updated.Email,
 			Balance: updated.Balance,
 		}

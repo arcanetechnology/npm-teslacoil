@@ -305,7 +305,7 @@ func TestPayInvoice(t *testing.T) {
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
-				User: users.UserResponse{
+				User: users.User{
 					ID:      u.ID,
 					Balance: 0,
 				},
@@ -332,7 +332,7 @@ func TestPayInvoice(t *testing.T) {
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
-				User: users.UserResponse{},
+				User: users.User{},
 			},
 		},
 	}
@@ -432,7 +432,7 @@ func TestPayInvoice(t *testing.T) {
 }
 
 // TODO: Add cases where the triggerInvoice .settled is false
-// This case should return the exact same payment and an empty UserResponse
+// This case should return the exact same payment and an empty User
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -480,7 +480,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("INBOUND"),
 				},
-				User: users.UserResponse{
+				User: users.User{
 					ID:      u.ID,
 					Balance: amount1,
 				},
@@ -510,7 +510,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("INBOUND"),
 				},
-				User: users.UserResponse{
+				User: users.User{
 					ID:      u.ID,
 					Balance: 70000,
 				},
@@ -540,7 +540,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					Status:         Status("OPEN"),
 					Direction:      Direction("INBOUND"),
 				},
-				User: users.UserResponse{},
+				User: users.User{},
 			},
 		},
 	}
