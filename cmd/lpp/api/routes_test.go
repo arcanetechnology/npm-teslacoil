@@ -28,17 +28,6 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func TestParseBearerJWT(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-	token := "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InRlc3QxQGdtYWlsLmNvbSIsInVzZXJfaWQiOjEsImV4cCI6MTU2ODA0NjA3M30.hXVfKvnbsubvImxb32MQjyneXutDS9JHdSSAoPnULb4"
-
-	_, _, err := parseBearerJWT(token)
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not parse bearer token: %v", err)
-	}
-}
-
 func TestPutUserRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
