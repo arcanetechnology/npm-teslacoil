@@ -28,6 +28,12 @@ const (
 	reset   = "\u001b[0m"
 )
 
+var (
+	firstMemo   = "HiMisterHey"
+	description = "My personal description"
+	secondMemo  = "HelloWorld"
+)
+
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
 
@@ -54,52 +60,56 @@ func TestCreateInvoice(t *testing.T) {
 	amount2 := rand.Int63n(4294967)
 
 	tests := []struct {
-		memo      string
-		amountSat int64
+		memo        string
+		description string
+		amountSat   int64
 
 		lndInvoice lnrpc.Invoice
 		want       Payment
 	}{
 		{
-			"HiMisterHey",
-			amount1,
+			memo:        firstMemo,
+			description: description,
+			amountSat:   amount1,
 
-			lnrpc.Invoice{
+			lndInvoice: lnrpc.Invoice{
 				Value:          int64(amount1),
 				PaymentRequest: "SomePayRequest",
 				RHash:          testutil.SampleHash[:],
 				RPreimage:      testutil.SamplePreimage,
 				Settled:        false,
 			},
-			Payment{
+			want: Payment{
 				UserID:         user.ID,
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
 				HashedPreimage: testutil.SampleHashHex,
-				Memo:           "HiMisterHey",
-				Description:    "My personal description",
+				Memo:           &firstMemo,
+				Description:    &description,
 				Status:         Status("OPEN"),
 				Direction:      Direction("INBOUND"),
 			},
 		},
 		{
-			"HelloWorld",
-			amount2,
+			memo:        firstMemo,
+			description: description,
 
-			lnrpc.Invoice{
+			amountSat: amount2,
+
+			lndInvoice: lnrpc.Invoice{
 				Value:          int64(amount2),
 				PaymentRequest: "SomePayRequest",
 				RHash:          testutil.SampleHash[:],
 				RPreimage:      testutil.SamplePreimage,
 				Settled:        false,
 			},
-			Payment{
+			want: Payment{
 				UserID:         user.ID,
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
 				HashedPreimage: testutil.SampleHashHex,
-				Memo:           "HelloWorld",
-				Description:    "My personal description",
+				Memo:           &firstMemo,
+				Description:    &description,
 				Status:         Status("OPEN"),
 				Direction:      Direction("INBOUND"),
 			},
@@ -118,7 +128,7 @@ func TestCreateInvoice(t *testing.T) {
 				}
 
 				payment, err := CreateInvoice(testDB, mockLNcli, tt.want.UserID,
-					tt.amountSat, "", tt.memo)
+					tt.amountSat, &tt.description, &tt.memo)
 				if err != nil {
 					t.Fatalf("\t%s\tShould be able to CreateInvoice %+v\n%s", fail, err, reset)
 				}
@@ -174,8 +184,8 @@ func TestGetByID(t *testing.T) {
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
 				HashedPreimage: testutil.SampleHashHex,
-				Memo:           "HiMisterHey",
-				Description:    "My personal description",
+				Memo:           &firstMemo,
+				Description:    &description,
 				Status:         Status("OPEN"),
 				Direction:      Direction("INBOUND"),
 			},
@@ -189,8 +199,8 @@ func TestGetByID(t *testing.T) {
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
 				HashedPreimage: testutil.SampleHashHex,
-				Memo:           "HelloWorld",
-				Description:    "My personal description",
+				Memo:           &secondMemo,
+				Description:    &description,
 				Status:         Status("OPEN"),
 				Direction:      Direction("INBOUND"),
 			},
@@ -279,29 +289,31 @@ func TestPayInvoice(t *testing.T) {
 	var amount2 int64 = 2000
 	tests := []struct {
 		paymentRequest string
+		description    string
 		memo           string
 
 		decodePayReq lnrpc.PayReq
 		want         UserPaymentResponse
 	}{
 		{
-			"SomePaymentRequest1",
-			"HelloPayment",
+			paymentRequest: "SomePaymentRequest1",
+			memo:           firstMemo,
+			description:    description,
 
-			lnrpc.PayReq{
+			decodePayReq: lnrpc.PayReq{
 				PaymentHash: testutil.SampleHashHex,
 				NumSatoshis: int64(amount1),
-				Description: "HelloPayment",
+				Description: firstMemo,
 			},
-			UserPaymentResponse{
+			want: UserPaymentResponse{
 				Payment: Payment{
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
 					Preimage:       &testutil.SamplePreimageHex,
 					HashedPreimage: testutil.SampleHashHex,
-					Memo:           "HelloPayment",
-					Description:    "My personal description",
+					Memo:           &firstMemo,
+					Description:    &description,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
@@ -312,23 +324,24 @@ func TestPayInvoice(t *testing.T) {
 			},
 		},
 		{
-			"SomePaymentRequest2",
-			"HelloPayment",
+			paymentRequest: "SomePaymentRequest2",
+			memo:           secondMemo,
+			description:    description,
 
-			lnrpc.PayReq{
+			decodePayReq: lnrpc.PayReq{
 				PaymentHash: testutil.SampleHashHex,
 				NumSatoshis: int64(amount2),
-				Description: "HelloPayment",
+				Description: secondMemo,
 			},
-			UserPaymentResponse{
+			want: UserPaymentResponse{
 				Payment: Payment{
 					UserID:         u.ID,
 					AmountSat:      amount2,
 					AmountMSat:     amount2 * 1000,
 					Preimage:       &testutil.SamplePreimageHex,
 					HashedPreimage: testutil.SampleHashHex,
-					Memo:           "HelloPayment",
-					Description:    "My personal description",
+					Memo:           &secondMemo,
+					Description:    &description,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
@@ -362,13 +375,11 @@ func TestPayInvoice(t *testing.T) {
 					// We need to define what DecodePayReq returns
 				}
 				payment, err := PayInvoice(
-					testDB, &mockLNcli, u.ID, tt.paymentRequest, "", tt.memo)
+					testDB, &mockLNcli, u.ID, tt.paymentRequest, tt.description, tt.memo)
 				log.Infof("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if user.Balance < tt.want.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
-						t.Fatalf(
-							"\t%s\tshould not pay invoice when the users balance is too low\n%s",
-							fail, reset)
+						testutil.FatalMsg(t, "should not pay invoice when the users balance is too low")
 					}
 					t.Logf(
 						"\t%s\tshould not pay invoice when the users balance is too low%s",
@@ -377,9 +388,9 @@ func TestPayInvoice(t *testing.T) {
 					if !strings.Contains(
 						err.Error(),
 						`could not construct user update: pq: new row for relation "users" violates check constraint "users_balance_check"`) {
-						t.Fatalf(
-							"\t%s\tshould fail when paying invoice greater than balance. Error:  %+v%s",
-							fail, err, reset)
+						testutil.FatalMsgf(t,
+							"should fail when paying invoice greater than balance. Error: %+v",
+							err)
 					}
 					t.Logf(
 						"\t%s\tshould fail when paying invoice greater than balance%s",
@@ -387,9 +398,9 @@ func TestPayInvoice(t *testing.T) {
 					return
 				}
 				if err != nil {
-					t.Fatalf(
-						"\t%s\tshould be able to PayInvoice. Error:  %+v\n%s",
-						fail, err, reset)
+					testutil.FatalMsgf(t,
+						"should be able to PayInvoice. Error:  %+v",
+						err)
 				}
 				t.Logf("\t%s\tShould be able to PayInvoice%s", succeed, reset)
 
@@ -464,8 +475,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				Settled:        true,
 				Value:          int64(amount1),
 			},
-			"HelloWorld",
-			"My description",
+			firstMemo,
+			description,
 			amount1,
 
 			UserPaymentResponse{
@@ -475,8 +486,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					AmountMSat:     amount1 * 1000,
 					HashedPreimage: testutil.SampleHashHex,
 					Preimage:       &testutil.SamplePreimageHex,
-					Memo:           "HelloWorld",
-					Description:    "My description",
+					Memo:           &firstMemo,
+					Description:    &description,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("INBOUND"),
 				},
@@ -494,8 +505,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				Settled:        true,
 				Value:          int64(amount2),
 			},
-			"HelloWorld",
-			"My description",
+			secondMemo,
+			description,
 			amount2,
 
 			UserPaymentResponse{
@@ -505,8 +516,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					AmountMSat:     amount2 * 1000,
 					HashedPreimage: testutil.SampleHashHex,
 					Preimage:       &testutil.SamplePreimageHex,
-					Memo:           "HelloWorld",
-					Description:    "My description",
+					Memo:           &secondMemo,
+					Description:    &description,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("INBOUND"),
 				},
@@ -524,8 +535,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				Settled:        false,
 				Value:          int64(amount1),
 			},
-			"HelloWorld",
-			"My description",
+			firstMemo,
+			description,
 			amount1,
 
 			UserPaymentResponse{
@@ -535,8 +546,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					AmountMSat:     amount1 * 1000,
 					HashedPreimage: testutil.SampleHashHex,
 					Preimage:       &testutil.SamplePreimageHex,
-					Memo:           "HelloWorld",
-					Description:    "My description",
+					Memo:           &firstMemo,
+					Description:    &description,
 					Status:         Status("OPEN"),
 					Direction:      Direction("INBOUND"),
 				},
@@ -554,7 +565,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				_, err := CreateInvoice(testDB,
 					testutil.LightningMockClient{
 						InvoiceResponse: tt.triggerInvoice,
-					}, u.ID, tt.amountSat, tt.description, tt.memo)
+					}, u.ID, tt.amountSat, &tt.description, &tt.memo)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to CreateInvoice. Error:  %+v\n%s",
@@ -735,8 +746,8 @@ func TestGetAll(t *testing.T) {
 					}
 
 					_, err := CreateInvoice(
-						testDB, mockLNcli, u.ID, invoice.AmountSat, "",
-						invoice.Memo)
+						testDB, mockLNcli, u.ID, invoice.AmountSat, nil,
+						&invoice.Memo)
 
 					if err != nil {
 						t.Fatalf(
@@ -765,20 +776,21 @@ func TestGetAll(t *testing.T) {
 					}
 
 					for i, invoice := range invoices {
+						expectedInv := tt.invoices[i]
 						if i < tt.offset {
-							if tt.invoices[i].Memo == invoice.Memo {
+							if invoice.Memo != nil && expectedInv.Memo == *invoice.Memo {
 								t.Logf("\t%s\tMemo should not be equal to expected memo. Expected \"%s\" got \"%s\"%s",
 									fail,
-									tt.invoices[i].Memo,
-									invoice.Memo,
+									expectedInv.Memo,
+									*invoice.Memo,
 									reset)
 								t.Fail()
 							}
-							if tt.invoices[i].AmountSat == invoice.AmountSat {
+							if expectedInv.AmountSat == invoice.AmountSat {
 								t.Logf("\t%s\tMemo should not be equal to expected memo. Expected \"%s\" got \"%s\"%s",
 									fail,
-									tt.invoices[i].Memo,
-									invoice.Memo,
+									expectedInv.Memo,
+									*invoice.Memo,
 									reset)
 								t.Fail()
 							}
@@ -792,18 +804,18 @@ func TestGetAll(t *testing.T) {
 							}
 						} else {
 
-							if tt.invoices[i].Memo != invoice.Memo {
+							if invoice.Memo != nil && expectedInv.Memo != *invoice.Memo {
 								t.Logf("\t%s\tMemo should be equal to expected memo. Expected \"%s\" got \"%s\"%s",
 									fail,
-									tt.invoices[i].Memo,
-									invoice.Memo, reset)
+									expectedInv.Memo,
+									*invoice.Memo, reset)
 								t.Fail()
 							}
-							if tt.invoices[i].AmountSat != invoice.AmountSat {
+							if expectedInv.AmountSat != invoice.AmountSat {
 								t.Logf("\t%s\tMemo should be equal to expected memo. Expected \"%s\" got \"%s\"%s",
 									fail,
-									tt.invoices[i].Memo,
-									invoice.Memo,
+									expectedInv.Memo,
+									*invoice.Memo,
 									reset)
 								t.Fail()
 							}
@@ -833,6 +845,7 @@ func TestGetAll(t *testing.T) {
 }
 
 func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
+	t.Helper()
 	if got.UserID != want.UserID {
 		t.Logf("\t%s\tUserID should be equal to expected UserID. Expected \"%d\" got \"%d\"%s",
 			fail, want.UserID, got.UserID, reset)
@@ -863,10 +876,26 @@ func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 		t.Fail()
 	}
 
-	if got.Memo != want.Memo {
-		t.Logf("\t%s\tMemo should be equal to expected Memo. Expected \"%s\" got \"%s\"%s",
-			fail, want.Memo, got.Memo, reset)
-		t.Fail()
+	if (got.Memo != nil && want.Memo == nil) ||
+		(got.Memo == nil && want.Memo != nil) {
+		testutil.FatalMsgf(t, "Memos arent equal. Expected: %v, got: %v",
+			got.Memo, want.Memo)
+	}
+
+	if *got.Memo != *want.Memo {
+		testutil.FatalMsgf(t, "Memo should be equal to expected Memo. Expected \"%s\" got \"%s\"",
+			*want.Memo, *got.Memo)
+	}
+
+	if (got.Description != nil && want.Description == nil) ||
+		(got.Description == nil && want.Description != nil) {
+		testutil.FatalMsgf(t, "Descriptions arent equal. Expected: %v, got: %v",
+			got.Description, want.Description)
+	}
+
+	if *got.Description != *want.Description {
+		testutil.FatalMsgf(t, "Descriptions should be equal to expected Memo. Expected \"%s\" got \"%s\"",
+			*want.Description, *got.Description)
 	}
 
 	if got.Status != want.Status {

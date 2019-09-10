@@ -44,8 +44,8 @@ type Payment struct {
 	CallbackURL    *string   `db:"callback_url"`
 	Expiry         int64     `db:"expiry"`
 	Status         Status    `db:"status"`
-	Memo           string    `db:"memo"`
-	Description    string    `db:"description"`
+	Memo           *string   `db:"memo"`
+	Description    *string   `db:"description"`
 	Direction      Direction `db:"direction"`
 	AmountSat      int64     `db:"amount_sat"`
 	AmountMSat     int64     `db:"amount_msat"`
@@ -180,20 +180,26 @@ func GetByID(d *db.DB, id int, userID int) (Payment, error) {
 // with the paymentRequest and RHash returned from lnd. After creation, inserts
 // the payment into the database
 func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
-	amountSat int64, description, memo string) (Payment, error) {
+	amountSat int64, description, memo *string) (Payment, error) {
 
 	if amountSat <= 0 {
 		return Payment{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
-	if len(memo) > 256 {
+	if memo != nil && len(*memo) > 256 {
 		return Payment{}, fmt.Errorf("memo cant be longer than 256 characters")
 	}
 
 	// First we add an invoice given the given parameters using the ln package
+	var lnMemo string
+	if memo != nil {
+		lnMemo = *memo
+	} else {
+		lnMemo = ""
+	}
 	invoice, err := ln.AddInvoice(
 		lncli,
 		lnrpc.Invoice{
-			Memo:  memo,
+			Memo:  lnMemo,
 			Value: int64(amountSat),
 		})
 	if err != nil {
@@ -278,7 +284,7 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 		PaymentRequest: strings.ToUpper(paymentRequest),
 		Status:         open,
 		HashedPreimage: payreq.PaymentHash,
-		Memo:           payreq.Description,
+		Memo:           &payreq.Description,
 		// TODO: Make sure conversion from int64 to int is always safe and does
 		// not overflow if limit > MAXINT32 {abort} if offset > MAXINT32 {abort}
 		AmountSat:  payreq.NumSatoshis,
@@ -324,6 +330,7 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 		upr.Payment.Status = succeeded
 		preimage := hex.EncodeToString(paymentResponse.PaymentPreimage)
 		upr.Payment.Preimage = &preimage
+		upr.Payment.Description = &description
 	} else {
 		err = tx.Rollback()
 		if err != nil {
@@ -469,8 +476,12 @@ func (p Payment) String() string {
 	str += fmt.Sprintf("\tHashedPreimage: %s\n", p.HashedPreimage)
 	str += fmt.Sprintf("\tCallbackURL: %v\n", p.CallbackURL)
 	str += fmt.Sprintf("\tStatus: %s\n", p.Status)
-	str += fmt.Sprintf("\tMemo: %s\n", p.Memo)
-	str += fmt.Sprintf("\tDescription: %s\n", p.Description)
+	if p.Memo != nil {
+		str += fmt.Sprintf("\tMemo: %s\n", *p.Memo)
+	}
+	if p.Description != nil {
+		str += fmt.Sprintf("\tDescription: %s\n", *p.Description)
+	}
 	str += fmt.Sprintf("\tExpiry: %d\n", p.Expiry)
 	str += fmt.Sprintf("\tDirection: %s\n", p.Direction)
 	str += fmt.Sprintf("\tAmountSat: %d\n", p.AmountSat)
