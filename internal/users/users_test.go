@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
+	defer testDB.Close()
 
 	log.Info("Configuring user test database")
 
@@ -67,7 +68,7 @@ func TestFailToUpdateNonExistingUser(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
-	user := UserResponse{ID: 99999}
+	user := User{ID: 99999}
 	_, err := user.UpdateEmail(testDB, email)
 
 	if err == nil {
@@ -82,11 +83,11 @@ func TestCanCreateUser(t *testing.T) {
 	email := getTestEmail(t)
 	tests := []struct {
 		email          string
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			email,
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -130,14 +131,14 @@ func TestCanGetUserByEmail(t *testing.T) {
 	email := getTestEmail(t)
 	tests := []struct {
 		user           User
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			User{
 				Email:          email,
 				HashedPassword: []byte("SomePassword"),
 			},
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -193,12 +194,12 @@ func TestCanGetUserByCredentials(t *testing.T) {
 	tests := []struct {
 		email          string
 		password       string
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			email,
 			"password",
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},
@@ -248,14 +249,14 @@ func TestCanGetUserByID(t *testing.T) {
 	email := getTestEmail(t)
 	tests := []struct {
 		user           User
-		expectedResult UserResponse
+		expectedResult User
 	}{
 		{
 			User{
 				Email:          email,
 				HashedPassword: []byte("SomePassword"),
 			},
-			UserResponse{
+			User{
 				Email:   email,
 				Balance: 0,
 			},

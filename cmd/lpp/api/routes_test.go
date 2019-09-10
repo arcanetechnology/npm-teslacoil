@@ -22,6 +22,8 @@ var (
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.InfoLevel)
 	testDB = testutil.InitDatabase(databaseConfig)
+	defer testDB.Close()
+
 	result := m.Run()
 	os.Exit(result)
 }
