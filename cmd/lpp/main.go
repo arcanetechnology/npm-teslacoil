@@ -215,7 +215,7 @@ var (
 						}
 						lncli, err := ln.NewLNDClient(lnConfig)
 						if err != nil {
-							return err
+							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
 						}
 						return FillWithDummyData(database, lncli)
 					}

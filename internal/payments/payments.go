@@ -250,6 +250,31 @@ func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	return p, nil
 }
 
+// MarkInvoiceAsPaid marks the given payment request as paid at the given date
+func MarkInvoiceAsPaid(d *db.DB, userID int,
+	paymentRequest string, paidAt time.Time) error {
+	updateOffchainTxQuery := `UPDATE offchaintx 
+		SET settled_at = $1, status = $2
+		WHERE payment_request = $3`
+
+	tx := d.MustBegin()
+
+	result, err := tx.Exec(updateOffchainTxQuery, paidAt, succeeded, paymentRequest)
+	if err != nil {
+		log.Errorf("Couldn't mark invoice as paid: %+v", err)
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	log.Infof("Marking an invoice as paid resulted in %d updated rows", rows)
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
 // PayInvoice first persists an outbound payment with the supplied invoice to
 // the database. Then attempts to pay the invoice using SendPaymentSync
 // Should the payment fail, we do not decrease the users balance.
