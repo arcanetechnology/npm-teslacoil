@@ -21,6 +21,8 @@ type User struct {
 	ID             int        `db:"id"`
 	Email          string     `db:"email"`
 	Balance        int64      `db:"balance"`
+	Firstname      *string    `db:"first_name"`
+	Lastname       *string    `db:"last_name"`
 	HashedPassword []byte     `db:"hashed_password" json:"-"`
 	CreatedAt      time.Time  `db:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at"`
@@ -53,7 +55,8 @@ func GetAll(d *db.DB) ([]User, error) {
 // in the body
 func GetByID(d *db.DB, id int) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+	uQuery := fmt.Sprintf(`SELECT 
+		id, email, balance, updated_at, first_name, last_name
 		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
@@ -67,7 +70,8 @@ func GetByID(d *db.DB, id int) (User, error) {
 // in the body
 func GetByEmail(d *db.DB, email string) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+	uQuery := fmt.Sprintf(`SELECT 
+		id, email, balance, updated_at, first_name, last_name
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
@@ -83,7 +87,9 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	User, error) {
 
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT id, email, balance, hashed_password, updated_at
+	uQuery := fmt.Sprintf(`SELECT 
+		id, email, balance, hashed_password, updated_at, first_name, 
+		last_name
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
@@ -147,7 +153,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	updateBalanceQuery := `UPDATE users
 		SET balance = balance + $1
 		WHERE id = $2
-		RETURNING id, email, balance, updated_at`
+		RETURNING id, email, balance, updated_at, first_name, last_name`
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
@@ -165,6 +171,8 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			&user.Email,
 			&user.Balance,
 			&user.UpdatedAt,
+			&user.Firstname,
+			&user.Lastname,
 		); err != nil {
 			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
@@ -184,7 +192,7 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	updateBalanceQuery := `UPDATE users
 		SET balance = balance - $1
 		WHERE id = $2
-		RETURNING id, email, balance, updated_at`
+		RETURNING id, email, balance, updated_at, first_name, last_name`
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
@@ -202,6 +210,8 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			&user.Email,
 			&user.Balance,
 			&user.UpdatedAt,
+			&user.Firstname,
+			&user.Lastname,
 		); err != nil {
 			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
@@ -234,7 +244,7 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password)
 		VALUES (:email, 0, :hashed_password)
-		RETURNING id, email, balance, updated_at`
+		RETURNING id, email, balance, updated_at, first_name, last_name`
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
@@ -245,10 +255,13 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 
 	userResp := User{}
 	if rows.Next() {
-		if err = rows.Scan(&userResp.ID,
+		if err = rows.Scan(
+			&userResp.ID,
 			&userResp.Email,
 			&userResp.Balance,
-			&userResp.UpdatedAt); err != nil {
+			&userResp.UpdatedAt,
+			&userResp.Firstname,
+			&userResp.Lastname); err != nil {
 			return User{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
 		}
 	}
@@ -270,7 +283,8 @@ func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
 	}
 
 	rows, err := db.NamedQuery(
-		`UPDATE users SET email = :email WHERE id = :id RETURNING id, email`,
+		`UPDATE users SET email = :email WHERE id = :id 
+		RETURNING id, email, first_name, last_name, balance`,
 		queryUser,
 	)
 
@@ -286,8 +300,13 @@ func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
 		return out, errors.Errorf("did not find user with ID %d", u.ID)
 	}
 
-	if err = rows.Scan(&out.ID,
-		&out.Email); err != nil {
+	if err = rows.Scan(
+		&out.ID,
+		&out.Email,
+		&out.Firstname,
+		&out.Lastname,
+		&out.Balance,
+	); err != nil {
 		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
 		return out, errors.Wrap(err, msg)
 	}
@@ -301,6 +320,16 @@ func (u User) String() string {
 	str := fmt.Sprintf("ID: %d\n", u.ID)
 	str += fmt.Sprintf("Email: %s\n", u.Email)
 	str += fmt.Sprintf("Balance: %d\n", u.Balance)
+	if u.Firstname != nil {
+		str += fmt.Sprintf("Firstname: %s\n", *u.Firstname)
+	} else {
+		str += fmt.Sprintln("Firstname: <nil>")
+	}
+	if u.Lastname != nil {
+		str += fmt.Sprintf("Lastname: %d\n", u.Lastname)
+	} else {
+		str += fmt.Sprintln("Firstname: <nil>")
+	}
 	str += fmt.Sprintf("HashedPassword: %v\n", u.HashedPassword)
 	str += fmt.Sprintf("CreatedAt: %v\n", u.CreatedAt)
 	str += fmt.Sprintf("UpdatedAt: %v\n", u.UpdatedAt)
