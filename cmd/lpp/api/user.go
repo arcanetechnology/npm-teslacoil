@@ -140,9 +140,11 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 		}
 
 		res := UserResponse{
-			ID:      user.ID,
-			Email:   user.Email,
-			Balance: user.Balance,
+			ID:        user.ID,
+			Email:     user.Email,
+			Balance:   user.Balance,
+			Firstname: user.Firstname,
+			Lastname:  user.Lastname,
 		}
 
 		log.Infof("GetUserResponse %v", res)
