@@ -112,6 +112,17 @@ going to screw up permissions once the containers get started.
 
 ### Deleting specific volumes
 
+### Nuking Postgres
+
+If you want to nuke Postgres and have a fresh DB:
+
+```bash
+make nuke_postgres
+```
+
+This rebuilds to image (picking up any changes you've made in the `Dockerfile`),
+kills the container, wipes the data store and starts it again. 
+
 #### VSCode
 
 In Docker tab (Docker extension), "volumes" section at the bottom.
