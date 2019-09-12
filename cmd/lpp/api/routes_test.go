@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,16 +30,6 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-// converts the given map to JSON, and then encodes it
-// as a buffer
-func mapToJSON(values map[string]string) *bytes.Buffer {
-	res, err := json.Marshal(values)
-	if err != nil {
-		panic(fmt.Sprintf("Couldn't convert %s to JSON", values))
-	}
-	return bytes.NewBuffer(res)
-}
-
 func TestPutUserRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
@@ -53,33 +42,35 @@ func TestPutUserRoute(t *testing.T) {
 	createUserRes := httptest.NewRecorder()
 	createUserRequest, _ := http.NewRequest(
 		"POST", "/users",
-		mapToJSON(map[string]string{
-			"email":    "foobar",
-			"password": "barfoo",
-		}))
+		bytes.NewBuffer([]byte(`{ "email": "foobar", "password": "barfoo" }`)))
 	app.Router.ServeHTTP(createUserRes, createUserRequest)
 
 	loginUserRes := httptest.NewRecorder()
 	loginUserReq := httptest.NewRequest(
 		"POST", "/login",
-		mapToJSON(map[string]string{
+		bytes.NewBuffer([]byte(
+			`{
 			"email":    "foobar",
-			"password": "barfoo",
-		}))
+			"password": "barfoo"
+			}`,
+		)))
 	app.Router.ServeHTTP(loginUserRes, loginUserReq)
+	if loginUserRes.Code != 200 {
+		testutil.FatalMsgf(t, "Got failure code when logging in: %d", loginUserRes.Code)
+	}
 
 	marshalledLoginRes := LoginResponse{}
 	_ = json.Unmarshal(loginUserRes.Body.Bytes(), &marshalledLoginRes)
 
-	updateUserReqBody := map[string]string{
+	jsonBody := `{
 		"firstName": "new-firstname",
 		"lastName":  "new-lastname",
-		"email":     "new-email",
-	}
+		"email":     "new-email"
+	}`
 	updateUserRes := httptest.NewRecorder()
 	updateUserReq, _ := http.NewRequest("PUT", "/user",
-		mapToJSON(updateUserReqBody),
-	)
+		bytes.NewBuffer([]byte(jsonBody)))
+
 	updateUserReq.Header.Set("Authorization", marshalledLoginRes.AccessToken)
 
 	app.Router.ServeHTTP(updateUserRes, updateUserReq)
@@ -92,8 +83,8 @@ func TestPutUserRoute(t *testing.T) {
 		marshalledUpdateRes.Lastname == nil ||
 		*marshalledUpdateRes.Lastname != "new-lastname" {
 		testutil.FatalMsgf(t,
-			"PUT /user did not update user! Expected: %+v, got: %+v",
-			updateUserReqBody, marshalledLoginRes)
+			"PUT /user did not update user! Got: %+v",
+			string(updateUserRes.Body.Bytes()))
 	}
 
 }

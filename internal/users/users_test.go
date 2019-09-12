@@ -32,7 +32,10 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	result := m.Run()
 
-	_ = testDB.Close()
+	if err := testDB.Close(); err != nil {
+		panic(err.Error())
+	}
+
 	os.Exit(result)
 }
 
@@ -49,43 +52,8 @@ func TestUpdateUserFailWithBadOpts(t *testing.T) {
 		testutil.FatalMsg(t, err)
 	}
 
-	type TestVector struct {
-		opts    UpdateOptions
-		message string
-	}
-	testVectors := []TestVector{{
-		opts: UpdateOptions{
-			RemoveFirstName: true,
-			SetFirstName:    true,
-		},
-		message: "Was able to both set and remove first name",
-	}, {
-		opts: UpdateOptions{
-			SetFirstName: true,
-		},
-		message: "Was able to set first name without giving a value!",
-	}, {
-		opts: UpdateOptions{
-			SetLastName: true,
-		},
-		message: "Was able to set last name without giving a value!",
-	}, {
-		opts: UpdateOptions{
-			UpdateEmail: true,
-		},
-		message: "Was able to update email without giving a value!",
-	}, {
-		opts: UpdateOptions{
-			RemoveLastName: true,
-			SetLastName:    true,
-		},
-		message: "Was able to set and remove last name",
-	}}
-
-	for _, vec := range testVectors {
-		if _, err := user.Update(testDB, vec.opts); err == nil {
-			testutil.FatalMsg(t, vec.message)
-		}
+	if _, err := user.Update(testDB, UpdateOptions{}); err == nil {
+		testutil.FatalMsg(t, "Was able to give non-meaningful options and get a result")
 	}
 }
 
@@ -99,12 +67,17 @@ func TestUpdateUserEmail(t *testing.T) {
 	}
 
 	newEmail := getTestEmail(t)
-	updated, err := user.Update(testDB, UpdateOptions{UpdateEmail: true, NewEmail: newEmail})
+	updated, err := user.Update(testDB, UpdateOptions{NewEmail: &newEmail})
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to set email %s: %+v", newEmail, err)
 	}
 	if updated.Email != newEmail {
 		testutil.FatalMsgf(t, "Got unexpected result after updating email: %+v", user)
+	}
+
+	empty := ""
+	if _, err := user.Update(testDB, UpdateOptions{NewEmail: &empty}); err == nil {
+		testutil.FatalMsg(t, "Was able to delete user email!")
 	}
 }
 
@@ -117,14 +90,16 @@ func TestUpdateUserFirstName(t *testing.T) {
 		testutil.FatalMsg(t, err)
 	}
 
-	updated, err := user.Update(testDB, UpdateOptions{SetLastName: true, NewLastName: "NewLastName"})
+	newName := "NewLastName"
+	updated, err := user.Update(testDB, UpdateOptions{NewLastName: &newName})
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to set last name: %+v", err)
 	}
-	if updated.Lastname == nil || *updated.Lastname != "NewLastName" {
+	if updated.Lastname == nil || *updated.Lastname != newName {
 		testutil.FatalMsgf(t, "Got unexpected result after updating last name: %+v", updated)
 	}
-	removed, err := user.Update(testDB, UpdateOptions{RemoveLastName: true})
+	empty := ""
+	removed, err := user.Update(testDB, UpdateOptions{NewLastName: &empty})
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to remove last name: %+v", err)
 	}
@@ -142,14 +117,16 @@ func TestUpdateUserLastName(t *testing.T) {
 		testutil.FatalMsg(t, err)
 	}
 
-	updated, err := user.Update(testDB, UpdateOptions{SetFirstName: true, NewFirstName: "NewFirstName"})
+	newName := "NewFirstName"
+	updated, err := user.Update(testDB, UpdateOptions{NewFirstName: &newName})
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to set first name: %+v", err)
 	}
-	if updated.Firstname == nil || *updated.Firstname != "NewFirstName" {
+	if updated.Firstname == nil || *updated.Firstname != newName {
 		testutil.FatalMsgf(t, "Got unexpected result after updating first name: %+v", user)
 	}
-	removed, err := user.Update(testDB, UpdateOptions{RemoveFirstName: true})
+	empty := ""
+	removed, err := user.Update(testDB, UpdateOptions{NewFirstName: &empty})
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to remove first name: %+v", err)
 	}
@@ -164,7 +141,7 @@ func TestFailToUpdateNonExistingUser(t *testing.T) {
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
 	user := User{ID: 99999}
-	_, err := user.Update(testDB, UpdateOptions{UpdateEmail: true, NewEmail: email})
+	_, err := user.Update(testDB, UpdateOptions{NewEmail: &email})
 
 	if err == nil || !strings.Contains(err.Error(), "did not find user") {
 		testutil.FatalMsg(t, "Was able to update email of non existant user!")

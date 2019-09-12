@@ -65,9 +65,9 @@ var (
 func (r *RestServer) UpdateUser() gin.HandlerFunc {
 
 	type UpdateUserRequest struct {
-		Email     string `json:"email"`
-		FirstName string `json:"firstName"`
-		LastName  string `json:"lastName"`
+		Email     *string `json:"email"`
+		FirstName *string `json:"firstName"`
+		LastName  *string `json:"lastName"`
 	}
 
 	return func(c *gin.Context) {
@@ -93,16 +93,13 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 		}
 
 		opts := users.UpdateOptions{}
-		if request.Email != "" {
-			opts.UpdateEmail = true
+		if request.Email != nil {
 			opts.NewEmail = request.Email
 		}
-		if request.FirstName != "" {
-			opts.SetFirstName = true
+		if request.FirstName != nil {
 			opts.NewFirstName = request.FirstName
 		}
-		if request.LastName != "" {
-			opts.SetLastName = true
+		if request.LastName != nil {
 			opts.NewLastName = request.LastName
 		}
 		updated, err := user.Update(r.db, opts)

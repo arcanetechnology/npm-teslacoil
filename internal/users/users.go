@@ -147,7 +147,7 @@ func Create(d *db.DB, email, password string) (User, error) {
 // and placing the arguments in the wrong order leads to increasing the wrong
 // users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
-	var deferredError error = nil
+	var deferredError error
 	if cb.AmountSat <= 0 {
 		return User{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
@@ -164,9 +164,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			"IncreaseBalance(): could not construct user update",
 		)
 	}
-	defer func() {
-		deferredError = rows.Close()
-	}()
+	defer func() { deferredError = rows.Close() }()
 
 	user := User{}
 	if rows.Next() {
@@ -282,16 +280,17 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 
 // UpdateUserOptions represents the different actions `UpdateUser` can perform.
 type UpdateOptions struct {
-	RemoveFirstName bool
-	SetFirstName    bool
-	NewFirstName    string
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// firstName
+	NewFirstName *string
 
-	RemoveLastName bool
-	SetLastName    bool
-	NewLastName    string
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// lastName
+	NewLastName *string
 
-	UpdateEmail bool
-	NewEmail    string
+	// If set to nil, does nothing, if set to the empty string, we return
+	// an error
+	NewEmail *string
 }
 
 // Update the users email, first name and last name, depending on
@@ -302,31 +301,10 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 		return out, errors.New("User ID cannot be 0!")
 	}
 
-	if opts.RemoveFirstName && opts.SetFirstName {
-		return out, errors.New("cannot both set and remove first name")
-	}
-
-	if opts.RemoveLastName && opts.SetLastName {
-		return out, errors.New("cannot both set and remove last name")
-	}
-
-	if opts.SetFirstName && opts.NewFirstName == "" {
-		return out, errors.New("no new first name provided")
-	}
-
-	if opts.SetLastName && opts.NewLastName == "" {
-		return out, errors.New("no new last name provided")
-	}
-
-	if opts.UpdateEmail && opts.NewEmail == "" {
-		return out, errors.New("no new email provided")
-	}
-
 	// no action needed
-	if !(opts.UpdateEmail ||
-		opts.SetLastName || opts.SetFirstName ||
-		opts.RemoveLastName || opts.RemoveFirstName) {
-		return out, nil
+	if opts.NewFirstName == nil &&
+		opts.NewLastName == nil && opts.NewEmail == nil {
+		return out, errors.New("no actions given in UpdateOptions")
 	}
 
 	updateQuery := `UPDATE users SET `
@@ -335,23 +313,28 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 		ID: u.ID,
 	}
 
-	if opts.UpdateEmail {
+	if opts.NewEmail != nil {
+		if *opts.NewEmail == "" {
+			return out, errors.New("cannot delete email")
+		}
 		updates = append(updates, "email = :email")
-		queryUser.Email = opts.NewEmail
+		queryUser.Email = *opts.NewEmail
 	}
-	if opts.SetFirstName {
-		updates = append(updates, "first_name = :first_name")
-		queryUser.Firstname = &opts.NewFirstName
+	if opts.NewFirstName != nil {
+		if *opts.NewFirstName == "" {
+			updates = append(updates, "first_name = NULL")
+		} else {
+			updates = append(updates, "first_name = :first_name")
+		}
+		queryUser.Firstname = opts.NewFirstName
 	}
-	if opts.RemoveFirstName {
-		updates = append(updates, "first_name = NULL")
-	}
-	if opts.SetLastName {
-		updates = append(updates, "last_name = :last_name")
-		queryUser.Lastname = &opts.NewLastName
-	}
-	if opts.RemoveLastName {
-		updates = append(updates, "last_name = NULL")
+	if opts.NewLastName != nil {
+		if *opts.NewLastName == "" {
+			updates = append(updates, "last_name = NULL")
+		} else {
+			updates = append(updates, "last_name = :last_name")
+		}
+		queryUser.Lastname = opts.NewLastName
 	}
 
 	updateQuery += strings.Join(updates, ",")
