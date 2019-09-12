@@ -13,6 +13,16 @@ services:
 
   db:
     container_name: postgres
+    command:
+      - postgres 
+      - -c 
+      - logging_collector=on  
+      - -c 
+      - log_directory=/var/log/postgresql
+      - -c 
+      - log_filename=postgres.log
+      - -c 
+      -  log_statement=all
     build:
       context: docker/postgres
     volumes:

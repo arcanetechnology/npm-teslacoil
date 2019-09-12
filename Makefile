@@ -21,3 +21,9 @@ test:
 
 test_verbose:
 	go test ./... -v
+
+nuke_postgres:
+	docker-compose build --no-cache db 
+	docker-compose rm --force --stop -v db
+	docker volume rm teslacoil_postgres
+	docker-compose up --detach

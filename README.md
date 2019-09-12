@@ -80,6 +80,19 @@ docker-compose logs alice # just alice
 docker-compose logs -f bob #  trail bobs logs
 ```
 
+It's also possible to view Postgres logs of executed SQL statements. These reside
+in `/var/log/postgresql/postgres.log`. Some examples on how to view them: 
+
+```bash
+# simple log trailing
+docker exec -it postgres tail -f /var/log/postgresql/postgres.log
+
+# dump it to file, so you can inspect it with your favorite tool
+# this streams data to pgdump.log in your current directory until 
+# you do <CTRL+C>
+docker exec -it postgres tail -f /var/log/postgresql/postgres.log > pgdump.log
+```
+
 ### Winding cluster down
 
 Winding cluster down:
@@ -98,6 +111,17 @@ Be careful to not delete the `.alice` and `.bob` directories themselves, though.
 going to screw up permissions once the containers get started.
 
 ### Deleting specific volumes
+
+### Nuking Postgres
+
+If you want to nuke Postgres and have a fresh DB:
+
+```bash
+make nuke_postgres
+```
+
+This rebuilds to image (picking up any changes you've made in the `Dockerfile`),
+kills the container, wipes the data store and starts it again. 
 
 #### VSCode
 
