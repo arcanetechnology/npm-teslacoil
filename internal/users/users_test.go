@@ -3,12 +3,13 @@ package users
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
-
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -22,46 +23,140 @@ var (
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.ErrorLevel)
 
+	rand.Seed(time.Now().UnixNano())
+
 	testDB = testutil.InitDatabase(databaseConfig)
-	defer testDB.Close()
 
 	log.Info("Configuring user test database")
 
 	flag.Parse()
 	result := m.Run()
 
+	_ = testDB.Close()
 	os.Exit(result)
 }
 
 func getTestEmail(t *testing.T) string {
-	return fmt.Sprintf("%s@example.com", t.Name())
+	return fmt.Sprintf("%d-%s@example.com", rand.Int(), t.Name())
 }
 
-func TestUpdateEmail(t *testing.T) {
+func TestUpdateUserFailWithBadOpts(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
-
 	user, err := Create(testDB, email, "password")
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
 
-	newEmail := "new-" + email
-	updated, err := user.UpdateEmail(testDB, newEmail)
+	type TestVector struct {
+		opts    UpdateOptions
+		message string
+	}
+	testVectors := []TestVector{{
+		opts: UpdateOptions{
+			RemoveFirstName: true,
+			SetFirstName:    true,
+		},
+		message: "Was able to both set and remove first name",
+	}, {
+		opts: UpdateOptions{
+			SetFirstName: true,
+		},
+		message: "Was able to set first name without giving a value!",
+	}, {
+		opts: UpdateOptions{
+			SetLastName: true,
+		},
+		message: "Was able to set last name without giving a value!",
+	}, {
+		opts: UpdateOptions{
+			UpdateEmail: true,
+		},
+		message: "Was able to update email without giving a value!",
+	}, {
+		opts: UpdateOptions{
+			RemoveLastName: true,
+			SetLastName:    true,
+		},
+		message: "Was able to set and remove last name",
+	}}
+
+	for _, vec := range testVectors {
+		if _, err := user.Update(testDB, vec.opts); err == nil {
+			testutil.FatalMsg(t, vec.message)
+		}
+	}
+}
+
+func TestUpdateUserEmail(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	email := getTestEmail(t)
+	user, err := Create(testDB, email, "password")
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
 
-	if updated.Email == email {
-		testutil.FatalMsg(t, "UpdateEmail did not change emails!")
+	newEmail := getTestEmail(t)
+	updated, err := user.Update(testDB, UpdateOptions{UpdateEmail: true, NewEmail: newEmail})
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to set email %s: %+v", newEmail, err)
+	}
+	if updated.Email != newEmail {
+		testutil.FatalMsgf(t, "Got unexpected result after updating email: %+v", user)
+	}
+}
+
+func TestUpdateUserFirstName(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	email := getTestEmail(t)
+	user, err := Create(testDB, email, "password")
+	if err != nil {
+		testutil.FatalMsg(t, err)
 	}
 
-	if updated.Email != newEmail {
-		testutil.FatalMsgf(t,
-			"UpdateEmail did not change to expected result! Expected %s, got %s",
-			newEmail, updated.Email)
+	updated, err := user.Update(testDB, UpdateOptions{SetLastName: true, NewLastName: "NewLastName"})
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to set last name: %+v", err)
 	}
+	if updated.Lastname == nil || *updated.Lastname != "NewLastName" {
+		testutil.FatalMsgf(t, "Got unexpected result after updating last name: %+v", updated)
+	}
+	removed, err := user.Update(testDB, UpdateOptions{RemoveLastName: true})
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to remove last name: %+v", err)
+	}
+	if removed.Lastname != nil {
+		testutil.FatalMsgf(t, "Didn't unset last name: %+v", removed)
+	}
+}
+
+func TestUpdateUserLastName(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	email := getTestEmail(t)
+	user, err := Create(testDB, email, "password")
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	updated, err := user.Update(testDB, UpdateOptions{SetFirstName: true, NewFirstName: "NewFirstName"})
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to set first name: %+v", err)
+	}
+	if updated.Firstname == nil || *updated.Firstname != "NewFirstName" {
+		testutil.FatalMsgf(t, "Got unexpected result after updating first name: %+v", user)
+	}
+	removed, err := user.Update(testDB, UpdateOptions{RemoveFirstName: true})
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to remove first name: %+v", err)
+	}
+	if removed.Firstname != nil {
+		testutil.FatalMsgf(t, "Didn't unset first name: %+v", removed)
+	}
+
 }
 
 func TestFailToUpdateNonExistingUser(t *testing.T) {
@@ -69,9 +164,9 @@ func TestFailToUpdateNonExistingUser(t *testing.T) {
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
 	user := User{ID: 99999}
-	_, err := user.UpdateEmail(testDB, email)
+	_, err := user.Update(testDB, UpdateOptions{UpdateEmail: true, NewEmail: email})
 
-	if err == nil {
+	if err == nil || !strings.Contains(err.Error(), "did not find user") {
 		testutil.FatalMsg(t, "Was able to update email of non existant user!")
 	}
 }
@@ -350,7 +445,7 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 	}
 
 	decreased, err := DecreaseBalance(tx, test.dec)
-	if !strings.Contains(err.Error(), "less than or equal to 0") {
+	if err != nil && !strings.Contains(err.Error(), "less than or equal to 0") {
 		testutil.FatalMsgf(
 			t,
 			"Decreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v",
@@ -553,7 +648,7 @@ func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
 
 	tx := testDB.MustBegin()
 	user, err := IncreaseBalance(tx, ChangeBalance{UserID: u.ID, AmountSat: -300})
-	if !strings.Contains(err.Error(), "less than or equal to 0") {
+	if err != nil && !strings.Contains(err.Error(), "less than or equal to 0") {
 		testutil.FatalMsgf(
 			t,
 			"Increasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v",

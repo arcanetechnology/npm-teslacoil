@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +31,16 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
+// converts the given map to JSON, and then encodes it
+// as a buffer
+func mapToJSON(values map[string]string) *bytes.Buffer {
+	res, err := json.Marshal(values)
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't convert %s to JSON", values))
+	}
+	return bytes.NewBuffer(res)
+}
+
 func TestPutUserRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
@@ -40,41 +51,49 @@ func TestPutUserRoute(t *testing.T) {
 	}
 
 	createUserRes := httptest.NewRecorder()
-
-	createUserBody, _ := json.Marshal(
-		map[string]string{"email": "foobar", "password": "barfoo"})
 	createUserRequest, _ := http.NewRequest(
-		"POST", "/users", bytes.NewBuffer(createUserBody))
-	app.Router.ServeHTTP(createUserRes, createUserRequest)
-
-	loginUserBody, _ := json.Marshal(
-		map[string]string{
+		"POST", "/users",
+		mapToJSON(map[string]string{
 			"email":    "foobar",
 			"password": "barfoo",
-		},
-	)
+		}))
+	app.Router.ServeHTTP(createUserRes, createUserRequest)
+
 	loginUserRes := httptest.NewRecorder()
 	loginUserReq := httptest.NewRequest(
-		"POST", "/login", bytes.NewBuffer(loginUserBody))
+		"POST", "/login",
+		mapToJSON(map[string]string{
+			"email":    "foobar",
+			"password": "barfoo",
+		}))
 	app.Router.ServeHTTP(loginUserRes, loginUserReq)
+
 	marshalledLoginRes := LoginResponse{}
 	_ = json.Unmarshal(loginUserRes.Body.Bytes(), &marshalledLoginRes)
 
-	updateUserBody, _ := json.Marshal(
-		map[string]string{"email": "new-email"},
-	)
+	updateUserReqBody := map[string]string{
+		"firstName": "new-firstname",
+		"lastName":  "new-lastname",
+		"email":     "new-email",
+	}
 	updateUserRes := httptest.NewRecorder()
-	updateUserReq, _ := http.NewRequest("PUT", "/user", bytes.NewBuffer(updateUserBody))
+	updateUserReq, _ := http.NewRequest("PUT", "/user",
+		mapToJSON(updateUserReqBody),
+	)
 	updateUserReq.Header.Set("Authorization", marshalledLoginRes.AccessToken)
 
 	app.Router.ServeHTTP(updateUserRes, updateUserReq)
 
 	marshalledUpdateRes := UserResponse{}
 	_ = json.Unmarshal(updateUserRes.Body.Bytes(), &marshalledUpdateRes)
-	if marshalledUpdateRes.Email != "new-email" {
+	if marshalledUpdateRes.Email != "new-email" ||
+		marshalledUpdateRes.Firstname == nil ||
+		*marshalledUpdateRes.Firstname != "new-firstname" ||
+		marshalledUpdateRes.Lastname == nil ||
+		*marshalledUpdateRes.Lastname != "new-lastname" {
 		testutil.FatalMsgf(t,
-			"PUT /user did not update email! Expected: new-email, got: %v",
-			marshalledLoginRes.Email)
+			"PUT /user did not update user! Expected: %+v, got: %+v",
+			updateUserReqBody, marshalledLoginRes)
 	}
 
 }

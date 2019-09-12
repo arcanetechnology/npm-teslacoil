@@ -2,6 +2,7 @@ package users
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -146,6 +147,7 @@ func Create(d *db.DB, email, password string) (User, error) {
 // and placing the arguments in the wrong order leads to increasing the wrong
 // users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
+	var deferredError error = nil
 	if cb.AmountSat <= 0 {
 		return User{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
@@ -162,7 +164,9 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			"IncreaseBalance(): could not construct user update",
 		)
 	}
-	defer rows.Close()
+	defer func() {
+		deferredError = rows.Close()
+	}()
 
 	user := User{}
 	if rows.Next() {
@@ -179,7 +183,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 		}
 	}
 
-	return user, nil
+	return user, deferredError
 }
 
 // DecreaseBalance decreases the balance of user id x by y satoshis
@@ -190,8 +194,8 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	}
 
 	updateBalanceQuery := `UPDATE users
-		SET balance = balance - $1
-		WHERE id = $2
+		SET balance = balance - $1  
+		WHERE id = $2 
 		RETURNING id, email, balance, updated_at, first_name, last_name`
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
@@ -201,7 +205,6 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			"DecreaseBalance(): could not construct user update",
 		)
 	}
-	defer rows.Close()
 
 	user := User{}
 	if rows.Next() {
@@ -216,6 +219,9 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
 		}
+	}
+	if err = rows.Close(); err != nil {
+		return user, err
 	}
 
 	return user, nil
@@ -242,9 +248,11 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
-		(email, balance, hashed_password)
-		VALUES (:email, 0, :hashed_password)
+		(email, balance, hashed_password, first_name, last_name)
+		VALUES (:email, 0, :hashed_password, :first_name, :last_name)
 		RETURNING id, email, balance, updated_at, first_name, last_name`
+
+	log.Debugf("Executing query for creating user (%s): %s", user, userCreateQuery)
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
@@ -266,30 +274,97 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 		}
 	}
 
-	rows.Close()
+	if err = rows.Close(); err != nil {
+		return userResp, err
+	}
 	return userResp, nil
 }
 
-// UpdateEmail updates the users email
-func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
+// UpdateUserOptions represents the different actions `UpdateUser` can perform.
+type UpdateOptions struct {
+	RemoveFirstName bool
+	SetFirstName    bool
+	NewFirstName    string
+
+	RemoveLastName bool
+	SetLastName    bool
+	NewLastName    string
+
+	UpdateEmail bool
+	NewEmail    string
+}
+
+// Update the users email, first name and last name, depending on
+// what options we get passed in
+func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 	var out User
 	if u.ID == 0 {
 		return out, errors.New("User ID cannot be 0!")
 	}
 
-	queryUser := User{
-		ID:    u.ID,
-		Email: email,
+	if opts.RemoveFirstName && opts.SetFirstName {
+		return out, errors.New("cannot both set and remove first name")
 	}
 
+	if opts.RemoveLastName && opts.SetLastName {
+		return out, errors.New("cannot both set and remove last name")
+	}
+
+	if opts.SetFirstName && opts.NewFirstName == "" {
+		return out, errors.New("no new first name provided")
+	}
+
+	if opts.SetLastName && opts.NewLastName == "" {
+		return out, errors.New("no new last name provided")
+	}
+
+	if opts.UpdateEmail && opts.NewEmail == "" {
+		return out, errors.New("no new email provided")
+	}
+
+	// no action needed
+	if !(opts.UpdateEmail ||
+		opts.SetLastName || opts.SetFirstName ||
+		opts.RemoveLastName || opts.RemoveFirstName) {
+		return out, nil
+	}
+
+	updateQuery := `UPDATE users SET `
+	updates := []string{}
+	queryUser := User{
+		ID: u.ID,
+	}
+
+	if opts.UpdateEmail {
+		updates = append(updates, "email = :email")
+		queryUser.Email = opts.NewEmail
+	}
+	if opts.SetFirstName {
+		updates = append(updates, "first_name = :first_name")
+		queryUser.Firstname = &opts.NewFirstName
+	}
+	if opts.RemoveFirstName {
+		updates = append(updates, "first_name = NULL")
+	}
+	if opts.SetLastName {
+		updates = append(updates, "last_name = :last_name")
+		queryUser.Lastname = &opts.NewLastName
+	}
+	if opts.RemoveLastName {
+		updates = append(updates, "last_name = NULL")
+	}
+
+	updateQuery += strings.Join(updates, ",")
+	updateQuery += ` WHERE id = :id RETURNING id, email, first_name, last_name, balance`
+	log.Debugf("Executing SQL for updating user: %s with opts %+v", updateQuery, opts)
+
 	rows, err := db.NamedQuery(
-		`UPDATE users SET email = :email WHERE id = :id 
-		RETURNING id, email, first_name, last_name, balance`,
-		queryUser,
+		updateQuery,
+		&queryUser,
 	)
 
 	if err != nil {
-		return out, errors.Wrap(err, "could not update email")
+		return out, errors.Wrap(err, "could not update user")
 	}
 
 	if err = rows.Err(); err != nil {
@@ -311,7 +386,9 @@ func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
 		return out, errors.Wrap(err, msg)
 	}
 
-	rows.Close()
+	if err = rows.Close(); err != nil {
+		return out, err
+	}
 	return out, nil
 
 }
