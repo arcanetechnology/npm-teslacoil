@@ -1,6 +1,9 @@
 package build
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,4 +21,26 @@ func init() {
 // SetLogLevel sets the log level for the whole application
 func SetLogLevel(logLevel logrus.Level) {
 	Log.SetLevel(logLevel)
+}
+
+// ToLogLevel takes in a string and converts it to a Logrus log level
+func ToLogLevel(s string) (logrus.Level, error) {
+	switch strings.ToLower(s) {
+	case "trace":
+		return logrus.TraceLevel, nil
+	case "debug":
+		return logrus.DebugLevel, nil
+	case "info":
+		return logrus.InfoLevel, nil
+	case "warn":
+		return logrus.WarnLevel, nil
+	case "error":
+		return logrus.ErrorLevel, nil
+	case "fatal":
+		return logrus.FatalLevel, nil
+	case "panic":
+		return logrus.FatalLevel, nil
+	default:
+		return logrus.InfoLevel, fmt.Errorf("%s is not a valid log level", s)
+	}
 }

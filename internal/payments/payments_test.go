@@ -573,7 +573,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				}
 				t.Logf("\t%s\tshould be able to CreateInvoice%s", succeed, reset)
 
-				payment, err := UpdateInvoiceStatus(tt.triggerInvoice, testDB)
+				payment, err := UpdateInvoiceStatus(&tt.triggerInvoice, testDB)
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to UpdateInvoiceStatus. Error:  %+v\n%s",

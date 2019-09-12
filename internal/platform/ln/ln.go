@@ -226,7 +226,7 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 }
 
 // ListenInvoices subscribes to lnd invoices
-func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) {
+func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
 	invoiceSubDetails := &lnrpc.InvoiceSubscription{}
 
 	invoiceClient, err := lncli.SubscribeInvoices(
@@ -247,7 +247,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan lnrpc.Invoice) {
 		log.Infof("invoice %s with hash %s was updated",
 			invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
 
-		msgCh <- invoice
+		msgCh <- &invoice
 	}
 }
 

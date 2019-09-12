@@ -22,17 +22,19 @@ var (
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.InfoLevel)
 	testDB = testutil.InitDatabase(databaseConfig)
-	defer testDB.Close()
 
 	result := m.Run()
+	if err := testDB.Close(); err != nil {
+		panic(err.Error())
+	}
 	os.Exit(result)
 }
 
 func TestPutUserRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
-	conf := Config{LightningConfig: testutil.GetLightingConfig()}
-	app, err := NewApp(testDB, conf)
+	conf := Config{LogLevel: logrus.InfoLevel}
+	app, err := NewApp(testDB, testutil.GetLightningMockClient(), conf)
 	if err != nil {
 		testutil.FatalMsgf(t, "Could not initialize app: %v", err)
 	}

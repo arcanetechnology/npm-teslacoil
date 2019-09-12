@@ -47,7 +47,7 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
 			return err
 		}
 
-		log.Debug("Generated user %+v", user)
+		log.Debugf("Generated user %+v", user)
 		err = createPaymentsForUser(d, lncli, user)
 		if err != nil {
 			return err

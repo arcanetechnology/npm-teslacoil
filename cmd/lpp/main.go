@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
@@ -67,19 +68,31 @@ var (
 				return err
 			}
 
-			config := api.Config{
-				LightningConfig: ln.LightningConfig{
-					LndDir:       c.GlobalString("lnddir"),
-					TLSCertPath:  c.GlobalString("tlscertpath"),
-					MacaroonPath: c.GlobalString("macaroonpath"),
-					Network:      c.GlobalString("network"),
-					RPCServer:    c.GlobalString("lndrpcserver"),
-				},
+			defer func() { err = database.Close() }()
 
-				DebugLevel: c.GlobalString("debuglevel"),
+			lnConfig := ln.LightningConfig{
+				LndDir:       c.GlobalString("lnddir"),
+				TLSCertPath:  c.GlobalString("tlscertpath"),
+				MacaroonPath: c.GlobalString("macaroonpath"),
+				Network:      c.GlobalString("network"),
+				RPCServer:    c.GlobalString("lndrpcserver"),
 			}
-			defer database.Close()
-			a, err := api.NewApp(database, config)
+
+			level, err := build.ToLogLevel(c.GlobalString("loglevel"))
+			if err != nil {
+				log.Fatal(err)
+				return err
+			}
+			config := api.Config{
+				LogLevel: level,
+			}
+
+			lncli, err := ln.NewLNDClient(lnConfig)
+			if err != nil {
+				log.Fatal(err)
+				return err
+			}
+			a, err := api.NewApp(database, lncli, config)
 			if err != nil {
 				log.Fatal(err)
 				return err
@@ -87,10 +100,8 @@ var (
 
 			address := ":" + c.String("port")
 			err = a.Router.Run(address)
-			if err != nil {
-				return err
-			}
-			return nil
+
+			return err
 		},
 
 		Flags: []cli.Flag{
@@ -121,13 +132,15 @@ var (
 					if err != nil {
 						return err
 					}
-					defer database.Close()
+					defer func() { err = database.Close() }()
 					steps, err := strconv.Atoi(c.Args().First())
 					if err != nil {
 						return err
 					}
-					return database.MigrateDown(
+					err = database.MigrateDown(
 						path.Join("file://", db.MigrationsPath), steps)
+
+					return err
 				},
 			},
 			{
@@ -139,10 +152,11 @@ var (
 					if err != nil {
 						return err
 					}
-					defer database.Close()
+					defer func() { err = database.Close() }()
 
-					return database.MigrateUp(
+					err = database.MigrateUp(
 						path.Join("file://", db.MigrationsPath))
+					return err
 				},
 			}, {
 				Name:    "status",
@@ -153,10 +167,11 @@ var (
 					if err != nil {
 						return err
 					}
-					defer database.Close()
+					defer func() { err = database.Close() }()
 
-					return database.MigrationStatus(
+					err = database.MigrationStatus(
 						path.Join("file://", db.MigrationsPath))
+					return err
 				},
 			}, {
 				Name:    "newmigration",
@@ -168,7 +183,7 @@ var (
 					if migrationText == "" {
 						// What's the best way of handling this error? This way
 						// doesn't lead to pretty console output
-						return errors.New("You must provide a file name for the migration!")
+						return errors.New("you must provide a file name for the migration")
 					}
 
 					return db.CreateMigration(db.MigrationsPath, migrationText)
@@ -182,16 +197,16 @@ var (
 					if err != nil {
 						return err
 					}
-					defer database.Close()
+					defer func() { err = database.Close() }()
 
 					fmt.Println(
 						"Are you sure you want to drop the entire database? y/n")
 					if askForConfirmation() {
-						return database.Drop(
+						err = database.Drop(
 							path.Join("file://", db.MigrationsPath))
 					}
 
-					return nil
+					return err
 				},
 			},
 			{
@@ -203,7 +218,7 @@ var (
 					if err != nil {
 						return err
 					}
-					defer database.Close()
+					defer func() { err = database.Close() }()
 					fmt.Println("Are you sure you want to fill dummy data? y/n")
 					if askForConfirmation() {
 						lnConfig := ln.LightningConfig{
@@ -217,9 +232,9 @@ var (
 						if err != nil {
 							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
 						}
-						return FillWithDummyData(database, lncli)
+						err = FillWithDummyData(database, lncli)
 					}
-					return nil
+					return err
 				},
 			},
 		},
@@ -294,9 +309,9 @@ func main() {
 			Usage: "host:port of ln daemon",
 		},
 		cli.StringFlag{
-			Name:  "debuglevel",
+			Name:  "loglevel",
 			Value: defaultLoggingLevel,
-			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, critical}",
+			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, fatal, panic}",
 		},
 	}
 
