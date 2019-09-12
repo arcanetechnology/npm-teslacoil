@@ -9,9 +9,11 @@ import (
 
 // UserResponse is the type returned by the api to the front-end
 type UserResponse struct {
-	ID      int    `json:"id"`
-	Email   string `json:"email"`
-	Balance int64  `json:"balance"`
+	ID        int     `json:"id"`
+	Email     string  `json:"email"`
+	Balance   int64   `json:"balance"`
+	Firstname *string `json:"firstName,omitempty"`
+	Lastname  *string `json:"lastName,omitempty"`
 }
 
 // CreateUserRequest is the expected type to create a new user
@@ -58,10 +60,14 @@ var (
 	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
 )
 
+// UpdateUser takes in a JSON body with three optional fields (email, firstname,
+// lastname), and updates the user in the header JWT accordingly
 func (r *RestServer) UpdateUser() gin.HandlerFunc {
 
 	type UpdateUserRequest struct {
-		Email string
+		Email     *string `json:"email"`
+		FirstName *string `json:"firstName"`
+		LastName  *string `json:"lastName"`
 	}
 
 	return func(c *gin.Context) {
@@ -77,24 +83,41 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
+		// TODO debug
+		log.Infof("Got update user request: %+v", request)
+
 		user, err := users.GetByID(r.db, claims.UserID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
-		updated, err := user.UpdateEmail(r.db, request.Email)
+		opts := users.UpdateOptions{}
+		if request.Email != nil {
+			opts.NewEmail = request.Email
+		}
+		if request.FirstName != nil {
+			opts.NewFirstName = request.FirstName
+		}
+		if request.LastName != nil {
+			opts.NewLastName = request.LastName
+		}
+		updated, err := user.Update(r.db, opts)
 		if err != nil {
-			log.Errorf("Could not update user email: %v", err)
+			log.Errorf("Could not update user: %v", err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
 		response := UserResponse{
-			ID:      updated.ID,
-			Email:   updated.Email,
-			Balance: updated.Balance,
+			ID:        updated.ID,
+			Email:     updated.Email,
+			Balance:   updated.Balance,
+			Firstname: updated.Firstname,
+			Lastname:  updated.Lastname,
 		}
+
+		log.Infof("Update user result: %+v", response)
 
 		c.JSONP(http.StatusOK, response)
 

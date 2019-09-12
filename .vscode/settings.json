@@ -1,7 +1,8 @@
 {
   "files.associations": {
     ".envrc": "ini",
-    ".envrc-example": "ini"
+    ".envrc-example": "ini",
+    "*.pgsql": "sql"
   },
   "go.lintTool": "golangci-lint",
   "go.lintFlags": ["--fast"]

@@ -40,41 +40,51 @@ func TestPutUserRoute(t *testing.T) {
 	}
 
 	createUserRes := httptest.NewRecorder()
-
-	createUserBody, _ := json.Marshal(
-		map[string]string{"email": "foobar", "password": "barfoo"})
 	createUserRequest, _ := http.NewRequest(
-		"POST", "/users", bytes.NewBuffer(createUserBody))
+		"POST", "/users",
+		bytes.NewBuffer([]byte(`{ "email": "foobar", "password": "barfoo" }`)))
 	app.Router.ServeHTTP(createUserRes, createUserRequest)
 
-	loginUserBody, _ := json.Marshal(
-		map[string]string{
-			"email":    "foobar",
-			"password": "barfoo",
-		},
-	)
 	loginUserRes := httptest.NewRecorder()
 	loginUserReq := httptest.NewRequest(
-		"POST", "/login", bytes.NewBuffer(loginUserBody))
+		"POST", "/login",
+		bytes.NewBuffer([]byte(
+			`{
+			"email":    "foobar",
+			"password": "barfoo"
+			}`,
+		)))
 	app.Router.ServeHTTP(loginUserRes, loginUserReq)
+	if loginUserRes.Code != 200 {
+		testutil.FatalMsgf(t, "Got failure code when logging in: %d", loginUserRes.Code)
+	}
+
 	marshalledLoginRes := LoginResponse{}
 	_ = json.Unmarshal(loginUserRes.Body.Bytes(), &marshalledLoginRes)
 
-	updateUserBody, _ := json.Marshal(
-		map[string]string{"email": "new-email"},
-	)
+	jsonBody := `{
+		"firstName": "new-firstname",
+		"lastName":  "new-lastname",
+		"email":     "new-email"
+	}`
 	updateUserRes := httptest.NewRecorder()
-	updateUserReq, _ := http.NewRequest("PUT", "/user", bytes.NewBuffer(updateUserBody))
+	updateUserReq, _ := http.NewRequest("PUT", "/user",
+		bytes.NewBuffer([]byte(jsonBody)))
+
 	updateUserReq.Header.Set("Authorization", marshalledLoginRes.AccessToken)
 
 	app.Router.ServeHTTP(updateUserRes, updateUserReq)
 
 	marshalledUpdateRes := UserResponse{}
 	_ = json.Unmarshal(updateUserRes.Body.Bytes(), &marshalledUpdateRes)
-	if marshalledUpdateRes.Email != "new-email" {
+	if marshalledUpdateRes.Email != "new-email" ||
+		marshalledUpdateRes.Firstname == nil ||
+		*marshalledUpdateRes.Firstname != "new-firstname" ||
+		marshalledUpdateRes.Lastname == nil ||
+		*marshalledUpdateRes.Lastname != "new-lastname" {
 		testutil.FatalMsgf(t,
-			"PUT /user did not update email! Expected: new-email, got: %v",
-			marshalledLoginRes.Email)
+			"PUT /user did not update user! Got: %+v",
+			string(updateUserRes.Body.Bytes()))
 	}
 
 }

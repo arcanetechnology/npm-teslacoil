@@ -2,6 +2,7 @@ package users
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -21,6 +22,8 @@ type User struct {
 	ID             int        `db:"id"`
 	Email          string     `db:"email"`
 	Balance        int64      `db:"balance"`
+	Firstname      *string    `db:"first_name"`
+	Lastname       *string    `db:"last_name"`
 	HashedPassword []byte     `db:"hashed_password" json:"-"`
 	CreatedAt      time.Time  `db:"created_at"`
 	UpdatedAt      time.Time  `db:"updated_at"`
@@ -53,7 +56,8 @@ func GetAll(d *db.DB) ([]User, error) {
 // in the body
 func GetByID(d *db.DB, id int) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+	uQuery := fmt.Sprintf(`SELECT 
+		id, email, balance, updated_at, first_name, last_name
 		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
@@ -67,7 +71,8 @@ func GetByID(d *db.DB, id int) (User, error) {
 // in the body
 func GetByEmail(d *db.DB, email string) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT id, email, balance, updated_at
+	uQuery := fmt.Sprintf(`SELECT 
+		id, email, balance, updated_at, first_name, last_name
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
@@ -83,7 +88,9 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	User, error) {
 
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT id, email, balance, hashed_password, updated_at
+	uQuery := fmt.Sprintf(`SELECT 
+		id, email, balance, hashed_password, updated_at, first_name, 
+		last_name
 		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
@@ -140,6 +147,7 @@ func Create(d *db.DB, email, password string) (User, error) {
 // and placing the arguments in the wrong order leads to increasing the wrong
 // users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
+	var deferredError error
 	if cb.AmountSat <= 0 {
 		return User{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
@@ -147,7 +155,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	updateBalanceQuery := `UPDATE users
 		SET balance = balance + $1
 		WHERE id = $2
-		RETURNING id, email, balance, updated_at`
+		RETURNING id, email, balance, updated_at, first_name, last_name`
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
@@ -156,7 +164,7 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			"IncreaseBalance(): could not construct user update",
 		)
 	}
-	defer rows.Close()
+	defer func() { deferredError = rows.Close() }()
 
 	user := User{}
 	if rows.Next() {
@@ -165,13 +173,15 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			&user.Email,
 			&user.Balance,
 			&user.UpdatedAt,
+			&user.Firstname,
+			&user.Lastname,
 		); err != nil {
 			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
 		}
 	}
 
-	return user, nil
+	return user, deferredError
 }
 
 // DecreaseBalance decreases the balance of user id x by y satoshis
@@ -182,9 +192,9 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	}
 
 	updateBalanceQuery := `UPDATE users
-		SET balance = balance - $1
-		WHERE id = $2
-		RETURNING id, email, balance, updated_at`
+		SET balance = balance - $1  
+		WHERE id = $2 
+		RETURNING id, email, balance, updated_at, first_name, last_name`
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
@@ -193,7 +203,6 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			"DecreaseBalance(): could not construct user update",
 		)
 	}
-	defer rows.Close()
 
 	user := User{}
 	if rows.Next() {
@@ -202,10 +211,15 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			&user.Email,
 			&user.Balance,
 			&user.UpdatedAt,
+			&user.Firstname,
+			&user.Lastname,
 		); err != nil {
 			return User{}, errors.Wrap(
 				err, "Could not scan user returned from db")
 		}
+	}
+	if err = rows.Close(); err != nil {
+		return user, err
 	}
 
 	return user, nil
@@ -232,9 +246,11 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
-		(email, balance, hashed_password)
-		VALUES (:email, 0, :hashed_password)
-		RETURNING id, email, balance, updated_at`
+		(email, balance, hashed_password, first_name, last_name)
+		VALUES (:email, 0, :hashed_password, :first_name, :last_name)
+		RETURNING id, email, balance, updated_at, first_name, last_name`
+
+	log.Debugf("Executing query for creating user (%s): %s", user, userCreateQuery)
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
@@ -245,37 +261,93 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 
 	userResp := User{}
 	if rows.Next() {
-		if err = rows.Scan(&userResp.ID,
+		if err = rows.Scan(
+			&userResp.ID,
 			&userResp.Email,
 			&userResp.Balance,
-			&userResp.UpdatedAt); err != nil {
+			&userResp.UpdatedAt,
+			&userResp.Firstname,
+			&userResp.Lastname); err != nil {
 			return User{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
 		}
 	}
 
-	rows.Close()
+	if err = rows.Close(); err != nil {
+		return userResp, err
+	}
 	return userResp, nil
 }
 
-// UpdateEmail updates the users email
-func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
+// UpdateUserOptions represents the different actions `UpdateUser` can perform.
+type UpdateOptions struct {
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// firstName
+	NewFirstName *string
+
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// lastName
+	NewLastName *string
+
+	// If set to nil, does nothing, if set to the empty string, we return
+	// an error
+	NewEmail *string
+}
+
+// Update the users email, first name and last name, depending on
+// what options we get passed in
+func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 	var out User
 	if u.ID == 0 {
 		return out, errors.New("User ID cannot be 0!")
 	}
 
-	queryUser := User{
-		ID:    u.ID,
-		Email: email,
+	// no action needed
+	if opts.NewFirstName == nil &&
+		opts.NewLastName == nil && opts.NewEmail == nil {
+		return out, errors.New("no actions given in UpdateOptions")
 	}
 
+	updateQuery := `UPDATE users SET `
+	updates := []string{}
+	queryUser := User{
+		ID: u.ID,
+	}
+
+	if opts.NewEmail != nil {
+		if *opts.NewEmail == "" {
+			return out, errors.New("cannot delete email")
+		}
+		updates = append(updates, "email = :email")
+		queryUser.Email = *opts.NewEmail
+	}
+	if opts.NewFirstName != nil {
+		if *opts.NewFirstName == "" {
+			updates = append(updates, "first_name = NULL")
+		} else {
+			updates = append(updates, "first_name = :first_name")
+		}
+		queryUser.Firstname = opts.NewFirstName
+	}
+	if opts.NewLastName != nil {
+		if *opts.NewLastName == "" {
+			updates = append(updates, "last_name = NULL")
+		} else {
+			updates = append(updates, "last_name = :last_name")
+		}
+		queryUser.Lastname = opts.NewLastName
+	}
+
+	updateQuery += strings.Join(updates, ",")
+	updateQuery += ` WHERE id = :id RETURNING id, email, first_name, last_name, balance`
+	log.Debugf("Executing SQL for updating user: %s with opts %+v", updateQuery, opts)
+
 	rows, err := db.NamedQuery(
-		`UPDATE users SET email = :email WHERE id = :id RETURNING id, email`,
-		queryUser,
+		updateQuery,
+		&queryUser,
 	)
 
 	if err != nil {
-		return out, errors.Wrap(err, "could not update email")
+		return out, errors.Wrap(err, "could not update user")
 	}
 
 	if err = rows.Err(); err != nil {
@@ -286,13 +358,20 @@ func (u User) UpdateEmail(db *db.DB, email string) (User, error) {
 		return out, errors.Errorf("did not find user with ID %d", u.ID)
 	}
 
-	if err = rows.Scan(&out.ID,
-		&out.Email); err != nil {
+	if err = rows.Scan(
+		&out.ID,
+		&out.Email,
+		&out.Firstname,
+		&out.Lastname,
+		&out.Balance,
+	); err != nil {
 		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
 		return out, errors.Wrap(err, msg)
 	}
 
-	rows.Close()
+	if err = rows.Close(); err != nil {
+		return out, err
+	}
 	return out, nil
 
 }
@@ -301,6 +380,16 @@ func (u User) String() string {
 	str := fmt.Sprintf("ID: %d\n", u.ID)
 	str += fmt.Sprintf("Email: %s\n", u.Email)
 	str += fmt.Sprintf("Balance: %d\n", u.Balance)
+	if u.Firstname != nil {
+		str += fmt.Sprintf("Firstname: %s\n", *u.Firstname)
+	} else {
+		str += fmt.Sprintln("Firstname: <nil>")
+	}
+	if u.Lastname != nil {
+		str += fmt.Sprintf("Lastname: %d\n", u.Lastname)
+	} else {
+		str += fmt.Sprintln("Firstname: <nil>")
+	}
 	str += fmt.Sprintf("HashedPassword: %v\n", u.HashedPassword)
 	str += fmt.Sprintf("CreatedAt: %v\n", u.CreatedAt)
 	str += fmt.Sprintf("UpdatedAt: %v\n", u.UpdatedAt)
