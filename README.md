@@ -80,6 +80,19 @@ docker-compose logs alice # just alice
 docker-compose logs -f bob #  trail bobs logs
 ```
 
+It's also possible to view Postgres logs of executed SQL statements. These reside
+in `/var/log/postgresql/postgres.log`. Some examples on how to view them: 
+
+```bash
+# simple log trailing
+docker exec -it postgres tail -f /var/log/postgresql/postgres.log
+
+# dump it to file, so you can inspect it with your favorite tool
+# this streams data to pgdump.log in your current directory until 
+# you do <CTRL+C>
+docker exec -it postgres tail -f /var/log/postgresql/postgres.log > pgdump.log
+```
+
 ### Winding cluster down
 
 Winding cluster down:
