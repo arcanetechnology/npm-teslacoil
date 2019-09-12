@@ -11,6 +11,6 @@ complete -c lpp -l tlscertpath -r
 complete -c lpp -l macaroonpath -r
 complete -c lpp -l network -r -x -a "mainnet testnet regtest simnet"
 complete -c lpp -l lndrpcserver -x
-complete -c lpp -l debuglevel -r -x -a "trace debug info warn error critical off"
+complete -c lpp -l loglevel -r -x -a "trace debug info warn error fatal critical"
 complete -c lpp -l help -s h -f
 complete -c lpp -l version -s v -f

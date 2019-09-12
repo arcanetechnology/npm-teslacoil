@@ -10,16 +10,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 )
 
-// Config is a config
+// Config is the configuration for our API. Currently it just sets the
+// log level.
 type Config struct {
-	LightningConfig ln.LightningConfig
-	DebugLevel      string
+	// LogLevel specifies which level our application is going to log to
+	LogLevel logrus.Level
 }
 
 // RestServer is the rest server for our app. It includes a Router,
@@ -38,7 +41,9 @@ type JWTClaims struct {
 }
 
 //NewApp creates a new app
-func NewApp(d *db.DB, config Config) (RestServer, error) {
+func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, error) {
+	build.SetLogLevel(config.LogLevel)
+
 	g := gin.Default()
 
 	g.Use(cors.New(cors.Config{
@@ -53,19 +58,13 @@ func NewApp(d *db.DB, config Config) (RestServer, error) {
 			"Authorization"},
 	}))
 
-	lncli, err := ln.NewLNDClient(config.LightningConfig)
-	if err != nil {
-		log.Error(err)
-		return RestServer{}, err
-	}
-
 	r := RestServer{
 		Router: g,
 		db:     d,
 		lncli:  &lncli,
 	}
 
-	invoiceUpdatesCh := make(chan lnrpc.Invoice)
+	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
 	go payments.InvoiceStatusListener(invoiceUpdatesCh, d)

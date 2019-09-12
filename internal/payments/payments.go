@@ -378,7 +378,7 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 }
 
 // InvoiceStatusListener is
-func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
+func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 	database *db.DB) {
 
 	for {
@@ -394,8 +394,12 @@ func InvoiceStatusListener(invoiceUpdatesCh chan lnrpc.Invoice,
 // UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
 // (newly added/settled invoices). If received payment was successful, updates
 // the payment stored in our db and increases the users balance
-func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
+func UpdateInvoiceStatus(invoice *lnrpc.Invoice, database *db.DB) (
 	*UserPaymentResponse, error) {
+	// Hmmmmmm
+	if invoice == nil {
+		return nil, nil
+	}
 
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
