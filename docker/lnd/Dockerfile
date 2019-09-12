@@ -55,8 +55,8 @@ RUN if [[ $UNAME = "lnd" ]]; then adduser -u $UID -G $UNAME -D -s /bin/bash $UNA
 # Run as newly created user
 USER $UNAME
 
-# Expose lnd ports (server, rpc).
-EXPOSE 9735 10009
+# Expose lnd ports (server, alice, bob).
+EXPOSE 9735 10009 10010
 
 # Copy the binaries and entrypoint from the builder image.
 COPY --from=builder /go/bin/lncli /bin/

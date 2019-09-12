@@ -117,9 +117,9 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	}
 }
 
-// GetSinglePayment is a GET request that returns users that match the one
+// GetPaymentByID is a GET request that returns users that match the one
 // specified in the body
-func (r *RestServer) GetSinglePayment() gin.HandlerFunc {
+func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {

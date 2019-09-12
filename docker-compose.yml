@@ -1,4 +1,4 @@
-version: "2.2"
+version: '2.2'
 services:
   btc:
     build:
@@ -29,14 +29,14 @@ services:
       - DEBUG
       - MINING_ADDRESS
       - NETWORK
-    entrypoint: ["./start-btcd.sh"]
+    entrypoint: ['./start-btcd.sh']
 
   btcctl:
     extends: btc
     container_name: btcctl
     links:
-      - "btcd:rpcserver"
-    entrypoint: ["./start-btcctl.sh"]
+      - 'btcd:rpcserver'
+    entrypoint: ['./start-btcctl.sh']
 
   lnd:
     build:
@@ -48,7 +48,7 @@ services:
         # prevents us from reading the files we need
         UID: $UID
         GID: $GID
-        LND_VERSION: "0.7.1-beta"
+        LND_VERSION: '0.7.1-beta'
     environment:
       - RPCUSER
       - RPCPASS
@@ -57,27 +57,29 @@ services:
       - DEBUG
     volumes:
       - shared:/rpc
-    entrypoint: ["./start-lnd.sh"]
+    entrypoint: ['./start-lnd.sh']
 
   bob:
     extends: lnd
     container_name: bob
+    ports:
+      - '10010:10009'
     volumes:
       # Map ./.bob to Bobs LND data dir
       - ./docker/.bob:/home/lnd/.lnd
     links:
-      - "btcd:blockchain"
+      - 'btcd:blockchain'
 
   alice:
     extends: lnd
     container_name: alice
     # expose Alice's LND RPC port
     ports:
-      - "10009:10009"
+      - '10009:10009'
     volumes:
       - ./docker/.alice:/home/lnd/.lnd
     links:
-      - "btcd:blockchain"
+      - 'btcd:blockchain'
 
 volumes:
   # shared volume is need to store the btcd rpc certificates and use it within
