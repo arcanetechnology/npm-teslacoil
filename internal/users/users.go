@@ -116,10 +116,18 @@ func Create(d *db.DB, email, password string) (User, error) {
 	tx := d.MustBegin()
 	userResp, err := insertUser(tx, user)
 	if err != nil {
+		txErr := tx.Rollback()
+		if txErr != nil {
+			return User{}, errors.Wrap(txErr, "--> tx.Rollback()")
+		}
 		return User{}, err
 	}
 	err = tx.Commit()
 	if err != nil {
+		txErr := tx.Rollback()
+		if txErr != nil {
+			return User{}, errors.Wrap(txErr, "--> tx.Rollback()")
+		}
 		log.Errorf("Could not commit user creation: %v\n", err)
 		return User{}, err
 	}
