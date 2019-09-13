@@ -88,7 +88,6 @@ func assertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRec
 	response := httptest.NewRecorder()
 	app.Router.ServeHTTP(response, request)
 
-	fmt.Printf("%+v\n", response)
 	if response.Code != 200 {
 		testutil.FailMsgf(t, "Got failure code on path %s", extractMethodAndPath(request))
 	}
@@ -101,10 +100,8 @@ func extractMethodAndPath(req *http.Request) string {
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response
-// can be parsed as JSON, and then performs the given assertion function on the
-// contents of that JSON
-func assertResponseOkWithFunc(t *testing.T, request *http.Request,
-	assert func(map[string]interface{})) {
+// can be parsed as JSON, and then returns the parsed JSON
+func assertResponseOkWithJson(t *testing.T, request *http.Request) map[string]interface{} {
 
 	t.Helper()
 	response := assertResponseOk(t, request)
@@ -116,7 +113,7 @@ func assertResponseOkWithFunc(t *testing.T, request *http.Request,
 			err, stringBody)
 
 	}
-	assert(destination)
+	return destination
 }
 
 // Creates and logs in a user with the given email and password. Returns
@@ -133,25 +130,27 @@ func createAndLoginUser(t *testing.T, email, password string) string {
 		"POST", "/login",
 		stringToBuffer(getLoginBody(email, password)))
 
+	json := assertResponseOkWithJson(t, loginUserReq)
+
+	tokenPath := "accessToken"
+	fail := func() {
+		methodAndPath := extractMethodAndPath(loginUserReq)
+		testutil.FatalMsgf(t, "Returned JSON (%+v) did have string property '%s'. Path: %s",
+			json, tokenPath, methodAndPath)
+	}
+
+	maybeNilToken, ok := json[tokenPath]
+	if !ok {
+		fail()
+	}
+
 	var token string
-	assertResponseOkWithFunc(t, loginUserReq, func(json map[string]interface{}) {
-		tokenPath := "accessToken"
-		fail := func() {
-			methodAndPath := extractMethodAndPath(loginUserReq)
-			testutil.FatalMsgf(t, "Returned JSON (%+v) did have string property '%s'. Path: %s",
-				json, tokenPath, methodAndPath)
-		}
-		maybeNilToken, ok := json[tokenPath]
-		if !ok {
-			fail()
-		}
-		switch untypedToken := maybeNilToken.(type) {
-		case string:
-			token = untypedToken
-		default:
-			fail()
-		}
-	})
+	switch untypedToken := maybeNilToken.(type) {
+	case string:
+		token = untypedToken
+	default:
+		fail()
+	}
 
 	return token
 }
@@ -227,11 +226,11 @@ func TestPostUsersRoute(t *testing.T) {
 			Path:        "/user", Method: "GET",
 		})
 
-	assertResponseOkWithFunc(t, req, func(json map[string]interface{}) {
-		testutil.AssertEqual(t, json["firstName"], nil)
-		testutil.AssertEqual(t, json["lastName"], nil)
-		testutil.AssertEqual(t, json["email"], email)
-	})
+	json := assertResponseOkWithJson(t, req)
+	testutil.AssertEqual(t, json["firstName"], nil)
+	testutil.AssertEqual(t, json["lastName"], nil)
+	testutil.AssertEqual(t, json["email"], email)
+
 }
 
 func TestPutUserRoute(t *testing.T) {
@@ -255,11 +254,10 @@ func TestPutUserRoute(t *testing.T) {
 			Path: "/user", Method: "PUT",
 		})
 
-	assertResponseOkWithFunc(t, updateUserReq, func(json map[string]interface{}) {
-		testutil.AssertEqual(t, json["firstName"], newFirst)
-		testutil.AssertEqual(t, json["lastName"], newLast)
-		testutil.AssertEqual(t, json["email"], newEmail)
-	})
+	json := assertResponseOkWithJson(t, updateUserReq)
+	testutil.AssertEqual(t, json["firstName"], newFirst)
+	testutil.AssertEqual(t, json["lastName"], newLast)
+	testutil.AssertEqual(t, json["email"], newEmail)
 
 	// Get User endpoint
 	getUserReq := getAuthRequest(t,
@@ -269,12 +267,11 @@ func TestPutUserRoute(t *testing.T) {
 		})
 
 	// Verify that update and get returns the same
-	assertResponseOkWithFunc(t, getUserReq, func(json map[string]interface{}) {
-		testutil.AssertMapEquals(t, map[string]interface{}{
-			"firstName": newFirst,
-			"lastName":  newLast,
-			"email":     newEmail,
-		}, json)
-	})
+	json = assertResponseOkWithJson(t, getUserReq)
+	testutil.AssertMapEquals(t, map[string]interface{}{
+		"firstName": newFirst,
+		"lastName":  newLast,
+		"email":     newEmail,
+	}, json)
 
 }
