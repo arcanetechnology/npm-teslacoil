@@ -108,7 +108,7 @@ func assertResponseOkWithJson(t *testing.T, request *http.Request) map[string]in
 	var destination map[string]interface{}
 
 	if err := json.Unmarshal(response.Body.Bytes(), &destination); err != nil {
-		stringBody := string(response.Body.Bytes())
+		stringBody := response.Body.String()
 		testutil.FatalMsgf(t, "%+v. Body: %s ",
 			err, stringBody)
 

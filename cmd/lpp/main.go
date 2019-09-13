@@ -232,7 +232,7 @@ var (
 						if err != nil {
 							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
 						}
-						err = FillWithDummyData(database, lncli)
+						return FillWithDummyData(database, lncli)
 					}
 					return err
 				},
