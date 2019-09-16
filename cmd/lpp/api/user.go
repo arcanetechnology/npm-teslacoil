@@ -32,10 +32,12 @@ type LoginRequest struct {
 
 // LoginResponse includes a jwt-token and the e-mail identifying the user
 type LoginResponse struct {
-	AccessToken string `json:"accessToken"`
-	Email       string `json:"email"`
-	UserID      int    `json:"userId"`
-	Balance     int64  `json:"balance"`
+	AccessToken string  `json:"accessToken"`
+	Email       string  `json:"email"`
+	UserID      int     `json:"userId"`
+	Balance     int64   `json:"balance"`
+	Firstname   *string `json:"firstName"`
+	Lastname    *string `json:"lastName"`
 }
 
 // RefreshTokenResponse is the response from /auth/refresh
@@ -229,6 +231,8 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			Email:       user.Email,
 			AccessToken: tokenString,
 			Balance:     user.Balance,
+			Firstname:   user.Firstname,
+			Lastname:    user.Lastname,
 		}
 		log.Info("LoginResponse: ", res)
 

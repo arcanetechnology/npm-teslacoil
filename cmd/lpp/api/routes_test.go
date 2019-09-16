@@ -13,6 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -88,27 +89,57 @@ func assertResponseOkWithJson(t *testing.T, request *http.Request) map[string]in
 	return destination
 }
 
-// Creates and logs in a user with the given email and password. Returns
-// the access token for this session.
-func createAndLoginUser(t *testing.T, email, password string) string {
+func createUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	if args.Password == "" {
+		testutil.FatalMsg(t, "You forgot to set the password!")
+	}
+
+	if args.Email == "" {
+		testutil.FatalMsg(t, "You forgot to set the email!")
+	}
+
+	var firstName string
+	var lastName string
+	if args.FirstName != nil {
+		firstName = fmt.Sprintf("%q", *args.FirstName)
+	} else {
+		firstName = "null"
+	}
+
+	if args.LastName != nil {
+		lastName = fmt.Sprintf("%q", *args.LastName)
+	} else {
+		lastName = "null"
+	}
+
 	createUserRequest := getRequest(t, RequestArgs{
 		Path:   "/users",
 		Method: "POST",
 		Body: fmt.Sprintf(`{
 			"email": %q,
-			"password": %q
-		}`, email, password),
+			"password": %q,
+			"firstName": %s,
+			"lastName": %s
+		}`, args.Email, args.Password, firstName, lastName),
 	})
 
-	assertResponseOk(t, createUserRequest)
+	return assertResponseOkWithJson(t, createUserRequest)
+}
+
+// Creates and logs in a user with the given email and password. Returns
+// the access token for this session.
+func createAndLoginUser(t *testing.T, args users.CreateUserArgs) string {
+	_ = createUser(t, args)
+
 	loginUserReq := getRequest(t, RequestArgs{
 		Path:   "/login",
 		Method: "POST",
 		Body: fmt.Sprintf(`{
 			"email": %q,
 			"password": %q
-		}`, email, password),
+		}`, args.Email, args.Password),
 	})
+
 	jsonRes := assertResponseOkWithJson(t, loginUserReq)
 
 	tokenPath := "accessToken"
@@ -260,7 +291,10 @@ func TestPostUsersRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	email := gofakeit.Email()
-	accessToken := createAndLoginUser(t, email, "password")
+	accessToken := createAndLoginUser(t, users.CreateUserArgs{
+		Email:    email,
+		Password: "password",
+	})
 
 	req := getAuthRequest(t,
 		AuthRequestArgs{
@@ -272,13 +306,45 @@ func TestPostUsersRoute(t *testing.T) {
 	testutil.AssertEqual(t, jsonRes["firstName"], nil)
 	testutil.AssertEqual(t, jsonRes["lastName"], nil)
 	testutil.AssertEqual(t, jsonRes["email"], email)
+}
 
+func TestPostLoginRoute(t *testing.T) {
+	testutil.DescribeTest(t)
+
+	email := gofakeit.Email()
+	password := "password"
+	first := gofakeit.FirstName()
+	second := gofakeit.LastName()
+
+	_ = createUser(t, users.CreateUserArgs{
+		Email:     email,
+		Password:  password,
+		FirstName: &first,
+		LastName:  &second,
+	})
+
+	req := getRequest(t, RequestArgs{
+		Path:   "/login",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, email, password),
+	})
+	res := assertResponseOkWithJson(t, req)
+	testutil.AssertEqual(t, res["firstName"], first)
+	testutil.AssertEqual(t, res["lastName"], second)
+	testutil.AssertEqual(t, res["email"], email)
+	testutil.AssertEqual(t, res["balance"], 0.0)
 }
 
 func TestPutUserRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
-	accessToken := createAndLoginUser(t, "foobar", "password")
+	accessToken := createAndLoginUser(t, users.CreateUserArgs{
+		Email:    "foobar",
+		Password: "password",
+	})
 
 	newFirst := "new-firstname"
 	newLast := "new-lastname"
