@@ -13,7 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -41,44 +40,6 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-// Returns JSON you can send to create a user
-func getCreateUserBody(email string, password string) string {
-	return fmt.Sprintf(`{ "email": "%s", "password": "%s" }`, email, password)
-}
-
-// returns JSON you can send to login a user
-func getLoginBody(email string, password string) string {
-	return fmt.Sprintf(`{ "email": "%s", "password": "%s" }`, email, password)
-}
-
-// Returns valid JSON you can send to the API to update an user
-func getUpdateUserBody(opts users.UpdateOptions) string {
-	var email string
-	var firstName string
-	var lastName string
-	if opts.NewEmail != nil {
-		email = `"` + *opts.NewEmail + `"`
-	} else {
-		email = "null"
-	}
-	if opts.NewFirstName != nil {
-		firstName = `"` + *opts.NewFirstName + `"`
-	} else {
-		firstName = "null"
-	}
-	if opts.NewLastName != nil {
-		lastName = `"` + *opts.NewLastName + `"`
-	} else {
-		lastName = "null"
-	}
-	return fmt.Sprintf(`{ "email": %s, "firstName": %s, "lastName": %s }`,
-		email, firstName, lastName)
-}
-
-func stringToBuffer(str string) *bytes.Buffer {
-	return bytes.NewBuffer([]byte(str))
-}
-
 // Performs the given request against the API. Asserts that the
 // response completed successfully. Returns the response from the API
 // TODO Assert that if failure, contains reasonably shaped JSON
@@ -89,9 +50,20 @@ func assertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRec
 	app.Router.ServeHTTP(response, request)
 
 	if response.Code != 200 {
-		testutil.FailMsgf(t, "Got failure code on path %s", extractMethodAndPath(request))
+		testutil.FailMsgf(t, "Got failure code (%d) on path %s", response.Code, extractMethodAndPath(request))
 	}
 
+	return response
+}
+
+// TODO Assert that if failure, contains reasonably shaped JSON
+func assertResponseNotOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
+	t.Helper()
+	response := httptest.NewRecorder()
+	app.Router.ServeHTTP(response, request)
+	if response.Code < 300 {
+		testutil.FatalMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
+	}
 	return response
 }
 
@@ -119,27 +91,34 @@ func assertResponseOkWithJson(t *testing.T, request *http.Request) map[string]in
 // Creates and logs in a user with the given email and password. Returns
 // the access token for this session.
 func createAndLoginUser(t *testing.T, email, password string) string {
-	t.Helper()
+	createUserRequest := getRequest(t, RequestArgs{
+		Path:   "/users",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, email, password),
+	})
 
-	createUserRequest, _ := http.NewRequest(
-		"POST", "/users",
-		stringToBuffer(getCreateUserBody(email, password)))
 	assertResponseOk(t, createUserRequest)
-
-	loginUserReq := httptest.NewRequest(
-		"POST", "/login",
-		stringToBuffer(getLoginBody(email, password)))
-
-	json := assertResponseOkWithJson(t, loginUserReq)
+	loginUserReq := getRequest(t, RequestArgs{
+		Path:   "/login",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, email, password),
+	})
+	jsonRes := assertResponseOkWithJson(t, loginUserReq)
 
 	tokenPath := "accessToken"
 	fail := func() {
 		methodAndPath := extractMethodAndPath(loginUserReq)
 		testutil.FatalMsgf(t, "Returned JSON (%+v) did have string property '%s'. Path: %s",
-			json, tokenPath, methodAndPath)
+			jsonRes, tokenPath, methodAndPath)
 	}
 
-	maybeNilToken, ok := json[tokenPath]
+	maybeNilToken, ok := jsonRes[tokenPath]
 	if !ok {
 		fail()
 	}
@@ -214,6 +193,69 @@ func getRequest(t *testing.T, args RequestArgs) *http.Request {
 	return res
 }
 
+func TestCreateUser(t *testing.T) {
+	t.Run("Creating a user must fail without an email", func(t *testing.T) {
+		testutil.DescribeTest(t)
+		req := getRequest(t, RequestArgs{
+			Path: "/users", Method: "POST",
+			Body: `{
+				"password": "foobar"
+			}`,
+		})
+		assertResponseNotOk(t, req)
+
+	})
+
+	t.Run("Creating a user must fail with an empty email", func(t *testing.T) {
+		testutil.DescribeTest(t)
+		req := getRequest(t, RequestArgs{
+			Path: "/users", Method: "POST",
+			Body: `{
+				"password": "foobar",
+				"email": ""
+			}`,
+		})
+		assertResponseNotOk(t, req)
+	})
+
+	t.Run("It should be possible to create a user without any names", func(t *testing.T) {
+		email := gofakeit.Email()
+		testutil.DescribeTest(t)
+		body := RequestArgs{
+			Path: "/users", Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": "foobar",
+				"email": "%s"
+			}`, email),
+		}
+		req := getRequest(t, body)
+		jsonRes := assertResponseOkWithJson(t, req)
+		testutil.AssertEqual(t, jsonRes["email"], email)
+		testutil.AssertEqual(t, jsonRes["firstName"], nil)
+		testutil.AssertEqual(t, jsonRes["lastName"], nil)
+	})
+
+	t.Run("It should be possible to create a user with names", func(t *testing.T) {
+		email := gofakeit.Email()
+		firstName := gofakeit.FirstName()
+		lastName := gofakeit.LastName()
+		testutil.DescribeTest(t)
+		req := getRequest(t, RequestArgs{
+			Path: "/users", Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": "foobar",
+				"email": "%s",
+				"firstName": "%s", 
+				"lastName": "%s"
+			}`, email, firstName, lastName),
+		})
+		jsonRes := assertResponseOkWithJson(t, req)
+		testutil.AssertEqual(t, jsonRes["email"], email)
+		testutil.AssertEqual(t, jsonRes["firstName"], firstName)
+		testutil.AssertEqual(t, jsonRes["lastName"], lastName)
+	})
+}
+
 func TestPostUsersRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
@@ -226,10 +268,10 @@ func TestPostUsersRoute(t *testing.T) {
 			Path:        "/user", Method: "GET",
 		})
 
-	json := assertResponseOkWithJson(t, req)
-	testutil.AssertEqual(t, json["firstName"], nil)
-	testutil.AssertEqual(t, json["lastName"], nil)
-	testutil.AssertEqual(t, json["email"], email)
+	jsonRes := assertResponseOkWithJson(t, req)
+	testutil.AssertEqual(t, jsonRes["firstName"], nil)
+	testutil.AssertEqual(t, jsonRes["lastName"], nil)
+	testutil.AssertEqual(t, jsonRes["email"], email)
 
 }
 
@@ -241,23 +283,23 @@ func TestPutUserRoute(t *testing.T) {
 	newFirst := "new-firstname"
 	newLast := "new-lastname"
 	newEmail := "new-email"
-	jsonBody := getUpdateUserBody(users.UpdateOptions{
-		NewFirstName: &newFirst,
-		NewLastName:  &newLast,
-		NewEmail:     &newEmail,
-	})
 
 	// Update User endpoint
 	updateUserReq := getAuthRequest(t,
 		AuthRequestArgs{
-			AccessToken: accessToken, Body: jsonBody,
-			Path: "/user", Method: "PUT",
-		})
+			AccessToken: accessToken,
+			Path:        "/user", Method: "PUT",
+			Body: fmt.Sprintf(`
+			{
+				"firstName": %q,
+				"lastName": %q,
+				"email": %q
+			}`, newFirst, newLast, newEmail)})
 
-	json := assertResponseOkWithJson(t, updateUserReq)
-	testutil.AssertEqual(t, json["firstName"], newFirst)
-	testutil.AssertEqual(t, json["lastName"], newLast)
-	testutil.AssertEqual(t, json["email"], newEmail)
+	jsonRes := assertResponseOkWithJson(t, updateUserReq)
+	testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
+	testutil.AssertEqual(t, jsonRes["lastName"], newLast)
+	testutil.AssertEqual(t, jsonRes["email"], newEmail)
 
 	// Get User endpoint
 	getUserReq := getAuthRequest(t,
@@ -267,11 +309,9 @@ func TestPutUserRoute(t *testing.T) {
 		})
 
 	// Verify that update and get returns the same
-	json = assertResponseOkWithJson(t, getUserReq)
-	testutil.AssertMapEquals(t, map[string]interface{}{
-		"firstName": newFirst,
-		"lastName":  newLast,
-		"email":     newEmail,
-	}, json)
+	jsonRes = assertResponseOkWithJson(t, getUserReq)
+	testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
+	testutil.AssertEqual(t, jsonRes["lastName"], newLast)
+	testutil.AssertEqual(t, jsonRes["email"], newEmail)
 
 }

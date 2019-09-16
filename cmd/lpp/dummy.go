@@ -22,10 +22,14 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
 	// user does not exist
 	if err != nil {
 		log.Debug("Creating initial user")
-		firstUser, err := users.Create(d,
-			email,
-			pass,
-		)
+		first := gofakeit.FirstName()
+		last := gofakeit.LastName()
+		firstUser, err := users.Create(d, users.CreateUserArgs{
+			Email:     email,
+			Password:  pass,
+			FirstName: &first,
+			LastName:  &last,
+		})
 		if err != nil {
 			return err
 		}
@@ -39,15 +43,28 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
 	userCount := 20
 
 	for u := 1; u <= userCount; u++ {
-		user, err := users.Create(d,
-			gofakeit.Email(),
-			gofakeit.Password(true, true, true, true, true, 32),
-		)
+		var first string
+		var last string
+		if rand.Int()%2 == 0 {
+			first = gofakeit.FirstName()
+		}
+
+		if rand.Int()%2 == 0 {
+			last = gofakeit.LastName()
+		}
+
+		user, err := users.Create(d, users.CreateUserArgs{
+			Email:     gofakeit.Email(),
+			Password:  gofakeit.Password(true, true, true, true, true, 32),
+			FirstName: &first,
+			LastName:  &last,
+		})
 		if err != nil {
 			return err
 		}
 
-		log.Debugf("Generated user %+v", user)
+		log.Warnf("Generated user %+v\n", user)
+
 		err = createPaymentsForUser(d, lncli, user)
 		if err != nil {
 			return err
@@ -78,6 +95,9 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 
 		inv, err := payments.CreateInvoice(db, lncli, user.ID,
 			amountSat, description, memo)
+		if err != nil {
+			return err
+		}
 
 		log.Debugf("Generated invoice for user %d: %v", user.ID, inv)
 
@@ -99,10 +119,6 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			} else {
 				log.Debugf("Updated invoice for user with settled_at %+v", paidAt)
 			}
-		}
-
-		if err != nil {
-			return err
 		}
 	}
 	return nil
