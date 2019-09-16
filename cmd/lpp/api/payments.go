@@ -3,70 +3,22 @@ package api
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
-// PaymentResponse is the generic response for any GET /payment endpoint
-type PaymentResponse struct {
-	ID             int                `json:"id"`
-	UserID         int                `json:"userId"`
-	PaymentRequest string             `json:"paymentRequest"`
-	Preimage       *string            `json:"preimage"`
-	Hash           string             `json:"hash"`
-	CallbackURL    *string            `json:"callbackUrl"`
-	Status         payments.Status    `json:"status"`
-	Memo           *string            `json:"memo,omitempty"`
-	Description    *string            `json:"description,omitempty"`
-	Expiry         int64              `json:"expiry"`
-	Direction      payments.Direction `json:"direction"`
-	AmountSat      int64              `json:"amountSat"`
-	AmountMSat     int64              `json:"amountMSat"`
-	SettledAt      *time.Time         `json:"settledAt"`
-	CreatedAt      time.Time          `json:"createdAt"`
-}
-
 // CreateInvoiceRequest is a deposit
 type CreateInvoiceRequest struct {
-	Memo        *string `json:"memo,omitempty"`
-	Description *string `json:"description,omitempty"`
 	AmountSat   int64   `json:"amountSat"`
+	Description *string `json:"description,omitempty"`
+	Memo        *string `json:"memo,omitempty"`
 }
 
-// PayInvoiceRequest is the required(and optional) fields for initiating a
-// withdrawal
+// PayInvoiceRequest is the required and optional fields for initiating a
+// withdrawal. fields tagged with omitEmpty are optional
 type PayInvoiceRequest struct {
 	PaymentRequest string `json:"paymentRequest"`
-	Description    string `json:"description"`
-	Memo           string `json:"memo"`
-}
-
-func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
-	invResponse := []PaymentResponse{}
-
-	for _, p := range payments {
-		invResponse = append(invResponse, PaymentResponse{
-			ID:             p.ID,
-			UserID:         p.UserID,
-			PaymentRequest: p.PaymentRequest,
-			Preimage:       p.Preimage,
-			Hash:           p.HashedPreimage,
-			Expiry:         p.Expiry,
-			CallbackURL:    p.CallbackURL,
-			Status:         p.Status,
-			Memo:           p.Memo,
-			Description:    p.Description,
-			Direction:      p.Direction,
-			AmountSat:      p.AmountSat,
-			AmountMSat:     p.AmountMSat,
-			SettledAt:      p.SettledAt,
-			CreatedAt:      p.CreatedAt,
-		})
-	}
-
-	return invResponse
 }
 
 // GetAllPayments finds all payments for the given user. Takes two URL
@@ -74,6 +26,7 @@ func convertToPaymentResponse(payments []payments.Payment) []PaymentResponse {
 func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		URLParams := c.Request.URL.Query()
+
 		limitStr := URLParams.Get("limit")
 		offsetStr := URLParams.Get("offset")
 
@@ -102,8 +55,6 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		// TODO: Make sure conversion from int64 to int is always safe and does
-		// not overflow if limit > MAXINT32 {abort} if offset > MAXINT32 {abort}
 		t, err := payments.GetAll(r.db, claim.UserID, int(limit), int(offset))
 		if err != nil {
 			log.Errorf("Couldn't get payments: %v", err)
@@ -112,8 +63,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		json := convertToPaymentResponse(t)
-		c.JSONP(200, json)
+		c.JSONP(200, t)
 	}
 }
 
@@ -145,27 +95,13 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 		}
 
 		log.Infof("found payment %v", t)
+
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, PaymentResponse{
-			ID:             t.ID,
-			UserID:         t.UserID,
-			PaymentRequest: t.PaymentRequest,
-			Preimage:       t.Preimage,
-			Hash:           t.HashedPreimage,
-			Expiry:         t.Expiry,
-			CallbackURL:    t.CallbackURL,
-			Status:         t.Status,
-			Memo:           t.Memo,
-			Description:    t.Description,
-			AmountSat:      t.AmountSat,
-			AmountMSat:     t.AmountMSat,
-			SettledAt:      t.SettledAt,
-			CreatedAt:      t.CreatedAt,
-		})
+		c.JSONP(200, t)
 	}
 }
 
-// CreateInvoice creates a new invoice on behalf of a user
+// CreateInvoice creates a new invoice
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var newInvoice CreateInvoiceRequest
@@ -203,23 +139,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			})
 		}
 
-		// Return as much info as possible
-		c.JSONP(200, &PaymentResponse{
-			ID:             t.ID,
-			UserID:         t.UserID,
-			PaymentRequest: t.PaymentRequest,
-			Hash:           t.HashedPreimage,
-			Preimage:       t.Preimage,
-			CallbackURL:    t.CallbackURL,
-			Status:         t.Status,
-			Memo:           t.Memo,
-			Description:    t.Description,
-			Expiry:         t.Expiry,
-			AmountSat:      t.AmountSat,
-			AmountMSat:     t.AmountMSat,
-			SettledAt:      t.SettledAt,
-			CreatedAt:      t.CreatedAt,
-		})
+		c.JSONP(200, t)
 	}
 }
 
@@ -245,26 +165,13 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
 		t, err := payments.PayInvoice(r.db, *r.lncli, claims.UserID,
-			req.PaymentRequest, req.Description, req.Memo)
+			req.PaymentRequest)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, could not pay invoice"})
 			return
 		}
 
-		// Return as much info as possible
-		c.JSONP(200, &PaymentResponse{
-			ID:             t.Payment.ID,
-			UserID:         t.User.ID,
-			PaymentRequest: t.Payment.PaymentRequest,
-			Preimage:       t.Payment.Preimage,
-			Hash:           t.Payment.HashedPreimage,
-			Expiry:         t.Payment.Expiry,
-			Status:         t.Payment.Status,
-			Memo:           t.Payment.Memo,
-			Description:    t.Payment.Description,
-			AmountSat:      t.Payment.AmountSat,
-			AmountMSat:     t.Payment.AmountMSat,
-		})
+		c.JSONP(200, t)
 	}
 }

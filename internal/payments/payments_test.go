@@ -293,21 +293,16 @@ func TestPayInvoice(t *testing.T) {
 	var amount2 int64 = 2000
 	tests := []struct {
 		paymentRequest string
-		description    string
-		memo           string
 
 		decodePayReq lnrpc.PayReq
 		want         UserPaymentResponse
 	}{
 		{
 			paymentRequest: "SomePaymentRequest1",
-			memo:           firstMemo,
-			description:    description,
 
 			decodePayReq: lnrpc.PayReq{
 				PaymentHash: testutil.SampleHashHex,
 				NumSatoshis: int64(amount1),
-				Description: firstMemo,
 			},
 			want: UserPaymentResponse{
 				Payment: Payment{
@@ -316,8 +311,6 @@ func TestPayInvoice(t *testing.T) {
 					AmountMSat:     amount1 * 1000,
 					Preimage:       &testutil.SamplePreimageHex,
 					HashedPreimage: testutil.SampleHashHex,
-					Memo:           &firstMemo,
-					Description:    &description,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
@@ -329,13 +322,10 @@ func TestPayInvoice(t *testing.T) {
 		},
 		{
 			paymentRequest: "SomePaymentRequest2",
-			memo:           secondMemo,
-			description:    description,
 
 			decodePayReq: lnrpc.PayReq{
 				PaymentHash: testutil.SampleHashHex,
 				NumSatoshis: int64(amount2),
-				Description: secondMemo,
 			},
 			want: UserPaymentResponse{
 				Payment: Payment{
@@ -344,8 +334,6 @@ func TestPayInvoice(t *testing.T) {
 					AmountMSat:     amount2 * 1000,
 					Preimage:       &testutil.SamplePreimageHex,
 					HashedPreimage: testutil.SampleHashHex,
-					Memo:           &secondMemo,
-					Description:    &description,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
@@ -379,7 +367,7 @@ func TestPayInvoice(t *testing.T) {
 					// We need to define what DecodePayReq returns
 				}
 				payment, err := PayInvoice(
-					testDB, &mockLNcli, u.ID, tt.paymentRequest, tt.description, tt.memo)
+					testDB, &mockLNcli, u.ID, tt.paymentRequest)
 				log.Infof("invoice response is %+v", mockLNcli.InvoiceResponse)
 				if user.Balance < tt.want.Payment.AmountSat {
 					if payment.Payment.Status == succeeded || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
@@ -883,13 +871,14 @@ func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 		t.Fail()
 	}
 
-	if (got.Memo != nil && want.Memo == nil) ||
+	if (got.Memo != nil || want.Memo == nil) &&
 		(got.Memo == nil && want.Memo != nil) {
+		testutil.FailMsgf(t, "SLOOPDOOP: %d\n", len(*got.Memo))
 		testutil.FatalMsgf(t, "Memos arent equal. Expected: %v, got: %v",
-			got.Memo, want.Memo)
+			*got.Memo, want.Memo)
 	}
 
-	if *got.Memo != *want.Memo {
+	if got.Memo != nil && want.Memo != nil && *got.Memo != *want.Memo {
 		testutil.FatalMsgf(t, "Memo should be equal to expected Memo. Expected \"%s\" got \"%s\"",
 			*want.Memo, *got.Memo)
 	}
@@ -900,7 +889,7 @@ func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 			got.Description, want.Description)
 	}
 
-	if *got.Description != *want.Description {
+	if got.Description != nil && want.Description != nil && *got.Description != *want.Description {
 		testutil.FatalMsgf(t, "Descriptions should be equal to expected Memo. Expected \"%s\" got \"%s\"",
 			*want.Description, *got.Description)
 	}

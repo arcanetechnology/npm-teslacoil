@@ -43,46 +43,78 @@ const (
 
 // Payment is a database table
 type Payment struct {
-	ID             int    `db:"id"`
-	UserID         int    `db:"user_id"`
-	PaymentRequest string `db:"payment_request"`
-	// A pointer to a string means the type is nullable
-	Preimage       *string   `db:"preimage"`
-	HashedPreimage string    `db:"hashed_preimage"`
-	CallbackURL    *string   `db:"callback_url"`
-	Expiry         int64     `db:"expiry"`
-	Status         Status    `db:"status"`
-	Memo           *string   `db:"memo"`
-	Description    *string   `db:"description"`
-	Direction      Direction `db:"direction"`
-	AmountSat      int64     `db:"amount_sat"`
-	AmountMSat     int64     `db:"amount_msat"`
-	// SettledAt is a pointer because it can be null, and inserting null in
-	// something not a pointer when querying the db is not possible
-	SettledAt *time.Time `db:"settled_at"` // If not 0 or nul, it means the
-	// invoice is settled
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
-	DeletedAt *time.Time `db:"deleted_at"`
+	ID             int    `db:"id" json:"id"`
+	UserID         int    `db:"user_id" json:"userId"`
+	PaymentRequest string `db:"payment_request" json:"paymentRequest"`
+	// A pointer type means the type is nullable
+	Preimage       *string   `db:"preimage" json:"preimage"`
+	HashedPreimage string    `db:"hashed_preimage" json:"hashed_preimage"`
+	CallbackURL    *string   `db:"callback_url" json:"callbackUrl"`
+	Expiry         int64     `db:"expiry" json:"expiry"`
+	Status         Status    `db:"status" json:"status"`
+	Memo           *string   `db:"memo" json:"memo"`
+	Description    *string   `db:"description" json:"description"`
+	Direction      Direction `db:"direction" json:"direction"`
+	AmountSat      int64     `db:"amount_sat" json:"amountSat"`
+	AmountMSat     int64     `db:"amount_msat" json:"amountMSat"`
+	// If not 0 or nil  it means the  invoice is settled
+	SettledAt *time.Time `db:"settled_at" json:"settledAt"`
+	CreatedAt time.Time  `db:"created_at" json:"createdAt"`
+	UpdatedAt time.Time  `db:"updated_at" json:"updatedAt"`
+	DeletedAt *time.Time `db:"deleted_at" json:"deletedAt"`
+
+	// ExpiresAt and Expired is an additional useful property,
+	// not a db column
+	ExpiresAt time.Time `json:"expiresAt"`
+	Expired   bool      `json:"expired"`
 }
 
-//UserPaymentResponse is a user payment response
+// UserPaymentResponse is a user payment response
 type UserPaymentResponse struct {
 	Payment Payment    `json:"payment"`
 	User    users.User `json:"user"`
 }
 
+// WithAdditionalFields adds useful fields for dealing with a payment
+func (p Payment) WithAdditionalFields() Payment {
+	p.ExpiresAt = p.GetExpiryDate()
+	p.Expired = p.IsExpired()
+
+	return p
+}
+
+// GetExpiryDAte adds the expiry as seconds(from lnd) to CreatedAt
+func (p Payment) GetExpiryDate() time.Time {
+	return p.CreatedAt.Add(time.Second * time.Duration(p.Expiry))
+}
+
+func (p Payment) IsExpired() bool {
+	expiresAt := p.CreatedAt.Add(time.Second * time.Duration(p.Expiry))
+
+	// TODO: Add tests to check the database time format is equal to
+	// the system format
+
+	// The database time is different from the
+	// system time, therefore we force UTC
+	// Return whether the expiry date is before the time now
+	return expiresAt.Before(time.Now().UTC())
+}
+
 // insert persists the supplied payment to the database. Returns the payment,
 // as returned from the database
 func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
-	var createOffchainTXQuery string
-
 	if p.Preimage != nil && p.HashedPreimage != "" {
 		return Payment{},
-			fmt.Errorf("cant supply both a preimage and a hashed preimage")
+			fmt.Errorf("insert(tx, %+v): cant supply both a preimage and a hashed preimage", p)
+	}
+	if p.Description != nil && *p.Description == "" {
+		p.Description = nil
+	}
+	if p.Memo != nil && *p.Memo == "" {
+		p.Memo = nil
 	}
 
-	createOffchainTXQuery = `INSERT INTO 
+	createOffchainTXQuery := `INSERT INTO 
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
 		description, expiry, direction, status, amount_sat,amount_msat)
 	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
@@ -103,42 +135,41 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			p,
 		)
 	}
-	defer rows.Close() // Free up the database connection
+	defer rows.Close()
 
-	var result Payment
+	// Store the result of the query in the payment variable
+	var payment Payment
 	if rows.Next() {
 		if err = rows.Scan(
-			&result.ID,
-			&result.UserID,
-			&result.PaymentRequest,
-			&result.Preimage,
-			&result.HashedPreimage,
-			&result.Memo,
-			&result.Description,
-			&result.Expiry,
-			&result.Direction,
-			&result.Status,
-			&result.AmountSat,
-			&result.AmountMSat,
-			&result.CreatedAt,
-			&result.UpdatedAt,
+			&payment.ID,
+			&payment.UserID,
+			&payment.PaymentRequest,
+			&payment.Preimage,
+			&payment.HashedPreimage,
+			&payment.Memo,
+			&payment.Description,
+			&payment.Expiry,
+			&payment.Direction,
+			&payment.Status,
+			&payment.AmountSat,
+			&payment.AmountMSat,
+			&payment.CreatedAt,
+			&payment.UpdatedAt,
 		); err != nil {
 			log.Error(err)
-			return result, errors.Wrapf(err,
-				"insertPayment->rows.Next(), Problem row = %+v", result)
+			return payment, errors.Wrapf(err,
+				"insert->rows.Next(), Problem row = %+v", payment)
 		}
 	}
 
-	return result, nil
+	return payment.WithAdditionalFields(), nil
 }
 
 // GetAll selects all payments for given userID from the DB.
 func GetAll(d *db.DB, userID int, limit int, offset int) (
 	[]Payment, error) {
-	payments := []Payment{}
-
-	// Using OFFSET is not ideal, but until we start seeing performance problems
-	// it's fine
+	// Using OFFSET is not ideal, but until we start seeing
+	// performance problems it's fine
 	tQuery := `SELECT *
 		FROM offchaintx
 		WHERE user_id=$1
@@ -146,11 +177,19 @@ func GetAll(d *db.DB, userID int, limit int, offset int) (
 		LIMIT $2
 		OFFSET $3`
 
+	var payments []Payment
 	err := d.Select(&payments, tQuery, userID, limit, offset)
 	if err != nil {
 		log.Error(err)
 		return payments, err
 	}
+
+	// Add Expired field to payments
+	for i, payment := range payments {
+		payments[i] = payment.WithAdditionalFields()
+	}
+
+	fmt.Printf("payments: %+v\n", payments)
 
 	return payments, nil
 }
@@ -163,25 +202,16 @@ func GetByID(d *db.DB, id int, userID int) (Payment, error) {
 		return Payment{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
 	}
 
-	txResult := Payment{}
 	tQuery := fmt.Sprintf(
 		"SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
 
-	if err := d.Get(&txResult, tQuery, id, userID); err != nil {
+	var payment Payment
+	if err := d.Get(&payment, tQuery, id, userID); err != nil {
 		log.Error(err)
-		return txResult, errors.Wrap(err, "could not get payment")
+		return payment, errors.Wrap(err, "could not get payment")
 	}
 
-	// sanity check the query
-	if txResult.UserID != userID {
-		err := fmt.Errorf(
-			"db query retrieved unexpected value, expected payment with user_id %d but got %d",
-			userID, txResult.UserID)
-		log.Errorf(err.Error())
-		return Payment{}, err
-	}
-
-	return txResult, nil
+	return payment.WithAdditionalFields(), nil
 }
 
 // CreateInvoice creates and adds a new invoice to lnd and creates a new payment
@@ -300,8 +330,7 @@ func MarkInvoiceAsPaid(d *db.DB, userID int,
 // If at any point the payment/db transaction should fail, increase the users
 // balance.
 func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
-	paymentRequest, description, memo string) (UserPaymentResponse, error) {
-
+	paymentRequest string) (UserPaymentResponse, error) {
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
@@ -370,7 +399,6 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 		upr.Payment.Status = succeeded
 		preimage := hex.EncodeToString(paymentResponse.PaymentPreimage)
 		upr.Payment.Preimage = &preimage
-		upr.Payment.Description = &description
 	} else {
 		err = tx.Rollback()
 		if err != nil {
@@ -395,7 +423,6 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 // InvoiceStatusListener is
 func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 	database *db.DB) {
-
 	for {
 		invoice := <-invoiceUpdatesCh
 		_, err := UpdateInvoiceStatus(invoice, database)
@@ -419,7 +446,7 @@ func UpdateInvoiceStatus(invoice *lnrpc.Invoice, database *db.DB) (
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
 	// Define a custom response struct to include user details
-	payment := Payment{}
+	var payment Payment
 	if err := database.Get(
 		&payment,
 		tQuery,
@@ -459,7 +486,7 @@ func UpdateInvoiceStatus(invoice *lnrpc.Invoice, database *db.DB) (
 			payment,
 		)
 	}
-	rows.Close() // Free up the database connection
+	defer rows.Close()
 
 	if rows.Next() {
 		if err = rows.Scan(
@@ -512,7 +539,7 @@ func UpdateInvoiceStatus(invoice *lnrpc.Invoice, database *db.DB) (
 }
 
 func (p Payment) String() string {
-	str := "Payment: {\n"
+	str := "\nPayment: {\n"
 	str += fmt.Sprintf("\tID: %d\n", p.ID)
 	str += fmt.Sprintf("\tUserID: %d\n", p.UserID)
 	str += fmt.Sprintf("\tPaymentRequest: %s\n", p.PaymentRequest)
@@ -530,6 +557,8 @@ func (p Payment) String() string {
 	str += fmt.Sprintf("\tDirection: %s\n", p.Direction)
 	str += fmt.Sprintf("\tAmountSat: %d\n", p.AmountSat)
 	str += fmt.Sprintf("\tAmountMSat: %d\n", p.AmountMSat)
+	str += fmt.Sprintf("\tExpired: %v\n", p.Expired)
+	str += fmt.Sprintf("\tExpiresAt: %v\n", p.ExpiresAt)
 	str += fmt.Sprintf("\tSettledAt: %v\n", p.SettledAt)
 	str += fmt.Sprintf("\tCreatedAt: %v\n", p.CreatedAt)
 	str += fmt.Sprintf("\tUpdatedAt: %v\n", p.UpdatedAt)
