@@ -48,9 +48,10 @@ func TestMain(m *testing.M) {
 func TestCreateInvoice(t *testing.T) {
 	t.Parallel()
 	user, err := users.Create(testDB,
-		"test_userCreateInvoice@example.com",
-		"password",
-	)
+		users.CreateUserArgs{
+			Email:    "test_userCreateInvoice@example.com",
+			Password: "password",
+		})
 	if err != nil {
 		log.Error("User result was empty")
 		t.Fatalf("%+v\n", err)
@@ -163,9 +164,11 @@ func TestGetByID(t *testing.T) {
 	amount2 := rand.Int63n(4294967)
 
 	user, err := users.Create(testDB,
-		"test_userGetByID@example.com",
-		"password",
-	)
+		users.CreateUserArgs{
+			Email:    "test_userGetByID@example.com",
+			Password: "password",
+		})
+
 	if err != nil {
 		t.Fatalf("Should be able to create user, got error %v", err)
 	}
@@ -261,9 +264,10 @@ func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 	// Setup the database
 	u, err := users.Create(testDB,
-		"test_userPayInvoice@example.com",
-		"password",
-	)
+		users.CreateUserArgs{
+			Email:    "test_userPayInvoice@example.com",
+			Password: "password",
+		})
 	if err != nil {
 		log.Error("User result was empty")
 		t.Fatalf("%+v\n", err)
@@ -448,9 +452,10 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	u, err := users.Create(testDB,
-		"test_userUpdateInvoiceStatus@example.com",
-		"password",
-	)
+		users.CreateUserArgs{
+			Email:    "test_userUpdateInvoiceStatus@example.com",
+			Password: "password",
+		})
 	if err != nil {
 		log.Error("User result was empty")
 		t.Fatalf("%+v\n", err)
@@ -721,9 +726,11 @@ func TestGetAll(t *testing.T) {
 				i, tt.scenario, tt.expectedNumberOfInvoices)
 			{
 				u, err := users.Create(testDB,
-					fmt.Sprintf("test_user%d@example.com", i),
-					"password",
-				)
+					users.CreateUserArgs{
+						Email: fmt.Sprintf("test_user%d@example.com", i),
+
+						Password: "password",
+					})
 				if err != nil {
 					t.Fatalf(
 						"\t%s\tshould be able to CreateUser. Error:  %+v\n%s",

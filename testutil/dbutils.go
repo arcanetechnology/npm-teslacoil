@@ -32,7 +32,7 @@ func CreateIfNotExists(conf db.DatabaseConfig) error {
 	}
 
 	database, err := db.Open(rootConfig)
-	defer database.Close()
+	defer func() { err = database.Close() }()
 
 	if err != nil {
 		return errors.Wrapf(err, "couldn't connect to root Postgres DB")
@@ -49,22 +49,23 @@ func CreateIfNotExists(conf db.DatabaseConfig) error {
 		return errors.Wrap(err, "rows.Err()")
 	}
 
-	// database exists
-	if rows.Next() {
-		return nil
-	}
-
 	// database does not exist
-	_, err = database.Exec(fmt.Sprintf("CREATE DATABASE %s", conf.Name))
-	if err != nil {
-		return errors.Wrap(err, "cannot create database")
+	if !rows.Next() {
+		_, err = database.Exec(fmt.Sprintf("CREATE DATABASE %s", conf.Name))
+		if err != nil {
+			return errors.Wrap(err, "cannot create database")
+		}
+
+		if _, err = database.Exec(fmt.Sprintf(
+			"GRANT ALL PRIVILEGES ON DATABASE %s TO %s",
+			conf.Name,
+			conf.User)); err != nil {
+			return errors.Wrap(err, "cannot grant privileges to test user")
+		}
 	}
 
-	_, err = database.Exec(fmt.Sprintf(
-		"GRANT ALL PRIVILEGES ON DATABASE %s TO %s",
-		conf.Name,
-		conf.User))
-	return errors.Wrap(err, "cannot grant privileges to test user")
+	return err
+
 }
 
 // InitDatabase initializes a DB for the given config such that tests can

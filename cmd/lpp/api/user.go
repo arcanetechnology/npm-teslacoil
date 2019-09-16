@@ -12,14 +12,16 @@ type UserResponse struct {
 	ID        int     `json:"id"`
 	Email     string  `json:"email"`
 	Balance   int64   `json:"balance"`
-	Firstname *string `json:"firstName,omitempty"`
-	Lastname  *string `json:"lastName,omitempty"`
+	Firstname *string `json:"firstName"`
+	Lastname  *string `json:"lastName"`
 }
 
 // CreateUserRequest is the expected type to create a new user
 type CreateUserRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password" binding:"required"`
+	Email     string  `json:"email" binding:"required"`
+	Password  string  `json:"password" binding:"required"`
+	FirstName *string `json:"firstName"`
+	LastName  *string `json:"lastName"`
 }
 
 // LoginRequest is the expected type to find a user in the DB
@@ -140,9 +142,11 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 		}
 
 		res := UserResponse{
-			ID:      user.ID,
-			Email:   user.Email,
-			Balance: user.Balance,
+			ID:        user.ID,
+			Email:     user.Email,
+			Balance:   user.Balance,
+			Firstname: user.Firstname,
+			Lastname:  user.Lastname,
 		}
 
 		log.Infof("GetUserResponse %v", res)
@@ -167,7 +171,12 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 
 		// because the email column in users table has the unique tag, we don't
 		// double check the email is unique
-		u, err := users.Create(r.db, req.Email, req.Password)
+		u, err := users.Create(r.db, users.CreateUserArgs{
+			Email:     req.Email,
+			Password:  req.Password,
+			FirstName: req.FirstName,
+			LastName:  req.LastName,
+		})
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
@@ -175,9 +184,11 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 		}
 
 		res := UserResponse{
-			ID:      u.ID,
-			Email:   u.Email,
-			Balance: u.Balance,
+			ID:        u.ID,
+			Email:     u.Email,
+			Balance:   u.Balance,
+			Firstname: u.Firstname,
+			Lastname:  u.Lastname,
 		}
 		log.Info("successfully created user: ", res)
 

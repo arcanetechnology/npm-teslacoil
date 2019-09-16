@@ -78,13 +78,8 @@ var (
 				RPCServer:    c.GlobalString("lndrpcserver"),
 			}
 
-			level, err := build.ToLogLevel(c.GlobalString("loglevel"))
-			if err != nil {
-				log.Fatal(err)
-				return err
-			}
 			config := api.Config{
-				LogLevel: level,
+				LogLevel: build.Log.Level,
 			}
 
 			lncli, err := ln.NewLNDClient(lnConfig)
@@ -232,7 +227,7 @@ var (
 						if err != nil {
 							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
 						}
-						err = FillWithDummyData(database, lncli)
+						return FillWithDummyData(database, lncli)
 					}
 					return err
 				},
@@ -282,6 +277,16 @@ func main() {
 	app.Name = "lpp"
 	app.Usage = "Managing helper for developing lightning payment processor"
 	app.EnableBashCompletion = true
+	// have log levels be set for all commands/subcommands
+	app.Before = func(c *cli.Context) error {
+		level, err := build.ToLogLevel(c.GlobalString("loglevel"))
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		build.SetLogLevel(level)
+		return nil
+	}
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "lnddir",

@@ -47,7 +47,11 @@ func TestUpdateUserFailWithBadOpts(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
-	user, err := Create(testDB, email, "password")
+	user, err := Create(testDB,
+		CreateUserArgs{
+			Email:    email,
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -61,7 +65,11 @@ func TestUpdateUserEmail(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
-	user, err := Create(testDB, email, "password")
+	user, err := Create(testDB,
+		CreateUserArgs{
+			Email:    email,
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -85,7 +93,11 @@ func TestUpdateUserFirstName(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
-	user, err := Create(testDB, email, "password")
+	user, err := Create(testDB,
+		CreateUserArgs{
+			Email:    email,
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -112,7 +124,11 @@ func TestUpdateUserLastName(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 	email := getTestEmail(t)
-	user, err := Create(testDB, email, "password")
+	user, err := Create(testDB,
+		CreateUserArgs{
+			Email:    email,
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -170,9 +186,10 @@ func TestCanCreateUser(t *testing.T) {
 		t.Logf("\ttest %d\twhen creating user with email %s", i, tt.email)
 
 		user, err := Create(testDB,
-			tt.email,
-			"password",
-		)
+			CreateUserArgs{
+				Email:    tt.email,
+				Password: "password",
+			})
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -283,7 +300,9 @@ func TestCanGetUserByCredentials(t *testing.T) {
 	for i, tt := range tests {
 		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.email)
 
-		user, err := Create(testDB, tt.email, tt.password)
+		user, err := Create(testDB, CreateUserArgs{
+			Email: tt.email, Password: tt.password,
+		})
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -383,9 +402,10 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		getTestEmail(t),
-		"password",
-	)
+		CreateUserArgs{
+			Email:    getTestEmail(t),
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -438,9 +458,10 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		getTestEmail(t),
-		"password",
-	)
+		CreateUserArgs{
+			Email:    getTestEmail(t),
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -485,9 +506,10 @@ func TestDecreaseBalance(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		getTestEmail(t),
-		"password",
-	)
+		CreateUserArgs{
+			Email:    getTestEmail(t),
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -615,9 +637,10 @@ func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		getTestEmail(t),
-		"password",
-	)
+		CreateUserArgs{
+			Email:    getTestEmail(t),
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsgf(t,
 			"Could not create user: %v", err)
@@ -641,9 +664,10 @@ func TestIncreaseBalance(t *testing.T) {
 
 	// Arrange
 	u, err := Create(testDB,
-		getTestEmail(t),
-		"password",
-	)
+		CreateUserArgs{
+			Email:    getTestEmail(t),
+			Password: "password",
+		})
 	if err != nil {
 		testutil.FatalMsgf(t,
 			"Could not create user: %v", err)

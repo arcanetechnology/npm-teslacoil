@@ -109,15 +109,24 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	return userResult, nil
 }
 
+type CreateUserArgs struct {
+	Email     string
+	Password  string
+	FirstName *string
+	LastName  *string
+}
+
 // Create is a POST request and inserts the user in the body into the database
-func Create(d *db.DB, email, password string) (User, error) {
-	hashedPassword, err := hashAndSalt(password)
+func Create(d *db.DB, args CreateUserArgs) (User, error) {
+	hashedPassword, err := hashAndSalt(args.Password)
 	if err != nil {
 		return User{}, err
 	}
 	user := User{
-		Email:          email,
+		Email:          args.Email,
 		HashedPassword: hashedPassword,
+		Firstname:      args.FirstName,
+		Lastname:       args.LastName,
 	}
 
 	tx := d.MustBegin()
@@ -386,7 +395,7 @@ func (u User) String() string {
 		str += fmt.Sprintln("Firstname: <nil>")
 	}
 	if u.Lastname != nil {
-		str += fmt.Sprintf("Lastname: %d\n", u.Lastname)
+		str += fmt.Sprintf("Lastname: %s\n", *u.Lastname)
 	} else {
 		str += fmt.Sprintln("Firstname: <nil>")
 	}
