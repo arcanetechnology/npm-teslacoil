@@ -10,6 +10,13 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	}
 }
 
+func AssertMsg(t *testing.T, cond bool, message string) {
+	t.Helper()
+	if !cond {
+		FatalMsgf(t, "Assertion error: %s", message)
+	}
+}
+
 // AssertMapEquals asserts that the `actual` map has all the keys with the
 // same values as `expected`
 func AssertMapEquals(t *testing.T,

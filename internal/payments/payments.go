@@ -31,6 +31,14 @@ const (
 
 	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
 	OffchainTXTable = "offchaintx"
+
+	// MaxAmountMsatPerInvoice is the maximum amount of milli satoshis an invoice
+	// can be for
+	MaxAmountMsatPerInvoice int64 = 4294967295
+
+	// MaxAmountSatPerInvoice is the maximum amount of satoshis an invoice
+	// can be for
+	MaxAmountSatPerInvoice int64 = MaxAmountMsatPerInvoice / 1000
 )
 
 // Payment is a database table
@@ -182,6 +190,12 @@ func GetByID(d *db.DB, id int, userID int) (Payment, error) {
 func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	amountSat int64, description, memo *string) (Payment, error) {
 
+	if amountSat > MaxAmountSatPerInvoice {
+		return Payment{}, fmt.Errorf(
+			"amount (%d) was too large. Max: %d",
+			amountSat, MaxAmountSatPerInvoice)
+	}
+
 	if amountSat <= 0 {
 		return Payment{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
@@ -200,7 +214,7 @@ func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 		lncli,
 		lnrpc.Invoice{
 			Memo:  lnMemo,
-			Value: int64(amountSat),
+			Value: amountSat,
 		})
 	if err != nil {
 		err = errors.Wrap(err, "could not add invoice to lnd")
@@ -209,9 +223,10 @@ func CreateInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 	}
 
 	// Sanity check the invoice we just created
-	if invoice.Value != int64(amountSat) {
-		err = fmt.Errorf("could not insert invoice, created invoice amount not equal request.Amount")
-		log.Error(err)
+	if invoice.Value != amountSat {
+		err = fmt.Errorf(
+			"could not insert invoice, created invoice amount (%d) not equal request.Amount (%d)",
+			invoice.Value, amountSat)
 		return Payment{}, err
 	}
 
