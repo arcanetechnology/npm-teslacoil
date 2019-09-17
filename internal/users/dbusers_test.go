@@ -2,7 +2,6 @@ package users
 
 import (
 	"flag"
-	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -39,22 +38,10 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func getTestEmail(t *testing.T) string {
-	return fmt.Sprintf("%d-%s@example.com", rand.Int(), t.Name())
-}
-
 func TestUpdateUserFailWithBadOpts(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	email := getTestEmail(t)
-	user, err := Create(testDB,
-		CreateUserArgs{
-			Email:    email,
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	user := CreateUserOrFail(t)
 
 	if _, err := user.Update(testDB, UpdateOptions{}); err == nil {
 		testutil.FatalMsg(t, "Was able to give non-meaningful options and get a result")
@@ -64,17 +51,10 @@ func TestUpdateUserFailWithBadOpts(t *testing.T) {
 func TestUpdateUserEmail(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	email := getTestEmail(t)
-	user, err := Create(testDB,
-		CreateUserArgs{
-			Email:    email,
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
 
-	newEmail := getTestEmail(t)
+	user := CreateUserOrFail(t)
+
+	newEmail := testutil.GetTestEmail(t)
 	updated, err := user.Update(testDB, UpdateOptions{NewEmail: &newEmail})
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to set email %s: %+v", newEmail, err)
@@ -92,15 +72,8 @@ func TestUpdateUserEmail(t *testing.T) {
 func TestUpdateUserFirstName(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	email := getTestEmail(t)
-	user, err := Create(testDB,
-		CreateUserArgs{
-			Email:    email,
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+
+	user := CreateUserOrFail(t)
 
 	newName := "NewLastName"
 	updated, err := user.Update(testDB, UpdateOptions{NewLastName: &newName})
@@ -123,15 +96,8 @@ func TestUpdateUserFirstName(t *testing.T) {
 func TestUpdateUserLastName(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	email := getTestEmail(t)
-	user, err := Create(testDB,
-		CreateUserArgs{
-			Email:    email,
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+
+	user := CreateUserOrFail(t)
 
 	newName := "NewFirstName"
 	updated, err := user.Update(testDB, UpdateOptions{NewFirstName: &newName})
@@ -155,7 +121,7 @@ func TestUpdateUserLastName(t *testing.T) {
 func TestFailToUpdateNonExistingUser(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	email := getTestEmail(t)
+	email := testutil.GetTestEmail(t)
 	user := User{ID: 99999}
 	_, err := user.Update(testDB, UpdateOptions{NewEmail: &email})
 
@@ -168,7 +134,7 @@ func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	email := getTestEmail(t)
+	email := testutil.GetTestEmail(t)
 	tests := []struct {
 		email          string
 		expectedResult User
@@ -217,7 +183,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	email := getTestEmail(t)
+	email := testutil.GetTestEmail(t)
 	tests := []struct {
 		user           User
 		expectedResult User
@@ -279,7 +245,7 @@ func TestCanGetUserByCredentials(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	email := getTestEmail(t)
+	email := testutil.GetTestEmail(t)
 	tests := []struct {
 		email          string
 		password       string
@@ -337,7 +303,7 @@ func TestCanGetUserByID(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	email := getTestEmail(t)
+	email := testutil.GetTestEmail(t)
 	tests := []struct {
 		user           User
 		expectedResult User
@@ -401,19 +367,12 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	u, err := Create(testDB,
-		CreateUserArgs{
-			Email:    getTestEmail(t),
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	user := CreateUserOrFail(t)
 
 	// Give initial balance of 100 000
 	tx := testDB.MustBegin()
-	u, err = IncreaseBalance(tx, ChangeBalance{
-		UserID:    u.ID,
+	user, err := IncreaseBalance(tx, ChangeBalance{
+		UserID:    user.ID,
 		AmountSat: 100000,
 	})
 	if err != nil {
@@ -433,11 +392,11 @@ func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
 		// This should fail because it is illegal to increase balance by a negative amount
 		ChangeBalance{
 			AmountSat: -30000,
-			UserID:    u.ID,
+			UserID:    user.ID,
 		},
 
 		User{
-			ID: u.ID,
+			ID: user.ID,
 		},
 	}
 
@@ -457,19 +416,12 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	u, err := Create(testDB,
-		CreateUserArgs{
-			Email:    getTestEmail(t),
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	user := CreateUserOrFail(t)
 
 	// Give initial balance of 100 000
 	tx := testDB.MustBegin()
-	u, err = IncreaseBalance(tx, ChangeBalance{
-		UserID:    u.ID,
+	user, err := IncreaseBalance(tx, ChangeBalance{
+		UserID:    user.ID,
 		AmountSat: 100000,
 	})
 	if err != nil {
@@ -481,16 +433,16 @@ func TestNotDecreaseBalanceBelowZero(t *testing.T) {
 		user   User
 	}{
 		ChangeBalance{
-			AmountSat: u.Balance + 1,
-			UserID:    u.ID,
+			AmountSat: user.Balance + 1,
+			UserID:    user.ID,
 		},
 
 		User{
-			ID: u.ID,
+			ID: user.ID,
 		},
 	}
 
-	user, err := DecreaseBalance(tx, test.change)
+	user, err = DecreaseBalance(tx, test.change)
 	if err == nil {
 		testutil.FatalMsgf(t,
 			"Decreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v",
@@ -505,18 +457,11 @@ func TestDecreaseBalance(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	u, err := Create(testDB,
-		CreateUserArgs{
-			Email:    getTestEmail(t),
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	u := CreateUserOrFail(t)
 
 	// Give initial balance of 100 000
 	tx := testDB.MustBegin()
-	u, err = IncreaseBalance(tx, ChangeBalance{
+	u, err := IncreaseBalance(tx, ChangeBalance{
 		UserID:    u.ID,
 		AmountSat: 100000,
 	})
@@ -623,12 +568,6 @@ func TestDecreaseBalance(t *testing.T) {
 		}
 
 	}
-
-	// Fail tests after all assertions that will not interfere with eachother
-	// for improved test result readability.
-	if t.Failed() {
-		t.FailNow()
-	}
 }
 
 func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
@@ -636,15 +575,7 @@ func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	u, err := Create(testDB,
-		CreateUserArgs{
-			Email:    getTestEmail(t),
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"Could not create user: %v", err)
-	}
+	u := CreateUserOrFail(t)
 
 	tx := testDB.MustBegin()
 	user, err := IncreaseBalance(tx, ChangeBalance{UserID: u.ID, AmountSat: -300})
@@ -663,15 +594,7 @@ func TestIncreaseBalance(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	u, err := Create(testDB,
-		CreateUserArgs{
-			Email:    getTestEmail(t),
-			Password: "password",
-		})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"Could not create user: %v", err)
-	}
+	u := CreateUserOrFail(t)
 
 	tests := []struct {
 		userID    int   `db:"user_id"`
@@ -714,12 +637,6 @@ func TestIncreaseBalance(t *testing.T) {
 	for i, tt := range tests {
 		t.Logf("\ttest: %d\twhen increasing balance by %d for user %d",
 			i, tt.amountSat, tt.userID)
-
-		if err != nil {
-			testutil.FatalMsgf(t,
-				"should be able to IncreaseBalance. Error:  %+v",
-				err)
-		}
 
 		tx := testDB.MustBegin()
 
@@ -765,10 +682,19 @@ func TestIncreaseBalance(t *testing.T) {
 		}
 
 	}
+}
 
-	// Fail tests after all assertions that will not interfere with eachother
-	// for improved test result readability.
-	if t.Failed() {
-		t.FailNow()
+// CreateUserOrFail is a util function for creating a user
+func CreateUserOrFail(t *testing.T) User {
+	u, err := Create(testDB, CreateUserArgs{
+		Email:    testutil.GetTestEmail(t),
+		Password: "password",
+	})
+	if err != nil {
+		testutil.FatalMsgf(t,
+			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
+			t.Name(), err)
 	}
+
+	return u
 }

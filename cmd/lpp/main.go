@@ -102,7 +102,7 @@ var (
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "port",
-				Value: "8080",
+				Value: "5000",
 				Usage: "Port number to listen on",
 			},
 		},

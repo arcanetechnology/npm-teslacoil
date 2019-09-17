@@ -80,20 +80,20 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 
 	for p := 1; p <= paymentCount; p++ {
 		amountSat := gofakeit.Number(0, 4294967)
-		var description *string = nil
+		var description string
 		if gofakeit.Int8()%2 == 0 {
 			desc := gofakeit.HipsterSentence(8)
-			description = &desc
+			description = desc
 		}
 
-		var memo *string = nil
+		var memo string
 		if gofakeit.Int8()%2 == 0 {
 			mem := gofakeit.HipsterSentence(6)
-			memo = &mem
+			memo = mem
 		}
 
-		inv, err := payments.CreateInvoice(db, lncli, user.ID,
-			int64(amountSat), description, memo)
+		inv, err := payments.NewPayment(db, lncli, user.ID,
+			int64(amountSat), memo, description)
 		if err != nil {
 			return err
 		}

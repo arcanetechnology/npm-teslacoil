@@ -5,20 +5,22 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
 // CreateInvoiceRequest is a deposit
 type CreateInvoiceRequest struct {
-	AmountSat   int64   `json:"amountSat"`
-	Description *string `json:"description,omitempty"`
-	Memo        *string `json:"memo,omitempty"`
+	AmountSat   int64  `json:"amountSat"`
+	Memo        string `json:"memo,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 // PayInvoiceRequest is the required and optional fields for initiating a
 // withdrawal. fields tagged with omitEmpty are optional
 type PayInvoiceRequest struct {
 	PaymentRequest string `json:"paymentRequest"`
+	Description    string `json:"description,omitempty"`
 }
 
 // GetAllPayments finds all payments for the given user. Takes two URL
@@ -104,30 +106,35 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 // CreateInvoice creates a new invoice
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var newInvoice CreateInvoiceRequest
+		var newPayment CreateInvoiceRequest
 
-		if err := c.ShouldBindJSON(&newInvoice); err != nil {
+		if err := c.ShouldBindJSON(&newPayment); err != nil {
 			log.Errorf("Could not bind invoice request: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 			return
 		}
 
-		log.Tracef("Bound invoice request: %+v", newInvoice)
+		log.Tracef("Bound invoice request: %+v", newPayment)
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
+			log.Error(errors.Wrap(err, "could not parse bearer JWT"))
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support"})
 		}
 
-		log.Infof("received new request for CreateInvoice for user_id %d: %v\n",
+		log.Errorf("received new request for CreateInvoice for user_id %d: %v\n",
 			claims.UserID,
-			newInvoice)
+			newPayment)
 
-		t, err := payments.CreateInvoice(
-			r.db, *r.lncli, claims.UserID, newInvoice.AmountSat,
-			newInvoice.Description, newInvoice.Memo)
+		t, err := payments.NewPayment(
+			r.db, *r.lncli, claims.UserID, newPayment.AmountSat,
+			newPayment.Memo, newPayment.Description)
 		if err != nil {
-			log.Errorf("Could not create invoice: %v", err)
+			log.Error(errors.Wrapf(err, "CreateInvoice() -> NewPayment(%d, %d, %v, %v)",
+				claims.UserID,
+				newPayment.AmountSat,
+				newPayment.Memo,
+				newPayment.Description))
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support "})
 			return
@@ -164,8 +171,8 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
-		t, err := payments.PayInvoice(r.db, *r.lncli, claims.UserID,
-			req.PaymentRequest)
+		t, err := payments.PayInvoiceWithDescription(r.db, *r.lncli, claims.UserID,
+			req.PaymentRequest, req.Description)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, could not pay invoice"})

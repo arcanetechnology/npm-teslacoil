@@ -32,7 +32,12 @@ func CreateIfNotExists(conf db.DatabaseConfig) error {
 	}
 
 	database, err := db.Open(rootConfig)
-	defer func() { err = database.Close() }()
+	defer func() {
+		err = database.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		return errors.Wrapf(err, "couldn't connect to root Postgres DB")
