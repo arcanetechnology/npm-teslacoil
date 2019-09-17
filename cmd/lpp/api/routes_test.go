@@ -418,6 +418,7 @@ func runTestWithRealLnd(t *testing.T) func() {
 
 func TestCreateInvoiceRoute(t *testing.T) {
 	testutil.DescribeTest(t)
+	testutil.SkipIfCI(t)
 
 	lnCleanup := runTestWithRealLnd(t)
 	defer lnCleanup()
