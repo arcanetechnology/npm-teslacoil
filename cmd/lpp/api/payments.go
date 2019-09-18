@@ -58,7 +58,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -91,7 +91,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 		log.Infof("found payment %v", t)
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -136,7 +136,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			})
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -168,6 +168,59 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
+}
+
+func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
+	type WithdrawOnChainRequest struct {
+		// The amount in satoshis to send
+		AmountSat int64 `json:"amountSat"`
+		// The address to send coins to
+		Address string `json:"address"`
+		// The target number of blocks the transaction should be confirmed by
+		TargetConf int `json:"targetConf"`
+		// A manual fee rate set in sat/byte that should be used
+		SatPerByte int `json:"satPerByte"`
+		// If set, amount field will be ignored, and the entire balance will be sent
+		SendAll bool `json:"sendAll"`
+	}
+
+	type WithdrawResponse struct {
+		Txid string `json:"txid"`
+	}
+
+	return func(c *gin.Context) {
+
+		var req WithdrawOnChainRequest
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Error(err)
+			log.Info("error, here")
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "bad request, see documentation"})
+			return
+		}
+
+		log.Infof("%+v\n", req)
+
+		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		if err != nil {
+			c.JSONP(http.StatusBadRequest,
+				gin.H{"error": "internal server error, try logging in again or refreshing your session"})
+		}
+
+		txid, err := payments.WithdrawOnChain(r.db, *r.lncli, claims.UserID,
+			req.AmountSat, req.Address, req.TargetConf, req.SatPerByte, req.SendAll)
+		if err != nil {
+			log.Errorf("cannot withdraw onchain: %v", err)
+			c.JSONP(http.StatusInternalServerError,
+				gin.H{"error": "internal server error, try logging in again or refreshing your session"})
+		}
+
+		c.JSONP(http.StatusOK, WithdrawResponse{
+			Txid: txid,
+		})
+	}
+
 }

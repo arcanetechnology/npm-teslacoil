@@ -127,6 +127,7 @@ func (r *RestServer) RegisterPaymentRoutes() {
 	payments.GET("/payments/:id", r.GetPaymentByID())
 	payments.POST("/invoices/create", r.CreateInvoice())
 	payments.POST("/invoices/pay", r.PayInvoice())
+	payments.POST("/withdraw", r.WithdrawOnChain())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate

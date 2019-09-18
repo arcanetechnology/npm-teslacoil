@@ -22,8 +22,9 @@ type UserNew struct {
 
 // User is a database table
 type User struct {
-	ID             int     `db:"id"`
-	Email          string  `db:"email"`
+	ID    int    `db:"id"`
+	Email string `db:"email"`
+	// Balance is the balance of the user, expressed in sats
 	Balance        int64   `db:"balance"`
 	Firstname      *string `db:"first_name"`
 	Lastname       *string `db:"last_name"`

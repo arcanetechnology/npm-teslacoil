@@ -548,6 +548,38 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 	}, nil
 }
 
+func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int,
+	amountSat int64, address string, targetConf, satPerByte int, sendAll bool) (
+	string, error) {
+
+	user, err := users.GetByID(d, userID)
+	if err != nil {
+		return "", errors.Wrap(err, "withdrawonchain could not get user")
+	}
+
+	if user.Balance < amountSat {
+		return "", errors.New("cannot withdraw, not enough balance")
+	}
+
+	// We dont pass sendAll to lncli, as that would send the entire nodes
+	// balance to the address
+	if sendAll {
+		amountSat = user.Balance
+	}
+
+	res, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
+		Amount:     amountSat,
+		Addr:       address,
+		TargetConf: int32(targetConf),
+		SatPerByte: int64(satPerByte),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return res.Txid, nil
+}
+
 func (p Payment) String() string {
 	str := "\nPayment: {\n"
 	str += fmt.Sprintf("\tID: %d\n", p.ID)

@@ -825,6 +825,93 @@ func TestWithAdditionalFields(t *testing.T) {
 	}
 }
 
+func TestWithdrawOnChain(t *testing.T) {
+	t.Parallel()
+	user := CreateUserOrFail(t)
+
+	amount1 := rand.Int63n(4294967)
+	amount2 := rand.Int63n(4294967)
+
+	tests := []struct {
+		memo        string
+		description string
+		amountSat   int64
+
+		lndInvoice lnrpc.Invoice
+		want       Payment
+	}{
+		{
+			memo:        firstMemo,
+			description: description,
+			amountSat:   amount1,
+
+			lndInvoice: lnrpc.Invoice{
+				Value:          int64(amount1),
+				PaymentRequest: "SomePayRequest",
+				RHash:          testutil.SampleHash[:],
+				RPreimage:      testutil.SamplePreimage,
+				Settled:        false,
+			},
+			want: Payment{
+				UserID:         user.ID,
+				AmountSat:      amount1,
+				AmountMSat:     amount1 * 1000,
+				HashedPreimage: testutil.SampleHashHex,
+				Memo:           &firstMemo,
+				Description:    &description,
+				Status:         Status("OPEN"),
+				Direction:      Direction("INBOUND"),
+			},
+		},
+		{
+			memo:        firstMemo,
+			description: description,
+			amountSat:   amount2,
+
+			lndInvoice: lnrpc.Invoice{
+				Value:          int64(amount2),
+				PaymentRequest: "SomePayRequest",
+				RHash:          testutil.SampleHash[:],
+				RPreimage:      testutil.SamplePreimage,
+				Settled:        false,
+			},
+			want: Payment{
+				UserID:         user.ID,
+				AmountSat:      amount2,
+				AmountMSat:     amount2 * 1000,
+				HashedPreimage: testutil.SampleHashHex,
+				Memo:           &firstMemo,
+				Description:    &description,
+				Status:         Status("OPEN"),
+				Direction:      Direction("INBOUND"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("create invoice with amount %d memo %s and description %s",
+			tt.amountSat, tt.memo, tt.description), func(t *testing.T) {
+
+			// Create Mock LND client with preconfigured invoice response
+			mockLNcli := testutil.LightningMockClient{
+				InvoiceResponse: tt.lndInvoice,
+			}
+
+			payment, err := NewPayment(testDB, mockLNcli, tt.want.UserID,
+				tt.amountSat, tt.memo, tt.description)
+			if err != nil {
+				testutil.FatalMsgf(t, "should be able to CreateInvoice %+v", err)
+			}
+
+			// Assertions
+			got := payment
+			want := tt.want
+
+			assertPaymentsAreEqual(t, got, want)
+		})
+	}
+}
+
 func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 	t.Helper()
 	if got.UserID != want.UserID {
