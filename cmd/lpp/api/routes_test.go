@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,7 +13,9 @@ import (
 	"github.com/brianvoe/gofakeit"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -21,18 +24,47 @@ var (
 	databaseConfig = testutil.GetDatabaseConfig("routes")
 	testDB         *db.DB
 	conf           = Config{LogLevel: logrus.InfoLevel}
-	app            RestServer
+	app            *RestServer
+	mockLndApp     RestServer
+	realLndApp     RestServer
 )
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.InfoLevel)
 	testDB = testutil.InitDatabase(databaseConfig)
 
+	// new values for gofakeit every time
+	gofakeit.Seed(0)
+
 	var err error
-	app, err = NewApp(testDB, testutil.GetLightningMockClient(), conf)
+	mockLndApp, err = NewApp(testDB, testutil.GetLightningMockClient(), conf)
 	if err != nil {
 		panic(err.Error())
 	}
+
+	// this is not good, but a workaround until we have a proper testing/CI
+	// harness with nodes and the whole shebang
+	if os.Getenv("CI") != "" {
+		realLndApp, err = NewApp(testDB, testutil.GetLightningMockClient(), conf)
+		if err != nil {
+			panic(err.Error())
+		}
+	} else {
+		lndConfig := testutil.GetLightingConfig()
+		lnd, err := ln.NewLNDClient(lndConfig)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		realLndApp, err = NewApp(testDB, lnd, conf)
+		if err != nil {
+			panic(err.Error())
+		}
+
+	}
+
+	// default app is mocked out version
+	app = &mockLndApp
 
 	result := m.Run()
 	if err := testDB.Close(); err != nil {
@@ -379,5 +411,139 @@ func TestPutUserRoute(t *testing.T) {
 	testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
 	testutil.AssertEqual(t, jsonRes["lastName"], newLast)
 	testutil.AssertEqual(t, jsonRes["email"], newEmail)
+
+}
+
+// When called, this switches out the app used to serve our requests with on
+// that actually calls out to LND. It returns a func that undoes this, i.e.
+// a func you can defer at the start of your test
+func runTestWithRealLnd(t *testing.T) func() {
+	t.Helper()
+
+	app = &realLndApp
+	return func() {
+		app = &mockLndApp
+	}
+}
+
+func TestCreateInvoiceRoute(t *testing.T) {
+	testutil.DescribeTest(t)
+	testutil.SkipIfCI(t)
+
+	lnCleanup := runTestWithRealLnd(t)
+	defer lnCleanup()
+
+	accessToken := createAndLoginUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: "password",
+	})
+
+	t.Run("Create an invoice without memo and description", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		amountSat := gofakeit.Number(0,
+			int(payments.MaxAmountSatPerInvoice))
+
+		req := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d
+				}`, amountSat),
+			})
+
+		res := assertResponseOkWithJson(t, req)
+		testutil.AssertMsg(t, res["memo"] == nil, "Memo was not empty")
+		testutil.AssertMsg(t, res["description"] == nil, "Description was not empty")
+
+	})
+
+	t.Run("Create an invoice with memo and description", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		amountSat := gofakeit.Number(0,
+			int(payments.MaxAmountSatPerInvoice))
+
+		memo := gofakeit.Sentence(gofakeit.Number(1, 20))
+		description := gofakeit.Sentence(gofakeit.Number(1, 20))
+
+		req := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d,
+					"memo": %q,
+					"description": %q
+				}`, amountSat, memo, description),
+			})
+
+		res := assertResponseOkWithJson(t, req)
+		testutil.AssertEqual(t, res["memo"], memo)
+		testutil.AssertEqual(t, res["description"], description)
+
+	})
+
+	t.Run("Not create an invoice with non-positive amount ", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		// gofakeit panics with too low value here...
+		// https://github.com/brianvoe/gofakeit/issues/56
+		amountSat := gofakeit.Number(math.MinInt64+2, -1)
+
+		req := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d
+				}`, amountSat),
+			})
+
+		assertResponseNotOk(t, req)
+	})
+
+	t.Run("Not create an invoice with too large amount", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		amountSat := gofakeit.Number(
+			int(payments.MaxAmountSatPerInvoice), math.MaxInt64)
+
+		req := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d
+				}`, amountSat),
+			})
+
+		assertResponseNotOk(t, req)
+	})
+
+	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		// gofakeit panics with too low value here...
+		// https://github.com/brianvoe/gofakeit/issues/56
+
+		req := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: `{
+					"amountSat": 0
+				}`,
+			})
+
+		assertResponseNotOk(t, req)
+
+	})
 
 }

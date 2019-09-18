@@ -19,10 +19,14 @@ test:
       - .cache
   variables:
     DATABASE_HOST: postgres
-  script:
+  before_script:
+    # cache things properly
     - mkdir -p $CI_PROJECT_DIR/.cache
     - export GOPATH="$CI_PROJECT_DIR/.cache"
+
+    # make sure we're using Go modules
     - export GO111MODULE=on
+  script:
     - make test_verbose
 
 build:

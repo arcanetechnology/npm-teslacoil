@@ -168,17 +168,15 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 // CreateInvoice creates a new invoice on behalf of a user
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Info("create invoice")
 		var newInvoice CreateInvoiceRequest
 
 		if err := c.ShouldBindJSON(&newInvoice); err != nil {
-			log.Info("could not bind")
-			log.Error(err)
+			log.Errorf("Could not bind invoice request: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
 			return
 		}
-		log.Infof("NewInvoice: %v\n", newInvoice)
 
+		log.Tracef("Bound invoice request: %+v", newInvoice)
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, gin.H{
@@ -193,7 +191,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			r.db, *r.lncli, claims.UserID, newInvoice.AmountSat,
 			newInvoice.Description, newInvoice.Memo)
 		if err != nil {
-			log.Error(err)
+			log.Errorf("Could not create invoice: %v", err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
 				"error": "internal server error, please try again or contact support "})
 			return
