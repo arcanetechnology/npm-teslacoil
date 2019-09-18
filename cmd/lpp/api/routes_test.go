@@ -399,8 +399,9 @@ func TestChangePasswordRoute(t *testing.T) {
 			Path:        "/auth/change_password",
 			Method:      "PUT",
 			Body: fmt.Sprintf(`{
-			"newPassword": %q
-		}`, newPass),
+			"newPassword": %q,
+			"repeatedNewPassword": %q
+		}`, newPass, newPass),
 		})
 
 		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
@@ -412,8 +413,39 @@ func TestChangePasswordRoute(t *testing.T) {
 			Path:        "/auth/change_password",
 			Method:      "PUT",
 			Body: fmt.Sprintf(`{
-			"oldPassword": %q
-		}`, pass),
+			"oldPassword": %q,
+			"repeatedNewPassword": %q
+		}`, pass, newPass),
+		})
+
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+	})
+
+	t.Run("Should give an error if not including the repeated password", func(t *testing.T) {
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q,
+			"newPassword": %q
+		}`, pass, newPass),
+		})
+
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+	})
+
+	t.Run("Should give an error if including the wrong repeated password", func(t *testing.T) {
+		anotherNewPassword := gofakeit.Password(true, true, true, true, true, 32)
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q,
+			"newPassword": %q,
+			"repeatedNewPassword": %q
+		}`, pass, newPass, anotherNewPassword),
 		})
 
 		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
@@ -425,8 +457,9 @@ func TestChangePasswordRoute(t *testing.T) {
 			Method: "PUT",
 			Body: fmt.Sprintf(`{
 			"newPassword": %q,
-			"oldPassword": %q
-		}`, newPass, pass),
+			"oldPassword": %q,
+			"repeatedNewPassword": %q
+		}`, newPass, pass, pass),
 		})
 
 		assertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
@@ -439,8 +472,9 @@ func TestChangePasswordRoute(t *testing.T) {
 			Method:      "PUT",
 			Body: fmt.Sprintf(`{
 			"oldPassword": %q,
-			"newPassword": %q
-		}`, pass, newPass),
+			"newPassword": %q,
+			"repeatedNewPassword": %q
+		}`, pass, newPass, newPass),
 		})
 
 		assertResponseOk(t, changePassReq)
@@ -454,8 +488,9 @@ func TestChangePasswordRoute(t *testing.T) {
 			Method:      "PUT",
 			Body: fmt.Sprintf(`{
 			"oldPassword": %q,
-			"newPassword": %q
-		}`, badPass, newPass),
+			"newPassword": %q,
+			"repeatedNewPassword": %q
+		}`, badPass, newPass, newPass),
 		})
 
 		assertResponseNotOk(t, changePassReq)

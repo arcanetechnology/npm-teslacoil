@@ -271,15 +271,17 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 
 func (r *RestServer) ChangePassword() gin.HandlerFunc {
 	type ChangePasswordRequest struct {
-		OldPassword string `json:"oldPassword" binding:"required"`
-		NewPassword string `json:"newPassword" binding:"required"`
+		OldPassword         string `json:"oldPassword" binding:"required"`
+		NewPassword         string `json:"newPassword" binding:"required"`
+		RepeatedNewPassword string `json:"repeatedNewPassword" binding:"required,eqfield=NewPassword"`
 	}
 	return func(c *gin.Context) {
 
 		var request ChangePasswordRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
-			log.Errorf("Could not bind request: %v", err)
-			c.JSON(http.StatusBadRequest, badRequestResponse)
+			log.Errorf("ChangePassword() -> c.ShouldBindJSON() -> Could not bind request: %v",
+				err)
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
