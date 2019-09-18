@@ -45,8 +45,8 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		claim, err := getJWTOrReject(c)
-		if err != nil {
+		claim, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
@@ -66,8 +66,8 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 // specified in the body
 func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claim, err := getJWTOrReject(c)
-		if err != nil {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
@@ -77,9 +77,9 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
-		log.Infof("find payment %d for user %d", id, claim.UserID)
+		log.Infof("find payment %d for user %d", id, claims.UserID)
 
-		t, err := payments.GetByID(r.db, int(id), claim.UserID)
+		t, err := payments.GetByID(r.db, int(id), claims.UserID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
@@ -107,8 +107,8 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		}
 
 		log.Tracef("Bound invoice request: %+v", newPayment)
-		claims, err := getJWTOrReject(c)
-		if err != nil {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
@@ -153,8 +153,8 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		}
 
 		// authenticate the user by extracting the id from the jwt-token
-		claims, err := getJWTOrReject(c)
-		if err != nil {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 

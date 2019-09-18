@@ -65,7 +65,9 @@ var (
 )
 
 const (
-	authorizationHeader = "Authorization"
+	// Authorization is the name of the header where we expect the access token
+	// to be found
+	Authorization = "Authorization"
 )
 
 // UpdateUser takes in a JSON body with three optional fields (email, firstname,
@@ -79,13 +81,13 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		claims, err := getJWTOrReject(c)
-		if err != nil {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
 		var request UpdateUserRequest
-		if err = c.ShouldBindJSON(&request); err != nil {
+		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
@@ -134,9 +136,8 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 // GetUser is a GET request that returns users that match the one specified in the body
 func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, err := getJWTOrReject(c)
-		if err != nil {
-			log.Error(err)
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
@@ -248,8 +249,8 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
-		claims, err := getJWTOrReject(c)
-		if err != nil {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
@@ -282,8 +283,8 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		claims, err := getJWTOrReject(c)
-		if err != nil {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
