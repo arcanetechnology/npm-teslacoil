@@ -64,6 +64,10 @@ var (
 	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
 )
 
+const (
+	authorizationHeader = "Authorization"
+)
+
 // UpdateUser takes in a JSON body with three optional fields (email, firstname,
 // lastname), and updates the user in the header JWT accordingly
 func (r *RestServer) UpdateUser() gin.HandlerFunc {
@@ -75,13 +79,12 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		claims, err := getJWTOrReject(c)
 		if err != nil {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
-		var request UpdateUserRequest
 
+		var request UpdateUserRequest
 		if err = c.ShouldBindJSON(&request); err != nil {
 			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
@@ -131,10 +134,10 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 // GetUser is a GET request that returns users that match the one specified in the body
 func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		claims, err := getJWTOrReject(c)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
 		}
 
 		user, err := users.GetByID(r.db, claims.UserID)
@@ -245,10 +248,9 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		claims, err := getJWTOrReject(c)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
 		}
 
 		tokenString, err := createJWTToken(claims.Email, claims.UserID)

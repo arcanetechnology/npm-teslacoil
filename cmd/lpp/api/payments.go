@@ -45,15 +45,8 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		auth := c.GetHeader("Authorization")
-		_, claim, err := parseBearerJWT(auth)
+		claim, err := getJWTOrReject(c)
 		if err != nil {
-			log.Errorf("GetAllPayments()->ParseBearerJWT(%s): Couldn't parse auth header: %+v",
-				auth, err)
-			c.JSONP(http.StatusBadRequest,
-				gin.H{
-					"error": "bad authorization header, should be bearer auth (JWT)",
-				})
 			return
 		}
 
@@ -73,10 +66,9 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 // specified in the body
 func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, claim, err := parseBearerJWT(c.GetHeader("Authorization"))
+		claim, err := getJWTOrReject(c)
 		if err != nil {
-			log.Errorf("Could not parse bearer JWT: %v", err)
-			c.JSONP(404, gin.H{"error": "Bearer JWT was invalid"})
+			return
 		}
 
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -115,11 +107,9 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		}
 
 		log.Tracef("Bound invoice request: %+v", newPayment)
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		claims, err := getJWTOrReject(c)
 		if err != nil {
-			log.Error(errors.Wrap(err, "could not parse bearer JWT"))
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			return
 		}
 
 		log.Errorf("received new request for CreateInvoice for user_id %d: %v\n",
@@ -163,10 +153,9 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		}
 
 		// authenticate the user by extracting the id from the jwt-token
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
+		claims, err := getJWTOrReject(c)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError,
-				gin.H{"error": "internal server error, try logging in again or refreshing your session"})
+			return
 		}
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
