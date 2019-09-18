@@ -64,6 +64,12 @@ var (
 	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
 )
 
+const (
+	// Authorization is the name of the header where we expect the access token
+	// to be found
+	Authorization = "Authorization"
+)
+
 // UpdateUser takes in a JSON body with three optional fields (email, firstname,
 // lastname), and updates the user in the header JWT accordingly
 func (r *RestServer) UpdateUser() gin.HandlerFunc {
@@ -75,14 +81,13 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
-		if err != nil {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
-		var request UpdateUserRequest
 
-		if err = c.ShouldBindJSON(&request); err != nil {
+		var request UpdateUserRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
@@ -131,10 +136,9 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 // GetUser is a GET request that returns users that match the one specified in the body
 func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
-		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
 		}
 
 		user, err := users.GetByID(r.db, claims.UserID)
@@ -245,10 +249,9 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
-		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
-		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
 		}
 
 		tokenString, err := createJWTToken(claims.Email, claims.UserID)
@@ -263,5 +266,43 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 		log.Info("RefreshTokenResponse: ", res)
 
 		c.JSONP(200, res)
+	}
+}
+
+func (r *RestServer) ChangePassword() gin.HandlerFunc {
+	type ChangePasswordRequest struct {
+		OldPassword         string `json:"oldPassword" binding:"required"`
+		NewPassword         string `json:"newPassword" binding:"required"`
+		RepeatedNewPassword string `json:"repeatedNewPassword" binding:"required,eqfield=NewPassword"`
+	}
+	return func(c *gin.Context) {
+
+		var request ChangePasswordRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			log.Errorf("ChangePassword() -> c.ShouldBindJSON() -> Could not bind request: %v",
+				err)
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.Errorf("Couldn't get user by ID when changing password: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		if _, err := user.ChangePassword(r.db, request.OldPassword, request.NewPassword); err != nil {
+			log.Errorf("Couldn't update user password: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		c.Status(http.StatusOK)
 	}
 }

@@ -85,6 +85,7 @@ func (r *RestServer) RegisterAuthRoutes() {
 	auth.Use(authenticateJWT)
 
 	auth.GET("/auth/refresh_token", r.RefreshToken())
+	auth.PUT("/auth/change_password", r.ChangePassword())
 }
 
 // RegisterUserRoutes registers all user routes on the router
@@ -117,7 +118,7 @@ func (r *RestServer) RegisterPaymentRoutes() {
 // is not valid or has expired
 func authenticateJWT(c *gin.Context) {
 	// Here we extract the token from the header
-	tokenString := c.GetHeader("Authorization")
+	tokenString := c.GetHeader(Authorization)
 
 	_, _, err := parseBearerJWT(tokenString)
 	if err != nil {
@@ -189,6 +190,20 @@ func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	}
 
 	return token, jwtClaims, nil
+}
+
+// getJWTOrReject parses the bearer JWT of the request, rejecting it with
+// a Bad Request response if this fails. Second return value indicates whether
+// or not the operation succeded. The error is logged and sent to the user,
+// so the callee does not need to do anything more.
+func getJWTOrReject(c *gin.Context) (*JWTClaims, bool) {
+	_, claims, err := parseBearerJWT(c.GetHeader(Authorization))
+	if err != nil {
+		log.Errorf("Could not parse bearer JWT: %v", err)
+		c.JSONP(http.StatusBadRequest, badRequestResponse)
+		return nil, false
+	}
+	return claims, true
 }
 
 // createJWTToken creates a new JWT token with the supplied email as the
