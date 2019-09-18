@@ -39,10 +39,6 @@ type ChangeBalance struct {
 // UsersTable is the tablename of users, as saved in the DB
 const (
 	UsersTable = "users"
-	// hashPasswordCost is the cost parameter we pass to bcrypt for hashing
-	// password, i.e. how long the hash function is going to take
-	hashPasswordCost = 12
-
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
 	returningFromUsersTable = "RETURNING id, email, balance, hashed_password, updated_at, first_name, last_name"
@@ -263,6 +259,8 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	// package along with DefaultCost & MaxCost.
 	// The cost can be any value you want provided it isn't lower
 	// than the MinCost (4)
+
+	const hashPasswordCost = 12
 	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), hashPasswordCost)
 	if err != nil {
 		log.Errorf("Couldn't hash password: %v", err)
@@ -391,7 +389,7 @@ func (u User) ChangePassword(db *db.DB, oldPassword, newPassword string) (User, 
 
 	hashedNew, err := hashAndSalt(newPassword)
 	if err != nil {
-		return User{}, errors.Wrap(err, "User.ChangePassword(): couldn't hash newn password")
+		return User{}, errors.Wrap(err, "User.ChangePassword(): couldn't hash new password")
 	}
 
 	tx := db.MustBegin()
@@ -399,21 +397,21 @@ func (u User) ChangePassword(db *db.DB, oldPassword, newPassword string) (User, 
 	rows, err := tx.Query(query, hashedNew, u.ID)
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
-			return User{}, err
+			return User{}, errors.Wrap(err, txErr.Error())
 		}
 		return User{}, errors.Wrap(err, "couldn't update user password")
 	}
 	user, err := scanUser(rows)
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
-			return User{}, err
+			return User{}, errors.Wrap(err, txErr.Error())
 		}
 		return User{}, errors.Wrap(err, "couldn't scan user when changing password")
 	}
 
 	if err = tx.Commit(); err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return User{}, rollbackErr
+			return User{}, errors.Wrap(err, rollbackErr.Error())
 		}
 		return User{}, err
 	}
