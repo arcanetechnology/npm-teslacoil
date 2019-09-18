@@ -42,15 +42,25 @@ func TestMain(m *testing.M) {
 		panic(err.Error())
 	}
 
-	lndConfig := testutil.GetLightingConfig()
-	lnd, err := ln.NewLNDClient(lndConfig)
-	if err != nil {
-		panic(err.Error())
-	}
+	// this is not good, but a workaround until we have a proper testing/CI
+	// harness with nodes and the whole shebang
+	if os.Getenv("CI") != "" {
+		realLndApp, err = NewApp(testDB, testutil.GetLightningMockClient(), conf)
+		if err != nil {
+			panic(err.Error())
+		}
+	} else {
+		lndConfig := testutil.GetLightingConfig()
+		lnd, err := ln.NewLNDClient(lndConfig)
+		if err != nil {
+			panic(err.Error())
+		}
 
-	realLndApp, err = NewApp(testDB, lnd, conf)
-	if err != nil {
-		panic(err.Error())
+		realLndApp, err = NewApp(testDB, lnd, conf)
+		if err != nil {
+			panic(err.Error())
+		}
+
 	}
 
 	// default app is mocked out version
