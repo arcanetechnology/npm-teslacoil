@@ -1,8 +1,17 @@
+# Postgres database
 export DATABASE_USER="lpp"
 export DATABASE_PASSWORD="password"
 export DATABASE_NAME="lpp"
 export DATABASE_PORT=5432
 
-export GO111MODULE=on
+# LND
+LND_DIR=~/.lnd
+LND_NETWORK= # testnet | mainnet | simnet | regtest
+LND_PORT=9735
+
+# Docker
 export UID=1001 # This should be your user ID: `id -u`
 export GID=1001 # This should be your group ID: `id -g`
+
+# Other
+export GO111MODULE=on

@@ -168,10 +168,12 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
-		return User{}, errors.Wrap(
+		return User{}, errors.Wrapf(
 			err,
-			"IncreaseBalance(): could not construct user update",
-		)
+			"IncreaseBalance() -> tx.Query(%s, %d, %d) could not construct user update",
+			updateBalanceQuery,
+			cb.AmountSat,
+			cb.UserID)
 	}
 	defer func() { deferredError = rows.Close() }()
 
