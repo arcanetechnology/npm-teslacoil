@@ -37,7 +37,16 @@ type ChangeBalance struct {
 }
 
 // UsersTable is the tablename of users, as saved in the DB
-const UsersTable = "users"
+const (
+	UsersTable = "users"
+	// hashPasswordCost is the cost parameter we pass to bcrypt for hashing
+	// password, i.e. how long the hash function is going to take
+	hashPasswordCost = 12
+
+	// returningFromUsersTable is a SQL snippet that returns all the rows needed
+	// to scan a user struct
+	returningFromUsersTable = "RETURNING id, email, balance, hashed_password, updated_at, first_name, last_name"
+)
 
 // GetAll is a GET request that returns all the users in the database
 // TODO: This endpoint should be restricted to the admin
@@ -156,15 +165,13 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 // and placing the arguments in the wrong order leads to increasing the wrong
 // users balance
 func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
-	var deferredError error
 	if cb.AmountSat <= 0 {
 		return User{}, fmt.Errorf("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
 		SET balance = balance + $1
-		WHERE id = $2
-		RETURNING id, email, balance, updated_at, first_name, last_name`
+		WHERE id = $2 ` + returningFromUsersTable
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
@@ -175,24 +182,13 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 			cb.AmountSat,
 			cb.UserID)
 	}
-	defer func() { deferredError = rows.Close() }()
 
-	user := User{}
-	if rows.Next() {
-		if err = rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.Balance,
-			&user.UpdatedAt,
-			&user.Firstname,
-			&user.Lastname,
-		); err != nil {
-			return User{}, errors.Wrap(
-				err, "Could not scan user returned from db")
-		}
+	user, err := scanUser(rows)
+	if err != nil {
+		return User{}, err
 	}
 
-	return user, deferredError
+	return user, nil
 }
 
 // DecreaseBalance decreases the balance of user id x by y satoshis
@@ -204,8 +200,7 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 
 	updateBalanceQuery := `UPDATE users
 		SET balance = balance - $1  
-		WHERE id = $2 
-		RETURNING id, email, balance, updated_at, first_name, last_name`
+		WHERE id = $2 ` + returningFromUsersTable
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
@@ -215,21 +210,47 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 		)
 	}
 
+	user, err := scanUser(rows)
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+
+}
+
+type dbScanner interface {
+	Next() bool
+	Scan(dest ...interface{}) error
+	Close() error
+	Err() error
+}
+
+// scanUser tries to scan a User struct frm the given scannable interface
+func scanUser(rows dbScanner) (User, error) {
 	user := User{}
+
+	if err := rows.Err(); err != nil {
+		return user, err
+	}
+
 	if rows.Next() {
-		if err = rows.Scan(
+		if err := rows.Scan(
 			&user.ID,
 			&user.Email,
 			&user.Balance,
+			&user.HashedPassword,
 			&user.UpdatedAt,
 			&user.Firstname,
 			&user.Lastname,
 		); err != nil {
-			return User{}, errors.Wrap(
-				err, "Could not scan user returned from db")
+			return user, errors.Wrap(
+				err, "could not scan user returned from DB")
 		}
+	} else {
+		return user, errors.New("given rows did not have any elements")
 	}
-	if err = rows.Close(); err != nil {
+
+	if err := rows.Close(); err != nil {
 		return user, err
 	}
 
@@ -242,9 +263,9 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	// package along with DefaultCost & MaxCost.
 	// The cost can be any value you want provided it isn't lower
 	// than the MinCost (4)
-	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), 12)
+	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), hashPasswordCost)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("Couldn't hash password: %v", err)
 		return nil, err
 	}
 
@@ -258,8 +279,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, balance, hashed_password, first_name, last_name)
-		VALUES (:email, 0, :hashed_password, :first_name, :last_name)
-		RETURNING id, email, balance, updated_at, first_name, last_name`
+		VALUES (:email, 0, :hashed_password, :first_name, :last_name) ` + returningFromUsersTable
 
 	log.Debugf("Executing query for creating user (%s): %s", user, userCreateQuery)
 
@@ -270,21 +290,9 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 			user.Email, string(user.HashedPassword))
 	}
 
-	userResp := User{}
-	if rows.Next() {
-		if err = rows.Scan(
-			&userResp.ID,
-			&userResp.Email,
-			&userResp.Balance,
-			&userResp.UpdatedAt,
-			&userResp.Firstname,
-			&userResp.Lastname); err != nil {
-			return User{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
-		}
-	}
-
-	if err = rows.Close(); err != nil {
-		return userResp, err
+	userResp, err := scanUser(rows)
+	if err != nil {
+		return User{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
 	}
 	return userResp, nil
 }
@@ -307,15 +315,14 @@ type UpdateOptions struct {
 // Update the users email, first name and last name, depending on
 // what options we get passed in
 func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
-	var out User
 	if u.ID == 0 {
-		return out, errors.New("User ID cannot be 0!")
+		return User{}, errors.New("User ID cannot be 0!")
 	}
 
 	// no action needed
 	if opts.NewFirstName == nil &&
 		opts.NewLastName == nil && opts.NewEmail == nil {
-		return out, errors.New("no actions given in UpdateOptions")
+		return User{}, errors.New("no actions given in UpdateOptions")
 	}
 
 	updateQuery := `UPDATE users SET `
@@ -326,7 +333,7 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 
 	if opts.NewEmail != nil {
 		if *opts.NewEmail == "" {
-			return out, errors.New("cannot delete email")
+			return User{}, errors.New("cannot delete email")
 		}
 		updates = append(updates, "email = :email")
 		queryUser.Email = *opts.NewEmail
@@ -349,7 +356,7 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 	}
 
 	updateQuery += strings.Join(updates, ",")
-	updateQuery += ` WHERE id = :id RETURNING id, email, first_name, last_name, balance`
+	updateQuery += ` WHERE id = :id ` + returningFromUsersTable
 	log.Debugf("Executing SQL for updating user: %s with opts %+v", updateQuery, opts)
 
 	rows, err := db.NamedQuery(
@@ -358,33 +365,55 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 	)
 
 	if err != nil {
-		return out, errors.Wrap(err, "could not update user")
+		return User{}, errors.Wrap(err, "could not update user")
 	}
+	user, err := scanUser(rows)
 
-	if err = rows.Err(); err != nil {
-		return out, err
-	}
-
-	if !rows.Next() {
-		return out, errors.Errorf("did not find user with ID %d", u.ID)
-	}
-
-	if err = rows.Scan(
-		&out.ID,
-		&out.Email,
-		&out.Firstname,
-		&out.Lastname,
-		&out.Balance,
-	); err != nil {
+	if err != nil {
 		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
-		return out, errors.Wrap(err, msg)
+		return User{}, errors.Wrap(err, msg)
 	}
 
-	if err = rows.Close(); err != nil {
-		return out, err
-	}
-	return out, nil
+	return user, nil
 
+}
+
+// ChangePassword takes in a old and new password, and if the old password matches
+// the one in our DB we update it to the given password.
+func (u User) ChangePassword(db *db.DB, oldPassword, newPassword string) (User, error) {
+	if err := bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(oldPassword)); err != nil {
+		return User{}, errors.Wrap(err, "given password didn't match up with hashed password in DB")
+	}
+
+	hashedNew, err := hashAndSalt(newPassword)
+	if err != nil {
+		return User{}, errors.Wrap(err, "User.ChangePassword(): couldn't hash newn password")
+	}
+
+	tx := db.MustBegin()
+	query := `UPDATE users SET hashed_password = $1 WHERE id = $2 ` + returningFromUsersTable
+	rows, err := tx.Query(query, hashedNew, u.ID)
+	if err != nil {
+		if txErr := tx.Rollback(); txErr != nil {
+			return User{}, err
+		}
+		return User{}, errors.Wrap(err, "couldn't update user password")
+	}
+	user, err := scanUser(rows)
+	if err != nil {
+		if txErr := tx.Rollback(); txErr != nil {
+			return User{}, err
+		}
+		return User{}, errors.Wrap(err, "couldn't scan user when changing password")
+	}
+
+	if err = tx.Commit(); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return User{}, rollbackErr
+		}
+		return User{}, err
+	}
+	return user, nil
 }
 
 func (u User) String() string {

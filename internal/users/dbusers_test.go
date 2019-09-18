@@ -8,10 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brianvoe/gofakeit"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -125,9 +128,39 @@ func TestFailToUpdateNonExistingUser(t *testing.T) {
 	user := User{ID: 99999}
 	_, err := user.Update(testDB, UpdateOptions{NewEmail: &email})
 
-	if err == nil || !strings.Contains(err.Error(), "did not find user") {
-		testutil.FatalMsg(t, "Was able to update email of non existant user!")
+	if err == nil || !strings.Contains(err.Error(), "given rows did not have any elements") {
+		testutil.FatalMsgf(t,
+			"Was able to update email of non existant user: %v", err)
 	}
+}
+
+func TestUser_ChangePassword(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	oldPassword := gofakeit.Password(true, true, true, true, true, 32)
+	newPassword := gofakeit.Password(true, true, true, true, true, 32)
+	yetAnotherNewpassword := gofakeit.Password(
+		true, true, true, true, true, 32)
+
+	user := CreateUserOrFailWithPassword(t, oldPassword)
+
+	t.Run("Must not be able to change password by providing a mismatched old password", func(t *testing.T) {
+		if _, err := user.ChangePassword(testDB, newPassword, yetAnotherNewpassword); err == nil {
+			testutil.FatalMsg(t, "Was able to change user password by giving a bad old password!")
+		}
+	})
+
+	t.Run("Must be able to change the user password", func(t *testing.T) {
+		updated, err := user.ChangePassword(testDB, oldPassword, newPassword)
+		if err != nil {
+			testutil.FatalMsg(t, errors.Wrapf(err, "wasn't able to update user password"))
+		}
+
+		if err = bcrypt.CompareHashAndPassword(updated.HashedPassword, []byte(newPassword)); err != nil {
+			testutil.FatalMsg(t, err)
+		}
+	})
+
 }
 
 func TestCanCreateUser(t *testing.T) {
@@ -684,17 +717,24 @@ func TestIncreaseBalance(t *testing.T) {
 	}
 }
 
-// CreateUserOrFail is a util function for creating a user
+// CreateUserOrFail creates a user with a random email and password
 func CreateUserOrFail(t *testing.T) User {
+	passwordLen := gofakeit.Number(8, 32)
+	password := gofakeit.Password(true, true, true, true, true, passwordLen)
+	return CreateUserOrFailWithPassword(t, password)
+}
+
+// CreateuserOrFailWithPassword creates a user with a random email and the
+// given password
+func CreateUserOrFailWithPassword(t *testing.T, password string) User {
 	u, err := Create(testDB, CreateUserArgs{
 		Email:    testutil.GetTestEmail(t),
-		Password: "password",
+		Password: password,
 	})
 	if err != nil {
 		testutil.FatalMsgf(t,
 			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
 			t.Name(), err)
 	}
-
 	return u
 }

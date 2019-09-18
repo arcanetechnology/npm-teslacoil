@@ -1,6 +1,9 @@
 package testutil
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // AssertEqual asserts that the given expected and actual values are equal
 func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
@@ -10,11 +13,20 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	}
 }
 
+//AssertMsg asserts that the given condition holds, failing with the given
+// message if it doesn't
 func AssertMsg(t *testing.T, cond bool, message string) {
 	t.Helper()
 	if !cond {
 		FatalMsgf(t, "Assertion error: %s", message)
 	}
+}
+
+// AssertMsgf assert that the given condition holds, failing with the given
+// format string and args if it doesn't
+func AssertMsgf(t *testing.T, cond bool, format string, args ...interface{}) {
+	t.Helper()
+	AssertMsg(t, cond, fmt.Sprintf(format, args...))
 }
 
 // AssertMapEquals asserts that the `actual` map has all the keys with the
