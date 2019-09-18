@@ -46,6 +46,10 @@ const (
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
 	returningFromUsersTable = "RETURNING id, email, balance, hashed_password, updated_at, first_name, last_name"
+
+	// selectFromUsersTable is a SQL snippet that selects all the rows needed to
+	// get a full fledged user struct
+	selectFromUsersTable = "SELECT id, email, balance, hashed_password, updated_at, first_name, last_name"
 )
 
 // GetAll is a GET request that returns all the users in the database
@@ -65,9 +69,8 @@ func GetAll(d *db.DB) ([]User, error) {
 // in the body
 func GetByID(d *db.DB, id int) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT 
-		id, email, balance, updated_at, first_name, last_name
-		FROM %s WHERE id=$1 LIMIT 1`, UsersTable)
+	uQuery := fmt.Sprintf(`%s FROM %s WHERE id=$1 LIMIT 1`,
+		selectFromUsersTable, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
 		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
@@ -80,9 +83,8 @@ func GetByID(d *db.DB, id int) (User, error) {
 // in the body
 func GetByEmail(d *db.DB, email string) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT 
-		id, email, balance, updated_at, first_name, last_name
-		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
+	uQuery := fmt.Sprintf(`%s FROM %s WHERE email=$1 LIMIT 1`,
+		selectFromUsersTable, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
 		return User{}, errors.Wrapf(err, "GetByEmail(db, %s)", email)
@@ -97,10 +99,8 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	User, error) {
 
 	userResult := User{}
-	uQuery := fmt.Sprintf(`SELECT 
-		id, email, balance, hashed_password, updated_at, first_name, 
-		last_name
-		FROM %s WHERE email=$1 LIMIT 1`, UsersTable)
+	uQuery := fmt.Sprintf(`%s FROM %s WHERE email=$1 LIMIT 1`,
+		selectFromUsersTable, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
 		return User{}, errors.Wrapf(
@@ -381,6 +381,10 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 // ChangePassword takes in a old and new password, and if the old password matches
 // the one in our DB we update it to the given password.
 func (u User) ChangePassword(db *db.DB, oldPassword, newPassword string) (User, error) {
+	if u.HashedPassword == nil {
+		return User{}, errors.New("user object lacks HashedPassword")
+	}
+
 	if err := bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(oldPassword)); err != nil {
 		return User{}, errors.Wrap(err, "given password didn't match up with hashed password in DB")
 	}
