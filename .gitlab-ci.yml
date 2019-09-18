@@ -1,11 +1,12 @@
 stages:
-  - lint
-  - build
+  # while we have a pretty simple CI setup, we run everything on one job
   - test
 
 test:
-  image: golang:1.12
+  image: golangci/golangci-lint
   services:
+    # If you're updating the postgres image we're using, make sure you've pushed
+    # this to the registry. Otherwise the tests won't run with the newest image!
     - name: registry.gitlab.com/arcanecrypto/teslacoil/postgres
       # otherwise the host is name of the image
       alias: postgres
@@ -27,40 +28,8 @@ test:
     # make sure we're using Go modules
     - export GO111MODULE=on
   script:
+    # run tests
     - make test_verbose
 
-build:
-  image: docker:latest
-  services:
-    - docker:dind
-  only:
-    - merge_requests
-  stage: build
-  variables:
-    POSTGRES: registry.gitlab.com/arcanecrypto/teslacoil/postgres
-  script:
-    # https://docs.gitlab.com/ee/ci/docker/using_docker_build.html#authenticating-to-the-container-registry
-    # Torkel has reistered a token on GitLab for pushing to the registry
-    - docker login -u torkelrogstad -p $CI_REGISTRY_TOKEN $CI_REGISTRY
-    - cd docker/postgres
-    - docker pull $POSTGRES
-    - docker build -t $POSTGRES .
-    - docker push $POSTGRES
-
-lint:
-  image: golangci/golangci-lint
-  only:
-    - merge_requests
-  allow_failure: true
-  stage: lint
-  # This is a hack, but that's because GitLab doesn't respect GOPATH etc
-  # https://medium.com/@Extrawurst/golang-and-gitlab-ci-da97d11bafe1
-  cache:
-    paths:
-      - .cache
-  script:
-    - mkdir -p $CI_PROJECT_DIR/.cache
-    - export GOPATH="$CI_PROJECT_DIR/.cache"
-    - export GO111MODULE=on
-    - go get ./...
+    # run linter
     - golangci-lint run
