@@ -267,3 +267,39 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 		c.JSONP(200, res)
 	}
 }
+
+func (r *RestServer) ChangePassword() gin.HandlerFunc {
+	type ChangePasswordRequest struct {
+		OldPassword string `json:"oldPassword" binding:"required"`
+		NewPassword string `json:"newPassword" binding:"required"`
+	}
+	return func(c *gin.Context) {
+
+		var request ChangePasswordRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			log.Errorf("Could not bind request: %v", err)
+			c.JSON(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		claims, err := getJWTOrReject(c)
+		if err != nil {
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.Errorf("Couldn't get user by ID when changing password: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		if _, err := user.ChangePassword(r.db, request.OldPassword, request.NewPassword); err != nil {
+			log.Errorf("Couldn't update user password: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		c.Status(http.StatusOK)
+	}
+}

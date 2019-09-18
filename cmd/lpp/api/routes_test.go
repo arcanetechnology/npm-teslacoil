@@ -100,6 +100,18 @@ func assertResponseNotOk(t *testing.T, request *http.Request) *httptest.Response
 	return response
 }
 
+// assertResponseNotOkWithCode checks that the given request results in the
+// given HTTP status code. It returns the response to the request.
+func assertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) *httptest.ResponseRecorder {
+	testutil.AssertMsgf(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
+	t.Helper()
+
+	response := assertResponseNotOk(t, request)
+	testutil.AssertMsgf(t, response.Code == code,
+		"Expected code (%d) does not match with found code (%d)", response.Code, code)
+	return response
+}
+
 func extractMethodAndPath(req *http.Request) string {
 	return req.Method + " " + req.URL.Path
 }
@@ -368,6 +380,87 @@ func TestPostLoginRoute(t *testing.T) {
 	testutil.AssertEqual(t, res["lastName"], second)
 	testutil.AssertEqual(t, res["email"], email)
 	testutil.AssertEqual(t, res["balance"], 0.0)
+}
+
+func TestChangePasswordRoute(t *testing.T) {
+	testutil.DescribeTest(t)
+	email := gofakeit.Email()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
+	newPass := gofakeit.Password(true, true, true, true, true, 32)
+
+	accessToken := createAndLoginUser(t, users.CreateUserArgs{
+		Email:    email,
+		Password: pass,
+	})
+
+	t.Run("Should give an error if not including the old password", func(t *testing.T) {
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"newPassword": %q
+		}`, newPass),
+		})
+
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+	})
+
+	t.Run("Should give an error if not including the new password", func(t *testing.T) {
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q
+		}`, pass),
+		})
+
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+	})
+
+	t.Run("Should give an error if not including the access token", func(t *testing.T) {
+		changePassReq := getRequest(t, RequestArgs{
+			Path:   "/auth/change_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+			"newPassword": %q,
+			"oldPassword": %q
+		}`, newPass, pass),
+		})
+
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
+	})
+
+	t.Run("Must be able to change password", func(t *testing.T) {
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q,
+			"newPassword": %q
+		}`, pass, newPass),
+		})
+
+		assertResponseOk(t, changePassReq)
+	})
+
+	t.Run("Must not be able to change the password by providing a bad old password", func(t *testing.T) {
+		badPass := gofakeit.Password(true, true, true, true, true, 32)
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q,
+			"newPassword": %q
+		}`, badPass, newPass),
+		})
+
+		assertResponseNotOk(t, changePassReq)
+	})
+
 }
 
 func TestPutUserRoute(t *testing.T) {

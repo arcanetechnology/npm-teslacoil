@@ -85,6 +85,7 @@ func (r *RestServer) RegisterAuthRoutes() {
 	auth.Use(authenticateJWT)
 
 	auth.GET("/auth/refresh_token", r.RefreshToken())
+	auth.PUT("/auth/change_password", r.ChangePassword())
 }
 
 // RegisterUserRoutes registers all user routes on the router
