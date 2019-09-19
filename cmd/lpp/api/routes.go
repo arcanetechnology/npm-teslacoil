@@ -223,6 +223,20 @@ func getJWTOrReject(c *gin.Context) (*JWTClaims, bool) {
 	return claims, true
 }
 
+// getJSONOrReject extracts fields from the context and inserts
+// them into the passed body argument. If an error occurs, the
+// error is logged and a response with StatusBadRequest is sent
+// body MUST be an address to a variable, not a variable
+func getJSONOrReject(c *gin.Context, body interface{}) bool {
+	if err := c.ShouldBindJSON(body); err != nil {
+		log.Errorf("%s could not bind JSON %+v", c.Request.URL.Path, err)
+		c.JSON(http.StatusBadRequest, badRequestResponse)
+		return false
+	}
+
+	return true
+}
+
 // createJWTToken creates a new JWT token with the supplied email as the
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token

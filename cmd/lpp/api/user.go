@@ -22,35 +22,16 @@ type UserResponse struct {
 	Lastname  *string `json:"lastName"`
 }
 
-// CreateUserRequest is the expected type to create a new user
-type CreateUserRequest struct {
-	Email     string  `json:"email" binding:"required"`
-	Password  string  `json:"password" binding:"required"`
-	FirstName *string `json:"firstName"`
-	LastName  *string `json:"lastName"`
-}
+var (
+	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
+	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
+)
 
-// LoginRequest is the expected type to find a user in the DB
-type LoginRequest struct {
-	Email    string `json:"email" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	TotpCode string `json:"totp"`
-}
-
-// LoginResponse includes a jwt-token and the e-mail identifying the user
-type LoginResponse struct {
-	AccessToken string  `json:"accessToken"`
-	Email       string  `json:"email"`
-	UserID      int     `json:"userId"`
-	Balance     int64   `json:"balance"`
-	Firstname   *string `json:"firstName"`
-	Lastname    *string `json:"lastName"`
-}
-
-// RefreshTokenResponse is the response from /auth/refresh
-type RefreshTokenResponse struct {
-	AccessToken string `json:"accessToken"`
-}
+const (
+	// Authorization is the name of the header where we expect the access token
+	// to be found
+	Authorization = "Authorization"
+)
 
 // GetAllUsers is a GET request that returns all the users in the database
 // TODO: Restrict this to only the admin user
@@ -65,18 +46,6 @@ func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 		c.JSONP(200, userResponse)
 	}
 }
-
-// HTML responses used across the API
-var (
-	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
-	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
-)
-
-const (
-	// Authorization is the name of the header where we expect the access token
-	// to be found
-	Authorization = "Authorization"
-)
 
 // UpdateUser takes in a JSON body with three optional fields (email, firstname,
 // lastname), and updates the user in the header JWT accordingly
@@ -95,8 +64,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 		}
 
 		var request UpdateUserRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		if ok := getJSONOrReject(c, &request); !ok {
 			return
 		}
 
@@ -172,24 +140,30 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 
 // CreateUser is a POST request and inserts all the users in the body into the database
 func (r *RestServer) CreateUser() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var req CreateUserRequest
+	// CreateUserRequest is the expected type to create a new user
+	type CreateUserRequest struct {
+		Email     string  `json:"email" binding:"required"`
+		Password  string  `json:"password" binding:"required"`
+		FirstName *string `json:"firstName"`
+		LastName  *string `json:"lastName"`
+	}
 
-		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+	return func(c *gin.Context) {
+
+		var request CreateUserRequest
+		if ok := getJSONOrReject(c, &request); !ok {
 			return
 		}
 
-		log.Info("creating user with credentials: ", req)
+		log.Info("creating user with credentials: ", request)
 
 		// because the email column in users table has the unique tag, we don't
 		// double check the email is unique
 		u, err := users.Create(r.db, users.CreateUserArgs{
-			Email:     req.Email,
-			Password:  req.Password,
-			FirstName: req.FirstName,
-			LastName:  req.LastName,
+			Email:     request.Email,
+			Password:  request.Password,
+			FirstName: request.FirstName,
+			LastName:  request.LastName,
 		})
 		if err != nil {
 			log.Error(err)
@@ -212,19 +186,32 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 
 //Login logs in
 func (r *RestServer) Login() gin.HandlerFunc {
+	// LoginRequest is the expected type to find a user in the DB
+	type LoginRequest struct {
+		Email    string `json:"email" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	// LoginResponse includes a jwt-token and the e-mail identifying the user
+	type LoginResponse struct {
+		AccessToken string  `json:"accessToken"`
+		Email       string  `json:"email"`
+		UserID      int     `json:"userId"`
+		Balance     int64   `json:"balance"`
+		Firstname   *string `json:"firstName"`
+		Lastname    *string `json:"lastName"`
+	}
 
 	return func(c *gin.Context) {
-		var req LoginRequest
 
-		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Error(err)
-			c.JSON(http.StatusBadRequest, badRequestResponse)
+		var request LoginRequest
+		if ok := getJSONOrReject(c, &request); !ok {
 			return
 		}
 
-		log.Info("logging in user: ", req)
+		log.Info("logging in user: ", request)
 
-		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
+		user, err := users.GetByCredentials(r.db, request.Email, request.Password)
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
@@ -404,6 +391,11 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 
 // RefreshToken refreshes a jwt-token
 func (r *RestServer) RefreshToken() gin.HandlerFunc {
+	// RefreshTokenResponse is the response from /auth/refresh
+	type RefreshTokenResponse struct {
+		AccessToken string `json:"accessToken"`
+	}
+
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
@@ -477,17 +469,13 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 		RepeatedNewPassword string `json:"repeatedNewPassword" binding:"required,eqfield=NewPassword"`
 	}
 	return func(c *gin.Context) {
-
-		var request ChangePasswordRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			log.Errorf("ChangePassword() -> c.ShouldBindJSON() -> Could not bind request: %v",
-				err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		claims, ok := getJWTOrReject(c)
+		if !ok {
 			return
 		}
 
-		claims, ok := getJWTOrReject(c)
-		if !ok {
+		var request ChangePasswordRequest
+		if ok := getJSONOrReject(c, &request); !ok {
 			return
 		}
 

@@ -548,6 +548,42 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 	}, nil
 }
 
+// Transaction is the db and json type for an on-chain transaction
+type Transaction struct {
+	ID        int    `db:"confirmed_at" json:"id"`
+	UserID    int    `db:"confirmed_at" json:"userId"`
+	Address   string `db:"confirmed_at" json:"address"`
+	Txid      string `db:"confirmed_at" json:"txid"`
+	AmountSat int64  `db:"confirmed_at" json:"amountSat"`
+
+	CallbackURL *string    `db:"confirmed_at"`
+	ConfirmedAt time.Time  `db:"confirmed_at" json:"confirmedAt"`
+	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time  `db:"updated_at" json:"-"`
+	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
+}
+
+func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
+	string, error) {
+	lnArgs := &lnrpc.SendCoinsRequest{
+		Amount:     args.AmountSat,
+		Addr:       args.Address,
+		TargetConf: int32(args.TargetConf),
+		SatPerByte: int64(args.SatPerByte),
+	}
+
+	res, err := lncli.SendCoins(context.Background(), lnArgs)
+	if err != nil {
+		return "", err
+	}
+
+	return res.Txid, nil
+}
+
+func insertTransaction(tx *sqlx.Tx, transaction Transaction) (Transaction, error) {
+
+}
+
 type WithdrawOnChainArgs struct {
 	// The UserID that wants to withdraw funds, omit it from json
 	UserID int `json:"-"`
@@ -581,15 +617,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		args.AmountSat = user.Balance
 	}
 
-	res, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
-		Amount:     args.AmountSat,
-		Addr:       args.Address,
-		TargetConf: int32(args.TargetConf),
-		SatPerByte: int64(args.SatPerByte),
-	})
-	if err != nil {
-		return "", err
-	}
+	SendOnChain(lncli)
 
 	return res.Txid, nil
 }
