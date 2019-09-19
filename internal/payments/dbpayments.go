@@ -548,30 +548,44 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 	}, nil
 }
 
-func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int,
-	amountSat int64, address string, targetConf, satPerByte int, sendAll bool) (
-	string, error) {
+type WithdrawOnChainArgs struct {
+	// The UserID that wants to withdraw funds, omit it from json
+	UserID int `json:"-"`
+	// The amount in satoshis to send
+	AmountSat int64 `json:"amountSat" binding:"required"`
+	// The address to send coins to
+	Address string `json:"address" binding:"required"`
+	// The target number of blocks the transaction should be confirmed by
+	TargetConf int `json:"targetConf"`
+	// A manual fee rate set in sat/byte that should be used
+	SatPerByte int `json:"satPerByte"`
+	// If set, amount field will be ignored, and the entire balance will be sent
+	SendAll bool `json:"sendAll"`
+}
 
-	user, err := users.GetByID(d, userID)
+func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
+	args WithdrawOnChainArgs) (string, error) {
+
+	user, err := users.GetByID(d, args.UserID)
 	if err != nil {
 		return "", errors.Wrap(err, "withdrawonchain could not get user")
 	}
 
-	if user.Balance < amountSat {
+	if user.Balance < args.AmountSat {
 		return "", errors.New("cannot withdraw, not enough balance")
 	}
 
 	// We dont pass sendAll to lncli, as that would send the entire nodes
 	// balance to the address
-	if sendAll {
-		amountSat = user.Balance
+	if args.SendAll {
+		args.AmountSat = user.Balance
 	}
 
 	res, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
-		Amount:     amountSat,
-		Addr:       address,
-		TargetConf: int32(targetConf),
-		SatPerByte: int64(satPerByte),
+		Amount:     args.AmountSat,
+		Addr:       args.Address,
+		TargetConf: int32(args.TargetConf),
+		SatPerByte: int64(args.SatPerByte),
 	})
 	if err != nil {
 		return "", err

@@ -147,8 +147,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "bad request, see documentation"})
+			c.JSON(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
@@ -163,8 +162,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		t, err := payments.PayInvoiceWithDescription(r.db, *r.lncli, claims.UserID,
 			req.PaymentRequest, req.Description)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, could not pay invoice"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
@@ -172,50 +170,48 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	}
 }
 
+// WithdrawOnChain is a request handler used for withdrawing funds
+// to an on-chain address
+// If the withdrawal is successful, it responds with the txid
 func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
-	type WithdrawOnChainRequest struct {
-		// The amount in satoshis to send
-		AmountSat int64 `json:"amountSat"`
-		// The address to send coins to
-		Address string `json:"address"`
-		// The target number of blocks the transaction should be confirmed by
-		TargetConf int `json:"targetConf"`
-		// A manual fee rate set in sat/byte that should be used
-		SatPerByte int `json:"satPerByte"`
-		// If set, amount field will be ignored, and the entire balance will be sent
-		SendAll bool `json:"sendAll"`
-	}
-
 	type WithdrawResponse struct {
 		Txid string `json:"txid"`
 	}
 
 	return func(c *gin.Context) {
 
-		var req WithdrawOnChainRequest
+		var req payments.WithdrawOnChainArgs
 
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Error(err)
-			log.Info("error, here")
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "bad request, see documentation"})
+			log.Errorf("could not bind JSON %+v", err)
+			c.JSON(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
-		log.Infof("%+v\n", req)
+		// TODO: Create a middleware for logging requ
+		log.Infof("Received WithdrawOnChain request %+v\n", req)
 
 		_, claims, err := parseBearerJWT(c.GetHeader("Authorization"))
 		if err != nil {
 			c.JSONP(http.StatusBadRequest,
-				gin.H{"error": "internal server error, try logging in again or refreshing your session"})
+				badRequestResponse)
 		}
 
-		txid, err := payments.WithdrawOnChain(r.db, *r.lncli, claims.UserID,
-			req.AmountSat, req.Address, req.TargetConf, req.SatPerByte, req.SendAll)
+		txid, err := payments.WithdrawOnChain(r.db, *r.lncli,
+			payments.WithdrawOnChainArgs{
+				UserID:     claims.UserID,
+				AmountSat:  req.AmountSat,
+				Address:    req.Address,
+				TargetConf: req.TargetConf,
+				SatPerByte: req.SatPerByte,
+				SendAll:    req.SendAll,
+			},
+		)
 		if err != nil {
 			log.Errorf("cannot withdraw onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,
-				gin.H{"error": "internal server error, try logging in again or refreshing your session"})
+				internalServerErrorResponse,
+			)
 		}
 
 		c.JSONP(http.StatusOK, WithdrawResponse{

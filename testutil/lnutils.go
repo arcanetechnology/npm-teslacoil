@@ -30,6 +30,7 @@ type LightningMockClient struct {
 	InvoiceResponse         lnrpc.Invoice
 	SendPaymentSyncResponse lnrpc.SendResponse
 	DecodePayReqResponse    lnrpc.PayReq
+	SendCoinsResponse       lnrpc.SendCoinsResponse
 }
 
 func (client LightningMockClient) WalletBalance(ctx context.Context, in *lnrpc.WalletBalanceRequest, opts ...grpc.CallOption) (*lnrpc.WalletBalanceResponse, error) {

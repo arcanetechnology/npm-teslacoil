@@ -34,6 +34,8 @@ var (
 	firstMemo   = "HiMisterHey"
 	description = "My personal description"
 	secondMemo  = "HelloWorld"
+	// address to testnet node running on lightningspin.com
+	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
 )
 
 func TestMain(m *testing.M) {
@@ -825,90 +827,128 @@ func TestWithAdditionalFields(t *testing.T) {
 	}
 }
 
-func TestWithdrawOnChain(t *testing.T) {
+func TestWithdrawOnChainNegativeAmount(t *testing.T) {
 	t.Parallel()
-	user := CreateUserOrFail(t)
 
-	amount1 := rand.Int63n(4294967)
-	amount2 := rand.Int63n(4294967)
+	balance := int64(5000000)   // 5 000 000
+	amountSat := int64(-400000) // 400 000
 
-	tests := []struct {
-		memo        string
-		description string
-		amountSat   int64
+	user := CreateUserWithBalanceOrFail(t, balance)
 
-		lndInvoice lnrpc.Invoice
-		want       Payment
+	t.Run("should not send negative amountSat", func(t *testing.T) {
+
+		mockLNcli := testutil.LightningMockClient{
+			SendCoinsResponse: lnrpc.SendCoinsResponse{
+				Txid: "owrgkpoaerkgpok",
+			},
+		}
+
+		txid, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
+			UserID:    user.ID,
+			AmountSat: amountSat,
+			Address:   testnetAddress,
+		})
+		if err == nil || txid != "" {
+			t.Fatal()
+		}
+
+		t.Run("withdrew the right amount", func(t *testing.T) {
+			// Look up the txid on-chain
+			fmt.Println("txid: ", txid)
+		})
+
+	})
+
+}
+
+func TestWithdrawOnChainMoreThanBalance(t *testing.T) {
+	t.Parallel()
+
+	balance := int64(500000)    // 500 000
+	amountSat := int64(1000000) // 1 000 000
+
+	user := CreateUserWithBalanceOrFail(t, balance)
+
+	t.Run("should not send more than balance", func(t *testing.T) {
+
+		mockLNcli := testutil.LightningMockClient{
+			SendCoinsResponse: lnrpc.SendCoinsResponse{
+				Txid: "owrgkpoaerkgpok",
+			},
+		}
+
+		txid, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
+			UserID:    user.ID,
+			AmountSat: amountSat,
+			Address:   testnetAddress,
+		})
+		if err == nil || txid != "" {
+			testutil.FatalMsgf(t, "should not send transaction")
+		}
+
+	})
+
+}
+
+func TestWithdrawOnChainSendAll(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		balance int64
+		// We specify amountSat to make sure it is ignored when sendAll is true
+		amountSat int64
 	}{
 		{
-			memo:        firstMemo,
-			description: description,
-			amountSat:   amount1,
+			balance: 5000000, // 5 000 000
 
-			lndInvoice: lnrpc.Invoice{
-				Value:          int64(amount1),
-				PaymentRequest: "SomePayRequest",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
-				Settled:        false,
-			},
-			want: Payment{
-				UserID:         user.ID,
-				AmountSat:      amount1,
-				AmountMSat:     amount1 * 1000,
-				HashedPreimage: testutil.SampleHashHex,
-				Memo:           &firstMemo,
-				Description:    &description,
-				Status:         Status("OPEN"),
-				Direction:      Direction("INBOUND"),
-			},
+			amountSat: 500000,
 		},
 		{
-			memo:        firstMemo,
-			description: description,
-			amountSat:   amount2,
+			balance: 100000, // 100 000
 
-			lndInvoice: lnrpc.Invoice{
-				Value:          int64(amount2),
-				PaymentRequest: "SomePayRequest",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
-				Settled:        false,
-			},
-			want: Payment{
-				UserID:         user.ID,
-				AmountSat:      amount2,
-				AmountMSat:     amount2 * 1000,
-				HashedPreimage: testutil.SampleHashHex,
-				Memo:           &firstMemo,
-				Description:    &description,
-				Status:         Status("OPEN"),
-				Direction:      Direction("INBOUND"),
-			},
+			amountSat: -500000,
+		},
+		{
+			balance: 20000, // 20 000
+
+			amountSat: 0,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("create invoice with amount %d memo %s and description %s",
-			tt.amountSat, tt.memo, tt.description), func(t *testing.T) {
+	for _, test := range testCases {
 
-			// Create Mock LND client with preconfigured invoice response
+		var user users.User
+		t.Run(fmt.Sprintf("create user with balance %d", test.balance),
+			func(t *testing.T) {
+				user = CreateUserWithBalanceOrFail(t, test.balance)
+			})
+
+		t.Run("can withdraw on-chain", func(t *testing.T) {
+
 			mockLNcli := testutil.LightningMockClient{
-				InvoiceResponse: tt.lndInvoice,
+				SendCoinsResponse: lnrpc.SendCoinsResponse{
+					Txid: "owrgkpoaerkgpok",
+				},
 			}
 
-			payment, err := NewPayment(testDB, mockLNcli, tt.want.UserID,
-				tt.amountSat, tt.memo, tt.description)
+			txid, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
+				UserID:    user.ID,
+				AmountSat: test.amountSat,
+				Address:   testnetAddress,
+
+				SendAll: true,
+			})
 			if err != nil {
-				testutil.FatalMsgf(t, "should be able to CreateInvoice %+v", err)
+				testutil.FatalMsgf(t, "could not WithdrawOnChain %+v", err)
 			}
 
-			// Assertions
-			got := payment
-			want := tt.want
+			t.Run("withdrew the right amount", func(t *testing.T) {
+				// Look up the txid on-chain, and check the amount
+				fmt.Println("txid: ", txid)
+			})
 
-			assertPaymentsAreEqual(t, got, want)
 		})
+
 	}
 }
 
@@ -995,4 +1035,30 @@ func CreateUserOrFail(t *testing.T) users.User {
 	}
 
 	return u
+}
+
+func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
+	u := CreateUserOrFail(t)
+
+	tx := testDB.MustBegin()
+	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
+		UserID:    u.ID,
+		AmountSat: balance,
+	})
+	if err != nil {
+		testutil.FatalMsgf(t,
+			"[%s] could not increase balance by %d for user %d: %+v", t.Name(),
+			balance, u.ID, err)
+	}
+	err = tx.Commit()
+	if err != nil {
+		testutil.FatalMsg(t, "could not commit tx")
+	}
+
+	if user.Balance != balance {
+		testutil.FatalMsgf(t, "wrong balance, expected [%d], got [%d]", balance,
+			user.Balance)
+	}
+
+	return user
 }
