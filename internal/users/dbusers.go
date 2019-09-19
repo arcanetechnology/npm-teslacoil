@@ -47,6 +47,9 @@ const (
 	// selectFromUsersTable is a SQL snippet that selects all the rows needed to
 	// get a full fledged user struct
 	selectFromUsersTable = "SELECT id, email, balance, hashed_password, updated_at, first_name, last_name"
+
+	// PasswordResetTokenDuration is how long our password reset tokens are valid
+	PasswordResetTokenDuration = 1 * time.Hour
 )
 
 // Secret key used for resetting passwords.
@@ -129,7 +132,7 @@ func GetPasswordResetToken(d *db.DB, email string) (string, error) {
 	}
 
 	token := passwordreset.NewToken(
-		email, 1*time.Hour,
+		email, PasswordResetTokenDuration,
 		user.HashedPassword, passwordResetSecretKey)
 	return token, nil
 }
