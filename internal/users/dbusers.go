@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dchest/passwordreset"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -47,6 +48,10 @@ const (
 	// get a full fledged user struct
 	selectFromUsersTable = "SELECT id, email, balance, hashed_password, updated_at, first_name, last_name"
 )
+
+// Secret key used for resetting passwords.
+// TODO: Make this secure :-)
+var passwordResetSecretKey = []byte("assume we have a long randomly generated secret key here")
 
 // GetAll is a GET request that returns all the users in the database
 // TODO: This endpoint should be restricted to the admin
@@ -112,6 +117,40 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	log.Tracef("%s received user %v", uQuery, userResult)
 
 	return userResult, nil
+}
+
+// GetPasswordResetToken creates a valid password reset token for the user
+// corresponding to the given email, if such an user exists. This token
+// can later be used to send a reset password request to the API.
+func GetPasswordResetToken(d *db.DB, email string) (string, error) {
+	user, err := GetByEmail(d, email)
+	if err != nil {
+		return "", err
+	}
+
+	token := passwordreset.NewToken(
+		email, 1*time.Hour,
+		user.HashedPassword, passwordResetSecretKey)
+	return token, nil
+}
+
+// VerifyPasswordResetToken verifies the given token against the hashed
+// password and email of the associated user, as well as our private signing
+// key. It returns the login (email) that's allowed to use this password
+// reset token.
+func VerifyPasswordResetToken(d *db.DB, token string) (string, error) {
+	getPasswordHash := func(email string) ([]byte, error) {
+		user, err := GetByEmail(d, email)
+		if err != nil {
+			return nil, err
+		}
+		return user.HashedPassword, nil
+	}
+
+	return passwordreset.VerifyToken(
+		token,
+		getPasswordHash,
+		passwordResetSecretKey)
 }
 
 type CreateUserArgs struct {
@@ -387,14 +426,19 @@ func (u User) ChangePassword(db *db.DB, oldPassword, newPassword string) (User, 
 		return User{}, errors.Wrap(err, "given password didn't match up with hashed password in DB")
 	}
 
-	hashedNew, err := hashAndSalt(newPassword)
+	return u.ResetPassword(db, newPassword)
+
+}
+
+func (u User) ResetPassword(db *db.DB, password string) (User, error) {
+	hashed, err := hashAndSalt(password)
 	if err != nil {
 		return User{}, errors.Wrap(err, "User.ChangePassword(): couldn't hash new password")
 	}
 
 	tx := db.MustBegin()
 	query := `UPDATE users SET hashed_password = $1 WHERE id = $2 ` + returningFromUsersTable
-	rows, err := tx.Query(query, hashedNew, u.ID)
+	rows, err := tx.Query(query, hashed, u.ID)
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
 			return User{}, errors.Wrap(err, txErr.Error())

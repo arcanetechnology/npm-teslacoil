@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
+	"github.com/dchest/passwordreset"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -160,7 +161,73 @@ func TestUser_ChangePassword(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 	})
+}
 
+func TestUser_ResetPassword(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	password := gofakeit.Password(true, true, true, true, true, 32)
+	user := CreateUserOrFail(t)
+
+	if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(password)); err == nil {
+		testutil.FatalMsg(t, "User has new password before reset occured")
+	}
+
+	updated, err := user.ResetPassword(testDB, password)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+	if err := bcrypt.CompareHashAndPassword(updated.HashedPassword, []byte(password)); err != nil {
+		testutil.FatalMsgf(t, "User password did not change: %v", err)
+	}
+}
+
+func TestGetPasswordResetToken(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	t.Run("Get a token for an existing user", func(t *testing.T) {
+		user := CreateUserOrFail(t)
+		_, err := GetPasswordResetToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+	})
+	t.Run("Fail to get a token for an non-existing user", func(t *testing.T) {
+		_, err := GetPasswordResetToken(testDB, gofakeit.Email())
+		if err == nil {
+			testutil.FatalMsg(t, "Was able to get a token from a non existing user!")
+		}
+	})
+}
+
+func TestVerifyPasswordResetToken(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	user := CreateUserOrFail(t)
+
+	t.Run("Verify a token we created", func(t *testing.T) {
+		token, err := GetPasswordResetToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		email, err := VerifyPasswordResetToken(testDB, token)
+		if err != nil {
+			testutil.FatalMsgf(t, "Wasn't able to verify token: %+v", err)
+		}
+		testutil.AssertEqual(t, email, user.Email)
+	})
+
+	t.Run("Don't verify a token we didn't create", func(t *testing.T) {
+		duration := 1 * time.Hour
+		secretKey := []byte("this is a secret key")
+		badToken := passwordreset.NewToken(user.Email, duration,
+			user.HashedPassword, secretKey)
+		if _, err := VerifyPasswordResetToken(testDB, badToken); err == nil {
+			testutil.FatalMsg(t, "Was able to verify a bad token!")
+		}
+	})
 }
 
 func TestCanCreateUser(t *testing.T) {
