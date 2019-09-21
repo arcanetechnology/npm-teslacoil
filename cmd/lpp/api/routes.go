@@ -47,7 +47,7 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, e
 	g := gin.Default()
 
 	g.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://127.0.0.1:3000"},
+		AllowAllOrigins: true,
 		AllowMethods: []string{
 			http.MethodPut, http.MethodGet,
 			http.MethodPost, http.MethodPatch,
@@ -65,8 +65,10 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, e
 	}
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
-	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
+	// Start a goroutine for getting notified of newly added/settled invoices.
+	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
+	// Start a goroutine for handling the newly added/settled invoices.
 	go payments.InvoiceStatusListener(invoiceUpdatesCh, d)
 
 	// We register /login separately to require jwt-tokens on every other endpoint

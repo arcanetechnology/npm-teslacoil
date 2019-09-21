@@ -44,6 +44,7 @@ func init() {
 
 	DatabaseUser = util.GetEnvOrFail("DATABASE_USER")
 	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
+	DatabaseName = util.GetEnvOrFail("DATABASE_NAME")
 	DatabaseHost = util.GetEnvOrElse("DATABASE_HOST", "localhost")
 
 	databaseConfig = db.DatabaseConfig{
@@ -62,6 +63,7 @@ var (
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Action: func(c *cli.Context) error {
+
 			database, err := db.Open(databaseConfig)
 			if err != nil {
 				log.Fatal(err)
@@ -143,6 +145,7 @@ var (
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
 				Action: func(c *cli.Context) error {
+
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
