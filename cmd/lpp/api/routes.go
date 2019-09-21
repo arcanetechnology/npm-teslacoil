@@ -74,6 +74,11 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, e
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login
 	r.Router.POST("/login", r.Login())
+	// Ping handler
+	r.Router.GET("/ping", func(c *gin.Context) {
+		c.String(200, "pong")
+	})
+
 	r.RegisterAuthRoutes()
 	r.RegisterUserRoutes()
 	r.RegisterPaymentRoutes()
