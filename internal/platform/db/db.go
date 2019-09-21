@@ -87,7 +87,7 @@ func Open(conf DatabaseConfig) (*DB, error) {
 		)
 	}
 
-	log.Infof("opened connection to DB at %s with config %+v", databaseHostWithPort, databaseURL)
+	log.Infof("opened connection to DB at %s", databaseHostWithPort)
 
 	return &DB{d}, nil
 }

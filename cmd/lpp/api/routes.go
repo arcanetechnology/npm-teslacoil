@@ -47,7 +47,7 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, e
 	g := gin.Default()
 
 	g.Use(cors.New(cors.Config{
-		AllowAllOrigins: true,
+		AllowOrigins: []string{"https://teslacoil.io", "127.0.0.1"},
 		AllowMethods: []string{
 			http.MethodPut, http.MethodGet,
 			http.MethodPost, http.MethodPatch,
