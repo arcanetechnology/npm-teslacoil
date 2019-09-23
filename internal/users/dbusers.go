@@ -8,6 +8,8 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"github.com/pquerna/otp"
+	"github.com/pquerna/otp/totp"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -20,15 +22,21 @@ type UserNew struct {
 
 // User is a database table
 type User struct {
-	ID             int        `db:"id"`
-	Email          string     `db:"email"`
-	Balance        int64      `db:"balance"`
-	Firstname      *string    `db:"first_name"`
-	Lastname       *string    `db:"last_name"`
-	HashedPassword []byte     `db:"hashed_password" json:"-"`
-	CreatedAt      time.Time  `db:"created_at"`
-	UpdatedAt      time.Time  `db:"updated_at"`
-	DeletedAt      *time.Time `db:"deleted_at"`
+	ID             int     `db:"id"`
+	Email          string  `db:"email"`
+	Balance        int64   `db:"balance"`
+	Firstname      *string `db:"first_name"`
+	Lastname       *string `db:"last_name"`
+	HashedPassword []byte  `db:"hashed_password" json:"-"`
+	// TotpSecret is the secret key the user uses for their 2FA setup
+	TotpSecret *string `db:"totp_secret"`
+	// ConfirmedTotpSecret is whether or not the user has confirmed the TOTP
+	// secret they received by entering a code. If they don't to this in a
+	// timely manner, we remove 2FA from their account.
+	ConfirmedTotpSecret bool       `db:"confirmed_totp_secret"`
+	CreatedAt           time.Time  `db:"created_at"`
+	UpdatedAt           time.Time  `db:"updated_at"`
+	DeletedAt           *time.Time `db:"deleted_at"`
 }
 
 // ChangeBalance is the struct for changing a users balance
@@ -42,19 +50,30 @@ const (
 	UsersTable = "users"
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
-	returningFromUsersTable = "RETURNING id, email, balance, hashed_password, updated_at, first_name, last_name"
+	returningFromUsersTable = "RETURNING id, email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// selectFromUsersTable is a SQL snippet that selects all the rows needed to
 	// get a full fledged user struct
-	selectFromUsersTable = "SELECT id, email, balance, hashed_password, updated_at, first_name, last_name"
+	selectFromUsersTable = "SELECT id, email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// PasswordResetTokenDuration is how long our password reset tokens are valid
 	PasswordResetTokenDuration = 1 * time.Hour
+
+	//TotpIssuer is the name we issue 2FA TOTP tokens under
+	TotpIssuer = "Teslacoil"
 )
 
-// Secret key used for resetting passwords.
 // TODO: Make this secure :-)
-var passwordResetSecretKey = []byte("assume we have a long randomly generated secret key here")
+var (
+	// Secret key used for resetting passwords.
+	passwordResetSecretKey = []byte("assume we have a long randomly generated secret key here")
+)
+
+var (
+	Err2faAlreadyEnabled = errors.New("user already has 2FA credentials")
+	Err2faNotEnabled     = errors.New("user does not have 2FA enabled")
+	ErrInvalidTotpCode   = errors.New("invalid TOTP code")
+)
 
 // GetAll is a GET request that returns all the users in the database
 // TODO: This endpoint should be restricted to the admin
@@ -277,6 +296,8 @@ func scanUser(rows dbScanner) (User, error) {
 			&user.Email,
 			&user.Balance,
 			&user.HashedPassword,
+			&user.TotpSecret,
+			&user.ConfirmedTotpSecret,
 			&user.UpdatedAt,
 			&user.Firstname,
 			&user.Lastname,
@@ -318,8 +339,8 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
-		(email, balance, hashed_password, first_name, last_name)
-		VALUES (:email, 0, :hashed_password, :first_name, :last_name) ` + returningFromUsersTable
+		(email, balance, hashed_password, totp_secret, confirmed_totp_secret, first_name, last_name)
+		VALUES (:email, 0, :hashed_password, :totp_secret, false, :first_name, :last_name) ` + returningFromUsersTable
 
 	log.Debugf("Executing query for creating user (%s): %s", user, userCreateQuery)
 
@@ -448,6 +469,86 @@ func (u User) ResetPassword(db *db.DB, password string) (User, error) {
 		return User{}, err
 	}
 	return user, nil
+}
+
+// Create2faCredentials creates TOTP based 2FA credentials for the user.
+// It fails if the user already has 2FA credentials set. It returns the updated
+// user.
+// TODO(torkelrogstad) if the user doesn't confirm TOTP code within a set
+// time period, reverse this operation
+func (u *User) Create2faCredentials(d *db.DB) (*otp.Key, error) {
+	if u.TotpSecret != nil {
+		return nil, Err2faAlreadyEnabled
+	}
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      TotpIssuer,
+		AccountName: u.Email,
+	})
+	if err != nil {
+		log.Errorf("Could not generate TOTP key for u %d: %v", u.ID, err)
+		return nil, err
+	}
+	updateTotpSecret := `UPDATE users 
+		SET totp_secret = $1 
+		WHERE id = $2`
+	_, err = d.Query(updateTotpSecret, key.Secret(), u.ID)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not update totp_secret in DB")
+	}
+	return key, nil
+}
+
+// Delete2faCredentials disabled 2FA authorizaton, assuming the user already
+// has requested and confirmed 2FA credentials.
+func (u *User) Delete2faCredentials(d *db.DB, passcode string) (User, error) {
+	if u.TotpSecret == nil {
+		return *u, Err2faNotEnabled
+	}
+
+	if !totp.Validate(passcode, *u.TotpSecret) {
+		return *u, ErrInvalidTotpCode
+	}
+
+	unsetTotpQuery := `UPDATE users
+		SET confirmed_totp_secret = false, totp_secret = NULL
+		WHERE id = $1 ` + returningFromUsersTable
+	rows, err := d.Query(unsetTotpQuery, u.ID)
+	if err != nil {
+		return *u, errors.Wrap(err, "could not unset TOTP status in DB")
+	}
+	updated, err := scanUser(rows)
+	if err != nil {
+		return *u, err
+	}
+	return updated, nil
+
+}
+
+// Confirm2faCredentials enables 2FA authorization, assuming the user already
+// has requested 2FA credentials.
+func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
+	if u.TotpSecret == nil {
+		return *u, Err2faNotEnabled
+	}
+	if !totp.Validate(passcode, *u.TotpSecret) {
+		return *u, ErrInvalidTotpCode
+	}
+	if u.ConfirmedTotpSecret {
+		return *u, Err2faAlreadyEnabled
+	}
+
+	confirmTotpQuery := `UPDATE users
+		SET confirmed_totp_secret = true
+		WHERE id = $1 ` + returningFromUsersTable
+	rows, err := d.Query(confirmTotpQuery, u.ID)
+	if err != nil {
+		return *u, errors.Wrap(err, "could not confirm TOTP status in DB")
+	}
+	updated, err := scanUser(rows)
+	if err != nil {
+		return *u, err
+	}
+	return updated, nil
 }
 
 func (u User) String() string {

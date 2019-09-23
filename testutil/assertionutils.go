@@ -2,13 +2,33 @@ package testutil
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 )
+
+func isNilValue(i interface{}) bool {
+	switch t := i.(type) {
+	case nil:
+		return true
+	case int:
+		return t == 0
+	case string:
+		return t == ""
+	case float32:
+	case float64:
+		return t == 0
+	case bool:
+		return !t
+
+	}
+	return reflect.ValueOf(i).IsNil()
+}
 
 // AssertEqual asserts that the given expected and actual values are equal
 func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	t.Helper()
-	if expected != actual {
+	bothAreNil := isNilValue(expected) && isNilValue(actual)
+	if !bothAreNil && expected != actual {
 		FatalMsgf(t, "Expected (%+v) is not equal to actual (%+v)!", expected, actual)
 	}
 }

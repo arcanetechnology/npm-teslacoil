@@ -9,9 +9,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/dchest/passwordreset"
+	"github.com/pquerna/otp/totp"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -109,7 +111,7 @@ func assertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) 
 
 	response := assertResponseNotOk(t, request)
 	testutil.AssertMsgf(t, response.Code == code,
-		"Expected code (%d) does not match with found code (%d)", response.Code, code)
+		"Expected code (%d) does not match with found code (%d)", code, response.Code)
 	return response
 }
 
@@ -809,5 +811,177 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		assertResponseNotOk(t, req)
 
 	})
+}
 
+func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	email := gofakeit.Email()
+	password := gofakeit.Password(true, true, true, true, true, 32)
+	accessToken := createAndLoginUser(t, users.CreateUserArgs{
+		Email:    email,
+		Password: password,
+	})
+
+	t.Run("must have access token to enable 2FA", func(t *testing.T) {
+		req := getRequest(t, RequestArgs{
+			Path:   "/auth/2fa",
+			Method: "POST",
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusForbidden)
+	})
+
+	t.Run("enable 2FA", func(t *testing.T) {
+		req := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/2fa",
+			Method:      "POST",
+		})
+
+		assertResponseOk(t, req)
+
+		user, err := users.GetByEmail(testDB, email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertMsg(t, user.TotpSecret != nil, "TOTP secret was nil!")
+		testutil.AssertMsg(t, !user.ConfirmedTotpSecret, "User confirmed TOTP secret!")
+
+		t.Run("fail to confirm 2FA with bad code", func(t *testing.T) {
+			req := getAuthRequest(t, AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/auth/2fa",
+				Method:      "PUT",
+				Body: `{
+					"code": "123456"
+				}`,
+			})
+
+			assertResponseNotOkWithCode(t, req, http.StatusForbidden)
+		})
+
+		t.Run("confirm 2FA", func(t *testing.T) {
+
+			code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+
+			req := getAuthRequest(t, AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/auth/2fa",
+				Method:      "PUT",
+				Body: fmt.Sprintf(`{
+					"code": %q
+				}`, code),
+			})
+
+			assertResponseOk(t, req)
+
+			t.Run("fail to confirm 2FA twice", func(t *testing.T) {
+				code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
+				if err != nil {
+					testutil.FatalMsg(t, err)
+				}
+
+				req := getAuthRequest(t, AuthRequestArgs{
+					AccessToken: accessToken,
+					Path:        "/auth/2fa",
+					Method:      "PUT",
+					Body: fmt.Sprintf(`{
+					"code": %q
+				}`, code),
+				})
+
+				assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+			})
+
+			t.Run("should need TOTP code for login", func(t *testing.T) {
+				req := getRequest(t, RequestArgs{
+					Path:   "/login",
+					Method: "POST",
+					Body: fmt.Sprintf(`{
+						"email": %q,
+						"password": %q
+					}`, email, password),
+				})
+				assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+			})
+
+			t.Run("should be able to login with TOTP code", func(t *testing.T) {
+				code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
+				if err != nil {
+					testutil.FatalMsg(t, err)
+				}
+				req := getRequest(t, RequestArgs{
+					Path:   "/login",
+					Method: "POST",
+					Body: fmt.Sprintf(`{
+						"email": %q,
+						"password": %q,
+						"totp": %q
+					}`, email, password, code),
+				})
+				assertResponseOk(t, req)
+			})
+
+			t.Run("don't delete 2FA credentials with an invalid code", func(t *testing.T) {
+				req := getAuthRequest(t, AuthRequestArgs{
+					AccessToken: accessToken,
+					Path:        "/auth/2fa",
+					Method:      "DELETE",
+					Body: `{
+						"code": "123456"
+					}`,
+				})
+				assertResponseNotOkWithCode(t, req, http.StatusForbidden)
+			})
+
+			t.Run("delete 2FA credentials", func(t *testing.T) {
+				code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
+				if err != nil {
+					testutil.FatalMsg(t, err)
+				}
+
+				deleteReq := getAuthRequest(t, AuthRequestArgs{
+					AccessToken: accessToken,
+					Path:        "/auth/2fa",
+					Method:      "DELETE",
+					Body: fmt.Sprintf(`{
+						"code": %q
+					}`, code),
+				})
+
+				assertResponseOk(t, deleteReq)
+
+				loginReq := getRequest(t, RequestArgs{
+					Path:   "/login",
+					Method: "POST",
+					Body: fmt.Sprintf(`{
+						"email": %q,
+						"password": %q
+					}`, email, password),
+				})
+				assertResponseOk(t, loginReq)
+
+				t.Run("fail to delete already deleted 2FA credentials", func(t *testing.T) {
+					code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
+					if err != nil {
+						testutil.FatalMsg(t, err)
+					}
+					req := getAuthRequest(t, AuthRequestArgs{
+						AccessToken: accessToken,
+						Path:        "/auth/2fa",
+						Method:      "DELETE",
+						Body: fmt.Sprintf(`{
+							"code": %q
+						}`, code),
+					})
+					assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+				})
+			})
+
+		})
+	})
 }
