@@ -418,21 +418,6 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 
 }
 
-// ChangePassword takes in a old and new password, and if the old password matches
-// the one in our DB we update it to the given password.
-func (u User) ChangePassword(db *db.DB, oldPassword, newPassword string) (User, error) {
-	if u.HashedPassword == nil {
-		return User{}, errors.New("user object lacks HashedPassword")
-	}
-
-	if err := bcrypt.CompareHashAndPassword(u.HashedPassword, []byte(oldPassword)); err != nil {
-		return User{}, errors.Wrap(err, "given password didn't match up with hashed password in DB")
-	}
-
-	return u.ResetPassword(db, newPassword)
-
-}
-
 func (u User) ResetPassword(db *db.DB, password string) (User, error) {
 	hashed, err := hashAndSalt(password)
 	if err != nil {

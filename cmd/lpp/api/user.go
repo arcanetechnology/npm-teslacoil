@@ -6,6 +6,7 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // UserResponse is the type returned by the api to the front-end
@@ -342,7 +343,13 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		if _, err := user.ChangePassword(r.db, request.OldPassword, request.NewPassword); err != nil {
+		if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(request.OldPassword)); err != nil {
+			log.Errorf("Hashed password of user and given old password in request didn't match up!")
+			c.JSONP(http.StatusForbidden, gin.H{"error": "Incorrect password"})
+			return
+		}
+
+		if _, err := user.ResetPassword(r.db, request.NewPassword); err != nil {
 			log.Errorf("Couldn't update user password: %v", err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return

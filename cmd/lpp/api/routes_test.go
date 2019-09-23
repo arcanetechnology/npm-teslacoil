@@ -516,7 +516,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, badPass, newPass, newPass),
 		})
 
-		assertResponseNotOk(t, changePassReq)
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
 	})
 
 }
@@ -795,9 +795,6 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
 		testutil.DescribeTest(t)
-
-		// gofakeit panics with too low value here...
-		// https://github.com/brianvoe/gofakeit/issues/56
 
 		req := getAuthRequest(t,
 			AuthRequestArgs{
