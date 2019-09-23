@@ -15,3 +15,5 @@ export GID=1001 # This should be your group ID: `id -g`
 
 # Other
 export GO111MODULE=on
+# Gin automatically checks for this variable, and sets MODE accordingly
+export GIN_MODE=debug
