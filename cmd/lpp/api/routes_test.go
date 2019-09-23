@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
+	"github.com/dchest/passwordreset"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -476,8 +477,30 @@ func TestChangePasswordRoute(t *testing.T) {
 			"repeatedNewPassword": %q
 		}`, pass, newPass, newPass),
 		})
-
 		assertResponseOk(t, changePassReq)
+
+		// should be possible to log in with new password
+		loginReq := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"email": %q,
+				"password": %q
+			}`, email, newPass),
+		})
+		assertResponseOk(t, loginReq)
+
+		// using old password should not suceed
+		badLoginReq := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"email": %q,
+				"password": %q
+			}`, email, pass),
+		})
+		assertResponseNotOk(t, badLoginReq)
+
 	})
 
 	t.Run("Must not be able to change the password by providing a bad old password", func(t *testing.T) {
@@ -493,9 +516,125 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, badPass, newPass, newPass),
 		})
 
-		assertResponseNotOk(t, changePassReq)
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
 	})
 
+}
+
+func TestResetPasswordRoute(t *testing.T) {
+	email := gofakeit.Email()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
+	newPass := gofakeit.Password(true, true, true, true, true, 32)
+	user, err := users.Create(testDB, users.CreateUserArgs{
+		Email:    email,
+		Password: pass,
+	})
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	t.Run("Should not be able to reset the user password by using a bad token", func(t *testing.T) {
+		badSecretKey := []byte("this is a secret key which we expect to fail")
+		badToken := passwordreset.NewToken(email, users.PasswordResetTokenDuration,
+			user.HashedPassword, badSecretKey)
+		badTokenReq := getRequest(t, RequestArgs{
+			Path:   "/auth/reset_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, badToken, newPass),
+		})
+		assertResponseNotOkWithCode(t, badTokenReq, http.StatusForbidden)
+
+		// we should be able to log in with old credentials
+		loginReq := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": %q
+			}`, pass, email),
+		})
+		assertResponseOk(t, loginReq)
+
+		// we should NOT be able to log in with new credentials
+		badLoginReq := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": %q
+			}`, newPass, email),
+		})
+		assertResponseNotOk(t, badLoginReq)
+	})
+
+	t.Run("Reset the password by using the correct token", func(t *testing.T) {
+		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
+		}
+		resetPassReq := getRequest(t, RequestArgs{
+			Path:   "/auth/reset_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, token, newPass),
+		})
+		assertResponseOk(t, resetPassReq)
+
+		// we should be able to log in with new credentials
+		loginReq := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": %q
+			}`, newPass, email),
+		})
+		assertResponseOk(t, loginReq)
+
+		// we should NOT be able to log in with old credentials
+		badLoginReq := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": %q
+			}`, pass, email),
+		})
+		assertResponseNotOk(t, badLoginReq)
+	})
+
+	t.Run("Should not be able to reset the password twice", func(t *testing.T) {
+		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
+		}
+		resetPassReq := getRequest(t, RequestArgs{
+			Path:   "/auth/reset_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, token, newPass),
+		})
+		assertResponseOk(t, resetPassReq)
+
+		yetAnotherNewPass := gofakeit.Password(true, true, true, true, true, 32)
+		secondResetPassReq := getRequest(t, RequestArgs{
+			Path:   "/auth/reset_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, token, yetAnotherNewPass),
+		})
+		assertResponseNotOkWithCode(t, secondResetPassReq, http.StatusForbidden)
+
+	})
 }
 
 func TestPutUserRoute(t *testing.T) {
@@ -656,9 +795,6 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
 		testutil.DescribeTest(t)
-
-		// gofakeit panics with too low value here...
-		// https://github.com/brianvoe/gofakeit/issues/56
 
 		req := getAuthRequest(t,
 			AuthRequestArgs{

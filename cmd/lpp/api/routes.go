@@ -89,6 +89,10 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, e
 // RegisterAuthRoutes registers all auth routes
 func (r *RestServer) RegisterAuthRoutes() {
 	auth := r.Router.Group("")
+
+	// Does not need auth token to reset password
+	auth.PUT("/auth/reset_password", r.ResetPassword())
+
 	auth.Use(authenticateJWT)
 
 	auth.GET("/auth/refresh_token", r.RefreshToken())

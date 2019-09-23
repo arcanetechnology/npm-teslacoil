@@ -6,6 +6,8 @@ require (
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
 	github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
 	github.com/coreos/bbolt v1.3.3 // indirect
+	github.com/dchest/authcookie v0.0.0-20190824115100-f900d2294c8e // indirect
+	github.com/dchest/passwordreset v0.0.0-20190826080013-4518b1f41006
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-contrib/cors v1.3.0
 	github.com/gin-contrib/sse v0.1.0 // indirect

@@ -3,8 +3,10 @@ package api
 import (
 	"net/http"
 
+	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // UserResponse is the type returned by the api to the front-end
@@ -59,6 +61,7 @@ func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 	}
 }
 
+// HTML responses used across the API
 var (
 	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
 	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
@@ -269,6 +272,49 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	}
 }
 
+func (r *RestServer) ResetPassword() gin.HandlerFunc {
+	type ResetPasswordRequest struct {
+		Password string `json:"password" binding:"required"`
+		Token    string `json:"token" binding:"required"`
+	}
+
+	return func(c *gin.Context) {
+		var request ResetPasswordRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		login, err := users.VerifyPasswordResetToken(r.db, request.Token)
+		if err != nil {
+			switch {
+			case err == passwordreset.ErrMalformedToken:
+				c.JSONP(http.StatusBadRequest, gin.H{"error": "Token is malformed"})
+				return
+
+			case err == passwordreset.ErrExpiredToken:
+				c.JSONP(http.StatusBadRequest, gin.H{"error": "Token is expired"})
+				return
+			case err == passwordreset.ErrWrongSignature:
+				c.JSONP(http.StatusForbidden, gin.H{"error": "Token has bad signature"})
+				return
+			}
+		}
+		user, err := users.GetByEmail(r.db, login)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		if _, err := user.ResetPassword(r.db, request.Password); err != nil {
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		c.JSONP(http.StatusOK, gin.H{"message": "Password reset successfully"})
+	}
+}
+
 func (r *RestServer) ChangePassword() gin.HandlerFunc {
 	type ChangePasswordRequest struct {
 		OldPassword         string `json:"oldPassword" binding:"required"`
@@ -297,7 +343,13 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		if _, err := user.ChangePassword(r.db, request.OldPassword, request.NewPassword); err != nil {
+		if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(request.OldPassword)); err != nil {
+			log.Errorf("Hashed password of user and given old password in request didn't match up!")
+			c.JSONP(http.StatusForbidden, gin.H{"error": "Incorrect password"})
+			return
+		}
+
+		if _, err := user.ResetPassword(r.db, request.NewPassword); err != nil {
 			log.Errorf("Couldn't update user password: %v", err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
