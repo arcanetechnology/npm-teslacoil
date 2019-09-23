@@ -86,8 +86,8 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	// CreateInvoiceRequest is a deposit
 	type CreateInvoiceRequest struct {
 		AmountSat   int64  `json:"amountSat" binding:"required,gt=0"`
-		Memo        string `json:"memo,omitempty" binding:"max=256"`
-		Description string `json:"description,omitempty"`
+		Memo        string `json:"memo" binding:"max=256"`
+		Description string `json:"description"`
 	}
 
 	return func(c *gin.Context) {
@@ -124,10 +124,10 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 // PayInvoice pays a valid invoice on behalf of a user
 func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	// PayInvoiceRequest is the required and optional fields for initiating a
-	// withdrawal. fields tagged with omitEmpty are optional
+	// withdrawal.
 	type PayInvoiceRequest struct {
 		PaymentRequest string `json:"paymentRequest" binding:"required"`
-		Description    string `json:"description,omitempty"`
+		Description    string `json:"description"`
 	}
 
 	return func(c *gin.Context) {
@@ -175,20 +175,13 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		if ok := getJSONOrReject(c, &request); !ok {
 			return
 		}
+		// add the userID
+		request.UserID = claims.UserID
 
 		// TODO: Create a middleware for logging request body
 		log.Infof("Received WithdrawOnChain request %+v\n", request)
 
-		txid, err := payments.WithdrawOnChain(r.db, *r.lncli,
-			payments.WithdrawOnChainArgs{
-				UserID:     claims.UserID,
-				AmountSat:  request.AmountSat,
-				Address:    request.Address,
-				TargetConf: request.TargetConf,
-				SatPerByte: request.SatPerByte,
-				SendAll:    request.SendAll,
-			},
-		)
+		txid, err := payments.WithdrawOnChain(r.db, *r.lncli, request)
 		if err != nil {
 			log.Errorf("cannot withdraw onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,

@@ -190,6 +190,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 	type LoginRequest struct {
 		Email    string `json:"email" binding:"required"`
 		Password string `json:"password" binding:"required"`
+		TotpCode string `json:"totp"`
 	}
 
 	// LoginResponse includes a jwt-token and the e-mail identifying the user
@@ -221,19 +222,19 @@ func (r *RestServer) Login() gin.HandlerFunc {
 
 		// user has 2FA enabled
 		if user.TotpSecret != nil {
-			if req.TotpCode == "" {
+			if request.TotpCode == "" {
 				c.JSONP(http.StatusBadRequest, gin.H{"error": "Missing TOTP code"})
 				return
 			}
 
-			if !totp.Validate(req.TotpCode, *user.TotpSecret) {
+			if !totp.Validate(request.TotpCode, *user.TotpSecret) {
 				log.Errorf("User provided invalid TOTP code")
 				c.JSONP(http.StatusForbidden, gin.H{"error": "Bad TOTP code"})
 				return
 			}
 		}
 
-		tokenString, err := createJWTToken(req.Email, user.ID)
+		tokenString, err := createJWTToken(request.Email, user.ID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return

@@ -1,7 +1,7 @@
 CREATE TABLE users
 (
     id SERIAL PRIMARY KEY,
-    balance bigint NOT NULL CHECK (balance >= 0) DEFAULT (0),
+    balance bigint NOT NULL CHECK (balance >= 0),
     -- Amount stored in millisatoshis
     email VARCHAR(256) NOT NULL UNIQUE,
     hashed_password BYTEA NOT NULL,

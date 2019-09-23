@@ -21,13 +21,19 @@ type Direction string
 // Status is the status of a lightning payment
 type Status string
 
-const (
-	inbound  Direction = "INBOUND"
-	outbound Direction = "OUTBOUND"
+// TransactionStatus is the status of an on-chain transaction
+type TransactionStatus string
 
-	succeeded Status = "SUCCEEDED"
-	failed    Status = "FAILED"
-	open      Status = "OPEN"
+const (
+	INBOUND  Direction = "INBOUND"
+	OUTBOUND Direction = "OUTBOUND"
+
+	SUCCEEDED Status = "SUCCEEDED"
+	FAILED    Status = "FAILED"
+	OPEN      Status = "OPEN"
+
+	UNCONFIRMED = "UNCONFIRMED"
+	CONFIRMED   = "CONFIRMED"
 
 	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
 	OffchainTXTable = "offchaintx"
@@ -279,8 +285,8 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 		Expiry:         invoice.Expiry,
 		PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
 		HashedPreimage: hex.EncodeToString(invoice.RHash),
-		Status:         open,
-		Direction:      inbound,
+		Status:         OPEN,
+		Direction:      INBOUND,
 	}
 
 	p, err = insert(tx, p)
@@ -310,7 +316,7 @@ func MarkInvoiceAsPaid(d *db.DB, userID int,
 
 	tx := d.MustBegin()
 
-	result, err := tx.Exec(updateOffchainTxQuery, paidAt, succeeded, paymentRequest)
+	result, err := tx.Exec(updateOffchainTxQuery, paidAt, SUCCEEDED, paymentRequest)
 	if err != nil {
 		log.Errorf("Couldn't mark invoice as paid: %+v", err)
 		return err
@@ -361,10 +367,10 @@ func PayInvoiceWithDescription(d *db.DB, lncli ln.DecodeSendClient, userID int,
 
 	upr.Payment = Payment{
 		UserID:         userID,
-		Direction:      outbound,
+		Direction:      OUTBOUND,
 		Description:    &description,
 		PaymentRequest: strings.ToUpper(paymentRequest),
-		Status:         open,
+		Status:         OPEN,
 		HashedPreimage: payreq.PaymentHash,
 		Memo:           &payreq.Description,
 		AmountSat:      payreq.NumSatoshis,
@@ -407,7 +413,7 @@ func PayInvoiceWithDescription(d *db.DB, lncli ln.DecodeSendClient, userID int,
 	if paymentResponse.PaymentError == "" {
 		t := time.Now()
 		upr.Payment.SettledAt = &t
-		upr.Payment.Status = succeeded
+		upr.Payment.Status = SUCCEEDED
 		preimage := hex.EncodeToString(paymentResponse.PaymentPreimage)
 		upr.Payment.Preimage = &preimage
 	} else {
@@ -416,7 +422,7 @@ func PayInvoiceWithDescription(d *db.DB, lncli ln.DecodeSendClient, userID int,
 			return upr, errors.Wrap(err, "could not rollback DB")
 		}
 
-		upr.Payment.Status = failed
+		upr.Payment.Status = FAILED
 		return upr, errors.New(paymentResponse.PaymentError)
 	}
 
@@ -550,14 +556,15 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 
 // Transaction is the db and json type for an on-chain transaction
 type Transaction struct {
-	ID        int    `db:"confirmed_at" json:"id"`
-	UserID    int    `db:"confirmed_at" json:"userId"`
-	Address   string `db:"confirmed_at" json:"address"`
-	Txid      string `db:"confirmed_at" json:"txid"`
-	AmountSat int64  `db:"confirmed_at" json:"amountSat"`
+	ID          int               `db:"id" json:"id"`
+	UserID      int               `db:"user_id" json:"userId"`
+	Address     string            `db:"address" json:"address"`
+	Txid        string            `db:"txid" json:"txid"`
+	AmountSat   int64             `db:"amount_sat" json:"amountSat"`
+	Description string            `db:"description" json:"description"`
+	Status      TransactionStatus `db:"status" json:"status"`
 
-	CallbackURL *string    `db:"confirmed_at"`
-	ConfirmedAt time.Time  `db:"confirmed_at" json:"confirmedAt"`
+	ConfirmedAt *time.Time `db:"confirmed_at" json:"confirmedAt"`
 	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
 	UpdatedAt   time.Time  `db:"updated_at" json:"-"`
 	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
@@ -565,9 +572,11 @@ type Transaction struct {
 
 func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
 	string, error) {
+	// don't pass the args directly to lnd, to safeguard
+	// against ever supplying the SendAll flag
 	lnArgs := &lnrpc.SendCoinsRequest{
-		Amount:     args.AmountSat,
-		Addr:       args.Address,
+		Amount:     args.Amount,
+		Addr:       args.Addr,
 		TargetConf: int32(args.TargetConf),
 		SatPerByte: int64(args.SatPerByte),
 	}
@@ -580,12 +589,40 @@ func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
 	return res.Txid, nil
 }
 
-func insertTransaction(tx *sqlx.Tx, transaction Transaction) (Transaction, error) {
+func insertTransaction(tx *sqlx.Tx, t Transaction) (Transaction, error) {
+	if t.AmountSat <= 0 || t.UserID == 0 || t.Address == "" || t.Status == "" {
+		return Transaction{}, errors.New("invalid transaction, missing some fields")
+	}
 
+	createTransactionQuery := `
+	INSERT INTO transactions (user_id, address, txid, amount_sat, description, status)
+	VALUES (:user_id, :address, :txid, :amount_sat, :description, :status)
+	RETURNING id, user_id, address, txid, amount_sat, description, status, confirmed_at,
+			  created_at, updated_at, deleted_at`
+
+	rows, err := tx.NamedQuery(createTransactionQuery, t)
+	if err != nil {
+		return Transaction{}, errors.Wrap(err, "could not insert transaction")
+	}
+	defer func() {
+		err = rows.Close()
+		if err != nil {
+			log.WithError(err).Error("could not close rows")
+		}
+	}()
+
+	var transaction Transaction
+	if rows.Next() {
+		if err = rows.StructScan(&transaction); err != nil {
+			log.WithError(err).Error("could not scan result into transaction variable: ")
+			return Transaction{}, errors.Wrap(err, "could not insert transaction")
+		}
+	}
+
+	return transaction, nil
 }
 
 type WithdrawOnChainArgs struct {
-	// The UserID that wants to withdraw funds, omit it from json
 	UserID int `json:"-"`
 	// The amount in satoshis to send
 	AmountSat int64 `json:"amountSat" binding:"required"`
@@ -597,6 +634,8 @@ type WithdrawOnChainArgs struct {
 	SatPerByte int `json:"satPerByte"`
 	// If set, amount field will be ignored, and the entire balance will be sent
 	SendAll bool `json:"sendAll"`
+	// A personal description for the transaction
+	Description string `json:"description"`
 }
 
 func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
@@ -607,19 +646,68 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		return "", errors.Wrap(err, "withdrawonchain could not get user")
 	}
 
-	if user.Balance < args.AmountSat {
-		return "", errors.New("cannot withdraw, not enough balance")
-	}
-
 	// We dont pass sendAll to lncli, as that would send the entire nodes
 	// balance to the address
 	if args.SendAll {
 		args.AmountSat = user.Balance
 	}
 
-	SendOnChain(lncli)
+	if user.Balance < args.AmountSat {
+		return "", errors.New(fmt.Sprintf(
+			"cannot withdraw, balance is %d, trying to withdraw %d",
+			user.Balance,
+			args.AmountSat))
+	}
 
-	return res.Txid, nil
+	tx := d.MustBegin()
+	user, err = users.DecreaseBalance(tx, users.ChangeBalance{
+		UserID:    user.ID,
+		AmountSat: args.AmountSat,
+	})
+	if err != nil {
+		if txErr := tx.Rollback(); txErr != nil {
+			log.Error("txErr: ", txErr)
+		}
+		return "", errors.Wrap(err, "could not decrease balance")
+	}
+
+	txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
+		Addr:       args.Address,
+		Amount:     args.AmountSat,
+		TargetConf: int32(args.TargetConf),
+		SatPerByte: int64(args.SatPerByte),
+	})
+	if err != nil {
+		if txErr := tx.Rollback(); txErr != nil {
+			log.Error("txErr: ", txErr)
+		}
+		return "", errors.Wrap(err, "could not send on-chain")
+	}
+
+	log.Debug("txid: ", txid)
+
+	transaction, err := insertTransaction(tx, Transaction{
+		UserID:      user.ID,
+		Address:     args.Address,
+		AmountSat:   args.AmountSat,
+		Description: args.Description,
+		Status:      UNCONFIRMED,
+		Txid:        txid,
+	})
+	if err != nil {
+		if txErr := tx.Rollback(); txErr != nil {
+			log.Error("txErr: ", txErr)
+		}
+		return "", errors.Wrap(err, "could not insert transaction")
+	}
+	err = tx.Commit()
+	if err != nil {
+		return "", errors.Wrap(err, "could not commit transaction")
+	}
+
+	log.Debugf("transaction: %+v", transaction)
+
+	return txid, nil
 }
 
 func (p Payment) String() string {

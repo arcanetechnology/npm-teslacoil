@@ -49,10 +49,6 @@ func (client LightningMockClient) EstimateFee(ctx context.Context, in *lnrpc.Est
 	panic("EstimateFee")
 }
 
-func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {
-	panic("SendCoins")
-}
-
 func (client LightningMockClient) ListUnspent(ctx context.Context, in *lnrpc.ListUnspentRequest, opts ...grpc.CallOption) (*lnrpc.ListUnspentResponse, error) {
 	panic("ListUnspent")
 }
@@ -215,6 +211,12 @@ func (client LightningMockClient) RestoreChannelBackups(ctx context.Context, in 
 
 func (client LightningMockClient) SubscribeChannelBackups(ctx context.Context, in *lnrpc.ChannelBackupSubscription, opts ...grpc.CallOption) (lnrpc.Lightning_SubscribeChannelBackupsClient, error) {
 	panic("SubscribeChannelBackups")
+}
+
+func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {
+	return &lnrpc.SendCoinsResponse{
+		Txid: "this_is_a_fake_txid",
+	}, nil
 }
 
 func (client LightningMockClient) AddInvoice(ctx context.Context,

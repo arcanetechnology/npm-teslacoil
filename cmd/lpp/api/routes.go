@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/util"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -38,6 +40,12 @@ type JWTClaims struct {
 	Email  string `json:"email"`
 	UserID int    `json:"user_id"`
 	jwt.StandardClaims
+}
+
+var GINMODE string
+
+func init() {
+	GINMODE = util.GetEnvOrElse(gin.EnvGinMode, "debug")
 }
 
 //NewApp creates a new app
