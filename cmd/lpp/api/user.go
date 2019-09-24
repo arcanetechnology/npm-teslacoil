@@ -1,10 +1,14 @@
 package api
 
 import (
+	"bytes"
+	"encoding/base64"
+	"image/png"
 	"net/http"
 
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
+	"github.com/pquerna/otp/totp"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -28,8 +32,9 @@ type CreateUserRequest struct {
 
 // LoginRequest is the expected type to find a user in the DB
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	TotpCode string `json:"totp"`
 }
 
 // LoginResponse includes a jwt-token and the e-mail identifying the user
@@ -227,6 +232,20 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		}
 		log.Info("found user: ", user)
 
+		// user has 2FA enabled
+		if user.TotpSecret != nil {
+			if req.TotpCode == "" {
+				c.JSONP(http.StatusBadRequest, gin.H{"error": "Missing TOTP code"})
+				return
+			}
+
+			if !totp.Validate(req.TotpCode, *user.TotpSecret) {
+				log.Errorf("User provided invalid TOTP code")
+				c.JSONP(http.StatusForbidden, gin.H{"error": "Bad TOTP code"})
+				return
+			}
+		}
+
 		tokenString, err := createJWTToken(req.Email, user.ID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
@@ -244,6 +263,142 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		log.Info("LoginResponse: ", res)
 
 		c.JSONP(200, res)
+	}
+}
+
+func (r *RestServer) Enable2fa() gin.HandlerFunc {
+	type Enable2faResponse struct {
+		TotpSecret string `json:"totpSecret"`
+		Base64QR   string `json:"base64QrCode"`
+	}
+	return func(c *gin.Context) {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.Errorf("Could not find user %d: %v", claims.UserID, err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		key, err := user.Create2faCredentials(r.db)
+		if err != nil {
+			log.Errorf("Could not create 2FA credentials for user %d: %v", claims.UserID, err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		img, err := key.Image(200, 200)
+		if err != nil {
+			log.Errorf("Could not decode TOTP secret to image: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		var imgBuf bytes.Buffer
+		if err := png.Encode(&imgBuf, img); err != nil {
+			log.Errorf("Could not encode TOTP secret image to base64: %v", err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		base64Image := base64.StdEncoding.EncodeToString(imgBuf.Bytes())
+
+		response := Enable2faResponse{
+			TotpSecret: key.Secret(),
+			Base64QR:   base64Image,
+		}
+		c.JSONP(http.StatusOK, response)
+
+	}
+}
+
+func (r *RestServer) Confirm2fa() gin.HandlerFunc {
+	type Confirm2faRequest struct {
+		Code string `json:"code" binding:"required"`
+	}
+	return func(c *gin.Context) {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		var req Confirm2faRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Errorf("Could not bind Confirm2faRequest: %v", err)
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.Errorf("Could not get user %d", claims.UserID)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		if _, err := user.Confirm2faCredentials(r.db, req.Code); err != nil {
+			log.Errorf("Could not enable 2FA credentials for user %d: %v", claims.UserID, err)
+			switch err {
+			case users.Err2faNotEnabled:
+				c.JSONP(http.StatusBadRequest, gin.H{"error": "2FA is not enabled"})
+			case users.Err2faAlreadyEnabled:
+				c.JSONP(http.StatusBadRequest, gin.H{"error": "2FA is already enabled"})
+			case users.ErrInvalidTotpCode:
+				c.JSONP(http.StatusForbidden, gin.H{"error": "Invalid TOTP code"})
+			default:
+				c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			}
+			return
+		}
+
+		log.Debugf("Confirmed 2FA setting for user %d", claims.UserID)
+		c.Status(http.StatusOK)
+	}
+}
+
+func (r *RestServer) Delete2fa() gin.HandlerFunc {
+	type Delete2faRequest struct {
+		Code string `json:"code" binding:"required"`
+	}
+	return func(c *gin.Context) {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		var req Delete2faRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Errorf("Could not bind Delete2faRequest: %v", err)
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.Errorf("Could not get user %d", claims.UserID)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		if _, err := user.Delete2faCredentials(r.db, req.Code); err != nil {
+			log.Errorf("Could not delete 2FA credentials for user %d: %v", claims.UserID, err)
+			switch {
+			case err == users.ErrInvalidTotpCode:
+				c.JSONP(http.StatusForbidden, gin.H{"error": "Invalid TOTP code"})
+			case err == users.Err2faNotEnabled:
+				c.JSONP(http.StatusBadRequest, badRequestResponse)
+			default:
+				c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			}
+			return
+		}
+
+		log.Debugf("Removed 2FA setting for user %d", claims.UserID)
+		c.Status(http.StatusOK)
 	}
 }
 

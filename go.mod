@@ -21,6 +21,7 @@ require (
 	github.com/lightningnetwork/lnd v0.7.0-beta
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/pkg/errors v0.8.1
+	github.com/pquerna/otp v1.2.0
 	github.com/sirupsen/logrus v1.4.2
 	github.com/ugorji/go v1.1.7 // indirect
 	golang.org/x/crypto v0.0.0-20190829043050-9756ffdc2472

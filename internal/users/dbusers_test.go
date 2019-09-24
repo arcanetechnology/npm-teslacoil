@@ -10,6 +10,7 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/dchest/passwordreset"
+	"github.com/pquerna/otp/totp"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -132,6 +133,65 @@ func TestFailToUpdateNonExistingUser(t *testing.T) {
 		testutil.FatalMsgf(t,
 			"Was able to update email of non existant user: %v", err)
 	}
+}
+
+func TestUser_CreateConfirmAndDelete2FA(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+	user := CreateUserOrFail(t)
+
+	key, err := user.Create2faCredentials(testDB)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	updated, err := GetByID(testDB, user.ID)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+	testutil.AssertMsg(t, updated.TotpSecret != nil, "TOTP secret was nil")
+	testutil.AssertMsg(t, !updated.ConfirmedTotpSecret, "User unexpectedly had confirmed TOTP secret")
+	testutil.AssertMsgf(t, key.Issuer() == TotpIssuer, "Key had unexpected issuer: %s", key.Issuer())
+
+	t.Run("not confirm with bad 2FA credentials", func(t *testing.T) {
+		_, err := updated.Confirm2faCredentials(testDB, "123456")
+		if err == nil {
+			testutil.FatalMsg(t, "was able to enable 2FA with bad code")
+		}
+	})
+
+	t.Run("confirm 2FA credentials", func(t *testing.T) {
+		totpCode, err := totp.GenerateCode(*updated.TotpSecret, time.Now())
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		enabled, err := updated.Confirm2faCredentials(testDB, totpCode)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertMsg(t, enabled.ConfirmedTotpSecret, "User hasn't confirmed TOTP secret")
+
+		t.Run("fail to disable 2FA credentials with a bad passcode", func(t *testing.T) {
+			_, err := enabled.Delete2faCredentials(testDB, "123456")
+			if err == nil {
+				testutil.FatalMsg(t, "was able to delete 2FA credentials with bad code")
+			}
+		})
+		t.Run("disable 2FA credentials", func(t *testing.T) {
+			totpCode, err := totp.GenerateCode(*updated.TotpSecret, time.Now())
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+			disabled, err := enabled.Delete2faCredentials(testDB, totpCode)
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+			testutil.AssertMsg(t, !disabled.ConfirmedTotpSecret, "User has confirmed TOTP secret")
+			testutil.AssertEqual(t, disabled.TotpSecret, nil)
+
+		})
+
+	})
 }
 
 func TestUser_ResetPassword(t *testing.T) {
