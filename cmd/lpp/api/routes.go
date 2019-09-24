@@ -10,9 +10,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"github.com/sendgrid/rest"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
@@ -25,12 +27,17 @@ type Config struct {
 	LogLevel logrus.Level
 }
 
+type EmailSender interface {
+	Send(email *mail.SGMailV3) (*rest.Response, error)
+}
+
 // RestServer is the rest server for our app. It includes a Router,
 // a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
-	Router *gin.Engine
-	db     *db.DB
-	lncli  *lnrpc.LightningClient
+	Router      *gin.Engine
+	db          *db.DB
+	lncli       *lnrpc.LightningClient
+	EmailSender EmailSender
 }
 
 // JWTClaims is the common form for our jwts
@@ -41,13 +48,13 @@ type JWTClaims struct {
 }
 
 //NewApp creates a new app
-func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, error) {
+func NewApp(d *db.DB, lncli lnrpc.LightningClient, sender EmailSender, config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
 
 	g := gin.Default()
 
 	g.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1"},
+		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000"},
 		AllowMethods: []string{
 			http.MethodPut, http.MethodGet,
 			http.MethodPost, http.MethodPatch,
@@ -59,9 +66,10 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, config Config) (RestServer, e
 	}))
 
 	r := RestServer{
-		Router: g,
-		db:     d,
-		lncli:  &lncli,
+		Router:      g,
+		db:          d,
+		lncli:       &lncli,
+		EmailSender: sender,
 	}
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
@@ -92,6 +100,7 @@ func (r *RestServer) RegisterAuthRoutes() {
 
 	// Does not need auth token to reset password
 	auth.PUT("reset_password", r.ResetPassword())
+	auth.POST("reset_password", r.SendPasswordResetEmail())
 
 	auth.Use(authenticateJWT)
 

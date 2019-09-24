@@ -17,3 +17,6 @@ export GID=1001 # This should be your group ID: `id -g`
 export GO111MODULE=on
 # Gin automatically checks for this variable, and sets MODE accordingly
 export GIN_MODE=debug
+
+# Sendgrid - for sending emails
+export SENDGRID_API_KEY=<this is in 1Password>

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq" // Import postgres
+	"github.com/sendgrid/sendgrid-go"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
@@ -38,6 +39,9 @@ var (
 
 	// DatabasePort is the port we use to connect to the database
 	DatabasePort = util.GetDatabasePort()
+
+	// SendgridApiKey is the API key we use to interact with Sendgrid's servers
+	SendgridApiKey string
 )
 
 func init() {
@@ -50,6 +54,7 @@ func init() {
 	DatabaseName = util.GetEnvOrFail("DATABASE_NAME")
 	DatabaseHost = util.GetEnvOrElse("DATABASE_HOST", "localhost")
 	GinMode = util.GetEnvOrElse("GIN_MODE", "debug")
+	SendgridApiKey = util.GetEnvOrFail("SENDGRID_API_KEY")
 
 	databaseConfig = db.DatabaseConfig{
 		User:     DatabaseUser,
@@ -93,7 +98,8 @@ var (
 				log.Fatal(err)
 				return err
 			}
-			a, err := api.NewApp(database, lncli, config)
+			sendGridClient := sendgrid.NewSendClient(SendgridApiKey)
+			a, err := api.NewApp(database, lncli, sendGridClient, config)
 			if err != nil {
 				log.Fatal(err)
 				return err
