@@ -1,3 +1,5 @@
+[![Coverage Report](https://gitlab.com/arcanecrypto/teslacoil/badges/master/coverage.svg)](https://gitlab.com/arcanecrypto/teslacoil/commits/master)
+
 # Lightning Payment Processor
 
 A custodial payment processor running in the lightning network using lnd.

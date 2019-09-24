@@ -29,7 +29,7 @@ test:
     - export GO111MODULE=on
   script:
     # run tests
-    - make test_verbose
+    - go test -cover -v ./...
 
     # run linter
     - golangci-lint run
