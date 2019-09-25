@@ -14,12 +14,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// UserNew contains all fields used while constructing a new user
-type UserNew struct {
-	Email    string `json:"email"`
-	Password string `json:"password" binding:"required"`
-}
-
 // User is a database table
 type User struct {
 	ID    int    `db:"id"`
@@ -42,8 +36,8 @@ type User struct {
 
 // ChangeBalance is the struct for changing a users balance
 type ChangeBalance struct {
-	UserID    int   `json:"userId"`
-	AmountSat int64 `json:"amountSat"`
+	UserID    int
+	AmountSat int64
 }
 
 // UsersTable is the tablename of users, as saved in the DB

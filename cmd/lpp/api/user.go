@@ -52,7 +52,7 @@ func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 func (r *RestServer) UpdateUser() gin.HandlerFunc {
 
 	type UpdateUserRequest struct {
-		Email     *string `json:"email"`
+		Email     *string `json:"email" binding:"email"`
 		FirstName *string `json:"firstName"`
 		LastName  *string `json:"lastName"`
 	}
@@ -142,7 +142,7 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 func (r *RestServer) CreateUser() gin.HandlerFunc {
 	// CreateUserRequest is the expected type to create a new user
 	type CreateUserRequest struct {
-		Email     string  `json:"email" binding:"required"`
+		Email     string  `json:"email" binding:"required,email"`
 		Password  string  `json:"password" binding:"required"`
 		FirstName *string `json:"firstName"`
 		LastName  *string `json:"lastName"`
@@ -188,7 +188,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 func (r *RestServer) Login() gin.HandlerFunc {
 	// LoginRequest is the expected type to find a user in the DB
 	type LoginRequest struct {
-		Email    string `json:"email" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`
 		TotpCode string `json:"totp"`
 	}
@@ -254,6 +254,10 @@ func (r *RestServer) Login() gin.HandlerFunc {
 	}
 }
 
+// Enable2fa takes in the user ID specified in the JWT, and enables 2FA for
+// this user. The endpoint responds with a secret code that the user should
+// use with their 2FA. They then need to confirm their 2FA setup by hitting
+// a new endpoint.
 func (r *RestServer) Enable2fa() gin.HandlerFunc {
 	type Enable2faResponse struct {
 		TotpSecret string `json:"totpSecret"`
@@ -304,6 +308,9 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 	}
 }
 
+// Confirm2fa takes in a 2FA (TOTP) code and the user ID found in the JWT. It
+// then checks the given 2FA code against the expected value for that user. If
+// everything matches up, it marks the 2FA status of that user as confirmed.
 func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 	type Confirm2faRequest struct {
 		Code string `json:"code" binding:"required"`
