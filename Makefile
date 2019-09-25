@@ -1,7 +1,15 @@
-all: test build
+all: test build-lpp
 
-build:
-	go build ./...
+# If we're on a tag, binary name is lpp, else lpp-dev
+LPP := $(shell git describe --exact-match HEAD 2>/dev/null && echo lpp || echo lpp-dev)
+BINARIES := lpp lpp-dev
+
+build-lpp:
+	go build -o ${LPP} ./cmd/lpp
+
+clean: 
+	rm -f ${BINARIES}
+
 install:
 	go install ./...
 
