@@ -3,12 +3,16 @@ package api
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"image/png"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp/totp"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -424,6 +428,73 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 		log.Info("RefreshTokenResponse: ", res)
 
 		c.JSONP(200, res)
+	}
+}
+
+// SendPasswordResetEmail takes in an email, and sends a password reset
+// token to that destination. It is not an authenticated endpoint, as the
+// user typically won't be able to sign in if this is something they are
+// requesting.
+func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
+	type SendPasswordResetEmailRequest struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+
+	return func(c *gin.Context) {
+		var request SendPasswordResetEmailRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
+			return
+		}
+
+		// TODO: If the user doesn't exist, respond with 200 but don't send an
+		// TODO: email. We don't want to leak what emails our users have.
+		user, err := users.GetByEmail(r.db, request.Email)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		from := mail.NewEmail("Teslacoil", "noreply@teslacoil.io")
+		subject := "Password reset"
+		var recipientName string
+		var names []string
+		if user.Firstname != nil {
+			names = append(names, *user.Firstname)
+		}
+		if user.Lastname != nil {
+			names = append(names, *user.Lastname)
+		}
+		if len(names) == 0 {
+			recipientName = user.Email
+		} else {
+			recipientName = strings.Join(names, " ")
+		}
+
+		to := mail.NewEmail(recipientName, user.Email)
+		resetToken, err := users.GetPasswordResetToken(r.db, user.Email)
+		if err != nil {
+			// TODO better response
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		resetPasswordUrl := fmt.Sprintf("https://teslacoil.io/reset-password?token=%s", url.QueryEscape(resetToken))
+		htmlText := fmt.Sprintf(
+			`<p>You have requested a password reset. Go to <a href="%s">%s</a> to complete this process.</p>`,
+			resetPasswordUrl, resetPasswordUrl)
+		message := mail.NewSingleEmail(from, subject, to, "", htmlText)
+		log.Infof("Sending password reset email: %+v", message)
+
+		response, err := r.EmailSender.Send(message)
+		if err != nil {
+			log.Errorf("Could not send email to %s: %v", to.Address, err)
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+		log.Infof("Sent email successfully. Response: %+v", response)
+
+		c.JSONP(http.StatusOK, gin.H{"message": fmt.Sprintf("Sent password reset email to %s", user.Email)})
 	}
 }
 

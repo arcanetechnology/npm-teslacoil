@@ -22,6 +22,8 @@ require (
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/pquerna/otp v1.2.0
+	github.com/sendgrid/rest v2.4.1+incompatible
+	github.com/sendgrid/sendgrid-go v3.5.0+incompatible
 	github.com/sirupsen/logrus v1.4.2
 	github.com/ugorji/go v1.1.7 // indirect
 	golang.org/x/crypto v0.0.0-20190829043050-9756ffdc2472

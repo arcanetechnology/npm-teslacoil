@@ -14,6 +14,8 @@ import (
 	"github.com/brianvoe/gofakeit"
 	"github.com/dchest/passwordreset"
 	"github.com/pquerna/otp/totp"
+	"github.com/sendgrid/rest"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -30,7 +32,22 @@ var (
 	app            *RestServer
 	mockLndApp     RestServer
 	realLndApp     RestServer
+
+	mockSendGridClient *MockSendGridClient
 )
+
+type MockSendGridClient struct {
+	SentEmails int
+}
+
+func (mock *MockSendGridClient) Send(email *mail.SGMailV3) (*rest.Response, error) {
+	mock.SentEmails += 1
+	return &rest.Response{
+		StatusCode: 202,
+		Body:       "",
+		Headers:    nil,
+	}, nil
+}
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.InfoLevel)
@@ -39,8 +56,13 @@ func TestMain(m *testing.M) {
 	// new values for gofakeit every time
 	gofakeit.Seed(0)
 
+	mockSendGridClient = &MockSendGridClient{}
+
 	var err error
-	mockLndApp, err = NewApp(testDB, testutil.GetLightningMockClient(), conf)
+	mockLndApp, err = NewApp(testDB,
+		testutil.GetLightningMockClient(),
+		mockSendGridClient,
+		conf)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -48,7 +70,10 @@ func TestMain(m *testing.M) {
 	// this is not good, but a workaround until we have a proper testing/CI
 	// harness with nodes and the whole shebang
 	if os.Getenv("CI") != "" {
-		realLndApp, err = NewApp(testDB, testutil.GetLightningMockClient(), conf)
+		realLndApp, err = NewApp(testDB,
+			testutil.GetLightningMockClient(),
+			mockSendGridClient,
+			conf)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -59,7 +84,10 @@ func TestMain(m *testing.M) {
 			panic(err.Error())
 		}
 
-		realLndApp, err = NewApp(testDB, lnd, conf)
+		realLndApp, err = NewApp(testDB,
+			lnd,
+			mockSendGridClient,
+			conf)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -723,6 +751,24 @@ func TestPutUserRoute(t *testing.T) {
 		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
 		testutil.AssertEqual(t, jsonRes["email"], newEmail)
 	})
+}
+
+func TestSendPasswordResetEmail(t *testing.T) {
+	email := gofakeit.Email()
+	createAndLoginUser(t, users.CreateUserArgs{
+		Email:    email,
+		Password: gofakeit.Password(true, true, true, true, true, 32),
+	})
+
+	req := getRequest(t, RequestArgs{
+		Path:   "/auth/reset_password",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"email": %q
+		}`, email),
+	})
+	assertResponseOk(t, req)
+	testutil.AssertMsg(t, mockSendGridClient.SentEmails > 0, "Sendgrid client didn't send any emails!")
 }
 
 // When called, this switches out the app used to serve our requests with on
