@@ -9,24 +9,15 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
-// CreateInvoiceRequest is a deposit
-type CreateInvoiceRequest struct {
-	AmountSat   int64  `json:"amountSat"`
-	Memo        string `json:"memo,omitempty"`
-	Description string `json:"description,omitempty"`
-}
-
-// PayInvoiceRequest is the required and optional fields for initiating a
-// withdrawal. fields tagged with omitEmpty are optional
-type PayInvoiceRequest struct {
-	PaymentRequest string `json:"paymentRequest"`
-	Description    string `json:"description,omitempty"`
-}
-
 // GetAllPayments finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
 func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		claim, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
 		URLParams := c.Request.URL.Query()
 
 		limitStr := URLParams.Get("limit")
@@ -45,11 +36,6 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		claim, ok := getJWTOrReject(c)
-		if !ok {
-			return
-		}
-
 		t, err := payments.GetAll(r.db, claim.UserID, int(limit), int(offset))
 		if err != nil {
 			log.Errorf("Couldn't get payments: %v", err)
@@ -58,7 +44,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -91,83 +77,121 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 		log.Infof("found payment %v", t)
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
 // CreateInvoice creates a new invoice
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
+	// CreateInvoiceRequest is a deposit
+	type CreateInvoiceRequest struct {
+		AmountSat   int64  `json:"amountSat" binding:"required,gt=0"`
+		Memo        string `json:"memo" binding:"max=256"`
+		Description string `json:"description"`
+	}
+
 	return func(c *gin.Context) {
-		var newPayment CreateInvoiceRequest
-
-		if err := c.ShouldBindJSON(&newPayment); err != nil {
-			log.Errorf("Could not bind invoice request: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "bad request, see documentation"})
-			return
-		}
-
-		log.Tracef("Bound invoice request: %+v", newPayment)
 		claims, ok := getJWTOrReject(c)
 		if !ok {
 			return
 		}
 
-		log.Errorf("received new request for CreateInvoice for user_id %d: %v\n",
+		var request CreateInvoiceRequest
+		if ok := getJSONOrReject(c, &request); !ok {
+			return
+		}
+		log.Debugf("received new request for CreateInvoice for user_id %d: %+v",
 			claims.UserID,
-			newPayment)
+			request)
 
 		t, err := payments.NewPayment(
-			r.db, *r.lncli, claims.UserID, newPayment.AmountSat,
-			newPayment.Memo, newPayment.Description)
+			r.db, *r.lncli, claims.UserID, request.AmountSat,
+			request.Memo, request.Description)
 		if err != nil {
-			log.Error(errors.Wrapf(err, "CreateInvoice() -> NewPayment(%d, %d, %v, %v)",
-				claims.UserID,
-				newPayment.AmountSat,
-				newPayment.Memo,
-				newPayment.Description))
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support "})
+			log.Error(errors.Wrapf(err, "could not add new payment"))
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
 		if t.UserID != claims.UserID {
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "create invoice internal server error, id's not equal",
-			})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
 // PayInvoice pays a valid invoice on behalf of a user
 func (r *RestServer) PayInvoice() gin.HandlerFunc {
+	// PayInvoiceRequest is the required and optional fields for initiating a
+	// withdrawal.
+	type PayInvoiceRequest struct {
+		PaymentRequest string `json:"paymentRequest" binding:"required"`
+		Description    string `json:"description"`
+	}
+
 	return func(c *gin.Context) {
-		var req PayInvoiceRequest
-
-		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Error(err)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "bad request, see documentation"})
-			return
-		}
-
 		// authenticate the user by extracting the id from the jwt-token
 		claims, ok := getJWTOrReject(c)
 		if !ok {
 			return
 		}
 
+		var request PayInvoiceRequest
+		if ok = getJSONOrReject(c, &request); !ok {
+			return
+		}
+		log.Debugf("received new request for PayInvoice for userID %d: %+v",
+			claims.UserID, request)
+
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
 		t, err := payments.PayInvoiceWithDescription(r.db, *r.lncli, claims.UserID,
-			req.PaymentRequest, req.Description)
+			request.PaymentRequest, request.Description)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, could not pay invoice"})
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
-		c.JSONP(200, t)
+		c.JSONP(http.StatusOK, t)
 	}
+}
+
+// WithdrawOnChain is a request handler used for withdrawing funds
+// to an on-chain address
+// If the withdrawal is successful, it responds with the txid
+func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
+	type WithdrawResponse struct {
+		Txid string `json:"txid"`
+	}
+
+	return func(c *gin.Context) {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		var request payments.WithdrawOnChainArgs
+		if ok := getJSONOrReject(c, &request); !ok {
+			return
+		}
+		// add the userID
+		request.UserID = claims.UserID
+
+		// TODO: Create a middleware for logging request body
+		log.Infof("Received WithdrawOnChain request %+v\n", request)
+
+		txid, err := payments.WithdrawOnChain(r.db, *r.lncli, request)
+		if err != nil {
+			log.Errorf("cannot withdraw onchain: %v", err)
+			c.JSONP(http.StatusInternalServerError,
+				internalServerErrorResponse,
+			)
+		}
+
+		c.JSONP(http.StatusOK, WithdrawResponse{
+			Txid: txid,
+		})
+	}
+
 }

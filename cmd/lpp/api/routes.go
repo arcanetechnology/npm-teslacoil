@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/util"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -38,6 +40,12 @@ type JWTClaims struct {
 	Email  string `json:"email"`
 	UserID int    `json:"user_id"`
 	jwt.StandardClaims
+}
+
+var GINMODE string
+
+func init() {
+	GINMODE = util.GetEnvOrElse(gin.EnvGinMode, "debug")
 }
 
 //NewApp creates a new app
@@ -127,6 +135,7 @@ func (r *RestServer) RegisterPaymentRoutes() {
 	payments.GET("/payments/:id", r.GetPaymentByID())
 	payments.POST("/invoices/create", r.CreateInvoice())
 	payments.POST("/invoices/pay", r.PayInvoice())
+	payments.POST("/withdraw", r.WithdrawOnChain())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate
@@ -220,6 +229,20 @@ func getJWTOrReject(c *gin.Context) (*JWTClaims, bool) {
 		return nil, false
 	}
 	return claims, true
+}
+
+// getJSONOrReject extracts fields from the context and inserts
+// them into the passed body argument. If an error occurs, the
+// error is logged and a response with StatusBadRequest is sent
+// body MUST be an address to a variable, not a variable
+func getJSONOrReject(c *gin.Context, body interface{}) bool {
+	if err := c.ShouldBindJSON(body); err != nil {
+		log.Errorf("%s could not bind JSON %+v", c.Request.URL.Path, err)
+		c.JSON(http.StatusBadRequest, badRequestResponse)
+		return false
+	}
+
+	return true
 }
 
 // createJWTToken creates a new JWT token with the supplied email as the

@@ -55,5 +55,5 @@ PARAMS=$(echo $PARAMS \
     "--rpcserver=rpcserver" \
 )
 
-PARAMS="$PARAMS $@"
+PARAMS="$PARAMS *@"
 exec btcctl $PARAMS

@@ -1,5 +1,8 @@
 .envrc
 logs/
+.idea/dataSources.xml
+.idea/teslacoil.iml
+.idea/idea
 
 # Local node directories
 .alice/
