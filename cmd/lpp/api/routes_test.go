@@ -280,8 +280,7 @@ func TestCreateUser(t *testing.T) {
 				"password": "foobar"
 			}`,
 		})
-		assertResponseNotOk(t, req)
-
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("Creating a user must fail with an empty email", func(t *testing.T) {
@@ -293,7 +292,20 @@ func TestCreateUser(t *testing.T) {
 				"email": ""
 			}`,
 		})
-		assertResponseNotOk(t, req)
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("creating an user with an invalid email should fail", func(t *testing.T) {
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		req := getRequest(t, RequestArgs{
+			Path:   "/users",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": "this-is-not@a-valid-mail"
+			}`, pass),
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("It should be possible to create a user without any names", func(t *testing.T) {
@@ -370,19 +382,34 @@ func TestPostLoginRoute(t *testing.T) {
 		LastName:  &second,
 	})
 
-	req := getRequest(t, RequestArgs{
-		Path:   "/login",
-		Method: "POST",
-		Body: fmt.Sprintf(`{
+	t.Run("fail to login with invalid email", func(t *testing.T) {
+		badEmail := "foobar"
+		req := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, badEmail, password),
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("login with proper email", func(t *testing.T) {
+		req := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
 			"email": %q,
 			"password": %q
 		}`, email, password),
+		})
+		res := assertResponseOkWithJson(t, req)
+		testutil.AssertEqual(t, res["firstName"], first)
+		testutil.AssertEqual(t, res["lastName"], second)
+		testutil.AssertEqual(t, res["email"], email)
+		testutil.AssertEqual(t, res["balance"], 0.0)
 	})
-	res := assertResponseOkWithJson(t, req)
-	testutil.AssertEqual(t, res["firstName"], first)
-	testutil.AssertEqual(t, res["lastName"], second)
-	testutil.AssertEqual(t, res["email"], email)
-	testutil.AssertEqual(t, res["balance"], 0.0)
 }
 
 func TestChangePasswordRoute(t *testing.T) {
@@ -642,45 +669,60 @@ func TestResetPasswordRoute(t *testing.T) {
 func TestPutUserRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
+	email := gofakeit.Email()
+	password := gofakeit.Password(true, true, true, true, true, 32)
 	accessToken := createAndLoginUser(t, users.CreateUserArgs{
-		Email:    "foobar",
-		Password: "password",
+		Email:    email,
+		Password: password,
 	})
 
-	newFirst := "new-firstname"
-	newLast := "new-lastname"
-	newEmail := "new-email"
-
-	// Update User endpoint
-	updateUserReq := getAuthRequest(t,
-		AuthRequestArgs{
+	t.Run("updating with an invalid email should fail", func(t *testing.T) {
+		req := getAuthRequest(t, AuthRequestArgs{
 			AccessToken: accessToken,
-			Path:        "/user", Method: "PUT",
-			Body: fmt.Sprintf(`
+			Path:        "/user",
+			Method:      "PUT",
+			Body: `{
+				"email": "bad-email.coming.through"
+			}`,
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("update email, first name and last name", func(t *testing.T) {
+		newFirst := "new-firstname"
+		newLast := "new-lastname"
+		newEmail := gofakeit.Email()
+
+		// Update User endpoint
+		updateUserReq := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/user", Method: "PUT",
+				Body: fmt.Sprintf(`
 			{
 				"firstName": %q,
 				"lastName": %q,
 				"email": %q
 			}`, newFirst, newLast, newEmail)})
 
-	jsonRes := assertResponseOkWithJson(t, updateUserReq)
-	testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
-	testutil.AssertEqual(t, jsonRes["lastName"], newLast)
-	testutil.AssertEqual(t, jsonRes["email"], newEmail)
+		jsonRes := assertResponseOkWithJson(t, updateUserReq)
+		testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
+		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
+		testutil.AssertEqual(t, jsonRes["email"], newEmail)
 
-	// Get User endpoint
-	getUserReq := getAuthRequest(t,
-		AuthRequestArgs{
-			AccessToken: accessToken,
-			Method:      "GET", Path: "/user",
-		})
+		// Get User endpoint
+		getUserReq := getAuthRequest(t,
+			AuthRequestArgs{
+				AccessToken: accessToken,
+				Method:      "GET", Path: "/user",
+			})
 
-	// Verify that update and get returns the same
-	jsonRes = assertResponseOkWithJson(t, getUserReq)
-	testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
-	testutil.AssertEqual(t, jsonRes["lastName"], newLast)
-	testutil.AssertEqual(t, jsonRes["email"], newEmail)
-
+		// Verify that update and get returns the same
+		jsonRes = assertResponseOkWithJson(t, getUserReq)
+		testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
+		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
+		testutil.AssertEqual(t, jsonRes["email"], newEmail)
+	})
 }
 
 // When called, this switches out the app used to serve our requests with on
