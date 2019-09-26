@@ -867,7 +867,7 @@ func TestWithdrawOnChainBadOpts(t *testing.T) {
 				AmountSat: test.amountSat,
 				Address:   simnetAddress,
 			})
-			if err == nil || txid != "" {
+			if err == nil || txid != nil {
 				testutil.FatalMsgf(t, "should not send transaction, bad opts")
 			}
 		})

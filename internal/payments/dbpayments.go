@@ -639,11 +639,11 @@ type WithdrawOnChainArgs struct {
 }
 
 func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
-	args WithdrawOnChainArgs) (string, error) {
+	args WithdrawOnChainArgs) (*Transaction, error) {
 
 	user, err := users.GetByID(d, args.UserID)
 	if err != nil {
-		return "", errors.Wrap(err, "withdrawonchain could not get user")
+		return nil, errors.Wrap(err, "withdrawonchain could not get user")
 	}
 
 	// We dont pass sendAll to lncli, as that would send the entire nodes
@@ -653,7 +653,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 	}
 
 	if user.Balance < args.AmountSat {
-		return "", errors.New(fmt.Sprintf(
+		return nil, errors.New(fmt.Sprintf(
 			"cannot withdraw, balance is %d, trying to withdraw %d",
 			user.Balance,
 			args.AmountSat))
@@ -668,7 +668,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		if txErr := tx.Rollback(); txErr != nil {
 			log.Error("txErr: ", txErr)
 		}
-		return "", errors.Wrap(err, "could not decrease balance")
+		return nil, errors.Wrap(err, "could not decrease balance")
 	}
 
 	txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
@@ -681,7 +681,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		if txErr := tx.Rollback(); txErr != nil {
 			log.Error("txErr: ", txErr)
 		}
-		return "", errors.Wrap(err, "could not send on-chain")
+		return nil, errors.Wrap(err, "could not send on-chain")
 	}
 
 	log.Debug("txid: ", txid)
@@ -698,16 +698,16 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		if txErr := tx.Rollback(); txErr != nil {
 			log.Error("txErr: ", txErr)
 		}
-		return "", errors.Wrap(err, "could not insert transaction")
+		return nil, errors.Wrap(err, "could not insert transaction")
 	}
 	err = tx.Commit()
 	if err != nil {
-		return "", errors.Wrap(err, "could not commit transaction")
+		return nil, errors.Wrap(err, "could not commit transaction")
 	}
 
 	log.Debugf("transaction: %+v", transaction)
 
-	return txid, nil
+	return &transaction, nil
 }
 
 func (p Payment) String() string {
