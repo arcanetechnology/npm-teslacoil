@@ -147,7 +147,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 	// CreateUserRequest is the expected type to create a new user
 	type CreateUserRequest struct {
 		Email     string  `json:"email" binding:"required,email"`
-		Password  string  `json:"password" binding:"required"`
+		Password  string  `json:"password" binding:"required,password"`
 		FirstName *string `json:"firstName"`
 		LastName  *string `json:"lastName"`
 	}
@@ -193,7 +193,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 	// LoginRequest is the expected type to find a user in the DB
 	type LoginRequest struct {
 		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
+		Password string `json:"password" binding:"required,password"`
 		TotpCode string `json:"totp"`
 	}
 
@@ -500,7 +500,7 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 
 func (r *RestServer) ResetPassword() gin.HandlerFunc {
 	type ResetPasswordRequest struct {
-		Password string `json:"password" binding:"required"`
+		Password string `json:"password" binding:"required,password"`
 		Token    string `json:"token" binding:"required"`
 	}
 
@@ -543,8 +543,12 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 
 func (r *RestServer) ChangePassword() gin.HandlerFunc {
 	type ChangePasswordRequest struct {
-		OldPassword         string `json:"oldPassword" binding:"required"`
-		NewPassword         string `json:"newPassword" binding:"required"`
+		// we don't give this a "password" tag, as there's no point in validating
+		// the users existing password
+		OldPassword string `json:"oldPassword" binding:"required"`
+		NewPassword string `json:"newPassword" binding:"required,password"`
+		// we don't give this a "password" tag either, as this is checked to be
+		// equal to `NewPassword`, and that has the "password" tag
 		RepeatedNewPassword string `json:"repeatedNewPassword" binding:"required,eqfield=NewPassword"`
 	}
 	return func(c *gin.Context) {

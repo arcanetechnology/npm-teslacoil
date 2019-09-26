@@ -331,13 +331,24 @@ func getRequest(t *testing.T, args RequestArgs) *http.Request {
 }
 
 func TestCreateUser(t *testing.T) {
+	t.Run("creating a user must fail with a bad password", func(t *testing.T) {
+		testutil.DescribeTest(t)
+		req := getRequest(t, RequestArgs{
+			Path: "/users", Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": "foobar",
+				"email": %q
+			}`, gofakeit.Email()),
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
 	t.Run("Creating a user must fail without an email", func(t *testing.T) {
 		testutil.DescribeTest(t)
 		req := getRequest(t, RequestArgs{
 			Path: "/users", Method: "POST",
-			Body: `{
-				"password": "foobar"
-			}`,
+			Body: fmt.Sprintf(`{
+				"password": %q
+			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
 		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
@@ -346,10 +357,10 @@ func TestCreateUser(t *testing.T) {
 		testutil.DescribeTest(t)
 		req := getRequest(t, RequestArgs{
 			Path: "/users", Method: "POST",
-			Body: `{
-				"password": "foobar",
+			Body: fmt.Sprintf(`{
+				"password": %q,
 				"email": ""
-			}`,
+			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
 		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
@@ -369,13 +380,14 @@ func TestCreateUser(t *testing.T) {
 
 	t.Run("It should be possible to create a user without any names", func(t *testing.T) {
 		email := gofakeit.Email()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
 		testutil.DescribeTest(t)
 		body := RequestArgs{
 			Path: "/users", Method: "POST",
 			Body: fmt.Sprintf(`{
-				"password": "foobar",
+				"password": %q,
 				"email": "%s"
-			}`, email),
+			}`, pass, email),
 		}
 		req := getRequest(t, body)
 		jsonRes := assertResponseOkWithJson(t, req)
@@ -386,17 +398,18 @@ func TestCreateUser(t *testing.T) {
 
 	t.Run("It should be possible to create a user with names", func(t *testing.T) {
 		email := gofakeit.Email()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
 		firstName := gofakeit.FirstName()
 		lastName := gofakeit.LastName()
 		testutil.DescribeTest(t)
 		req := getRequest(t, RequestArgs{
 			Path: "/users", Method: "POST",
 			Body: fmt.Sprintf(`{
-				"password": "foobar",
+				"password": %q,
 				"email": "%s",
 				"firstName": "%s", 
 				"lastName": "%s"
-			}`, email, firstName, lastName),
+			}`, pass, email, firstName, lastName),
 		})
 		jsonRes := assertResponseOkWithJson(t, req)
 		testutil.AssertEqual(t, jsonRes["email"], email)
@@ -409,9 +422,10 @@ func TestPostUsersRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	email := gofakeit.Email()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
 	accessToken := createAndLoginUser(t, users.CreateUserArgs{
 		Email:    email,
-		Password: "password",
+		Password: pass,
 	})
 
 	req := getAuthRequest(t,
@@ -430,7 +444,7 @@ func TestPostLoginRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	email := gofakeit.Email()
-	password := "password"
+	password := gofakeit.Password(true, true, true, true, true, 32)
 	first := gofakeit.FirstName()
 	second := gofakeit.LastName()
 
@@ -439,6 +453,19 @@ func TestPostLoginRoute(t *testing.T) {
 		Password:  password,
 		FirstName: &first,
 		LastName:  &second,
+	})
+
+	t.Run("fail to login with bad password", func(t *testing.T) {
+		badPassword := "this-is-bad"
+		req := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, email, badPassword),
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("fail to login with invalid email", func(t *testing.T) {
@@ -554,6 +581,21 @@ func TestChangePasswordRoute(t *testing.T) {
 		assertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
 	})
 
+	t.Run("should give an error on bad password", func(t *testing.T) {
+		badNewPass := "badNewPass"
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q,
+			"newPassword": %q,
+			"repeatedNewPassword": %q
+		}`, pass, badNewPass, badNewPass),
+		})
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+	})
+
 	t.Run("Must be able to change password", func(t *testing.T) {
 		changePassReq := getAuthRequest(t, AuthRequestArgs{
 			AccessToken: accessToken,
@@ -620,6 +662,23 @@ func TestResetPasswordRoute(t *testing.T) {
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
+
+	t.Run("should not be able to reset to a weak password", func(t *testing.T) {
+		badPass := "12345678"
+		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not get password reset token: %v", err)
+		}
+		resetPassReq := getRequest(t, RequestArgs{
+			Path:   "/auth/reset_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, token, badPass),
+		})
+		assertResponseNotOkWithCode(t, resetPassReq, http.StatusBadRequest)
+	})
 
 	t.Run("Should not be able to reset the user password by using a bad token", func(t *testing.T) {
 		badSecretKey := []byte("this is a secret key which we expect to fail")
@@ -823,7 +882,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 	accessToken := createAndLoginUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
-		Password: "password",
+		Password: gofakeit.Password(true, true, true, true, true, 32),
 	})
 
 	t.Run("Create an invoice without memo and description", func(t *testing.T) {
