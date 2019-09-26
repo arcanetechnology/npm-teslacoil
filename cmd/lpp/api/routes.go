@@ -5,16 +5,18 @@ import (
 	"net/http"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/util"
-
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/util"
+	"gitlab.com/arcanecrypto/teslacoil/validation"
+	"gopkg.in/go-playground/validator.v8"
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -60,6 +62,13 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, sender EmailSender, config Co
 	build.SetLogLevel(config.LogLevel)
 
 	g := gin.Default()
+
+	engine, ok := binding.Validator.Engine().(*validator.Validate)
+	if !ok {
+		log.Fatalf("Gin validator engine (%s) was validator.Validate", binding.Validator.Engine())
+	}
+	validators := validation.RegisterAllValidators(engine)
+	log.Infof("Registered custom validators: %s", validators)
 
 	g.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000"},

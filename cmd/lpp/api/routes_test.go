@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -110,11 +111,39 @@ func TestMain(m *testing.M) {
 func assertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 
+	bodyBytes := []byte{}
+	var err error
+	if request.Body != nil {
+		// read the body bytes for potential error messages later
+		bodyBytes, err = ioutil.ReadAll(request.Body)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not read body: %v", err)
+		}
+		// restore the original buffer so it can be read later
+		request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	}
+
 	response := httptest.NewRecorder()
 	app.Router.ServeHTTP(response, request)
 
 	if response.Code != 200 {
-		testutil.FailMsgf(t, "Got failure code (%d) on path %s", response.Code, extractMethodAndPath(request))
+		var parsedJsonBody string
+
+		// this is a bit strange way of doing things, but we unmarshal and then
+		// marshal again to get rid of any weird formatting, so we can print
+		// the JSON body in a compact, one-line way
+		var jsonDest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &jsonDest); err != nil {
+			testutil.FatalMsgf(t, "Could not unmarshal JSON: %v. Body: %s", err, string(bodyBytes))
+		}
+		jsonBytes, err := json.Marshal(jsonDest)
+		parsedJsonBody = string(jsonBytes)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not marshal JSON: %v", err)
+		}
+
+		testutil.FailMsgf(t, "Got failure code (%d) on path %s %s",
+			response.Code, extractMethodAndPath(request), string(parsedJsonBody))
 	}
 
 	return response
@@ -165,6 +194,7 @@ func assertResponseOkWithJson(t *testing.T, request *http.Request) map[string]in
 }
 
 func createUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	t.Helper()
 	if args.Password == "" {
 		testutil.FatalMsg(t, "You forgot to set the password!")
 	}
@@ -204,6 +234,7 @@ func createUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} 
 // Creates and logs in a user with the given email and password. Returns
 // the access token for this session.
 func createAndLoginUser(t *testing.T, args users.CreateUserArgs) string {
+	t.Helper()
 	_ = createUser(t, args)
 
 	loginUserReq := getRequest(t, RequestArgs{
@@ -300,13 +331,24 @@ func getRequest(t *testing.T, args RequestArgs) *http.Request {
 }
 
 func TestCreateUser(t *testing.T) {
+	t.Run("creating a user must fail with a bad password", func(t *testing.T) {
+		testutil.DescribeTest(t)
+		req := getRequest(t, RequestArgs{
+			Path: "/users", Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": "foobar",
+				"email": %q
+			}`, gofakeit.Email()),
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
 	t.Run("Creating a user must fail without an email", func(t *testing.T) {
 		testutil.DescribeTest(t)
 		req := getRequest(t, RequestArgs{
 			Path: "/users", Method: "POST",
-			Body: `{
-				"password": "foobar"
-			}`,
+			Body: fmt.Sprintf(`{
+				"password": %q
+			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
 		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
@@ -315,10 +357,10 @@ func TestCreateUser(t *testing.T) {
 		testutil.DescribeTest(t)
 		req := getRequest(t, RequestArgs{
 			Path: "/users", Method: "POST",
-			Body: `{
-				"password": "foobar",
+			Body: fmt.Sprintf(`{
+				"password": %q,
 				"email": ""
-			}`,
+			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
 		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
@@ -338,13 +380,14 @@ func TestCreateUser(t *testing.T) {
 
 	t.Run("It should be possible to create a user without any names", func(t *testing.T) {
 		email := gofakeit.Email()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
 		testutil.DescribeTest(t)
 		body := RequestArgs{
 			Path: "/users", Method: "POST",
 			Body: fmt.Sprintf(`{
-				"password": "foobar",
+				"password": %q,
 				"email": "%s"
-			}`, email),
+			}`, pass, email),
 		}
 		req := getRequest(t, body)
 		jsonRes := assertResponseOkWithJson(t, req)
@@ -355,17 +398,18 @@ func TestCreateUser(t *testing.T) {
 
 	t.Run("It should be possible to create a user with names", func(t *testing.T) {
 		email := gofakeit.Email()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
 		firstName := gofakeit.FirstName()
 		lastName := gofakeit.LastName()
 		testutil.DescribeTest(t)
 		req := getRequest(t, RequestArgs{
 			Path: "/users", Method: "POST",
 			Body: fmt.Sprintf(`{
-				"password": "foobar",
+				"password": %q,
 				"email": "%s",
 				"firstName": "%s", 
 				"lastName": "%s"
-			}`, email, firstName, lastName),
+			}`, pass, email, firstName, lastName),
 		})
 		jsonRes := assertResponseOkWithJson(t, req)
 		testutil.AssertEqual(t, jsonRes["email"], email)
@@ -378,9 +422,10 @@ func TestPostUsersRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	email := gofakeit.Email()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
 	accessToken := createAndLoginUser(t, users.CreateUserArgs{
 		Email:    email,
-		Password: "password",
+		Password: pass,
 	})
 
 	req := getAuthRequest(t,
@@ -399,7 +444,7 @@ func TestPostLoginRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	email := gofakeit.Email()
-	password := "password"
+	password := gofakeit.Password(true, true, true, true, true, 32)
 	first := gofakeit.FirstName()
 	second := gofakeit.LastName()
 
@@ -408,6 +453,19 @@ func TestPostLoginRoute(t *testing.T) {
 		Password:  password,
 		FirstName: &first,
 		LastName:  &second,
+	})
+
+	t.Run("fail to login with bad password", func(t *testing.T) {
+		badPassword := "this-is-bad"
+		req := getRequest(t, RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, email, badPassword),
+		})
+		assertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("fail to login with invalid email", func(t *testing.T) {
@@ -523,6 +581,21 @@ func TestChangePasswordRoute(t *testing.T) {
 		assertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
 	})
 
+	t.Run("should give an error on bad password", func(t *testing.T) {
+		badNewPass := "badNewPass"
+		changePassReq := getAuthRequest(t, AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/auth/change_password",
+			Method:      "PUT",
+			Body: fmt.Sprintf(`{
+			"oldPassword": %q,
+			"newPassword": %q,
+			"repeatedNewPassword": %q
+		}`, pass, badNewPass, badNewPass),
+		})
+		assertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+	})
+
 	t.Run("Must be able to change password", func(t *testing.T) {
 		changePassReq := getAuthRequest(t, AuthRequestArgs{
 			AccessToken: accessToken,
@@ -589,6 +662,23 @@ func TestResetPasswordRoute(t *testing.T) {
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
+
+	t.Run("should not be able to reset to a weak password", func(t *testing.T) {
+		badPass := "12345678"
+		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not get password reset token: %v", err)
+		}
+		resetPassReq := getRequest(t, RequestArgs{
+			Path:   "/auth/reset_password",
+			Method: "PUT",
+			Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, token, badPass),
+		})
+		assertResponseNotOkWithCode(t, resetPassReq, http.StatusBadRequest)
+	})
 
 	t.Run("Should not be able to reset the user password by using a bad token", func(t *testing.T) {
 		badSecretKey := []byte("this is a secret key which we expect to fail")
@@ -792,7 +882,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 	accessToken := createAndLoginUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
-		Password: "password",
+		Password: gofakeit.Password(true, true, true, true, true, 32),
 	})
 
 	t.Run("Create an invoice without memo and description", func(t *testing.T) {
