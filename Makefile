@@ -21,6 +21,9 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
+serve: build-lpp
+	./lpp-dev serve
+
 test-only: 
 	go test ./... -run ${TEST_ARGS}
 
