@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -110,11 +111,39 @@ func TestMain(m *testing.M) {
 func assertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 
+	bodyBytes := []byte{}
+	var err error
+	if request.Body != nil {
+		// read the body bytes for potential error messages later
+		bodyBytes, err = ioutil.ReadAll(request.Body)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not read body: %v", err)
+		}
+		// restore the original buffer so it can be read later
+		request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	}
+
 	response := httptest.NewRecorder()
 	app.Router.ServeHTTP(response, request)
 
 	if response.Code != 200 {
-		testutil.FailMsgf(t, "Got failure code (%d) on path %s", response.Code, extractMethodAndPath(request))
+		var parsedJsonBody string
+
+		// this is a bit strange way of doing things, but we unmarshal and then
+		// marshal again to get rid of any weird formatting, so we can print
+		// the JSON body in a compact, one-line way
+		var jsonDest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &jsonDest); err != nil {
+			testutil.FatalMsgf(t, "Could not unmarshal JSON: %v. Body: %s", err, string(bodyBytes))
+		}
+		jsonBytes, err := json.Marshal(jsonDest)
+		parsedJsonBody = string(jsonBytes)
+		if err != nil {
+			testutil.FatalMsgf(t, "Could not marshal JSON: %v", err)
+		}
+
+		testutil.FailMsgf(t, "Got failure code (%d) on path %s %s",
+			response.Code, extractMethodAndPath(request), string(parsedJsonBody))
 	}
 
 	return response
@@ -165,6 +194,7 @@ func assertResponseOkWithJson(t *testing.T, request *http.Request) map[string]in
 }
 
 func createUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	t.Helper()
 	if args.Password == "" {
 		testutil.FatalMsg(t, "You forgot to set the password!")
 	}
@@ -204,6 +234,7 @@ func createUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} 
 // Creates and logs in a user with the given email and password. Returns
 // the access token for this session.
 func createAndLoginUser(t *testing.T, args users.CreateUserArgs) string {
+	t.Helper()
 	_ = createUser(t, args)
 
 	loginUserReq := getRequest(t, RequestArgs{
