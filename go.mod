@@ -20,6 +20,7 @@ require (
 	github.com/lib/pq v1.2.0
 	github.com/lightningnetwork/lnd v0.7.0-beta
 	github.com/mattn/go-isatty v0.0.8 // indirect
+	github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d
 	github.com/pkg/errors v0.8.1
 	github.com/pquerna/otp v1.2.0
 	github.com/sendgrid/rest v2.4.1+incompatible
@@ -30,6 +31,7 @@ require (
 	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297 // indirect
 	golang.org/x/sys v0.0.0-20190826190057-c7b8b68b1456 // indirect
 	google.golang.org/grpc v1.20.1
+	gopkg.in/go-playground/validator.v8 v8.18.2
 	gopkg.in/macaroon.v2 v2.1.0
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
