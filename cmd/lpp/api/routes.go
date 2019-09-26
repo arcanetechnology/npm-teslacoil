@@ -154,6 +154,7 @@ func (r *RestServer) RegisterPaymentRoutes() {
 	payments.POST("/invoices/create", r.CreateInvoice())
 	payments.POST("/invoices/pay", r.PayInvoice())
 	payments.POST("/withdraw", r.WithdrawOnChain())
+	payments.POST("/deposit", r.DepositOnChain())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate

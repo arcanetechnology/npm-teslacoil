@@ -194,9 +194,47 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		}
 
 		c.JSONP(http.StatusOK, WithdrawResponse{
-			Txid:        transaction.Txid,
+			Txid:        *transaction.Txid,
 			Address:     transaction.Address,
 			AmountSat:   transaction.AmountSat,
+			Description: transaction.Description,
+		})
+	}
+
+}
+
+// DepositOnChain is a request handler used for depositing funds
+// to an on-chain address
+// If the deposit is successful, it responds with an address
+func (r *RestServer) DepositOnChain() gin.HandlerFunc {
+	type NewDepositResponse struct {
+		Address     string `json:"address"`
+		Description string `json:"description"`
+	}
+
+	return func(c *gin.Context) {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		var request payments.DepositOnChainArgs
+		if ok := getJSONOrReject(c, &request); !ok {
+			return
+		}
+		log.Infof("Received DepositOnChain request %+v\n", request)
+
+		transaction, err := payments.DepositOnChain(r.db, *r.lncli, claims.UserID, request)
+		if err != nil {
+			log.Errorf("cannot deposit onchain: %v", err)
+			c.JSONP(http.StatusInternalServerError,
+				internalServerErrorResponse,
+			)
+			return
+		}
+
+		c.JSONP(http.StatusOK, NewDepositResponse{
+			Address:     transaction.Address,
 			Description: transaction.Description,
 		})
 	}

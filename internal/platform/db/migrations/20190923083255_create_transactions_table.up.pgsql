@@ -5,7 +5,9 @@ CREATE TABLE transactions(
     user_id integer REFERENCES users(id),
     address varchar(128) NOT NULL,
     txid varchar(256),
-    amount_sat bigint NOT NULL CHECK (amount_sat >= 0), -- Amount stored in satoshis
+    outpoint integer,
+    direction direction NOT NULL,
+    amount_sat bigint CHECK (amount_sat >= 0), -- Amount stored in satoshis
     description TEXT,
     status transaction_status,
     confirmed_at TIMESTAMPTZ,
