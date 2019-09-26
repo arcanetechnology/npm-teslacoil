@@ -57,12 +57,12 @@ func configDefaultLndDir() string {
 }
 
 func configDefaultLndNet() string {
-	if env := os.Getenv("LND_NETWORK"); env != "" {
+	if env := os.Getenv("BITCOIN_NETWORK"); env != "" {
 		switch env {
-		case "mainnet", "testnet", "regtest", "simnet":
+		case "mainnet", "testnet", "regtest":
 			return env
 		default:
-			log.Fatalf("Environment variable LND_NETWORK is not a valid network: %s", env)
+			log.Fatalf("Environment variable BITCOIN_NETWORK is not a valid network: %s", env)
 		}
 	}
 	return "testnet"

@@ -42,24 +42,20 @@ set_default() {
 RPCUSER=$(set_default "$RPCUSER" "devuser")
 RPCPASS=$(set_default "$RPCPASS" "devpass")
 DEBUG=$(set_default "$DEBUG" "debug")
-NETWORK=$(set_default "$NETWORK" "simnet")
-CHAIN=$(set_default "$CHAIN" "bitcoin")
-BACKEND="btcd"
-if [[ "$CHAIN" == "litecoin" ]]; then
-    BACKEND="ltcd"
-fi
+BITCOIN_NETWORK=$(set_default "$BITCOIN_NETWORK" "regtest")
 
 PARAMS="\
 --noseedbackup \
 --logdir=/data \
---$CHAIN.active \
---$CHAIN.$NETWORK \
---$CHAIN.node=btcd \
+--bitcoin.active \
+--bitcoin.$BITCOIN_NETWORK \
+--bitcoin.node=bitcoind \
 --rpclisten=0.0.0.0:10009 \
---$BACKEND.rpccert=/rpc/rpc.cert \
---$BACKEND.rpchost=blockchain \
---$BACKEND.rpcuser=$RPCUSER \
---$BACKEND.rpcpass=$RPCPASS \
+--bitcoind.rpchost=blockchain \
+--bitcoind.rpcuser=$RPCUSER \
+--bitcoind.rpcpass=$RPCPASS \
+--bitcoind.zmqpubrawtx=tcp://blockchain:$ZMQPUBRAWTX_PORT
+--bitcoind.zmqpubrawblock=tcp://blockchain:$ZMQPUBRAWBLOCK_PORT
 --debuglevel=$DEBUG"
 
 

@@ -271,7 +271,7 @@ func GetLightingConfig() ln.LightningConfig {
 		LndDir: path.Join(
 			util.GetEnvOrFail("GOPATH"), "src", "gitlab.com",
 			"arcanecrypto", "teslacoil", "docker", ".alice"),
-		Network:   "simnet",
+		Network:   "regtest",
 		RPCServer: "localhost:10009",
 	}
 }

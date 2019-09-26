@@ -9,7 +9,7 @@ complete -c lpp -f -a $lpp_db_subcommands -n "__fish_seen_subcommand_from db"
 complete -c lpp -l lnddir -r
 complete -c lpp -l tlscertpath -r
 complete -c lpp -l macaroonpath -r
-complete -c lpp -l network -r -x -a "mainnet testnet regtest simnet"
+complete -c lpp -l network -r -x -a "mainnet testnet regtest"
 complete -c lpp -l lndrpcserver -x
 complete -c lpp -l loglevel -r -x -a "trace debug info warn error fatal critical"
 complete -c lpp -l help -s h -f
