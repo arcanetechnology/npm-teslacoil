@@ -154,9 +154,9 @@ func (r *RestServer) RegisterTransactionRoutes() {
 	transaction.Use(authenticateJWT)
 
 	transaction.GET("/transactions", r.GetAllTransactions())
-	transaction.POST("/transactions/:id", r.GetTransactionByID())
+	transaction.POST("/transaction/:id", r.GetTransactionByID())
 	transaction.POST("/transactions/withdraw", r.WithdrawOnChain())
-	transaction.POST("/transactions/deposit", r.DepositOnChain())
+	transaction.POST("/transactions/new-address", r.NewAddress())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate

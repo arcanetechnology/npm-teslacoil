@@ -28,9 +28,8 @@ var (
 )
 
 const (
-	succeed = "\u001b[32m\u2713"
-	fail    = "\u001b[31m\u2717"
-	reset   = "\u001b[0m"
+	fail  = "\u001b[31m\u2717"
+	reset = "\u001b[0m"
 )
 
 var (
@@ -348,9 +347,8 @@ func TestPayInvoice(t *testing.T) {
 			if payment.Payment.Status == SUCCEEDED || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 				testutil.FatalMsg(t, "should not pay invoice when the users balance is too low")
 			}
-			t.Logf(
-				"\t%s\tshould not pay invoice when the users balance is too low%s",
-				succeed, reset)
+			testutil.Succeed(t,
+				"should not pay invoice when the users balance is too low")
 
 			if !strings.Contains(
 				err.Error(),
@@ -359,9 +357,8 @@ func TestPayInvoice(t *testing.T) {
 					"should fail when paying invoice greater than balance. Error: %+v",
 					err)
 			}
-			t.Logf(
-				"\t%s\tshould fail when paying invoice greater than balance%s",
-				succeed, reset)
+			testutil.Succeed(t,
+				"should fail when paying invoice greater than balance")
 			return
 		}
 		if err != nil {
@@ -369,7 +366,7 @@ func TestPayInvoice(t *testing.T) {
 				"should be able to PayInvoice. Error:  %+v",
 				err)
 		}
-		t.Logf("\t%s\tShould be able to PayInvoice%s", succeed, reset)
+		testutil.Succeed(t, "should be able to PayInvoice")
 
 		got := payment
 		want := test.want
@@ -832,6 +829,7 @@ func TestWithAdditionalFields(t *testing.T) {
 				payment, err := insert(tx, invoice)
 				if err != nil {
 					testutil.FailMsg(t, "could not insert payment")
+					return
 				}
 				_ = tx.Commit()
 
@@ -925,30 +923,4 @@ func CreateUserOrFail(t *testing.T) users.User {
 	}
 
 	return u
-}
-
-func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
-	u := CreateUserOrFail(t)
-
-	tx := testDB.MustBegin()
-	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
-		UserID:    u.ID,
-		AmountSat: balance,
-	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"[%s] could not increase balance by %d for user %d: %+v", t.Name(),
-			balance, u.ID, err)
-	}
-	err = tx.Commit()
-	if err != nil {
-		testutil.FatalMsg(t, "could not commit tx")
-	}
-
-	if user.Balance != balance {
-		testutil.FatalMsgf(t, "wrong balance, expected [%d], got [%d]", balance,
-			user.Balance)
-	}
-
-	return user
 }

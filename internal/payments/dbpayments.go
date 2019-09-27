@@ -21,9 +21,6 @@ type Direction string
 // Status is the status of a lightning payment
 type Status string
 
-// TransactionStatus is the status of an on-chain transaction
-type TransactionStatus string
-
 const (
 	INBOUND  Direction = "INBOUND"
 	OUTBOUND Direction = "OUTBOUND"
@@ -31,9 +28,6 @@ const (
 	SUCCEEDED Status = "SUCCEEDED"
 	FAILED    Status = "FAILED"
 	OPEN      Status = "OPEN"
-
-	UNCONFIRMED = "UNCONFIRMED"
-	CONFIRMED   = "CONFIRMED"
 
 	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
 	OffchainTXTable = "offchaintx"

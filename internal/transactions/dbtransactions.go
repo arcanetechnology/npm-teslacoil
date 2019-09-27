@@ -1,10 +1,12 @@
-package payments
+package transactions
 
 import (
 	"context"
 	"fmt"
 	"strings"
 	"time"
+
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -13,17 +15,25 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
+// TransactionStatus is the status of an on-chain transaction
+type TransactionStatus string
+
+const (
+	UNCONFIRMED = "UNCONFIRMED"
+	CONFIRMED   = "CONFIRMED"
+)
+
 // Transaction is the db and json type for an on-chain transaction
 type Transaction struct {
-	ID          int               `db:"id" json:"id"`
-	UserID      int               `db:"user_id" json:"userId"`
-	Address     string            `db:"address" json:"address"`
-	Txid        string            `db:"txid" json:"txid"`
-	Outpoint    int               `db:"outpoint" json:"outpoint"`
-	Direction   Direction         `db:"direction" json:"direction"`
-	AmountSat   int64             `db:"amount_sat" json:"amountSat"`
-	Description string            `db:"description" json:"description"`
-	Status      TransactionStatus `db:"status" json:"status"`
+	ID          int                `db:"id" json:"id"`
+	UserID      int                `db:"user_id" json:"userId"`
+	Address     string             `db:"address" json:"address"`
+	Txid        string             `db:"txid" json:"txid"`
+	Outpoint    int                `db:"outpoint" json:"outpoint"`
+	Direction   payments.Direction `db:"direction" json:"direction"`
+	AmountSat   int64              `db:"amount_sat" json:"amountSat"`
+	Description string             `db:"description" json:"description"`
+	Status      TransactionStatus  `db:"status" json:"status"`
 
 	ConfirmedAt *time.Time `db:"confirmed_at" json:"confirmedAt"`
 	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
@@ -84,7 +94,7 @@ func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
 }
 
 // GetAll selects all transactions for given userID from the DB.
-func GetAllTransactions(d *db.DB, userID int, direction Direction, limit int, offset int) (
+func GetAllTransactions(d *db.DB, userID int, direction payments.Direction, limit int, offset int) (
 	[]Transaction, error) {
 	// Using OFFSET is not ideal, but until we start seeing
 	// performance problems it's fine
@@ -195,7 +205,8 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		AmountSat:   args.AmountSat,
 		Description: args.Description,
 		Txid:        txid,
-		Direction:   OUTBOUND,
+		Direction:   payments.OUTBOUND,
+		Status:      "UNCONFIRMED",
 	})
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
@@ -213,40 +224,18 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 	return &transaction, nil
 }
 
-/*
-func DepositOnChain(d *db.DB, lncli lnrpc.LightningClient) (Transaction, error) {
-	deposit := SELECT * from transactions where user_id = args.UserID sort by id ascending;
-
-	if (deposit == nil) {
-		deposit = CreateNewDeposit()
-	}
-
-	if (deposit.txid != nil) {
-		deposit = CreateNewDeposit()
-	}
-
-	if (args.forceNewAddress) {
-		deleteTransaction(deposit)
-
-		deposit = CreateNewDeposit()
-	}
-
-	return deposit
-}
-*/
-
-type DepositOnChainArgs struct {
+type NewAddressArgs struct {
 	// Whether to discard the old address and force create a new one
 	ForceNewAddress bool `json:"forceNewAddress"`
 	// A personal description for the transaction
 	Description string `json:"description"`
 }
 
-func CreateNewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int) (Transaction, error) {
-	return CreateNewDepositWithDescription(d, lncli, userID, "")
+func NewAddress(d *db.DB, lncli lnrpc.LightningClient, userID int) (Transaction, error) {
+	return NewAddressWithDescription(d, lncli, userID, "")
 }
 
-func CreateNewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int, description string) (Transaction, error) {
+func NewAddressWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int, description string) (Transaction, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		// This type means lnd will force-create a new address
 		Type: lnrpc.AddressType_NESTED_PUBKEY_HASH,
@@ -259,7 +248,7 @@ func CreateNewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, user
 	transaction, err := insertTransaction(tx, Transaction{
 		UserID:      userID,
 		Address:     address.Address,
-		Direction:   INBOUND,
+		Direction:   payments.INBOUND,
 		Description: description,
 		Status:      UNCONFIRMED,
 	})
@@ -277,10 +266,10 @@ func DeleteTransaction(d *db.DB, transaction Transaction) error {
 	return nil
 }
 
-func DepositOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int, args DepositOnChainArgs) (Transaction, error) {
+func DepositOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int, args NewAddressArgs) (Transaction, error) {
 	// If ForceNewAddress is supplied, we return a new deposit instantly
 	if args.ForceNewAddress {
-		return CreateNewDeposit(d, lncli, userID)
+		return NewAddress(d, lncli, userID)
 	}
 
 	log.Infof("DepositOnChain(%d, %+v)", userID, args)
@@ -303,13 +292,13 @@ func DepositOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int, args Depo
 	log.Debugf("deposit  %+v", deposit)
 	if deposit.UserID == 0 && deposit.Direction == "" {
 		log.Debug("deposit == emptyTransaction, creating new")
-		return CreateNewDeposit(d, lncli, userID)
+		return NewAddress(d, lncli, userID)
 	}
 
 	// If the latest transaction has a TXID registered to it, we need to create a new address
 	if deposit.Txid != "" {
 		log.Debug("deposit.Txid != nil, creating new")
-		return CreateNewDeposit(d, lncli, userID)
+		return NewAddress(d, lncli, userID)
 	}
 
 	// If we get here, we return the transaction the query returned
