@@ -138,25 +138,29 @@ func (r *RestServer) RegisterUserRoutes() {
 	users.PUT("/user", r.UpdateUser())
 }
 
-// RegisterPaymentRoutes registers all payment routes on the router
+// RegisterPaymentRoutes registers all payment routes on the router.
+// Payment is defined as a lightning transaction, so all things lightning
+// can be found in payment packages
 func (r *RestServer) RegisterPaymentRoutes() {
 	payment := r.Router.Group("")
 	payment.Use(authenticateJWT)
 
-	payment.GET("/payments", r.GetAllPayments())
-	payment.GET("/payments/:id", r.GetPaymentByID())
+	payment.GET("payments", r.GetAllPayments())
+	payment.GET("payment/:id", r.GetPaymentByID())
 	payment.POST("/invoices/create", r.CreateInvoice())
 	payment.POST("/invoices/pay", r.PayInvoice())
 }
 
+// RegisterTransactionRoutes registers all transaction routes on the router.
+// A transaction is defined as an on-chain transaction
 func (r *RestServer) RegisterTransactionRoutes() {
 	transaction := r.Router.Group("")
 	transaction.Use(authenticateJWT)
 
 	transaction.GET("/transactions", r.GetAllTransactions())
-	transaction.POST("/transaction/:id", r.GetTransactionByID())
-	transaction.POST("/transactions/withdraw", r.WithdrawOnChain())
-	transaction.POST("/transactions/new-address", r.NewAddress())
+	transaction.GET("/transaction/:id", r.GetTransactionByID())
+	transaction.POST("/withdraw", r.WithdrawOnChain())
+	transaction.POST("/deposit", r.NewDeposit())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate

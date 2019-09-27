@@ -828,8 +828,7 @@ func TestWithAdditionalFields(t *testing.T) {
 				tx := testDB.MustBegin()
 				payment, err := insert(tx, invoice)
 				if err != nil {
-					testutil.FailMsg(t, "could not insert payment")
-					return
+					testutil.FatalMsg(t, "could not insert payment")
 				}
 				_ = tx.Commit()
 

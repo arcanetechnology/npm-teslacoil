@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"reflect"
 	"testing"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -40,7 +39,7 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func TestGetByID(t *testing.T) {
+func TestGetTransactionByID(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
@@ -49,7 +48,7 @@ func TestGetByID(t *testing.T) {
 	const email2 = "email2@example.com"
 	const password2 = "password2"
 	amount1 := rand.Int63n(4294967)
-	amount2 := rand.Int63n(4294967)
+	amount2 := rand.Int63n(payments.MaxAmountSatPerInvoice)
 
 	user := CreateUserOrFail(t)
 
@@ -106,7 +105,7 @@ func TestGetByID(t *testing.T) {
 					testutil.FatalMsgf(t, "should be able to GetByID. Error: %+v", err)
 				}
 
-				reflect.DeepEqual(transaction, test.expectedResult)
+				testutil.AssertEqual(t, transaction, test.expectedResult)
 			})
 	}
 }
