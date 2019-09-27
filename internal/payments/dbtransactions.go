@@ -18,7 +18,7 @@ type Transaction struct {
 	ID          int               `db:"id" json:"id"`
 	UserID      int               `db:"user_id" json:"userId"`
 	Address     string            `db:"address" json:"address"`
-	Txid        *string           `db:"txid" json:"txid"`
+	Txid        string            `db:"txid" json:"txid"`
 	Outpoint    int               `db:"outpoint" json:"outpoint"`
 	Direction   Direction         `db:"direction" json:"direction"`
 	AmountSat   int64             `db:"amount_sat" json:"amountSat"`
@@ -29,25 +29,6 @@ type Transaction struct {
 	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
 	UpdatedAt   time.Time  `db:"updated_at" json:"-"`
 	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
-}
-
-func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
-	string, error) {
-	// don't pass the args directly to lnd, to safeguard
-	// against ever supplying the SendAll flag
-	lnArgs := &lnrpc.SendCoinsRequest{
-		Amount:     args.Amount,
-		Addr:       args.Addr,
-		TargetConf: args.TargetConf,
-		SatPerByte: args.SatPerByte,
-	}
-
-	res, err := lncli.SendCoins(context.Background(), lnArgs)
-	if err != nil {
-		return "", err
-	}
-
-	return res.Txid, nil
 }
 
 func insertTransaction(tx *sqlx.Tx, t Transaction) (Transaction, error) {
@@ -78,6 +59,67 @@ func insertTransaction(tx *sqlx.Tx, t Transaction) (Transaction, error) {
 			log.WithError(err).Error("could not scan result into transaction variable: ")
 			return Transaction{}, errors.Wrap(err, "could not insert transaction")
 		}
+	}
+
+	return transaction, nil
+}
+
+func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
+	string, error) {
+	// don't pass the args directly to lnd, to safeguard
+	// against ever supplying the SendAll flag
+	lnArgs := &lnrpc.SendCoinsRequest{
+		Amount:     args.Amount,
+		Addr:       args.Addr,
+		TargetConf: args.TargetConf,
+		SatPerByte: args.SatPerByte,
+	}
+
+	res, err := lncli.SendCoins(context.Background(), lnArgs)
+	if err != nil {
+		return "", err
+	}
+
+	return res.Txid, nil
+}
+
+// GetAll selects all transactions for given userID from the DB.
+func GetAllTransactions(d *db.DB, userID int, direction Direction, limit int, offset int) (
+	[]Transaction, error) {
+	// Using OFFSET is not ideal, but until we start seeing
+	// performance problems it's fine
+	tQuery := `SELECT *
+		FROM transactions
+		WHERE user_id=$1
+		AND direction=$2
+		ORDER BY created_at
+		LIMIT $3
+		OFFSET $4`
+
+	transactions := []Transaction{}
+	err := d.Select(&transactions, tQuery, userID, direction, limit, offset)
+	if err != nil {
+		log.Error(err)
+		return transactions, err
+	}
+
+	return transactions, nil
+}
+
+// GetByID performs this query:
+// `SELECT * FROM transactions WHERE id=id AND user_id=userID`,
+// where id is the primary key of the table(autoincrementing)
+func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
+	if id < 0 || userID < 0 {
+		return Transaction{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
+	}
+
+	query := "SELECT * FROM transactions WHERE id=$1 AND user_id=$2 LIMIT 1"
+
+	var transaction Transaction
+	if err := d.Get(&transaction, query, id, userID); err != nil {
+		log.Error(err)
+		return transaction, errors.Wrap(err, "could not get transaction")
 	}
 
 	return transaction, nil
@@ -152,7 +194,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		Address:     args.Address,
 		AmountSat:   args.AmountSat,
 		Description: args.Description,
-		Txid:        &txid,
+		Txid:        txid,
 		Direction:   OUTBOUND,
 	})
 	if err != nil {
@@ -206,7 +248,8 @@ func CreateNewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int) (Transa
 
 func CreateNewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int, description string) (Transaction, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
-		Type: 0,
+		// This type means lnd will force-create a new address
+		Type: lnrpc.AddressType_NESTED_PUBKEY_HASH,
 	})
 	if err != nil {
 		panic(err)
@@ -224,6 +267,7 @@ func CreateNewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, user
 		log.Error(err)
 		return Transaction{}, errors.Wrap(err, "could not insert new deposit")
 	}
+	_ = tx.Commit()
 
 	return transaction, nil
 }
@@ -238,6 +282,8 @@ func DepositOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int, args Depo
 	if args.ForceNewAddress {
 		return CreateNewDeposit(d, lncli, userID)
 	}
+
+	log.Infof("DepositOnChain(%d, %+v)", userID, args)
 
 	// Get the latest transaction from the DB
 	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' ORDER BY id DESC LIMIT 1;"
@@ -254,16 +300,19 @@ func DepositOnChain(d *db.DB, lncli lnrpc.LightningClient, userID int, args Depo
 
 	// If the user has never made a deposit before, the query returns nothing,
 	// and we need to create a new deposit
-	var emptyTransaction Transaction
-	if deposit == emptyTransaction {
+	log.Debugf("deposit  %+v", deposit)
+	if deposit.UserID == 0 && deposit.Direction == "" {
+		log.Debug("deposit == emptyTransaction, creating new")
 		return CreateNewDeposit(d, lncli, userID)
 	}
 
 	// If the latest transaction has a TXID registered to it, we need to create a new address
-	if deposit.Txid != nil {
+	if deposit.Txid != "" {
+		log.Debug("deposit.Txid != nil, creating new")
 		return CreateNewDeposit(d, lncli, userID)
 	}
 
 	// If we get here, we return the transaction the query returned
+	log.Debug("returning found deposit")
 	return deposit, nil
 }
