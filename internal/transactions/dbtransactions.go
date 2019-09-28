@@ -10,6 +10,8 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
@@ -306,4 +308,33 @@ func GetDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddre
 	// If we get here, we return the transaction the query returned
 	log.Debug("returning found deposit")
 	return deposit, nil
+}
+
+// ExactlyEqual checks whether the two transactions are exactly
+// equal, including all postgres-fields, such as DeletedAt, CreatedAt etc.
+func (t Transaction) ExactlyEqual(t2 Transaction) (bool, string) {
+	if !cmp.Equal(t, t2) {
+		return false, cmp.Diff(t, t2)
+	}
+
+	return true, ""
+}
+
+// Equal checks whether the Transaction is equal to another, and
+// returns an explanation of the diff if not equal
+// Equal does not compare db-tables unique for every entry, such
+// as CreatedAt, UpdatedAt, DeletedAt and ID
+func (t Transaction) Equal(t2 Transaction) (bool, string) {
+	// These four fields do not decide whether the transaction is
+	// equal another or not, use ExactlyEqual if you want to compare
+	t.CreatedAt = t2.CreatedAt
+	t.UpdatedAt = t2.UpdatedAt
+	t.DeletedAt, t2.DeletedAt = nil, nil
+	t.ID = t2.ID
+
+	if !cmp.Equal(t, t2) {
+		return false, cmp.Diff(t, t2)
+	}
+
+	return true, ""
 }

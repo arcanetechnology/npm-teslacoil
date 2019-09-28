@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func isNilValue(i interface{}) bool {
@@ -25,8 +27,17 @@ func isNilValue(i interface{}) bool {
 }
 
 // AssertEqual asserts that the given expected and actual values are equal
+// Does not work with structs, use AssertStructEquals if you want to compare
+// structs
 func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	t.Helper()
+	if reflect.ValueOf(expected).Kind() == reflect.Struct {
+		panic(`argument "expected" can not be a struct. To compare structs use the function AssertStructEqual`)
+	}
+	if reflect.ValueOf(actual).Kind() == reflect.Struct {
+		panic(`argument "actual" can not be a struct. To compare structs use the function AssertStructEqual`)
+	}
+
 	bothAreNil := isNilValue(expected) && isNilValue(actual)
 	if !bothAreNil && expected != actual {
 		FatalMsgf(t, "Expected (%+v) is not equal to actual (%+v)!", expected, actual)
@@ -68,4 +79,14 @@ func AssertMapEquals(t *testing.T,
 		}
 	}
 
+}
+
+// AssertStructEquals assert that the two structs are deeply equal.
+// AssertStructEquals always compares values, never pointers.
+// All pointers are expanded, and their values are compared
+func AssertStructEqual(t *testing.T, expected, actual interface{}) {
+	t.Helper()
+	if !cmp.Equal(expected, actual) {
+		FatalMsgf(t, "expected struct %+v to equal struct %+v, however it does not", expected, actual)
+	}
 }

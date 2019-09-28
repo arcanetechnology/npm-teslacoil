@@ -105,8 +105,16 @@ func TestGetTransactionByID(t *testing.T) {
 					testutil.FatalMsgf(t, "should be able to GetByID. Error: %+v", err)
 				}
 
-				testutil.AssertEqual(t, transaction, test.expectedResult)
+				assertTransactionsAreEqual(t, transaction, test.expectedResult)
 			})
+	}
+}
+
+func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
+	t.Helper()
+	ok, diff := actual.Equal(expected)
+	if !ok {
+		t.Fatalf("transactions not equal: %s", diff)
 	}
 }
 
