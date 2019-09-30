@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func isNilValue(i interface{}) bool {
@@ -25,8 +27,17 @@ func isNilValue(i interface{}) bool {
 }
 
 // AssertEqual asserts that the given expected and actual values are equal
+// Does not work with structs, use AssertStructEquals if you want to compare
+// structs
 func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	t.Helper()
+	if reflect.ValueOf(expected).Kind() == reflect.Struct && reflect.ValueOf(actual).Kind() == reflect.Struct {
+		if !reflect.DeepEqual(expected, actual) {
+			FatalMsgf(t, "expected structs to be equal: %s", cmp.Diff(expected, actual))
+		}
+		return
+	}
+
 	bothAreNil := isNilValue(expected) && isNilValue(actual)
 	if !bothAreNil && expected != actual {
 		FatalMsgf(t, "Expected (%+v) is not equal to actual (%+v)!", expected, actual)
@@ -67,5 +78,4 @@ func AssertMapEquals(t *testing.T,
 
 		}
 	}
-
 }

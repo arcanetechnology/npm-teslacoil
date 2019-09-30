@@ -139,3 +139,9 @@ Easiest way I've found (assuming you want to delete Postgres data):
 docker-compose rm db #
 docker volume rm teslacoil_postgres # name is teslacoil_ + service name
 ```
+
+#### Glossary
+##### Payment
+Payment is a lightning transaction, and describes both settled and unsettled lightning payments.
+##### Transaction
+A transaction is an on-chain transaction

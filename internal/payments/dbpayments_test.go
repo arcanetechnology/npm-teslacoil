@@ -28,9 +28,8 @@ var (
 )
 
 const (
-	succeed = "\u001b[32m\u2713"
-	fail    = "\u001b[31m\u2717"
-	reset   = "\u001b[0m"
+	fail  = "\u001b[31m\u2717"
+	reset = "\u001b[0m"
 )
 
 var (
@@ -49,8 +48,6 @@ var (
 	description   = "My personal description"
 	secondMemo    = "HelloWorld"
 	// address to testnet node running on lightningspin.com
-	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
-	simnetAddress  = "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4"
 )
 
 func TestMain(m *testing.M) {
@@ -348,9 +345,8 @@ func TestPayInvoice(t *testing.T) {
 			if payment.Payment.Status == SUCCEEDED || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
 				testutil.FatalMsg(t, "should not pay invoice when the users balance is too low")
 			}
-			t.Logf(
-				"\t%s\tshould not pay invoice when the users balance is too low%s",
-				succeed, reset)
+			testutil.Succeed(t,
+				"should not pay invoice when the users balance is too low")
 
 			if !strings.Contains(
 				err.Error(),
@@ -359,9 +355,8 @@ func TestPayInvoice(t *testing.T) {
 					"should fail when paying invoice greater than balance. Error: %+v",
 					err)
 			}
-			t.Logf(
-				"\t%s\tshould fail when paying invoice greater than balance%s",
-				succeed, reset)
+			testutil.Succeed(t,
+				"should fail when paying invoice greater than balance")
 			return
 		}
 		if err != nil {
@@ -369,7 +364,7 @@ func TestPayInvoice(t *testing.T) {
 				"should be able to PayInvoice. Error:  %+v",
 				err)
 		}
-		t.Logf("\t%s\tShould be able to PayInvoice%s", succeed, reset)
+		testutil.Succeed(t, "should be able to PayInvoice")
 
 		got := payment
 		want := test.want
@@ -831,7 +826,7 @@ func TestWithAdditionalFields(t *testing.T) {
 				tx := testDB.MustBegin()
 				payment, err := insert(tx, invoice)
 				if err != nil {
-					testutil.FailMsg(t, "could not insert payment")
+					testutil.FatalMsg(t, "could not insert payment")
 				}
 				_ = tx.Commit()
 
@@ -839,117 +834,6 @@ func TestWithAdditionalFields(t *testing.T) {
 					testutil.FailMsg(t, "payment should not be expired")
 				}
 			})
-	}
-}
-
-func TestWithdrawOnChainBadOpts(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		scenario  string
-		balance   int64
-		amountSat int64
-	}{
-		{
-			scenario:  "withdraw more than balance",
-			balance:   1000,
-			amountSat: 2000,
-		},
-		{
-			scenario:  "withdraw negative amount",
-			balance:   1000,
-			amountSat: -5000,
-		},
-		{
-			scenario:  "withdraw 0 amount",
-			balance:   2000,
-			amountSat: 0,
-		},
-	}
-	mockLNcli := lntestutil.LightningMockClient{
-		SendCoinsResponse: lnrpc.SendCoinsResponse{
-			Txid: "owrgkpoaerkgpok",
-		},
-	}
-
-	for _, test := range testCases {
-		user := CreateUserWithBalanceOrFail(t, test.balance)
-
-		t.Run(test.scenario, func(t *testing.T) {
-			txid, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
-				UserID:    user.ID,
-				AmountSat: test.amountSat,
-				Address:   simnetAddress,
-			})
-			if err == nil || txid != nil {
-				testutil.FatalMsgf(t, "should not send transaction, bad opts")
-			}
-		})
-	}
-
-}
-
-func TestWithdrawOnChainSendAll(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		balance int64
-		// We specify amountSat to make sure it is ignored when sendAll is true
-		amountSat int64
-	}{
-		{
-			balance:   10000,
-			amountSat: 500000,
-		},
-		{
-			balance:   20000,
-			amountSat: -500000,
-		},
-		{
-			balance:   500, // 20 000
-			amountSat: 0,
-		},
-	}
-
-	for _, test := range testCases {
-
-		user := CreateUserWithBalanceOrFail(t, test.balance)
-
-		t.Run("can withdraw on-chain", func(t *testing.T) {
-
-			mockLNcli := lntestutil.LightningMockClient{
-				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: "owrgkpoaerkgpok",
-				},
-			}
-
-			_, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
-				UserID:    user.ID,
-				AmountSat: test.amountSat,
-				Address:   testnetAddress,
-				SendAll:   true,
-			})
-			if err != nil {
-				testutil.FatalMsgf(t, "could not WithdrawOnChain %+v", err)
-			}
-
-			// TODO: Test this creates transactions for the right amount
-			// t.Run("withdrew the right amount", func(t *testing.T) {
-			// Look up the txid on-chain, and check the amount
-			// fmt.Println("txid: ", txid)
-			// })
-		})
-
-		// Assert
-		t.Run("users balance is 0", func(t *testing.T) {
-			user, err := users.GetByID(testDB, user.ID)
-			if err != nil {
-				testutil.FatalMsgf(t, "could not get user %+v", err)
-			}
-			if user.Balance != 0 {
-				testutil.FatalMsgf(t, "users balance was not 0 %+v", err)
-			}
-		})
 	}
 }
 
@@ -1036,30 +920,4 @@ func CreateUserOrFail(t *testing.T) users.User {
 	}
 
 	return u
-}
-
-func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
-	u := CreateUserOrFail(t)
-
-	tx := testDB.MustBegin()
-	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
-		UserID:    u.ID,
-		AmountSat: balance,
-	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"[%s] could not increase balance by %d for user %d: %+v", t.Name(),
-			balance, u.ID, err)
-	}
-	err = tx.Commit()
-	if err != nil {
-		testutil.FatalMsg(t, "could not commit tx")
-	}
-
-	if user.Balance != balance {
-		testutil.FatalMsgf(t, "wrong balance, expected [%d], got [%d]", balance,
-			user.Balance)
-	}
-
-	return user
 }

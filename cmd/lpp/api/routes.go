@@ -14,7 +14,6 @@ import (
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/util"
 	"gitlab.com/arcanecrypto/teslacoil/validation"
 	"gopkg.in/go-playground/validator.v8"
 
@@ -49,12 +48,6 @@ type JWTClaims struct {
 	Email  string `json:"email"`
 	UserID int    `json:"user_id"`
 	jwt.StandardClaims
-}
-
-var GINMODE string
-
-func init() {
-	GINMODE = util.GetEnvOrElse(gin.EnvGinMode, "debug")
 }
 
 //NewApp creates a new app
@@ -107,6 +100,7 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, sender EmailSender, config Co
 	r.RegisterAuthRoutes()
 	r.RegisterUserRoutes()
 	r.RegisterPaymentRoutes()
+	r.RegisterTransactionRoutes()
 
 	return r, nil
 }
@@ -144,16 +138,29 @@ func (r *RestServer) RegisterUserRoutes() {
 	users.PUT("/user", r.UpdateUser())
 }
 
-// RegisterPaymentRoutes registers all payment routes on the router
+// RegisterPaymentRoutes registers all payment routes on the router.
+// Payment is defined as a lightning transaction, so all things lightning
+// can be found in payment packages
 func (r *RestServer) RegisterPaymentRoutes() {
-	payments := r.Router.Group("")
-	payments.Use(authenticateJWT)
+	payment := r.Router.Group("")
+	payment.Use(authenticateJWT)
 
-	payments.GET("/payments", r.GetAllPayments())
-	payments.GET("/payments/:id", r.GetPaymentByID())
-	payments.POST("/invoices/create", r.CreateInvoice())
-	payments.POST("/invoices/pay", r.PayInvoice())
-	payments.POST("/withdraw", r.WithdrawOnChain())
+	payment.GET("payments", r.GetAllPayments())
+	payment.GET("payment/:id", r.GetPaymentByID())
+	payment.POST("/invoices/create", r.CreateInvoice())
+	payment.POST("/invoices/pay", r.PayInvoice())
+}
+
+// RegisterTransactionRoutes registers all transaction routes on the router.
+// A transaction is defined as an on-chain transaction
+func (r *RestServer) RegisterTransactionRoutes() {
+	transaction := r.Router.Group("")
+	transaction.Use(authenticateJWT)
+
+	transaction.GET("/transactions", r.GetAllTransactions())
+	transaction.GET("/transaction/:id", r.GetTransactionByID())
+	transaction.POST("/withdraw", r.WithdrawOnChain())
+	transaction.POST("/deposit", r.NewDeposit())
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate
@@ -260,6 +267,16 @@ func getJSONOrReject(c *gin.Context, body interface{}) bool {
 		return false
 	}
 
+	return true
+}
+
+func getQueryOrReject(c *gin.Context, body interface{}) bool {
+	if err := c.ShouldBindQuery(body); err != nil {
+		err = errors.Wrapf(err, "wrong query parameter format, check the documentation")
+		log.Error(err)
+		c.JSON(http.StatusBadRequest, err.Error())
+		return false
+	}
 	return true
 }
 

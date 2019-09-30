@@ -214,6 +214,18 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	return response
 }
 
+// AssertResponseOKWithStruct attempts to unmarshal the body into the
+// struct passed as an argument. third argument MUST be a pointer to a
+// struct
+func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, body *bytes.Buffer, s interface{}) {
+	t.Helper()
+
+	err := json.Unmarshal(body.Bytes(), s)
+	if err != nil {
+		t.Fatalf("could not unmarshal body into %+v", s)
+	}
+}
+
 // Creates and logs in a user with the given email and password. Returns
 // the access token for this session.
 func (harness *TestHarness) CreateAndLoginUser(t *testing.T, args users.CreateUserArgs) string {
