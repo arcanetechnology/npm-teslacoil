@@ -3,6 +3,7 @@ package transactions
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -313,7 +314,7 @@ func GetDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddre
 // ExactlyEqual checks whether the two transactions are exactly
 // equal, including all postgres-fields, such as DeletedAt, CreatedAt etc.
 func (t Transaction) ExactlyEqual(t2 Transaction) (bool, string) {
-	if !cmp.Equal(t, t2) {
+	if !reflect.DeepEqual(t, t2) {
 		return false, cmp.Diff(t, t2)
 	}
 
@@ -332,7 +333,7 @@ func (t Transaction) Equal(t2 Transaction) (bool, string) {
 	t.DeletedAt, t2.DeletedAt = nil, nil
 	t.ID = t2.ID
 
-	if !cmp.Equal(t, t2) {
+	if !reflect.DeepEqual(t, t2) {
 		return false, cmp.Diff(t, t2)
 	}
 

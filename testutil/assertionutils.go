@@ -31,11 +31,11 @@ func isNilValue(i interface{}) bool {
 // structs
 func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	t.Helper()
-	if reflect.ValueOf(expected).Kind() == reflect.Struct {
-		panic(`argument "expected" can not be a struct. To compare structs use the function AssertStructEqual`)
-	}
-	if reflect.ValueOf(actual).Kind() == reflect.Struct {
-		panic(`argument "actual" can not be a struct. To compare structs use the function AssertStructEqual`)
+	if reflect.ValueOf(expected).Kind() == reflect.Struct && reflect.ValueOf(actual).Kind() == reflect.Struct {
+		if !reflect.DeepEqual(expected, actual) {
+			FatalMsgf(t, "expected structs to be equal: %s", cmp.Diff(expected, actual))
+		}
+		return
 	}
 
 	bothAreNil := isNilValue(expected) && isNilValue(actual)
@@ -77,16 +77,5 @@ func AssertMapEquals(t *testing.T,
 				key, expectedVal, key, actualVal)
 
 		}
-	}
-
-}
-
-// AssertStructEquals assert that the two structs are deeply equal.
-// AssertStructEquals always compares values, never pointers.
-// All pointers are expanded, and their values are compared
-func AssertStructEqual(t *testing.T, expected, actual interface{}) {
-	t.Helper()
-	if !cmp.Equal(expected, actual) {
-		FatalMsgf(t, "expected struct %+v to equal struct %+v, however it does not", expected, actual)
 	}
 }

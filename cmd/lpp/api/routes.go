@@ -270,6 +270,16 @@ func getJSONOrReject(c *gin.Context, body interface{}) bool {
 	return true
 }
 
+func getQueryOrReject(c *gin.Context, body interface{}) bool {
+	if err := c.BindQuery(body); err != nil {
+		err = errors.Wrapf(err, "wrong query parameter format, check the documentation")
+		log.Error(err)
+		c.JSON(http.StatusBadRequest, err.Error())
+		return false
+	}
+	return true
+}
+
 // createJWTToken creates a new JWT token with the supplied email as the
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token

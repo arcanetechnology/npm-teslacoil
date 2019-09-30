@@ -12,29 +12,25 @@ import (
 // GetAllTransactions finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
 func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
+	type Params struct {
+		Limit  int `form:"limit" binding:"gte=0"`
+		Offset int `form:"offset" binding:"gte=0"`
+	}
+
 	return func(c *gin.Context) {
 		claim, ok := getJWTOrReject(c)
 		if !ok {
 			return
 		}
 
-		limitStr := c.Param("limit")
-		offsetStr := c.Param("offset")
-
-		limit, err := strconv.ParseInt(limitStr, 10, 64)
-		if err != nil {
-			log.Errorf(`Couldn't parse "limit" to an integer: %v`, err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": `url param "limit" should be a integer`})
-			return
-		}
-		offset, err := strconv.ParseInt(offsetStr, 10, 64)
-		if err != nil {
-			log.Errorf(`Couldn't parse "offset" to an integer: %v`, offset)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": `url param "offset" should be a integer`})
+		var params Params
+		if !getQueryOrReject(c, &params) {
 			return
 		}
 
-		t, err := transactions.GetAllTransactions(r.db, claim.UserID, int(limit), int(offset))
+		log.Debugf("received request for %d: %+v", claim.UserID, params)
+
+		t, err := transactions.GetAllTransactions(r.db, claim.UserID, params.Limit, params.Offset)
 		if err != nil {
 			log.Errorf("Couldn't get transactions: %v", err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
@@ -58,11 +54,11 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": "url param invoice id should be a integer"})
+			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
-		log.Debugf("find transaction %d for user %d", id, claims.UserID)
 
+		log.Debugf("find transaction %d for user %d", id, claims.UserID)
 		t, err := transactions.GetTransactionByID(r.db, int(id), claims.UserID)
 		if err != nil {
 			c.JSONP(

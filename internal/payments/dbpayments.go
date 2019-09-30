@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -576,4 +579,17 @@ func (p Payment) String() string {
 	str += "}"
 
 	return str
+}
+
+func (p Payment) Equal(other Payment) (bool, string) {
+	p.CreatedAt = other.CreatedAt
+	p.UpdatedAt = other.UpdatedAt
+	p.DeletedAt = other.DeletedAt
+	p.ID = other.ID
+
+	if !reflect.DeepEqual(p, other) {
+		return false, cmp.Diff(p, other)
+	}
+
+	return true, ""
 }

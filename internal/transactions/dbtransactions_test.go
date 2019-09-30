@@ -47,7 +47,7 @@ func TestGetTransactionByID(t *testing.T) {
 	const password1 = "password1"
 	const email2 = "email2@example.com"
 	const password2 = "password2"
-	amount1 := rand.Int63n(4294967)
+	amount1 := rand.Int63n(payments.MaxAmountSatPerInvoice)
 	amount2 := rand.Int63n(payments.MaxAmountSatPerInvoice)
 
 	user := CreateUserOrFail(t)
@@ -107,14 +107,6 @@ func TestGetTransactionByID(t *testing.T) {
 
 				assertTransactionsAreEqual(t, transaction, test.expectedResult)
 			})
-	}
-}
-
-func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
-	t.Helper()
-	ok, diff := actual.Equal(expected)
-	if !ok {
-		t.Fatalf("transactions not equal: %s", diff)
 	}
 }
 
@@ -234,6 +226,14 @@ func TestWithdrawOnChainSendAll(t *testing.T) {
 				testutil.FatalMsgf(t, "users balance was not 0 %+v", err)
 			}
 		})
+	}
+}
+
+func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
+	t.Helper()
+	ok, diff := actual.Equal(expected)
+	if !ok {
+		t.Fatalf("transactions not equal: %s", diff)
 	}
 }
 
