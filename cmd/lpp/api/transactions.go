@@ -34,8 +34,7 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 		var err error
 		if params.Limit == 0 && params.Offset == 0 {
 			t, err = transactions.GetAllTransactions(r.db, claim.UserID)
-		}
-		if params.Limit == 0 {
+		} else if params.Limit == 0 {
 			t, err = transactions.GetAllTransactionsOffset(r.db, claim.UserID, params.Offset)
 		} else {
 			t, err = transactions.GetAllTransactionsLimitOffset(r.db, claim.UserID, params.Limit, params.Offset)
