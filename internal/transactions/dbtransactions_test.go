@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -142,7 +143,7 @@ func TestWithdrawOnChainBadOpts(t *testing.T) {
 			amountSat: 0,
 		},
 	}
-	mockLNcli := testutil.LightningMockClient{
+	mockLNcli := lntestutil.LightningMockClient{
 		SendCoinsResponse: lnrpc.SendCoinsResponse{
 			Txid: "owrgkpoaerkgpok",
 		},
@@ -193,7 +194,7 @@ func TestWithdrawOnChainSendAll(t *testing.T) {
 
 		t.Run("can withdraw on-chain", func(t *testing.T) {
 
-			mockLNcli := testutil.LightningMockClient{
+			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
 					Txid: "owrgkpoaerkgpok",
 				},

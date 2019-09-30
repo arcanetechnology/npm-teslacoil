@@ -30,7 +30,6 @@ func init() {
 	// this probably shouldn't matter, as the conn.
 	// closes when the process exits anyway
 	testDB = testutil.InitDatabase(databaseConfig)
-
 }
 
 func TestCreateInvoiceRoute(t *testing.T) {

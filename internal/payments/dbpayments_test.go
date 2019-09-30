@@ -48,8 +48,6 @@ var (
 	description   = "My personal description"
 	secondMemo    = "HelloWorld"
 	// address to testnet node running on lightningspin.com
-	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
-	simnetAddress  = "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4"
 )
 
 func TestMain(m *testing.M) {

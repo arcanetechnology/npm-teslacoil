@@ -72,10 +72,6 @@ func (client LightningMockClient) SendMany(ctx context.Context, in *lnrpc.SendMa
 	panic("SendMany")
 }
 
-func (client LightningMockClient) NewAddress(ctx context.Context, in *lnrpc.NewAddressRequest, opts ...grpc.CallOption) (*lnrpc.NewAddressResponse, error) {
-	panic("NewAddress")
-}
-
 func (client LightningMockClient) SignMessage(ctx context.Context, in *lnrpc.SignMessageRequest, opts ...grpc.CallOption) (*lnrpc.SignMessageResponse, error) {
 	panic("SignMessage")
 }
@@ -222,6 +218,12 @@ func (client LightningMockClient) RestoreChannelBackups(ctx context.Context, in 
 
 func (client LightningMockClient) SubscribeChannelBackups(ctx context.Context, in *lnrpc.ChannelBackupSubscription, opts ...grpc.CallOption) (lnrpc.Lightning_SubscribeChannelBackupsClient, error) {
 	panic("SubscribeChannelBackups")
+}
+
+func (client LightningMockClient) NewAddress(ctx context.Context, in *lnrpc.NewAddressRequest, opts ...grpc.CallOption) (*lnrpc.NewAddressResponse, error) {
+	return &lnrpc.NewAddressResponse{
+		Address: "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4",
+	}, nil
 }
 
 func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
@@ -757,5 +759,229 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 			})
 
 		})
+	})
+}
+
+// var (
+// simnetAddress = "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4"
+// )
+
+// func createFakeWithdrawal(t *testing.T, accessToken string) int {
+// req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+// AccessToken: accessToken,
+// Path:        "/withdraw",
+// Method:      "POST",
+// Body:        fmt.Sprintf(`{ "address": %q }`, simnetAddress),
+// })
+// res := h.AssertResponseOk(t, req)
+//
+// var trans transactions.Transaction
+// h.AssertResponseOKWithStruct(t, res.Body, &trans)
+//
+// return trans.ID
+// }
+
+func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, description string) int {
+	req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+		AccessToken: accessToken,
+		Path:        "/deposit",
+		Method:      "POST",
+		Body: fmt.Sprintf(
+			`{ "forceNewAddress": %t, "description": %q }`,
+			forceNewAddress,
+			description),
+	})
+	res := h.AssertResponseOk(t, req)
+
+	var trans transactions.Transaction
+	h.AssertResponseOKWithStruct(t, res.Body, &trans)
+
+	return trans.ID
+}
+func createFakeDeposits(t *testing.T, amount int, accessToken string) []int {
+	t.Helper()
+
+	ids := make([]int, amount)
+	for i := 0; i < amount; i++ {
+		ids[i] = createFakeDeposit(t, accessToken, true, "")
+	}
+	return ids
+}
+
+// createFakeTransactions creates `amount` transactions, has a 50/50 chance
+// of creating either a withdrawal or a deposit
+// func createFakeTransactions(t *testing.T, amount int, accessToken string) []int {
+// ids := make([]int, amount)
+// for i := 0; i < amount; i++ {
+// if gofakeit.Int8()%2 == 0 {
+// ids[i] = createFakeWithdrawal(t, accessToken)
+// } else {
+// ids[i] = createFakeDeposit(t, accessToken, true, "")
+// }
+// }
+// return ids
+// }
+
+func TestGetTransactionByID(t *testing.T) {
+	token := h.CreateAndLoginUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+
+	ids := createFakeDeposits(t, 3, token)
+
+	t.Run("can get transaction by ID", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transaction/%d", ids[0]),
+			Method:      "GET",
+		})
+
+		res := h.AssertResponseOk(t, req)
+		var trans transactions.Transaction
+		h.AssertResponseOKWithStruct(t, res.Body, &trans)
+
+		if trans.ID != ids[0] {
+			testutil.FailMsgf(t, "id's not equal, expected %d got %d", ids[0], trans.ID)
+		}
+	})
+	t.Run("getting transaction with wrong ID returns error", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			// createFakeTransaction will always return the transaction in ascending order
+			// where the highest index is the highest index saved to the user. therefore we +1
+			Path:   fmt.Sprintf("/transaction/%d", ids[len(ids)-1]+1),
+			Method: "GET",
+		})
+
+		h.AssertResponseNotOkWithCode(t, req, 404)
+	})
+
+}
+
+func assertGetsRightAmount(t *testing.T, body *bytes.Buffer, expected int) {
+	var trans []transactions.Transaction
+	h.AssertResponseOKWithStruct(t, body, &trans)
+	if len(trans) != expected {
+		testutil.FailMsgf(t, "expected %d transactions, got %d", expected, len(trans))
+	}
+}
+
+func TestGetAllTransactions(t *testing.T) {
+	token := h.CreateAndLoginUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+	createFakeDeposits(t, 10, token)
+
+	t.Run("get transactions without query params should get all", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 10)
+	})
+	t.Run("get transactions with limit 10 should get 10", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?limit=10",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 10)
+	})
+	t.Run("get transactions with limit 5 should get 5", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?limit=5",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 5)
+	})
+	t.Run("get transactions with limit 0 should get all", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?limit=0",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 10)
+	})
+	t.Run("get /transactions with offset 10 should get 0", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?offset=10",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 0)
+	})
+
+	t.Run("get /transactions with offset 0 should get 10", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?offset=0",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 10)
+	})
+
+	t.Run("get /transactions with offset 5 should get 5", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?offset=5",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 5)
+	})
+	t.Run("get /transactions with offset 5 and limit 3 should get 3", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?limit=3&offset=5",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOk(t, req)
+
+		assertGetsRightAmount(t, res.Body, 3)
+	})
+}
+
+func TestNewDeposit(t *testing.T) {
+	token := h.CreateAndLoginUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+
+	description := "fooDescription"
+	t.Run("can create new deposit with description", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/deposit",
+			Method:      "POST",
+			Body: fmt.Sprintf(
+				`{ "forceNewAddress": %t, "description": "%s" }`,
+				true,
+				description),
+		})
+
+		res := h.AssertResponseOk(t, req)
+		var trans transactions.Transaction
+		h.AssertResponseOKWithStruct(t, res.Body, &trans)
+
+		if trans.Description != description {
+			testutil.FailMsgf(t, "descriptions not equal, expected %s got %s", description, trans.Description)
+		}
 	})
 }
