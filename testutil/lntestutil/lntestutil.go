@@ -380,27 +380,6 @@ func GetBitcoindClientOrFail(t *testing.T, conf BitcoindConfig) *rpcclient.Clien
 	return client
 }
 
-// retry retries the given function until it doesn't fail. It doubles the
-// period between attempts each time.
-// Cribbed from https://upgear.io/blog/simple-golang-retry-function/
-func retry(attempts int, sleep time.Duration, fn func() error) error {
-	if err := fn(); err != nil {
-		if attempts > 1 {
-			time.Sleep(sleep)
-			return retry(attempts-1, 2*sleep, fn)
-		}
-		return err
-	}
-	return nil
-}
-
-func getTotalRetryDuration(attempts int, sleep time.Duration) time.Duration {
-	if attempts <= 0 {
-		return sleep
-	}
-	return sleep + getTotalRetryDuration(attempts-1, sleep*2)
-}
-
 // StartBitcoindOrFail starts a bitcoind node with the given configuration,
 // with the data directory set to the users temporary directory. The function
 // returns the created client, as well as a function that cleans up the operation
@@ -442,9 +421,10 @@ func StartBitcoindOrFail(t *testing.T, conf BitcoindConfig) (client *rpcclient.C
 		_, err := os.Stat(pidFile)
 		return err
 	}
-	if err := retry(retryAttempts, retrySleepDuration, readPidFile); err != nil {
+	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, readPidFile); err != nil {
+		duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
 		testutil.FatalMsgf(t, "Could not read bitcoind pid file after %d attempts and %s total sleep duration",
-			retryAttempts, getTotalRetryDuration(retryAttempts, retrySleepDuration))
+			retryAttempts, duration)
 	}
 
 	pidBytes, err := ioutil.ReadFile(pidFile)
@@ -463,9 +443,10 @@ func StartBitcoindOrFail(t *testing.T, conf BitcoindConfig) (client *rpcclient.C
 	client = GetBitcoindClientOrFail(t, conf)
 
 	// await bitcoind startup
-	if err := retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
+	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
+		duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
 		testutil.FatalMsgf(t, "Could not communicate with bitcoind after %d attempts and %s total sleep duration",
-			retryAttempts, getTotalRetryDuration(retryAttempts, retrySleepDuration))
+			retryAttempts, duration)
 	}
 
 	cleanup = func() error {
@@ -482,9 +463,10 @@ func StartBitcoindOrFail(t *testing.T, conf BitcoindConfig) (client *rpcclient.C
 		}
 
 		// await bitcoind shutdown
-		if err := retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
+		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
+			duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
 			return fmt.Errorf("could communicate with stopped bitcoind after %d attempts and %s total sleep duration",
-				retryAttempts, getTotalRetryDuration(retryAttempts, retrySleepDuration))
+				retryAttempts, duration)
 		}
 
 		log.Debug("Stopped bitcoind process")
@@ -580,9 +562,10 @@ func StartLndOrFail(t *testing.T, bitcoindConfig BitcoindConfig, lndConfig ln.Li
 		return nil
 	}
 
-	if err := retry(retryAttempts, retrySleepDuration, isReady); err != nil {
+	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, isReady); err != nil {
+		duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
 		testutil.FatalMsgf(t, "lnd cert and macaroon file did not greated after waiting %d",
-			getTotalRetryDuration(retryAttempts, retrySleepDuration))
+			duration)
 	}
 	log.Debugf("lnd cert file and macaroon file exists")
 
@@ -592,7 +575,7 @@ func StartLndOrFail(t *testing.T, bitcoindConfig BitcoindConfig, lndConfig ln.Li
 		lnd, err = ln.NewLNDClient(lndConfig)
 		return err
 	}
-	if err := retry(retryAttempts, retrySleepDuration, getLnd); err != nil {
+	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, getLnd); err != nil {
 		testutil.FatalMsgf(t, "Could not get lnd with config %v after trying %d times: %s ",
 			lndConfig, retryAttempts, err)
 	}
@@ -611,9 +594,10 @@ func StartLndOrFail(t *testing.T, bitcoindConfig BitcoindConfig, lndConfig ln.Li
 		}
 
 		// await lnd shutdown
-		if err := retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
+		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
+			duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
 			return fmt.Errorf("could communicate with stopped lnd after %d attempts and %s total sleep duration",
-				retryAttempts, getTotalRetryDuration(retryAttempts, retrySleepDuration))
+				retryAttempts, duration)
 		}
 		log.Debug("Stopped lnd process")
 
