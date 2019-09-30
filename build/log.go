@@ -13,7 +13,11 @@ var Log = logrus.New()
 func init() {
 	Log.SetLevel(logrus.TraceLevel)
 	formatter := logrus.TextFormatter{
-		ForceColors: true,
+		ForceColors:   true,
+		FullTimestamp: true,
+		// This uses an absolutely ridicoulous format:
+		// https://stackoverflow.com/a/20234207/10359642
+		TimestampFormat: "15:04:05",
 	}
 	Log.SetFormatter(&formatter)
 }
