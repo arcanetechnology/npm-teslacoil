@@ -4,10 +4,14 @@ export DATABASE_PASSWORD="password"
 export DATABASE_NAME="lpp"
 export DATABASE_PORT=5432
 
-# LND
+# LND/Bitcoin Core
 LND_DIR=~/.lnd
-LND_NETWORK= # testnet | mainnet | simnet | regtest
 LND_PORT=9735
+BITCOIN_NETWORK= # testnet | mainnet | regtest
+RPCPASS=devpass
+RPCUSER=devuser
+ZMQPUBRAWTX_PORT=23456
+ZMQPUBRAWBLOCK_PORT=23457
 
 # Docker
 export UID=1001 # This should be your user ID: `id -u`

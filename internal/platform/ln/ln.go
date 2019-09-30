@@ -42,11 +42,16 @@ type AddInvoiceData struct {
 // LightningConfig is a struct containing all possible options for configuring
 // a connection to lnd
 type LightningConfig struct {
-	LndDir       string
-	TLSCertPath  string
+	LndDir      string
+	TLSCertPath string
+	TLSKeyPath  string
+	// MacaroonPath corresponds to the --adminmacaroonpath startup option of
+	// lnd
 	MacaroonPath string
 	Network      string
 	RPCServer    string
+	// P2pPort is the port lnd listens to peer connections on
+	P2pPort int
 }
 
 func configDefaultLndDir() string {
@@ -57,12 +62,12 @@ func configDefaultLndDir() string {
 }
 
 func configDefaultLndNet() string {
-	if env := os.Getenv("LND_NETWORK"); env != "" {
+	if env := os.Getenv("BITCOIN_NETWORK"); env != "" {
 		switch env {
-		case "mainnet", "testnet", "regtest", "simnet":
+		case "mainnet", "testnet", "regtest":
 			return env
 		default:
-			log.Fatalf("Environment variable LND_NETWORK is not a valid network: %s", env)
+			log.Fatalf("Environment variable BITCOIN_NETWORK is not a valid network: %s", env)
 		}
 	}
 	return "testnet"
@@ -126,9 +131,7 @@ func NewLNDClient(options LightningConfig) (
 	if options.LndDir != DefaultLndDir {
 		cfg.LndDir = options.LndDir
 		cfg.TLSCertPath = filepath.Join(cfg.LndDir, DefaultTLSCertFileName)
-		cfg.MacaroonPath = filepath.Join(cfg.LndDir,
-			filepath.Join("data/chain/bitcoin",
-				filepath.Join(cfg.Network, "admin.macaroon")))
+		cfg.MacaroonPath = filepath.Join(cfg.LndDir, "data", "chain", "bitcoin", cfg.Network, "admin.macaroon")
 	}
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")

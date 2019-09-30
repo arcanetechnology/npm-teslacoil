@@ -13,3 +13,4 @@ node_1/
 # compiled binaries
 lpp
 lpp-dev
+!lpp/

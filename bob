@@ -1,2 +1,2 @@
 #! /usr/bin/env bash
-lncli --lnddir=docker/.bob --rpcserver=localhost:10010 --network simnet $@
+lncli --lnddir=docker/.bob --rpcserver=localhost:10010 --network $BITCOIN_NETWORK $@

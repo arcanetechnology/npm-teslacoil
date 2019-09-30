@@ -30,6 +30,9 @@ test-only:
 test:
 	go test ./...
 
+test-it:
+	go test ./... -tags integration
+
 test_verbose:
 	go test ./... -v
 

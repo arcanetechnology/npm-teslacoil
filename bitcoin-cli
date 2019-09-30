@@ -1,0 +1,2 @@
+#! /usr/bin/env bash
+docker exec --user bitcoin bitcoind bitcoin-cli -regtest -rpcuser=$RPCUSER -rpcpassword=$RPCPASS  $@

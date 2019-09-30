@@ -1,6 +1,8 @@
 package payments
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -14,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
@@ -31,9 +34,20 @@ const (
 )
 
 var (
-	firstMemo   = "HiMisterHey"
-	description = "My personal description"
-	secondMemo  = "HelloWorld"
+	SamplePreimage = func() []byte {
+		encoded, _ := hex.DecodeString(SamplePreimageHex)
+		return encoded
+	}()
+	SamplePreimageHex = "0123456789abcdef0123456789abcdef"
+	SampleHash        = func() [32]byte {
+		first := sha256.Sum256(SamplePreimage)
+		return sha256.Sum256(first[:])
+	}()
+
+	SampleHashHex = hex.EncodeToString(SampleHash[:])
+	firstMemo     = "HiMisterHey"
+	description   = "My personal description"
+	secondMemo    = "HelloWorld"
 	// address to testnet node running on lightningspin.com
 	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
 	simnetAddress  = "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4"
@@ -73,15 +87,15 @@ func TestNewPayment(t *testing.T) {
 			lndInvoice: lnrpc.Invoice{
 				Value:          amount1,
 				PaymentRequest: "SomePayRequest",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
+				RHash:          SampleHash[:],
+				RPreimage:      SamplePreimage,
 				Settled:        false,
 			},
 			want: Payment{
 				UserID:         user.ID,
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
-				HashedPreimage: testutil.SampleHashHex,
+				HashedPreimage: SampleHashHex,
 				Memo:           &firstMemo,
 				Description:    &description,
 				Status:         Status("OPEN"),
@@ -96,15 +110,15 @@ func TestNewPayment(t *testing.T) {
 			lndInvoice: lnrpc.Invoice{
 				Value:          amount2,
 				PaymentRequest: "SomePayRequest",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
+				RHash:          SampleHash[:],
+				RPreimage:      SamplePreimage,
 				Settled:        false,
 			},
 			want: Payment{
 				UserID:         user.ID,
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
-				HashedPreimage: testutil.SampleHashHex,
+				HashedPreimage: SampleHashHex,
 				Memo:           &firstMemo,
 				Description:    &description,
 				Status:         Status("OPEN"),
@@ -118,7 +132,7 @@ func TestNewPayment(t *testing.T) {
 			tt.amountSat, tt.memo, tt.description), func(t *testing.T) {
 
 			// Create Mock LND client with preconfigured invoice response
-			mockLNcli := testutil.LightningMockClient{
+			mockLNcli := lntestutil.LightningMockClient{
 				InvoiceResponse: tt.lndInvoice,
 			}
 
@@ -163,7 +177,7 @@ func TestGetByID(t *testing.T) {
 				UserID:         user.ID,
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
-				HashedPreimage: testutil.SampleHashHex,
+				HashedPreimage: SampleHashHex,
 				Memo:           &firstMemo,
 				Description:    &description,
 				Status:         Status("OPEN"),
@@ -178,7 +192,7 @@ func TestGetByID(t *testing.T) {
 				UserID:         user.ID,
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
-				HashedPreimage: testutil.SampleHashHex,
+				HashedPreimage: SampleHashHex,
 				Memo:           &secondMemo,
 				Description:    &description,
 				Status:         Status("OPEN"),
@@ -266,7 +280,7 @@ func TestPayInvoice(t *testing.T) {
 			paymentRequest: "SomePaymentRequest1",
 
 			decodePayReq: lnrpc.PayReq{
-				PaymentHash: testutil.SampleHashHex,
+				PaymentHash: SampleHashHex,
 				NumSatoshis: amount1,
 			},
 			want: UserPaymentResponse{
@@ -274,8 +288,8 @@ func TestPayInvoice(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
-					Preimage:       &testutil.SamplePreimageHex,
-					HashedPreimage: testutil.SampleHashHex,
+					Preimage:       &SamplePreimageHex,
+					HashedPreimage: SampleHashHex,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
@@ -289,7 +303,7 @@ func TestPayInvoice(t *testing.T) {
 			paymentRequest: "SomePaymentRequest2",
 
 			decodePayReq: lnrpc.PayReq{
-				PaymentHash: testutil.SampleHashHex,
+				PaymentHash: SampleHashHex,
 				NumSatoshis: amount2,
 			},
 			want: UserPaymentResponse{
@@ -297,8 +311,8 @@ func TestPayInvoice(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount2,
 					AmountMSat:     amount2 * 1000,
-					Preimage:       &testutil.SamplePreimageHex,
-					HashedPreimage: testutil.SampleHashHex,
+					Preimage:       &SamplePreimageHex,
+					HashedPreimage: SampleHashHex,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("OUTBOUND"),
 				},
@@ -319,11 +333,11 @@ func TestPayInvoice(t *testing.T) {
 		}
 
 		// Create Mock LND client with preconfigured invoice response
-		mockLNcli := testutil.LightningMockClient{
+		mockLNcli := lntestutil.LightningMockClient{
 			InvoiceResponse: lnrpc.Invoice{},
 			SendPaymentSyncResponse: lnrpc.SendResponse{
-				PaymentPreimage: testutil.SamplePreimage,
-				PaymentHash:     testutil.SampleHash[:],
+				PaymentPreimage: SamplePreimage,
+				PaymentHash:     SampleHash[:],
 			},
 			DecodePayReqResponse: test.decodePayReq,
 			// We need to define what DecodePayReq returns
@@ -405,8 +419,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		{
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest1",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
+				RHash:          SampleHash[:],
+				RPreimage:      SamplePreimage,
 				Settled:        true,
 				Value:          int64(amount1),
 			},
@@ -418,8 +432,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
-					HashedPreimage: testutil.SampleHashHex,
-					Preimage:       &testutil.SamplePreimageHex,
+					HashedPreimage: SampleHashHex,
+					Preimage:       &SamplePreimageHex,
 					Memo:           &firstMemo,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("INBOUND"),
@@ -433,8 +447,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		{
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest2",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
+				RHash:          SampleHash[:],
+				RPreimage:      SamplePreimage,
 				Settled:        true,
 				Value:          int64(amount2),
 			},
@@ -446,8 +460,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount2,
 					AmountMSat:     amount2 * 1000,
-					HashedPreimage: testutil.SampleHashHex,
-					Preimage:       &testutil.SamplePreimageHex,
+					HashedPreimage: SampleHashHex,
+					Preimage:       &SamplePreimageHex,
 					Memo:           &secondMemo,
 					Status:         Status("SUCCEEDED"),
 					Direction:      Direction("INBOUND"),
@@ -461,8 +475,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		{
 			lnrpc.Invoice{
 				PaymentRequest: "SomePayRequest3",
-				RHash:          testutil.SampleHash[:],
-				RPreimage:      testutil.SamplePreimage,
+				RHash:          SampleHash[:],
+				RPreimage:      SamplePreimage,
 				Settled:        false,
 				Value:          int64(amount1),
 			},
@@ -474,8 +488,8 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 					UserID:         u.ID,
 					AmountSat:      amount1,
 					AmountMSat:     amount1 * 1000,
-					HashedPreimage: testutil.SampleHashHex,
-					Preimage:       &testutil.SamplePreimageHex,
+					HashedPreimage: SampleHashHex,
+					Preimage:       &SamplePreimageHex,
 					Memo:           &firstMemo,
 					Status:         Status("OPEN"),
 					Direction:      Direction("INBOUND"),
@@ -492,7 +506,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 				// Arrange
 				_, err := NewPayment(testDB,
-					testutil.LightningMockClient{
+					lntestutil.LightningMockClient{
 						InvoiceResponse: test.triggerInvoice,
 					}, u.ID, test.amountSat, test.memo, "")
 				if err != nil {
@@ -561,7 +575,7 @@ func TestGetAllOffset(t *testing.T) {
 
 	for _, invoice := range testInvoices {
 		_, err := NewPayment(testDB,
-			testutil.LightningMockClient{
+			lntestutil.LightningMockClient{
 				InvoiceResponse: lnrpc.Invoice{
 					Value: int64(invoice.AmountSat),
 					Memo:  invoice.Memo,
@@ -670,7 +684,7 @@ func TestGetAllLimit(t *testing.T) {
 
 	for _, invoice := range testInvoices {
 		_, err := NewPayment(testDB,
-			testutil.LightningMockClient{
+			lntestutil.LightningMockClient{
 				InvoiceResponse: lnrpc.Invoice{
 					Value: int64(invoice.AmountSat),
 					Memo:  invoice.Memo,
@@ -852,7 +866,7 @@ func TestWithdrawOnChainBadOpts(t *testing.T) {
 			amountSat: 0,
 		},
 	}
-	mockLNcli := testutil.LightningMockClient{
+	mockLNcli := lntestutil.LightningMockClient{
 		SendCoinsResponse: lnrpc.SendCoinsResponse{
 			Txid: "owrgkpoaerkgpok",
 		},
@@ -903,7 +917,7 @@ func TestWithdrawOnChainSendAll(t *testing.T) {
 
 		t.Run("can withdraw on-chain", func(t *testing.T) {
 
-			mockLNcli := testutil.LightningMockClient{
+			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
 					Txid: "owrgkpoaerkgpok",
 				},

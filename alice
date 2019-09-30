@@ -1,2 +1,2 @@
 #! /usr/bin/env bash
-lncli --lnddir=docker/.alice --network simnet $@
+lncli --lnddir=docker/.alice --network $BITCOIN_NETWORK $@

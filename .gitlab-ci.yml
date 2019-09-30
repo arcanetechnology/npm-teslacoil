@@ -18,9 +18,24 @@ test:
   cache:
     paths:
       - .cache
+      - .binaries
   variables:
     DATABASE_HOST: postgres
-  before_script:
+  before_script: 
+    # setup binaries directory
+    - mkdir -p .binaries
+    - export PATH=$PWD/.binaries/:$PATH
+
+    # download lnd
+    - export LND_SUFFIX=lnd-linux-386-v0.7.1-beta
+    - export LND_URL=https://github.com/lightningnetwork/lnd/releases/download/v0.7.1-beta/$LND_SUFFIX.tar.gz 
+
+    # download bitcoind
+    - "[[ -f .binaries/lnd ]] || (curl -L $LND_URL | tar xvz $LND_SUFFIX/lnd --strip-components 1 && mv lnd .binaries/)"
+    - export BITCOIND_URL=https://bitcoincore.org/bin/bitcoin-core-0.18.1/bitcoin-0.18.1-x86_64-linux-gnu.tar.gz
+    - export BITCOIND_FILE=bitcoin-0.18.1/bin/bitcoind
+    - "[[ -f .binaries/bitcoind ]] || (curl -L $BITCOIND_URL | tar xvz $BITCOIND_FILE --strip-components 2 && mv bitcoind .binaries/)"
+
     # cache things properly
     - mkdir -p $CI_PROJECT_DIR/.cache
     - export GOPATH="$CI_PROJECT_DIR/.cache"
@@ -29,7 +44,7 @@ test:
     - export GO111MODULE=on
   script:
     # run tests
-    - go test -cover -v ./...
+    - go test -cover -tags integration  ./...
 
     # run linter
     - golangci-lint run
