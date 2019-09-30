@@ -30,7 +30,16 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 
 		log.Debugf("received request for %d: %+v", claim.UserID, params)
 
-		t, err := transactions.GetAllTransactions(r.db, claim.UserID, params.Limit, params.Offset)
+		var t []transactions.Transaction
+		var err error
+		if params.Limit == 0 && params.Offset == 0 {
+			t, err = transactions.GetAllTransactions(r.db, claim.UserID)
+		}
+		if params.Limit == 0 {
+			t, err = transactions.GetAllTransactionsOffset(r.db, claim.UserID, params.Offset)
+		} else {
+			t, err = transactions.GetAllTransactionsLimitOffset(r.db, claim.UserID, params.Limit, params.Offset)
+		}
 		if err != nil {
 			log.Errorf("Couldn't get transactions: %v", err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
@@ -125,6 +134,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 // If successful, response with an address, and the saved description
 func (r *RestServer) NewDeposit() gin.HandlerFunc {
 	type NewDepositResponse struct {
+		ID          int    `json:"id"`
 		Address     string `json:"address"`
 		Description string `json:"description"`
 	}
@@ -151,6 +161,7 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 		}
 
 		c.JSONP(http.StatusOK, NewDepositResponse{
+			ID:          transaction.ID,
 			Address:     transaction.Address,
 			Description: transaction.Description,
 		})

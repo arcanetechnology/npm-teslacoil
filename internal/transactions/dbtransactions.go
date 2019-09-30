@@ -3,6 +3,7 @@ package transactions
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"time"
@@ -100,12 +101,29 @@ func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
 	return res.Txid, nil
 }
 
+func GetAllTransactions(d *db.DB, userID int) ([]Transaction, error) {
+	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, 0)
+}
+
+func GetAllTransactionsLimit(d *db.DB, userID int, limit int) ([]Transaction, error) {
+	return GetAllTransactionsLimitOffset(d, userID, limit, 0)
+}
+
+func GetAllTransactionsOffset(d *db.DB, userID int, offset int) ([]Transaction, error) {
+	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, offset)
+}
+
 // GetAllTransactions selects all transactions for given userID from the DB.
-func GetAllTransactions(d *db.DB, userID int, limit int, offset int) (
+func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) (
 	[]Transaction, error) {
+	var query string
+	// if limit is 0, we get ALL transactions
+	if limit == 0 {
+		limit = math.MaxInt32
+	}
 	// Using OFFSET is not ideal, but until we start seeing
 	// performance problems it's fine
-	query := `SELECT *
+	query = `SELECT *
 		FROM transactions
 		WHERE user_id=$1
 		ORDER BY created_at
@@ -281,7 +299,7 @@ func NewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int
 func GetDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddressArgs) (Transaction, error) {
 	// If ForceNewAddress is supplied, we return a new deposit instantly
 	if args.ForceNewAddress {
-		return NewDeposit(d, lncli, userID)
+		return NewDepositWithDescription(d, lncli, userID, args.Description)
 	}
 	log.Infof("DepositOnChain(%d, %+v)", userID, args)
 
@@ -303,7 +321,7 @@ func GetDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddre
 	log.Debugf("deposit  %+v", deposit)
 	if deposit.UserID == 0 && deposit.Direction == "" {
 		log.Debug("deposit == emptyTransaction, creating new")
-		return NewDeposit(d, lncli, userID)
+		return NewDepositWithDescription(d, lncli, userID, args.Description)
 	}
 
 	// If we get here, we return the transaction the query returned

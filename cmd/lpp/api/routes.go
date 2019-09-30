@@ -271,7 +271,7 @@ func getJSONOrReject(c *gin.Context, body interface{}) bool {
 }
 
 func getQueryOrReject(c *gin.Context, body interface{}) bool {
-	if err := c.BindQuery(body); err != nil {
+	if err := c.ShouldBindQuery(body); err != nil {
 		err = errors.Wrapf(err, "wrong query parameter format, check the documentation")
 		log.Error(err)
 		c.JSON(http.StatusBadRequest, err.Error())
