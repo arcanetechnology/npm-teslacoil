@@ -1,14 +1,20 @@
 package payments
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -34,14 +40,6 @@ const (
 
 	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
 	OffchainTXTable = "offchaintx"
-
-	// MaxAmountMsatPerInvoice is the maximum amount of milli satoshis an invoice
-	// can be for
-	MaxAmountMsatPerInvoice int64 = 4294967295
-
-	// MaxAmountSatPerInvoice is the maximum amount of satoshis an invoice
-	// can be for
-	MaxAmountSatPerInvoice int64 = MaxAmountMsatPerInvoice / 1000
 )
 
 // Payment is a database table
@@ -117,12 +115,13 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 
 	createOffchainTXQuery := `INSERT INTO 
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
-		description, expiry, direction, status, amount_sat,amount_msat)
+		callback_url, description, expiry, direction, status, amount_sat,amount_msat)
 	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
-		    :memo, :description, :expiry, :direction, :status, :amount_sat, :amount_msat)
+		    :memo, :callback_url, :description, :expiry, :direction, :status, 
+	        :amount_sat, :amount_msat)
 	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
 			  memo, description, expiry, direction, status, amount_sat, amount_msat,
-			  created_at, updated_at`
+			  callback_url, created_at, updated_at`
 
 	// Using the above query, NamedQuery() will extract VALUES from
 	// the payment variable and insert them into the query
@@ -154,6 +153,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			&payment.Status,
 			&payment.AmountSat,
 			&payment.AmountMSat,
+			&payment.CallbackURL,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 		); err != nil {
@@ -222,10 +222,10 @@ func CreateInvoice(lncli ln.AddLookupInvoiceClient, amountSat int64) (
 func CreateInvoiceWithMemo(lncli ln.AddLookupInvoiceClient, amountSat int64,
 	memo string) (lnrpc.Invoice, error) {
 
-	if amountSat > MaxAmountSatPerInvoice {
+	if amountSat > ln.MaxAmountSatPerInvoice {
 		return lnrpc.Invoice{}, fmt.Errorf(
 			"amount (%d) was too large. Max: %d",
-			amountSat, MaxAmountSatPerInvoice)
+			amountSat, ln.MaxAmountSatPerInvoice)
 	}
 
 	if amountSat <= 0 {
@@ -259,24 +259,31 @@ func CreateInvoiceWithMemo(lncli ln.AddLookupInvoiceClient, amountSat int64,
 	return *invoice, nil
 }
 
+// NewPaymentArgs are the different options that dictates creation of a new
+// payment
+type NewPaymentOpts struct {
+	UserID      int
+	AmountSat   int64
+	Memo        string
+	Description string
+	CallbackURL string
+}
+
 // NewPayment creates a new payment by first creating an invoice
 // using lnd, then saving info returned from lnd to a new payment
-func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
-	amountSat int64, memo, description string) (Payment, error) {
+func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) (Payment, error) {
 	tx := d.MustBegin()
 	// We do not store the preimage until the payment is settled, to avoid the
 	// user getting the preimage before the invoice is settled
 
-	invoice, err := CreateInvoiceWithMemo(lncli, amountSat, memo)
+	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
 	if err != nil {
 		log.Error(err)
 		return Payment{}, err
 	}
 
 	p := Payment{
-		UserID:         userID,
-		Memo:           &memo,
-		Description:    &description,
+		UserID:         opts.UserID,
 		AmountSat:      invoice.Value,
 		AmountMSat:     invoice.Value * 1000,
 		Expiry:         invoice.Expiry,
@@ -285,18 +292,27 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, userID int,
 		Status:         OPEN,
 		Direction:      INBOUND,
 	}
+	if opts.Memo != "" {
+		p.Memo = &opts.Memo
+	}
+	if opts.Description != "" {
+		p.Description = &opts.Description
+	}
+	if opts.CallbackURL != "" {
+		p.CallbackURL = &opts.CallbackURL
+	}
 
 	p, err = insert(tx, p)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("Could not insert payment: %s", err)
 		_ = tx.Rollback()
 		return Payment{}, err
 	}
 
 	log.Debugf("NewPayment: %v", p)
 
-	if err = tx.Commit(); err != nil {
-		log.Error(err)
+	if err := tx.Commit(); err != nil {
+		log.Errorf("Could not commit payment TX: %s", err)
 		_ = tx.Rollback()
 		return Payment{}, err
 	}
@@ -436,17 +452,26 @@ func PayInvoiceWithDescription(d *db.DB, lncli ln.DecodeSendClient, userID int,
 
 // InvoiceStatusListener is
 func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
-	database *db.DB) {
+	database *db.DB, sender HttpPoster) {
 	for {
 		invoice := <-invoiceUpdatesCh
 		if invoice == nil {
 			log.Errorf("InvoiceStatusListener(): got invoice <nil> from invoiceUpdatesCh")
 			return
 		}
-		_, err := UpdateInvoiceStatus(*invoice, database)
+		hash := hex.EncodeToString(invoice.RHash)
+		log.WithField("hash",
+			hash,
+		).Debug("Received invoice on invoice status listener")
+		updated, err := UpdateInvoiceStatus(*invoice, database, sender)
 		if err != nil {
 			log.Errorf("Error when updating invoice status: %v", err)
 			// TODO: Here we need to handle the errors from UpdateInvoiceStatus
+		} else {
+			log.WithFields(logrus.Fields{"hash": hash,
+				"id":      updated.Payment.ID,
+				"settled": updated.Payment.SettledAt != nil},
+			).Debug("Updated invoice status")
 		}
 	}
 }
@@ -454,7 +479,7 @@ func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 // UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
 // (newly added/settled invoices). If received payment was successful, updates
 // the payment stored in our db and increases the users balance
-func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
+func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPoster) (
 	*UserPaymentResponse, error) {
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
@@ -470,14 +495,19 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 		)
 	}
 
+	log.WithFields(logrus.Fields{
+		"id":      payment.ID,
+		"settled": invoice.Settled,
+	}).Debug("Updating invoice status of payment", payment.ID, invoice.Settled)
+
 	if !invoice.Settled {
 		return &UserPaymentResponse{
 			Payment: payment,
 			User:    users.User{},
 		}, nil
 	}
-	time := time.Now()
-	payment.SettledAt = &time
+	now := time.Now()
+	payment.SettledAt = &now
 	payment.Status = Status("SUCCEEDED")
 	preimage := hex.EncodeToString(invoice.RPreimage)
 	payment.Preimage = &preimage
@@ -487,7 +517,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 		WHERE hashed_preimage = :hashed_preimage
 		RETURNING id, user_id, payment_request, preimage, hashed_preimage,
 	   			memo, description, expiry, direction, status, amount_sat, amount_msat,
-				created_at, updated_at`
+				callback_url, created_at, updated_at`
 
 	tx := database.MustBegin()
 
@@ -515,6 +545,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 			&payment.Status,
 			&payment.AmountSat,
 			&payment.AmountMSat,
+			&payment.CallbackURL,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
 		); err != nil {
@@ -543,12 +574,43 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB) (
 			"UpdateInvoiceStatus->tx.Commit()",
 		)
 	}
-	// TODO: Here we need to call the callback with the response.
+	if payment.CallbackURL != nil {
+		if paymentBytes, err := json.Marshal(payment); err != nil {
+			log.Errorf("Could not marshal payment into JSON: %s", err)
+		} else {
+			// naive callback implementation
+			// TODO: add logging of when the URL was hit
+			go func() {
+				logger := log.WithFields(logrus.Fields{
+					"url": *payment.CallbackURL,
+				})
+				var response *http.Response
+				retry := func() error {
+					res, err := sender.Post(*payment.CallbackURL, "application/json",
+						bytes.NewReader(paymentBytes))
+					response = res
+					return err
+				}
+				err := asyncutil.Retry(5, time.Millisecond*1000, retry)
+				if err != nil {
+					logger.WithError(err).Error("Error when POSTing callback")
+				} else {
+					logger.WithField("status", response.StatusCode).Debug("POSTed callback")
+				}
+			}()
+		}
+	} else {
+		log.WithField("id", payment.ID).Debug("Invoice did not have callback URL")
+	}
 
 	return &UserPaymentResponse{
 		Payment: payment,
 		User:    user,
 	}, nil
+}
+
+type HttpPoster interface {
+	Post(url, contentType string, reader io.Reader) (*http.Response, error)
 }
 
 func (p Payment) String() string {

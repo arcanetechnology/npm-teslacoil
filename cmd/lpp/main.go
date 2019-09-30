@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path"
 	"sort"
@@ -43,6 +45,12 @@ var (
 	// SendgridApiKey is the API key we use to interact with Sendgrid's servers
 	SendgridApiKey string
 )
+
+type realHttpSender struct{}
+
+func (s realHttpSender) Post(url, contentType string, reader io.Reader) (*http.Response, error) {
+	return http.Post(url, contentType, reader)
+}
 
 func init() {
 	log = logrus.New().WithFields(logrus.Fields{
@@ -99,7 +107,8 @@ var (
 				return err
 			}
 			sendGridClient := sendgrid.NewSendClient(SendgridApiKey)
-			a, err := api.NewApp(database, lncli, sendGridClient, config)
+			a, err := api.NewApp(database, lncli, sendGridClient,
+				realHttpSender{}, config)
 			if err != nil {
 				log.Fatal(err)
 				return err

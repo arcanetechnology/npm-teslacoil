@@ -17,10 +17,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -252,6 +254,42 @@ func (client LightningMockClient) SendPaymentSync(ctx context.Context,
 	in *lnrpc.SendRequest, opts ...grpc.CallOption) (
 	*lnrpc.SendResponse, error) {
 	return &client.SendPaymentSyncResponse, nil
+}
+
+func GetRandomLightningMockClient() LightningMockClient {
+	invoicePreimage := make([]byte, 32)
+	_, _ = rand.Read(invoicePreimage)
+
+	paymentResponsePreimage := make([]byte, 32)
+	_, _ = rand.Read(paymentResponsePreimage)
+
+	decodePayReqPreimage := make([]byte, 32)
+	_, _ = rand.Read(decodePayReqPreimage)
+
+	doubleHash := func(bytes []byte) []byte {
+		first := sha256.Sum256(bytes)
+		again := sha256.Sum256(first[:])
+		return again[:]
+	}
+
+	return LightningMockClient{
+		InvoiceResponse: lnrpc.Invoice{
+			PaymentRequest: fmt.Sprintf("SomePayRequest%d", gofakeit.Number(0, 10000)),
+			RHash:          doubleHash(invoicePreimage),
+			RPreimage:      invoicePreimage,
+			Settled:        true,
+			Value:          int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
+		},
+		SendPaymentSyncResponse: lnrpc.SendResponse{
+			PaymentPreimage: paymentResponsePreimage,
+			PaymentHash:     doubleHash(paymentResponsePreimage),
+		},
+		DecodePayReqResponse: lnrpc.PayReq{
+			PaymentHash: hex.EncodeToString(doubleHash(decodePayReqPreimage)),
+			NumSatoshis: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
+			Description: "HelloPayment",
+		},
+	}
 }
 
 // GetLightningMockClient returns a basic LN client you can use where the

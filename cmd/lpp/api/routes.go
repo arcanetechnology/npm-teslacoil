@@ -51,7 +51,8 @@ type JWTClaims struct {
 }
 
 //NewApp creates a new app
-func NewApp(d *db.DB, lncli lnrpc.LightningClient, sender EmailSender, config Config) (RestServer, error) {
+func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
+	callbacks payments.HttpPoster, config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
 
 	g := gin.Default()
@@ -79,7 +80,7 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, sender EmailSender, config Co
 		Router:      g,
 		db:          d,
 		lncli:       &lncli,
-		EmailSender: sender,
+		EmailSender: email,
 	}
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
@@ -87,7 +88,8 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, sender EmailSender, config Co
 	// Start a goroutine for getting notified of newly added/settled invoices.
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 	// Start a goroutine for handling the newly added/settled invoices.
-	go payments.InvoiceStatusListener(invoiceUpdatesCh, d)
+
+	go payments.InvoiceStatusListener(invoiceUpdatesCh, d, callbacks)
 
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login

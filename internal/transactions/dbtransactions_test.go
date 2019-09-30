@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 
 	"github.com/sirupsen/logrus"
@@ -48,8 +49,8 @@ func TestGetTransactionByID(t *testing.T) {
 	const password1 = "password1"
 	const email2 = "email2@example.com"
 	const password2 = "password2"
-	amount1 := rand.Int63n(payments.MaxAmountSatPerInvoice)
-	amount2 := rand.Int63n(payments.MaxAmountSatPerInvoice)
+	amount1 := rand.Int63n(ln.MaxAmountSatPerInvoice)
+	amount2 := rand.Int63n(ln.MaxAmountSatPerInvoice)
 
 	user := CreateUserOrFail(t)
 

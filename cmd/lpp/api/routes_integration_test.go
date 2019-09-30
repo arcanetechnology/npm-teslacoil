@@ -4,15 +4,14 @@ package api_test
 
 import (
 	"fmt"
-	"math"
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
@@ -34,7 +33,9 @@ func init() {
 
 func TestCreateInvoiceRoute(t *testing.T) {
 	lntestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
-		app, err := api.NewApp(testDB, lnd, testutil.GetMockSendGridClient(), conf)
+		app, err := api.NewApp(testDB, lnd,
+			testutil.GetMockSendGridClient(),
+			testutil.GetMockHttpPoster(), conf)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -53,7 +54,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 			testutil.DescribeTest(t)
 
 			amountSat := gofakeit.Number(0,
-				int(payments.MaxAmountSatPerInvoice))
+				int(ln.MaxAmountSatPerInvoice))
 
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
@@ -74,8 +75,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		t.Run("Create an invoice with memo and description", func(t *testing.T) {
 			testutil.DescribeTest(t)
 
-			amountSat := gofakeit.Number(0,
-				int(payments.MaxAmountSatPerInvoice))
+			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 
 			memo := gofakeit.Sentence(gofakeit.Number(1, 20))
 			description := gofakeit.Sentence(gofakeit.Number(1, 20))
@@ -98,60 +98,5 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 		})
 
-		t.Run("Not create an invoice with non-positive amount ", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
-			// gofakeit panics with too low value here...
-			// https://github.com/brianvoe/gofakeit/issues/56
-			amountSat := gofakeit.Number(math.MinInt64+2, -1)
-
-			req := httptestutil.GetAuthRequest(t,
-				httptestutil.AuthRequestArgs{
-					AccessToken: accessToken,
-					Path:        "/invoices/create",
-					Method:      "POST",
-					Body: fmt.Sprintf(`{
-					"amountSat": %d
-				}`, amountSat),
-				})
-
-			h.AssertResponseNotOk(t, req)
-		})
-
-		t.Run("Not create an invoice with too large amount", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
-			amountSat := gofakeit.Number(
-				int(payments.MaxAmountSatPerInvoice), math.MaxInt64)
-
-			req := httptestutil.GetAuthRequest(t,
-				httptestutil.AuthRequestArgs{
-					AccessToken: accessToken,
-					Path:        "/invoices/create",
-					Method:      "POST",
-					Body: fmt.Sprintf(`{
-					"amountSat": %d
-				}`, amountSat),
-				})
-
-			h.AssertResponseNotOk(t, req)
-		})
-
-		t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
-			req := httptestutil.GetAuthRequest(t,
-				httptestutil.AuthRequestArgs{
-					AccessToken: accessToken,
-					Path:        "/invoices/create",
-					Method:      "POST",
-					Body: `{
-					"amountSat": 0
-				}`,
-				})
-
-			h.AssertResponseNotOk(t, req)
-
-		})
 	})
 }

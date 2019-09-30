@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"testing"
@@ -10,10 +11,14 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/dchest/passwordreset"
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pquerna/otp/totp"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -28,16 +33,16 @@ var (
 
 	h httptestutil.TestHarness
 
-	mockSendGridClient = testutil.GetMockSendGridClient()
+	mockSendGridClient  = testutil.GetMockSendGridClient()
+	mockLightningClient = lntestutil.GetLightningMockClient()
+	mockHttpPoster      = testutil.GetMockHttpPoster()
 )
 
 func init() {
 	testDB = testutil.InitDatabase(databaseConfig)
 
-	app, err := NewApp(testDB,
-		lntestutil.GetLightningMockClient(),
-		mockSendGridClient,
-		conf)
+	app, err := NewApp(testDB, mockLightningClient,
+		mockSendGridClient, mockHttpPoster, conf)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -586,7 +591,8 @@ func TestSendPasswordResetEmail(t *testing.T) {
 		}`, email),
 	})
 	h.AssertResponseOk(t, req)
-	testutil.AssertMsg(t, mockSendGridClient.SentEmails > 0, "Sendgrid client didn't send any emails!")
+	testutil.AssertMsg(t, mockSendGridClient.GetSentEmails() > 0,
+		"Sendgrid client didn't send any emails!")
 }
 
 func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
@@ -983,5 +989,122 @@ func TestNewDeposit(t *testing.T) {
 		if trans.Description != description {
 			testutil.FailMsgf(t, "descriptions not equal, expected %s got %s", description, trans.Description)
 		}
+	})
+}
+
+func TestCreateInvoice(t *testing.T) {
+	testutil.DescribeTest(t)
+
+	randomMockClient := lntestutil.GetRandomLightningMockClient()
+	app, _ := NewApp(testDB, randomMockClient, mockSendGridClient, mockHttpPoster, conf)
+	otherH := httptestutil.NewTestHarness(app.Router)
+
+	password := gofakeit.Password(true, true, true, true, true, 32)
+	accessToken := otherH.CreateAndLoginUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: password,
+	})
+
+	t.Run("Not create an invoice with non-positive amount ", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		// gofakeit panics with too low value here...
+		// https://github.com/brianvoe/gofakeit/issues/56
+		amountSat := gofakeit.Number(math.MinInt64+2, -1)
+
+		req := httptestutil.GetAuthRequest(t,
+			httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d
+				}`, amountSat),
+			})
+
+		otherH.AssertResponseNotOk(t, req)
+	})
+
+	t.Run("Not create an invoice with too large amount", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		amountSat := gofakeit.Number(ln.MaxAmountSatPerInvoice, math.MaxInt64)
+
+		req := httptestutil.GetAuthRequest(t,
+			httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d
+				}`, amountSat),
+			})
+
+		otherH.AssertResponseNotOk(t, req)
+	})
+
+	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
+		testutil.DescribeTest(t)
+
+		req := httptestutil.GetAuthRequest(t,
+			httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: `{
+					"amountSat": 0
+				}`,
+			})
+
+		otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("Not create an invoice with an invalid callback URL", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/invoices/create",
+			Method:      "POST",
+			Body: `{
+				"amountSat": 1000,
+				"callbackUrl": "bad-url"
+			}`,
+		})
+		otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("create an invoice with a valid callback URL", func(t *testing.T) {
+		t.Parallel()
+		mockInvoice, _ := ln.AddInvoice(randomMockClient, lnrpc.Invoice{})
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/invoices/create",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+				"amountSat": %d,
+				"callbackUrl": "https://example.com"
+			}`, mockInvoice.Value),
+		})
+		json := otherH.AssertResponseOkWithJson(t, req)
+		testutil.AssertMsg(t, json["callbackUrl"] != nil, "callback URL was nil!")
+
+		t.Run("receive a POST to the given URL when paying the invoice",
+			func(t *testing.T) {
+				if _, err := payments.UpdateInvoiceStatus(*mockInvoice,
+					testDB, mockHttpPoster); err != nil {
+					testutil.FatalMsg(t, err)
+				}
+
+				checkPostSent := func() bool {
+					return mockHttpPoster.GetSentPostRequests() == 1
+				}
+
+				// emails are sent in a go-routine, so can't assume they're sent fast
+				// enough for test to pick up
+				if err := asyncutil.Await(10,
+					time.Millisecond*20, checkPostSent); err != nil {
+					testutil.FatalMsg(t, err)
+				}
+			})
 	})
 }

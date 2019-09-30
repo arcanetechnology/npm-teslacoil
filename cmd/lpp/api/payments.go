@@ -88,6 +88,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		AmountSat   int64  `json:"amountSat" binding:"required,gt=0"`
 		Memo        string `json:"memo" binding:"max=256"`
 		Description string `json:"description"`
+		CallbackURL string `json:"callbackUrl" binding:"omitempty,url"`
 	}
 
 	return func(c *gin.Context) {
@@ -100,13 +101,20 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		if ok := getJSONOrReject(c, &request); !ok {
 			return
 		}
+
 		log.Debugf("received new request for CreateInvoice for user_id %d: %+v",
 			claims.UserID,
 			request)
 
 		t, err := payments.NewPayment(
-			r.db, *r.lncli, claims.UserID, request.AmountSat,
-			request.Memo, request.Description)
+			r.db, *r.lncli, payments.NewPaymentOpts{
+				UserID:      claims.UserID,
+				AmountSat:   request.AmountSat,
+				Memo:        request.Memo,
+				Description: request.Description,
+				CallbackURL: request.CallbackURL,
+			})
+
 		if err != nil {
 			log.Error(errors.Wrapf(err, "could not add new payment"))
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)

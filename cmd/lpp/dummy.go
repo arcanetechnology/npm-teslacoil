@@ -92,8 +92,13 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			memo = mem
 		}
 
-		inv, err := payments.NewPayment(db, lncli, user.ID,
-			int64(amountSat), memo, description)
+		inv, err := payments.NewPayment(db, lncli, payments.NewPaymentOpts{
+			UserID:      user.ID,
+			AmountSat:   int64(amountSat),
+			Memo:        memo,
+			Description: description,
+		})
+
 		if err != nil {
 			return err
 		}

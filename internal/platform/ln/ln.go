@@ -267,3 +267,12 @@ func (l LightningConfig) String() string {
 
 	return str
 }
+
+const (
+	// MaxAmountSatPerInvoice is the maximum amount of satoshis an invoice
+	// can be for
+	MaxAmountMsatPerInvoice = 4294967295
+	// MaxAmountMsatPerInvoice is the maximum amount of milli satoshis an invoice
+	// can be for
+	MaxAmountSatPerInvoice = MaxAmountMsatPerInvoice / 1000
+)
