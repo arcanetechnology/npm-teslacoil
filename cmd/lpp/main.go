@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/wire"
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sendgrid/sendgrid-go"
@@ -99,7 +98,7 @@ const (
 // if that isn't possible within a set of attempts
 func awaitBitcoind(btc *bitcoind.Conn) error {
 	retry := func() bool {
-		_, err := btc.Client().GetBlockChainInfo()
+		_, err := btc.Btcctl.GetBlockChainInfo()
 		return err == nil
 	}
 	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach bitcoind")
@@ -170,9 +169,7 @@ var (
 				return err
 			}
 
-			zmqRawTxCh := make(chan *wire.MsgTx)
-			zmqBlockCh := make(chan *wire.MsgBlock)
-			bitcoindConn, err := bitcoind.NewConn(bitcoindConfig, 1*time.Second, zmqRawTxCh, zmqBlockCh)
+			bitcoindConn, err := bitcoind.NewConn(bitcoindConfig, 1*time.Second)
 			if err != nil {
 				return err
 			}
@@ -203,10 +200,9 @@ var (
 				Network:  network,
 			}
 			a, err := api.NewApp(database, lncli, sendGridClient,
-				bitcoindConn, realHttpSender{}, config)
-			if err != nil {
-				return err
-			}
+				*bitcoindConn, realHttpSender{}, config)
+
+			log.Info("opened connection to bitcoind")
 
 			address := ":" + c.String("port")
 			if GinMode == "release" {

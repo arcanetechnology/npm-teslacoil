@@ -15,10 +15,6 @@ import (
 type TeslacoilBitcoind interface {
 	StartZmq()
 	StopZmq()
-	GetZmqRawTxChannel() chan *wire.MsgTx
-	GetZmqRawBlockChannel() chan *wire.MsgBlock
-
-	Client() RpcClient
 }
 
 // RpcClient is a client that can query bitcoind/btcd.

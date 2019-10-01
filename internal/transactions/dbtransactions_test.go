@@ -69,8 +69,8 @@ func TestGetTransactionByID(t *testing.T) {
 				AmountSat:   amount1,
 				Address:     "bar",
 				Description: "foo",
-				Status:      TransactionStatus("UNCONFIRMED"),
 				Direction:   payments.Direction("INBOUND"),
+				Confirmed:   false,
 			},
 		},
 		{
@@ -82,8 +82,8 @@ func TestGetTransactionByID(t *testing.T) {
 				AmountSat:   amount2,
 				Address:     "bar",
 				Description: "foo",
-				Status:      TransactionStatus("UNCONFIRMED"),
 				Direction:   payments.Direction("INBOUND"),
+				Confirmed:   false,
 			},
 		},
 	}

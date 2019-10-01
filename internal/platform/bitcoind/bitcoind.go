@@ -2,17 +2,19 @@ package bitcoind
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/lightninglabs/gozmq"
-
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
+	"github.com/lightninglabs/gozmq"
+	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
@@ -32,7 +34,7 @@ type Config struct {
 	Password string
 	// ZmqPubRawTx is the host (and port) that bitcoind publishes raw TXs to
 	ZmqPubRawTx string
-	// ZmqPubRawBolck is the host (and port) that bitcoind publishes raw blocks to
+	// ZmqPubRawBlock is the host (and port) that bitcoind publishes raw blocks to
 	ZmqPubRawBlock string
 }
 
@@ -71,27 +73,26 @@ func DefaultRpcPort(params chaincfg.Params) (int, error) {
 // Conn represents a persistent client connection to a bitcoind node
 // that listens for events read from a ZMQ connection
 type Conn struct {
-	client *rpcclient.Client
+	Btcctl *rpcclient.Client
 	// zmqBlockConn is the ZMQ connection we'll use to read raw block
 	// events
 	zmqBlockConn *gozmq.Conn
-	// zmqBlockCh is the channel on which we return block events received
+	// ZmqBlockCh is the channel on which we return block events received
 	// from zmq
-	zmqBlockCh chan *wire.MsgBlock
+	ZmqBlockCh chan *wire.MsgBlock
 	// zmqTxConn is the ZMQ connection we'll use to read raw new
 	// transaction events
 	zmqTxConn *gozmq.Conn
-	// zmqTxCh is the channel on which we return tx events received
+	// ZmqTxCh is the channel on which we return tx events received
 	// from zmq
-	zmqTxCh chan *wire.MsgTx
+	ZmqTxCh chan *wire.MsgTx
 }
 
-// NewConn returns a BitcoindConn corresponding to
-// the given configuration, that consists of a bitcoind RPC client,
-// a zmqBlockConnection and a zmqTxConnection
-func NewConn(conf Config, zmqPollInterval time.Duration,
-	zmqTxCh chan *wire.MsgTx, zmqBlockCh chan *wire.MsgBlock) (
+// NewConn returns a BitcoindConn corresponding to the given
+// configuration
+func NewConn(conf Config, zmqPollInterval time.Duration) (
 	*Conn, error) {
+
 	// Bitcoin Core doesn't do notifications
 	var notificationHandler *rpcclient.NotificationHandlers = nil
 
@@ -110,6 +111,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration,
 	if err != nil {
 		return nil, fmt.Errorf("unable to subscribe to zmq block events: %+v", err)
 	}
+
 	zmqTxConn, err := gozmq.Subscribe(
 		conf.ZmqPubRawTx, []string{"rawtx"}, zmqPollInterval)
 	if err != nil {
@@ -120,24 +122,20 @@ func NewConn(conf Config, zmqPollInterval time.Duration,
 		return nil, fmt.Errorf("unable to subscribe to zmq tx events: %+v", err)
 	}
 
-	log.Info("block: ", zmqBlockConn)
-	log.Info("tx: ", zmqTxConn)
+	zmqRawTxCh := make(chan *wire.MsgTx)
+	zmqBlockCh := make(chan *wire.MsgBlock)
 
 	conn := &Conn{
-		client:       client,
+		Btcctl:       client,
 		zmqBlockConn: zmqBlockConn,
 		zmqTxConn:    zmqTxConn,
 		// We register the channels on the connection to make them accessible
 		// to the blockEventHandler and txEventHandler functions
-		zmqTxCh:    zmqTxCh,
-		zmqBlockCh: zmqBlockCh,
+		ZmqTxCh:    zmqRawTxCh,
+		ZmqBlockCh: zmqBlockCh,
 	}
 
 	return conn, nil
-}
-
-func (c *Conn) Client() RpcClient {
-	return c.client
 }
 
 // StartZmq attempts to establish a ZMQ connection to a bitcoind node. If
@@ -159,8 +157,34 @@ func (c *Conn) StopZmq() {
 	_ = c.zmqTxConn.Close()
 }
 
+func (c *Conn) FindOutput(txid string, amountSat int64) (int, error) {
+
+	txHash, err := chainhash.NewHashFromStr(txid)
+	if err != nil {
+		return -1, errors.Wrapf(err, "could not create txHash using txid %q", txHash)
+	}
+
+	transactionResult, err := c.Btcctl.GetTransaction(txHash)
+	if err != nil {
+		return -1, errors.Wrapf(err, "could not GetTransaction(%s)", txHash)
+	}
+
+	for _, tx := range transactionResult.Details {
+
+		amount := math.Round(btcutil.SatoshiPerBitcoin * tx.Amount)
+		log.Tracef("found output with amount %f", amount)
+
+		if amount == float64(amountSat) {
+			return int(tx.Vout), nil
+		}
+
+	}
+
+	return -1, fmt.Errorf("did not find output with amount %d", amountSat)
+}
+
 // blockEventHandler reads raw blocks events from the ZMQ block socket and
-// forwards them along to the current rescan clients.
+// forwards them to the channel registered on the Conn
 //
 // NOTE: This must be run as a goroutine.
 func (c *Conn) blockEventHandler() {
@@ -205,7 +229,7 @@ func (c *Conn) blockEventHandler() {
 			}
 
 			// send the deserialized block to the block channel
-			c.zmqBlockCh <- block
+			c.ZmqBlockCh <- block
 
 		default:
 			// It's possible that the message wasn't fully read if
@@ -223,7 +247,7 @@ func (c *Conn) blockEventHandler() {
 }
 
 // txEventHandler reads raw blocks events from the ZMQ block socket and
-// forwards them to the zmqTxCh found in the BitcoindConn
+// forwards them to the zmqTxCh found in the Conn
 //
 // NOTE: This must be run as a goroutine.
 func (c *Conn) txEventHandler() {
@@ -269,7 +293,7 @@ func (c *Conn) txEventHandler() {
 			}
 
 			// send the tx event to the channel
-			c.zmqTxCh <- tx
+			c.ZmqTxCh <- tx
 
 		default:
 			// It's possible that the message wasn't fully read if
@@ -285,14 +309,6 @@ func (c *Conn) txEventHandler() {
 		}
 
 	}
-}
-
-func (c *Conn) GetZmqRawTxChannel() chan *wire.MsgTx {
-	return c.zmqTxCh
-}
-
-func (c *Conn) GetZmqRawBlockChannel() chan *wire.MsgBlock {
-	return c.zmqBlockCh
 }
 
 // ListenTxs receives readily parsed txs and prints them

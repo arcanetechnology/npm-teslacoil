@@ -8,6 +8,8 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
+
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 
 	"github.com/gin-contrib/cors"
@@ -48,7 +50,7 @@ type RestServer struct {
 	Router      *gin.Engine
 	db          *db.DB
 	lncli       lnrpc.LightningClient
-	bitcoind    bitcoind.TeslacoilBitcoind
+	bitcoind    bitcoind.Conn
 	EmailSender EmailSender
 }
 
@@ -116,10 +118,10 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 }
 
 //NewApp creates a new app
-func NewApp(d *db.DB,
+func NewApp(db *db.DB,
 	lncli lnrpc.LightningClient,
 	sender EmailSender,
-	btcctl bitcoind.TeslacoilBitcoind,
+	bitcoin bitcoind.Conn,
 	callbacks payments.HttpPoster,
 	config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
@@ -153,7 +155,7 @@ func NewApp(d *db.DB,
 	}))
 
 	log.Info("Checking bitcoind connection")
-	if err := checkBitcoindConnection(btcctl.Client(), config.Network); err != nil {
+	if err := checkBitcoindConnection(bitcoin.Btcctl, config.Network); err != nil {
 		return RestServer{}, err
 	}
 	log.Info("Checked bitcoind connection succesfully")
@@ -163,23 +165,23 @@ func NewApp(d *db.DB,
 	}
 
 	// Start two goroutines for listening to zmq events
-	btcctl.StartZmq()
+	bitcoin.StartZmq()
 
-	go bitcoind.ListenTxs(btcctl.GetZmqRawTxChannel())
-	go bitcoind.ListenBlocks(btcctl.GetZmqRawBlockChannel())
+	go transactions.TxListener(db, lncli, bitcoin.ZmqTxCh)
+	go transactions.BlockListener(db, bitcoin.Btcctl, bitcoin.ZmqBlockCh)
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
 	// Start a goroutine for getting notified of newly added/settled invoices.
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 	// Start a goroutine for handling the newly added/settled invoices.
 
-	go payments.InvoiceStatusListener(invoiceUpdatesCh, d, callbacks)
+	go payments.InvoiceStatusListener(invoiceUpdatesCh, db, callbacks)
 
 	r := RestServer{
 		Router:      g,
-		db:          d,
+		db:          db,
 		lncli:       lncli,
-		bitcoind:    btcctl,
+		bitcoind:    bitcoin,
 		EmailSender: sender,
 	}
 
@@ -209,14 +211,14 @@ func NewApp(d *db.DB,
 // TODO: secure these routes with access control
 func (r *RestServer) RegisterAdminRoutes() {
 	getInfo := func(c *gin.Context) {
-		chainInfo, err := r.bitcoind.Client().GetBlockChainInfo()
+		chainInfo, err := r.bitcoind.Btcctl.GetBlockChainInfo()
 		if err != nil {
 			log.WithError(err).Error("bitcoind.getblockchaininfo")
 			c.JSONP(http.StatusInternalServerError, err)
 			return
 		}
 
-		bitcoindBalance, err := r.bitcoind.Client().GetBalance("*")
+		bitcoindBalance, err := r.bitcoind.Btcctl.GetBalance("*")
 		if err != nil {
 			log.WithError(err).Error("bitcoind.getbalance")
 			c.JSONP(http.StatusInternalServerError, err)

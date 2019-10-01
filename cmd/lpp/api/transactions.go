@@ -88,10 +88,10 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 // If the withdrawal is successful, it responds with the txid
 func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 	type WithdrawResponse struct {
-		Txid        string `json:"txid"`
-		Address     string `json:"address"`
-		AmountSat   int64  `json:"amountSat"`
-		Description string `json:"description"`
+		Txid        *string `json:"txid"`
+		Address     string  `json:"address"`
+		AmountSat   int64   `json:"amountSat"`
+		Description string  `json:"description"`
 	}
 
 	return func(c *gin.Context) {
@@ -110,7 +110,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		// TODO: Create a middleware for logging request body
 		log.Infof("Received WithdrawOnChain request %+v\n", request)
 
-		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, request)
+		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, request)
 		if err != nil {
 			log.Errorf("cannot withdraw onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,
