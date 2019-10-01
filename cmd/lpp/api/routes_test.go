@@ -183,19 +183,6 @@ func TestPostLoginRoute(t *testing.T) {
 		LastName:  &second,
 	})
 
-	t.Run("fail to login with bad password", func(t *testing.T) {
-		badPassword := "this-is-bad"
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/login",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-			"email": %q,
-			"password": %q
-		}`, email, badPassword),
-		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-
 	t.Run("fail to login with invalid email", func(t *testing.T) {
 		badEmail := "foobar"
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
