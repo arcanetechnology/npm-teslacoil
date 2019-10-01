@@ -24,6 +24,12 @@ endif
 serve: build-lpp
 	./lpp-dev serve
 
+serve-testnet: build-lpp
+	docker-compose down
+	docker-compose up -d db
+	systemctl start lnd
+	./lpp-dev serve
+
 test-only: 
 	go test ./... -run ${TEST_ARGS}
 
