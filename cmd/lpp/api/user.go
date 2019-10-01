@@ -193,7 +193,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 	// LoginRequest is the expected type to find a user in the DB
 	type LoginRequest struct {
 		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,password"`
+		Password string `json:"password" binding:"required"`
 		TotpCode string `json:"totp"`
 	}
 
