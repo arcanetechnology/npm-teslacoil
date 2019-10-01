@@ -2,7 +2,9 @@ package api
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/btcsuite/btcd/wire"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -17,6 +19,7 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 )
@@ -95,8 +98,31 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
 		EmailSender: email,
 	}
 
-	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
+	zmqRawTxCh := make(chan *wire.MsgTx)
+	zmqBlockCh := make(chan *wire.MsgBlock)
 
+	// Start a bitcoind conn using the standard testnet params
+	// TODO(bo): read these parameters from ~/.bitcoin/bitcoin.conf.
+	//  See example in extractBitcoindRPCParams in lnd-codebase
+	bitcoindConn, err := bitcoind.NewConn(bitcoind.Config{
+		RpcPort:      18332,
+		User:         "kek",
+		Password:     "kek",
+		ZmqBlockHost: "tcp://127.0.0.1:28332",
+		ZmqTxHost:    "tcp://127.0.0.1:28333",
+	}, 1*time.Second, zmqRawTxCh, zmqBlockCh)
+	if err != nil {
+		panic(err)
+	}
+	log.Info("opened connection to bitcoind")
+
+	// Start two goroutines for listening to zmq events
+	bitcoindConn.StartZmq()
+
+	go bitcoind.ListenTxs(zmqRawTxCh)
+	go bitcoind.ListenBlocks(zmqBlockCh)
+
+	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
 	// Start a goroutine for getting notified of newly added/settled invoices.
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 	// Start a goroutine for handling the newly added/settled invoices.

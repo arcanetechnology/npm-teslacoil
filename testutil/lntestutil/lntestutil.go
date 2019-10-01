@@ -401,7 +401,6 @@ func (conf *BitcoindConfig) ToConnConfig() *rpcclient.ConnConfig {
 		DisableTLS:   true, // Bitcoin Core doesn't do TLS
 		HTTPPostMode: true, // Bitcoin Core only supports HTTP POST mode
 	}
-
 }
 
 // GetBitcoindClientOrFail returns a bitcoind RPC client, corresponding to
