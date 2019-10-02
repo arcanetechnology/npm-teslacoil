@@ -14,7 +14,9 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 
@@ -51,7 +53,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevel(logrus.DebugLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
@@ -133,8 +135,12 @@ func TestNewPayment(t *testing.T) {
 				InvoiceResponse: tt.lndInvoice,
 			}
 
-			payment, err := NewPayment(testDB, mockLNcli, tt.want.UserID,
-				tt.amountSat, tt.memo, tt.description)
+			payment, err := NewPayment(testDB, mockLNcli, NewPaymentOpts{
+				UserID:      tt.want.UserID,
+				AmountSat:   tt.amountSat,
+				Memo:        tt.memo,
+				Description: tt.description,
+			})
 			if err != nil {
 				testutil.FatalMsgf(t, "should be able to CreateInvoice %+v", err)
 			}
@@ -500,18 +506,18 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			func(t *testing.T) {
 
 				// Arrange
-				_, err := NewPayment(testDB,
-					lntestutil.LightningMockClient{
-						InvoiceResponse: test.triggerInvoice,
-					}, u.ID, test.amountSat, test.memo, "")
-				if err != nil {
-					testutil.FatalMsgf(t,
-						"should be able to CreateInvoice. Error:  %+v\n",
-						err)
+				lnMock := lntestutil.LightningMockClient{
+					InvoiceResponse: test.triggerInvoice,
 				}
+				_ = NewPaymentOrFail(t, lnMock, NewPaymentOpts{
+					UserID:    u.ID,
+					AmountSat: test.amountSat,
+					Memo:      test.memo,
+				})
 
 				// Act
-				payment, err := UpdateInvoiceStatus(test.triggerInvoice, testDB)
+				payment, err := UpdateInvoiceStatus(test.triggerInvoice, testDB,
+					testutil.GetMockHttpPoster())
 				if err != nil {
 					testutil.FatalMsgf(t,
 						"should be able to UpdateInvoiceStatus. Error:  %+v\n",
@@ -541,6 +547,90 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				}
 			})
 	}
+
+	t.Run("callback URL should be called", func(t *testing.T) {
+		t.Parallel()
+		testutil.DescribeTest(t)
+
+		lnMock := lntestutil.GetRandomLightningMockClient()
+		httpPoster := testutil.GetMockHttpPoster()
+		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
+		payment := NewPaymentOrFail(t, lnMock, NewPaymentOpts{
+			UserID:      u.ID,
+			AmountSat:   mockInvoice.Value,
+			CallbackURL: "https://example.com",
+		})
+
+		testutil.AssertMsg(t, payment.CallbackURL != nil,
+			"Callback URL was nil! Payment: "+payment.String())
+		invoice := lnrpc.Invoice{
+			PaymentRequest: payment.PaymentRequest,
+			Settled:        true,
+		}
+
+		_, err := UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		if err != nil {
+			testutil.FatalMsgf(t,
+				"should be able to UpdateInvoiceStatus. Error:  %+v\n",
+				err)
+		}
+		checkPostSent := func() bool {
+			return httpPoster.GetSentPostRequests() == 1
+		}
+
+		// emails are sent in go-routing, so can't assume they're sent fast
+		// enough for test to pick up
+		if err := asyncutil.Await(8,
+			time.Millisecond*20, checkPostSent); err != nil {
+			testutil.FatalMsg(t, err)
+		}
+	})
+
+	t.Run("callback URL should not be called with non-setted invoice", func(t *testing.T) {
+		t.Parallel()
+		lnMock := lntestutil.GetLightningMockClient()
+		httpPoster := testutil.GetMockHttpPoster()
+		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
+		payment := NewPaymentOrFail(t, lnMock, NewPaymentOpts{
+			UserID:      u.ID,
+			AmountSat:   mockInvoice.Value,
+			CallbackURL: "https://example.com",
+		})
+
+		invoice := lnrpc.Invoice{
+			PaymentRequest: payment.PaymentRequest,
+			Settled:        false,
+		}
+
+		_, err := UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		if err != nil {
+			testutil.FatalMsgf(t,
+				"should be able to UpdateInvoiceStatus. Error:  %+v\n",
+				err)
+		}
+
+		checkPostSent := func() bool {
+			return httpPoster.GetSentPostRequests() > 0
+		}
+
+		// emails are sent in go-routing, so can't assume they're sent fast
+		// enough for test to pick up
+		if err := asyncutil.Await(4,
+			time.Millisecond*20, checkPostSent); err == nil {
+			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled payment")
+		}
+	})
+}
+
+func NewPaymentOrFail(t *testing.T, ln ln.AddLookupInvoiceClient,
+	opts NewPaymentOpts) Payment {
+	payment, err := NewPayment(testDB, ln, opts)
+	if err != nil {
+		testutil.FatalMsgf(t,
+			"should be able to CreateInvoice. Error:  %+v\n",
+			err)
+	}
+	return payment
 }
 
 func TestGetAllOffset(t *testing.T) {
@@ -569,18 +659,18 @@ func TestGetAllOffset(t *testing.T) {
 	}
 
 	for _, invoice := range testInvoices {
-		_, err := NewPayment(testDB,
+		if _, err := NewPayment(testDB,
 			lntestutil.LightningMockClient{
 				InvoiceResponse: lnrpc.Invoice{
 					Value: int64(invoice.AmountSat),
 					Memo:  invoice.Memo,
 				},
 			},
-			user.ID,
-			invoice.AmountSat,
-			invoice.Memo,
-			"")
-		if err != nil {
+			NewPaymentOpts{
+				UserID:    user.ID,
+				AmountSat: invoice.AmountSat,
+				Memo:      invoice.Memo,
+			}); err != nil {
 			testutil.FatalMsg(t, errors.Wrap(err, "could not create invoice"))
 		}
 	}
@@ -678,18 +768,18 @@ func TestGetAllLimit(t *testing.T) {
 	user := CreateUserOrFail(t)
 
 	for _, invoice := range testInvoices {
-		_, err := NewPayment(testDB,
+		if _, err := NewPayment(testDB,
 			lntestutil.LightningMockClient{
 				InvoiceResponse: lnrpc.Invoice{
 					Value: int64(invoice.AmountSat),
 					Memo:  invoice.Memo,
 				},
 			},
-			user.ID,
-			invoice.AmountSat,
-			invoice.Memo,
-			"")
-		if err != nil {
+			NewPaymentOpts{
+				UserID:    user.ID,
+				AmountSat: invoice.AmountSat,
+				Memo:      invoice.Memo,
+			}); err != nil {
 			testutil.FatalMsg(t, "could not create invoice")
 		}
 	}
