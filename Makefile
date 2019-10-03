@@ -22,10 +22,10 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
 endif
 
 serve: build-lpp
-	./scripts/serve-regtest.sh
+	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
 
 serve-testnet: build-lpp
-	./scripts/serve-testnet.sh
+	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
 test-only: 
 	go test ./... -run ${TEST_ARGS}
