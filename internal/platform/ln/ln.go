@@ -81,9 +81,17 @@ var (
 	DefaultRPCHostPort = fmt.Sprintf("localhost:%d", DefaultPort)
 )
 
+func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
+	name := network.Name
+	if name == "testnet3" {
+		name = "testnet"
+	}
+	return filepath.Join("data", "chain",
+		"bitcoin", name, "admin.macaroon")
+}
+
 func DefaultMacaroonPath(params chaincfg.Params) string {
-	return filepath.Join(DefaultLndDir, "data", "chain",
-		"bitcoin", params.Name, "admin.macaroon")
+	return filepath.Join(DefaultLndDir, DefaultRelativeMacaroonPath(params))
 }
 
 var (
@@ -107,7 +115,8 @@ func NewLNDClient(options LightningConfig) (
 	}
 
 	if cfg.MacaroonPath == "" {
-		cfg.MacaroonPath = filepath.Join(cfg.LndDir, "data", "chain", "bitcoin", cfg.Network.Name, "admin.macaroon")
+		cfg.MacaroonPath = filepath.Join(cfg.LndDir,
+			DefaultRelativeMacaroonPath(options.Network))
 	}
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")

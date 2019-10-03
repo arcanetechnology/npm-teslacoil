@@ -105,7 +105,7 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 
 	ok := false
 	for _, chain := range info.Chains {
-		if chain.Chain == "bitcoin" && chain.Network == expected.Name {
+		if chain.Chain == "bitcoin" && strings.HasPrefix(expected.Name, chain.Network) {
 			ok = true
 		}
 	}

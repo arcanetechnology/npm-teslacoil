@@ -298,9 +298,7 @@ func StartLndOrFail(t *testing.T,
 
 	if lndConfig.MacaroonPath == "" {
 		lndConfig.MacaroonPath = filepath.Join(
-			lndConfig.LndDir, "data",
-			"chain", "bitcoin",
-			lndConfig.Network.Name, "admin.macaroon",
+			lndConfig.LndDir, ln.DefaultRelativeMacaroonPath(lndConfig.Network),
 		)
 	}
 	if lndConfig.TLSCertPath == "" {
