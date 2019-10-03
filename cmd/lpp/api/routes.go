@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 
 	"github.com/gin-contrib/cors"
@@ -195,12 +196,70 @@ func NewApp(d *db.DB,
 	})
 
 	r.RegisterApiKeyRoutes()
+	r.RegisterAdminRoutes()
 	r.RegisterAuthRoutes()
 	r.RegisterUserRoutes()
 	r.RegisterPaymentRoutes()
 	r.RegisterTransactionRoutes()
 
 	return r, nil
+}
+
+// RegisterAdminRoutes registers routes related to administration of Teslacoil
+// TODO: secure these routes with access control
+func (r *RestServer) RegisterAdminRoutes() {
+	getInfo := func(c *gin.Context) {
+		chainInfo, err := r.bitcoind.Client().GetBlockChainInfo()
+		if err != nil {
+			log.WithError(err).Error("bitcoind.getblockchaininfo")
+			c.JSONP(http.StatusInternalServerError, err)
+			return
+		}
+
+		bitcoindBalance, err := r.bitcoind.Client().GetBalance("*")
+		if err != nil {
+			log.WithError(err).Error("bitcoind.getbalance")
+			c.JSONP(http.StatusInternalServerError, err)
+			return
+		}
+
+		lndWalletBalance, err := r.lncli.WalletBalance(context.Background(), &lnrpc.WalletBalanceRequest{})
+		if err != nil {
+			log.WithError(err).Error("lncli.walletbalance")
+			c.JSONP(http.StatusInternalServerError, err)
+			return
+		}
+
+		lndChannelBalance, err := r.lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
+		if err != nil {
+			log.WithError(err).Error("lncli.channelbalance")
+			c.JSONP(http.StatusInternalServerError, err)
+			return
+		}
+
+		lndInfo, err := r.lncli.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+		if err != nil {
+			log.WithError(err).Error("lncli.getinfo")
+			c.JSONP(http.StatusInternalServerError, err)
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"network":               chainInfo.Chain,
+			"bestBlockHash":         chainInfo.BestBlockHash,
+			"blockCount":            chainInfo.Blocks,
+			"lnPeers":               lndInfo.NumPeers,
+			"bitcoindBalanceSats":   bitcoindBalance.ToUnit(btcutil.AmountSatoshi),
+			"lndWalletBalanceSats":  lndWalletBalance.TotalBalance,
+			"lndChannelBalanceSats": lndChannelBalance.Balance,
+			"activeChannels":        lndInfo.NumActiveChannels,
+			"pendingChannels":       lndInfo.NumPendingChannels,
+			"inactiveChannels":      lndInfo.NumInactiveChannels,
+		})
+
+	}
+
+	r.Router.GET("/info", getInfo)
 }
 
 // RegisterAuthRoutes registers all auth routes
