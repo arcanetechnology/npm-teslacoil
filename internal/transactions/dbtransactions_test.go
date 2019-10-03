@@ -32,7 +32,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevel(logrus.InfoLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
@@ -147,15 +147,16 @@ func TestWithdrawOnChainBadOpts(t *testing.T) {
 	}
 	mockLNcli := lntestutil.LightningMockClient{
 		SendCoinsResponse: lnrpc.SendCoinsResponse{
-			Txid: "owrgkpoaerkgpok",
+			Txid: testutil.MockTxid(),
 		},
 	}
+	mockBitcoin := lntestutil.TeslacoilBitcoindMockClient{}
 
 	for _, test := range testCases {
 		user := CreateUserWithBalanceOrFail(t, test.balance)
 
 		t.Run(test.scenario, func(t *testing.T) {
-			txid, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
+			txid, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
 				UserID:    user.ID,
 				AmountSat: test.amountSat,
 				Address:   simnetAddress,
@@ -198,11 +199,12 @@ func TestWithdrawOnChainSendAll(t *testing.T) {
 
 			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: "owrgkpoaerkgpok",
+					Txid: testutil.MockTxid(),
 				},
 			}
+			mockBitcoin := lntestutil.TeslacoilBitcoindMockClient{}
 
-			_, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
+			_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
 				UserID:    user.ID,
 				AmountSat: test.amountSat,
 				Address:   testnetAddress,

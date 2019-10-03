@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/btcsuite/btcd/rpcclient"
-
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
@@ -186,7 +184,7 @@ type WithdrawOnChainArgs struct {
 // using our function SendOnChain
 // If the user does not have enough balance, the transaction is aborted
 // See WithdrawOnChainArgs for more information about the possible arguments
-func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, c bitcoind.Conn,
+func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind,
 	args WithdrawOnChainArgs) (*Transaction, error) {
 
 	user, err := users.GetByID(db, args.UserID)
@@ -232,7 +230,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, c bitcoind.Conn,
 		return nil, errors.Wrap(err, "could not send on-chain")
 	}
 
-	vout, err := c.FindOutput(txid, args.AmountSat)
+	vout, err := bitcoin.FindVout(txid, args.AmountSat)
 	if err != nil {
 		log.WithError(err).Error("could not find output")
 	}
@@ -342,12 +340,16 @@ func GetOrCreateDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args 
 	return deposit, nil
 }
 
-// ListenTxs receives tx's from the zmqTxChannel and checks whether
-// the tx is a deposit to one of our addresses. If it is a deposit
-// to us, we register the txid and output index to a INBOUND transaction
+// TxListener receives tx's from the zmqTxChannel and checks whether
+// any of the tx outputs is a deposit to one of our addresses. If an
+// output is a deposit to us, we save the txid+vout in the DB.
+// Every output of a tx is always checked, and if a single tx has
+// several outputs which are a deposit to teslacoil, we save each
+// txid+vout as a unique entry in the DB
 //
 // NOTE: This must be run as a goroutine
-func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.MsgTx) {
+func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.MsgTx,
+	chainCfg *chaincfg.Params) {
 	for {
 		tx := <-zmqRawTxCh
 
@@ -362,7 +364,7 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 				// we continue to keep listening for new trasactions
 				continue
 			}
-			address, err := script.Address(&chaincfg.RegressionNetParams)
+			address, err := script.Address(chainCfg)
 			if err != nil {
 				log.WithError(err).Error("could not extract address from script")
 				continue
@@ -374,7 +376,6 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 			query := "SELECT * FROM transactions WHERE address=$1"
 			result := []Transaction{}
 			if err := db.Get(&result, query, address.EncodeAddress()); err != nil {
-				log.Tracef("TXLISTENER ERROR: %+v", err)
 				if err == sql.ErrNoRows {
 					// address does not belong to us
 					continue
@@ -396,7 +397,7 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 						_, err = NewDepositWithFields(db, lncli, transaction.UserID,
 							"", &vout, &txid)
 						if err != nil {
-							log.WithError(err).Error("could not create new deposit for %d with txid %s:%d",
+							log.WithError(err).Errorf("could not create new deposit for %d with txid %s:%d",
 								transaction.UserID, txid, vout)
 						}
 					}
@@ -414,14 +415,14 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 	}
 }
 
-// ListenBlocks receives parsed blocks from the zmqBlockChannel and
+// BlockListener receives parsed blocks from the zmqBlockChannel and
 // for every unconfirmed transaction in our database, checks whether
 // it is now confirmed by looking up the txid using bitcoind RPC.
 // If the transaction is now confirmed, the transaction is marked
 // as confirmed and we credit the user with the transaction amount
 //
 // NOTE: This must be run as a goroutine
-func BlockListener(db *db.DB, bitcoindRpc *rpcclient.Client, ch chan *wire.MsgBlock) {
+func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgBlock) {
 	const confirmationLimit = 3
 
 	for {
@@ -429,7 +430,7 @@ func BlockListener(db *db.DB, bitcoindRpc *rpcclient.Client, ch chan *wire.MsgBl
 		// we query bitcoind directly for the status of every transaction
 		// TODO?: Check all the transactions to see whether they are
 		//  a deposit to us, but is not saved in our DB yet
-		_ = <-ch
+		<-ch
 
 		query := "SELECT * FROM transactions WHERE confirmed = false and txid NOTNULL"
 		queryResult := []Transaction{}
@@ -516,7 +517,7 @@ func (t Transaction) SaveTxidToDeposit(db *db.DB, txHash chainhash.Hash, vout in
 	return nil
 }
 
-// markTransactionAsConfirmed updates the transaction stored in the db
+// MarkAsConfirmed updates the transaction stored in the db
 // with Confirmed = true and ConfirmedAt = Now(). After updating the transaction
 // it attempts to credit the user with the tx amount. Should anything fail, all
 // changes are rolled back

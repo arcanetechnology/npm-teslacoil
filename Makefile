@@ -27,12 +27,6 @@ serve: build-lpp
 serve-testnet: build-lpp
 	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
-serve-testnet: build-lpp
-	docker-compose down
-	docker-compose up -d db
-	systemctl start lnd
-	./lpp-dev serve
-
 test-only: 
 	go test ./... -run ${TEST_ARGS}
 

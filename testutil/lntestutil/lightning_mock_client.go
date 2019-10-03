@@ -212,16 +212,14 @@ func (client LightningMockClient) NewAddress(ctx context.Context, in *lnrpc.NewA
 	}, nil
 }
 
-func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {
-	return &lnrpc.SendCoinsResponse{
-		Txid: "this_is_a_fake_txid",
-	}, nil
-}
-
 func (client LightningMockClient) AddInvoice(ctx context.Context,
 	in *lnrpc.Invoice, opts ...grpc.CallOption) (
 	*lnrpc.AddInvoiceResponse, error) {
 	return &lnrpc.AddInvoiceResponse{}, nil
+}
+
+func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {
+	return &client.SendCoinsResponse, nil
 }
 
 func (client LightningMockClient) LookupInvoice(ctx context.Context,

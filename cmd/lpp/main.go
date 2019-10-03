@@ -98,7 +98,7 @@ const (
 // if that isn't possible within a set of attempts
 func awaitBitcoind(btc *bitcoind.Conn) error {
 	retry := func() bool {
-		_, err := btc.Btcctl.GetBlockChainInfo()
+		_, err := btc.Btcctl().GetBlockChainInfo()
 		return err == nil
 	}
 	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach bitcoind")
@@ -200,7 +200,7 @@ var (
 				Network:  network,
 			}
 			a, err := api.NewApp(database, lncli, sendGridClient,
-				*bitcoindConn, realHttpSender{}, config)
+				bitcoindConn, realHttpSender{}, config)
 
 			log.Info("opened connection to bitcoind")
 

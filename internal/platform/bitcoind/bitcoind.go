@@ -73,19 +73,29 @@ func DefaultRpcPort(params chaincfg.Params) (int, error) {
 // Conn represents a persistent client connection to a bitcoind node
 // that listens for events read from a ZMQ connection
 type Conn struct {
-	Btcctl *rpcclient.Client
+	btcctl *rpcclient.Client
 	// zmqBlockConn is the ZMQ connection we'll use to read raw block
 	// events
 	zmqBlockConn *gozmq.Conn
 	// ZmqBlockCh is the channel on which we return block events received
 	// from zmq
-	ZmqBlockCh chan *wire.MsgBlock
+	zmqBlockCh chan *wire.MsgBlock
 	// zmqTxConn is the ZMQ connection we'll use to read raw new
 	// transaction events
 	zmqTxConn *gozmq.Conn
 	// ZmqTxCh is the channel on which we return tx events received
 	// from zmq
-	ZmqTxCh chan *wire.MsgTx
+	zmqTxCh chan *wire.MsgTx
+}
+
+func (c *Conn) Btcctl() RpcClient {
+	return c.btcctl
+}
+func (c *Conn) ZmqBlockChannel() chan *wire.MsgBlock {
+	return c.zmqBlockCh
+}
+func (c *Conn) ZmqTxChannel() chan *wire.MsgTx {
+	return c.zmqTxCh
 }
 
 // NewConn returns a BitcoindConn corresponding to the given
@@ -126,13 +136,13 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 	zmqBlockCh := make(chan *wire.MsgBlock)
 
 	conn := &Conn{
-		Btcctl:       client,
+		btcctl:       client,
 		zmqBlockConn: zmqBlockConn,
 		zmqTxConn:    zmqTxConn,
 		// We register the channels on the connection to make them accessible
 		// to the blockEventHandler and txEventHandler functions
-		ZmqTxCh:    zmqRawTxCh,
-		ZmqBlockCh: zmqBlockCh,
+		zmqTxCh:    zmqRawTxCh,
+		zmqBlockCh: zmqBlockCh,
 	}
 
 	return conn, nil
@@ -157,14 +167,14 @@ func (c *Conn) StopZmq() {
 	_ = c.zmqTxConn.Close()
 }
 
-func (c *Conn) FindOutput(txid string, amountSat int64) (int, error) {
+func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
 
 	txHash, err := chainhash.NewHashFromStr(txid)
 	if err != nil {
 		return -1, errors.Wrapf(err, "could not create txHash using txid %q", txHash)
 	}
 
-	transactionResult, err := c.Btcctl.GetTransaction(txHash)
+	transactionResult, err := c.Btcctl().GetTransaction(txHash)
 	if err != nil {
 		return -1, errors.Wrapf(err, "could not GetTransaction(%s)", txHash)
 	}
@@ -229,7 +239,7 @@ func (c *Conn) blockEventHandler() {
 			}
 
 			// send the deserialized block to the block channel
-			c.ZmqBlockCh <- block
+			c.zmqBlockCh <- block
 
 		default:
 			// It's possible that the message wasn't fully read if
@@ -293,7 +303,7 @@ func (c *Conn) txEventHandler() {
 			}
 
 			// send the tx event to the channel
-			c.ZmqTxCh <- tx
+			c.zmqTxCh <- tx
 
 		default:
 			// It's possible that the message wasn't fully read if
@@ -308,28 +318,6 @@ func (c *Conn) txEventHandler() {
 				"subscription: %v", eventType)
 		}
 
-	}
-}
-
-// ListenTxs receives readily parsed txs and prints them
-//
-// NOTE: This must be run as a goroutine
-func ListenTxs(zmqRawTxCh chan *wire.MsgTx) {
-	for {
-		tx := <-zmqRawTxCh
-
-		log.Error("received new TX: ", tx)
-	}
-}
-
-//ListenBlocks receives readily parsed blocks and prints them
-//
-// NOTE: This must be run as a goroutine
-func ListenBlocks(zmqRawBlockCh chan *wire.MsgBlock) {
-	for {
-		block := <-zmqRawBlockCh
-
-		log.Error("received new block: ", block)
 	}
 }
 

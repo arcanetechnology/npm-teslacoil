@@ -50,7 +50,7 @@ type RestServer struct {
 	Router      *gin.Engine
 	db          *db.DB
 	lncli       lnrpc.LightningClient
-	bitcoind    bitcoind.Conn
+	bitcoind    bitcoind.TeslacoilBitcoind
 	EmailSender EmailSender
 }
 
@@ -121,7 +121,7 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 func NewApp(db *db.DB,
 	lncli lnrpc.LightningClient,
 	sender EmailSender,
-	bitcoin bitcoind.Conn,
+	bitcoin bitcoind.TeslacoilBitcoind,
 	callbacks payments.HttpPoster,
 	config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
@@ -155,7 +155,7 @@ func NewApp(db *db.DB,
 	}))
 
 	log.Info("Checking bitcoind connection")
-	if err := checkBitcoindConnection(bitcoin.Btcctl, config.Network); err != nil {
+	if err := checkBitcoindConnection(bitcoin.Btcctl(), config.Network); err != nil {
 		return RestServer{}, err
 	}
 	log.Info("Checked bitcoind connection succesfully")
@@ -167,8 +167,8 @@ func NewApp(db *db.DB,
 	// Start two goroutines for listening to zmq events
 	bitcoin.StartZmq()
 
-	go transactions.TxListener(db, lncli, bitcoin.ZmqTxCh)
-	go transactions.BlockListener(db, bitcoin.Btcctl, bitcoin.ZmqBlockCh)
+	go transactions.TxListener(db, lncli, bitcoin.ZmqTxChannel(), &config.Network)
+	go transactions.BlockListener(db, bitcoin.Btcctl(), bitcoin.ZmqBlockChannel())
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
 	// Start a goroutine for getting notified of newly added/settled invoices.
@@ -211,14 +211,14 @@ func NewApp(db *db.DB,
 // TODO: secure these routes with access control
 func (r *RestServer) RegisterAdminRoutes() {
 	getInfo := func(c *gin.Context) {
-		chainInfo, err := r.bitcoind.Btcctl.GetBlockChainInfo()
+		chainInfo, err := r.bitcoind.Btcctl().GetBlockChainInfo()
 		if err != nil {
 			log.WithError(err).Error("bitcoind.getblockchaininfo")
 			c.JSONP(http.StatusInternalServerError, err)
 			return
 		}
 
-		bitcoindBalance, err := r.bitcoind.Btcctl.GetBalance("*")
+		bitcoindBalance, err := r.bitcoind.Btcctl().GetBalance("*")
 		if err != nil {
 			log.WithError(err).Error("bitcoind.getbalance")
 			c.JSONP(http.StatusInternalServerError, err)

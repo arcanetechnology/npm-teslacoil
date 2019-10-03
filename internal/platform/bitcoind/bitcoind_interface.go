@@ -13,13 +13,28 @@ import (
 // TeslacoilBitcoind is a wrapper around a normal RPC client that
 // provides extra functionality used in Teslacoil
 type TeslacoilBitcoind interface {
+	ConnFieldGetter
+	ZmqStopStarter
+	VoutFinder
+}
+
+type ZmqStopStarter interface {
 	StartZmq()
 	StopZmq()
 }
 
+type VoutFinder interface {
+	FindVout(txid string, amountSat int64) (int, error)
+}
+
+type ConnFieldGetter interface {
+	Btcctl() RpcClient
+	ZmqBlockChannel() chan *wire.MsgBlock
+	ZmqTxChannel() chan *wire.MsgTx
+}
+
 // RpcClient is a client that can query bitcoind/btcd.
 type RpcClient interface {
-
 	// All methods below are cribbed from https://godoc.org/github.com/btcsuite/btcd/rpcclient
 
 	AddMultisigAddress(requiredSigs int, addresses []btcutil.Address, account string) (btcutil.Address, error)

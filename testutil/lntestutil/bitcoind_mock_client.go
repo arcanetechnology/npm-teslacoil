@@ -25,16 +25,20 @@ func (t TeslacoilBitcoindMockClient) StartZmq() {}
 
 func (t TeslacoilBitcoindMockClient) StopZmq() {}
 
-func (t TeslacoilBitcoindMockClient) GetZmqRawTxChannel() chan *wire.MsgTx {
+func (t TeslacoilBitcoindMockClient) ZmqTxChannel() chan *wire.MsgTx {
 	return make(chan *wire.MsgTx)
 }
 
-func (t TeslacoilBitcoindMockClient) GetZmqRawBlockChannel() chan *wire.MsgBlock {
+func (t TeslacoilBitcoindMockClient) ZmqBlockChannel() chan *wire.MsgBlock {
 	return make(chan *wire.MsgBlock)
 }
 
-func (t TeslacoilBitcoindMockClient) Client() bitcoind.RpcClient {
+func (t TeslacoilBitcoindMockClient) Btcctl() bitcoind.RpcClient {
 	return BitcoindRpcMockClient{}
+}
+
+func (t TeslacoilBitcoindMockClient) FindVout(txid string, amountSat int64) (int, error) {
+	return 0, nil
 }
 
 // BitcoindRpcMockClient is a mocked out bitcoind.RpcClient where the responses
