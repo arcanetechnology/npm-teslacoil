@@ -44,6 +44,25 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	}
 }
 
+func AssertNotEqual(t *testing.T, expected interface{}, actual interface{}) {
+	t.Helper()
+	if reflect.ValueOf(expected).Kind() == reflect.Struct && reflect.ValueOf(actual).Kind() == reflect.Struct {
+		if reflect.DeepEqual(expected, actual) {
+			FatalMsg(t, "expected structs to be not equal")
+		}
+		return
+	}
+
+	bothAreNil := isNilValue(expected) && isNilValue(actual)
+	if bothAreNil {
+		FatalMsg(t, "Expected and actual values are both nil")
+	}
+
+	if expected == actual {
+		FatalMsgf(t, "Expected (%+v) is equal to actual (%+v)!", expected, actual)
+	}
+}
+
 //AssertMsg asserts that the given condition holds, failing with the given
 // message if it doesn't
 func AssertMsg(t *testing.T, cond bool, message string) {
