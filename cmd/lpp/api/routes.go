@@ -1,10 +1,14 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
-	"time"
+	"strings"
 
-	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/chaincfg"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -29,6 +33,8 @@ import (
 type Config struct {
 	// LogLevel specifies which level our application is going to log to
 	LogLevel logrus.Level
+	// The Bitcoin blockchain network we're on
+	Network chaincfg.Params
 }
 
 type EmailSender interface {
@@ -40,7 +46,8 @@ type EmailSender interface {
 type RestServer struct {
 	Router      *gin.Engine
 	db          *db.DB
-	lncli       *lnrpc.LightningClient
+	lncli       lnrpc.LightningClient
+	bitcoind    bitcoind.TeslacoilBitcoind
 	EmailSender EmailSender
 }
 
@@ -77,50 +84,88 @@ func getGinEngine(config Config) *gin.Engine {
 	return engine
 }
 
+func checkBitcoindConnection(conn bitcoind.RpcClient, expected chaincfg.Params) error {
+	info, err := conn.GetBlockChainInfo()
+	if err != nil {
+		return errors.Wrap(err, "could not get bitcoind info")
+	}
+	if !strings.HasPrefix(expected.Name, info.Chain) {
+		return errors.Wrap(err, fmt.Sprintf("app (%s) and bitcoind (%s) are on different networks",
+			expected.Name, info.Chain))
+	}
+	return nil
+}
+
+func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) error {
+	info, err := lncli.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+	if err != nil {
+		return errors.Wrap(err, "could not get lnd info:")
+	}
+
+	ok := false
+	for _, chain := range info.Chains {
+		if chain.Chain == "bitcoin" && chain.Network == expected.Name {
+			ok = true
+		}
+	}
+	if !ok {
+		return fmt.Errorf("app (%s) and lnd (%+v) are on different networks", expected.Name, info.Chains)
+	}
+	return nil
+}
+
 //NewApp creates a new app
-func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
-	callbacks payments.HttpPoster, config Config) (RestServer, error) {
+func NewApp(d *db.DB,
+	lncli lnrpc.LightningClient,
+	sender EmailSender,
+	btcctl bitcoind.TeslacoilBitcoind,
+	callbacks payments.HttpPoster,
+	config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
 
-	g := getGinEngine(config)
+	if config.Network.Name == "" {
+		return RestServer{}, errors.New("config.Network is not set")
+	}
+
+	g := gin.Default()
 
 	engine, ok := binding.Validator.Engine().(*validator.Validate)
 	if !ok {
-		log.Fatalf("Gin validator engine (%s) was validator.Validate", binding.Validator.Engine())
+		return RestServer{}, fmt.Errorf(
+			"gin validator engine (%s) was not validator.Validate",
+			binding.Validator.Engine(),
+		)
 	}
 	validators := validation.RegisterAllValidators(engine)
 	log.Infof("Registered custom validators: %s", validators)
 
-	r := RestServer{
-		Router:      g,
-		db:          d,
-		lncli:       &lncli,
-		EmailSender: email,
-	}
+	g.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000"},
+		AllowMethods: []string{
+			http.MethodPut, http.MethodGet,
+			http.MethodPost, http.MethodPatch,
+			http.MethodDelete,
+		},
+		AllowHeaders: []string{
+			"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
+			"Authorization"},
+	}))
 
-	zmqRawTxCh := make(chan *wire.MsgTx)
-	zmqBlockCh := make(chan *wire.MsgBlock)
-
-	// Start a bitcoind conn using the standard testnet params
-	// TODO(bo): read these parameters from ~/.bitcoin/bitcoin.conf.
-	//  See example in extractBitcoindRPCParams in lnd-codebase
-	bitcoindConn, err := bitcoind.NewConn(bitcoind.Config{
-		RpcPort:      18332,
-		User:         "kek",
-		Password:     "kek",
-		ZmqBlockHost: "tcp://127.0.0.1:28332",
-		ZmqTxHost:    "tcp://127.0.0.1:28333",
-	}, 1*time.Second, zmqRawTxCh, zmqBlockCh)
-	if err != nil {
-		panic(err)
+	log.Info("Checking bitcoind connection")
+	if err := checkBitcoindConnection(btcctl.Client(), config.Network); err != nil {
+		return RestServer{}, err
 	}
-	log.Info("opened connection to bitcoind")
+	log.Info("Checked bitcoind connection succesfully")
+
+	if err := checkLndConnection(lncli, config.Network); err != nil {
+		return RestServer{}, err
+	}
 
 	// Start two goroutines for listening to zmq events
-	bitcoindConn.StartZmq()
+	btcctl.StartZmq()
 
-	go bitcoind.ListenTxs(zmqRawTxCh)
-	go bitcoind.ListenBlocks(zmqBlockCh)
+	go bitcoind.ListenTxs(btcctl.GetZmqRawTxChannel())
+	go bitcoind.ListenBlocks(btcctl.GetZmqRawBlockChannel())
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
 	// Start a goroutine for getting notified of newly added/settled invoices.
@@ -128,6 +173,14 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
 	// Start a goroutine for handling the newly added/settled invoices.
 
 	go payments.InvoiceStatusListener(invoiceUpdatesCh, d, callbacks)
+
+	r := RestServer{
+		Router:      g,
+		db:          d,
+		lncli:       lncli,
+		bitcoind:    btcctl,
+		EmailSender: sender,
+	}
 
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login

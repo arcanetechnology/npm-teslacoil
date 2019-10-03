@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,12 +10,17 @@ import (
 	"path"
 	"sort"
 	"strconv"
+	"time"
 
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/wire"
 	_ "github.com/lib/pq" // Import postgres
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sendgrid/sendgrid-go"
-	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/util"
@@ -26,6 +32,8 @@ const (
 )
 
 var (
+	log = build.Log
+
 	// DatabaseName is the database being used to run the API
 	DatabaseName string
 	// DatabaseUser is the user being used to run the API
@@ -44,6 +52,17 @@ var (
 
 	// SendgridApiKey is the API key we use to interact with Sendgrid's servers
 	SendgridApiKey string
+
+	// lnConfig is the configuration we use to connect to LND, read from CLI
+	// parameters
+	lnConfig ln.LightningConfig
+
+	// bitcoindConfig is the configuration we use to connect to bitcoind, read
+	// from CLI parameters
+	bitcoindConfig bitcoind.Config
+
+	// network is the network our application runs on
+	network chaincfg.Params
 )
 
 type realHttpSender struct{}
@@ -53,9 +72,6 @@ func (s realHttpSender) Post(url, contentType string, reader io.Reader) (*http.R
 }
 
 func init() {
-	log = logrus.New().WithFields(logrus.Fields{
-		"package": "main",
-	})
 
 	DatabaseUser = util.GetEnvOrFail("DATABASE_USER")
 	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
@@ -71,10 +87,56 @@ func init() {
 		Port:     DatabasePort,
 		Name:     DatabaseName,
 	}
+
+}
+
+const (
+	rpcAwaitAttempts = 5
+	rpcAwaitDuration = time.Second
+)
+
+// awaitBitcoind tries to get a RPC response from bitcoind, returning an error
+// if that isn't possible within a set of attempts
+func awaitBitcoind(btc *bitcoind.Conn) error {
+	retry := func() bool {
+		_, err := btc.Client().GetBlockChainInfo()
+		return err == nil
+	}
+	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach bitcoind")
+}
+
+// awaitLnd tries to get a RPC response from lnd, returning an error
+// if that isn't possible within a set of attempts
+func awaitLnd(lncli lnrpc.LightningClient) error {
+	retry := func() bool {
+		_, err := lncli.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+		return err == nil
+	}
+	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach lnd")
+}
+
+// checkBitcoindConfig verifies that the given configuration has at least the
+// fields that we need to connect
+func checkBitcoindConfig(conf bitcoind.Config) error {
+	if conf.Password == "" {
+		return errors.New("config.Bitcoind.Password is not set")
+	}
+	if conf.User == "" {
+		return errors.New("config.Bitcoind.User is not set")
+	}
+	if conf.RpcPort == 0 {
+		return errors.New("config.Bitcoind.RpcPort is not set")
+	}
+	if conf.ZmqPubRawTx == "" {
+		return errors.New("config.Bitcoind.ZmqPubRawTx is not set")
+	}
+	if conf.ZmqPubRawBlock == "" {
+		return errors.New("config.Bitcoind.ZmqPubRawBlock is not set")
+	}
+	return nil
 }
 
 var (
-	log            *logrus.Entry
 	databaseConfig db.DatabaseConfig
 	serveCommand   = cli.Command{
 		Name:  "serve",
@@ -83,34 +145,46 @@ var (
 
 			database, err := db.Open(databaseConfig)
 			if err != nil {
-				log.Fatal(err)
 				return err
 			}
 
 			defer func() { err = database.Close() }()
 
-			lnConfig := ln.LightningConfig{
-				LndDir:       c.GlobalString("lnddir"),
-				TLSCertPath:  c.GlobalString("tlscertpath"),
-				MacaroonPath: c.GlobalString("macaroonpath"),
-				Network:      c.GlobalString("network"),
-				RPCServer:    c.GlobalString("lndrpcserver"),
+			if err := checkBitcoindConfig(bitcoindConfig); err != nil {
+				return err
 			}
 
-			config := api.Config{
-				LogLevel: build.Log.Level,
+			zmqRawTxCh := make(chan *wire.MsgTx)
+			zmqBlockCh := make(chan *wire.MsgBlock)
+			bitcoindConn, err := bitcoind.NewConn(bitcoindConfig, 1*time.Second, zmqRawTxCh, zmqBlockCh)
+			if err != nil {
+				return err
 			}
+
+			log.Info("opened connection to bitcoind")
+			if err := awaitBitcoind(bitcoindConn); err != nil {
+				return err
+			}
+			log.Info("bitcoind is properly started")
 
 			lncli, err := ln.NewLNDClient(lnConfig)
 			if err != nil {
-				log.Fatal(err)
 				return err
 			}
+			if err := awaitLnd(lncli); err != nil {
+				return err
+			}
+			log.Info("lnd is properly started")
+
 			sendGridClient := sendgrid.NewSendClient(SendgridApiKey)
+
+			config := api.Config{
+				LogLevel: build.Log.Level,
+				Network:  network,
+			}
 			a, err := api.NewApp(database, lncli, sendGridClient,
-				realHttpSender{}, config)
+				bitcoindConn, realHttpSender{}, config)
 			if err != nil {
-				log.Fatal(err)
 				return err
 			}
 
@@ -246,13 +320,6 @@ var (
 					defer func() { err = database.Close() }()
 					fmt.Println("Are you sure you want to fill dummy data? y/n")
 					if askForConfirmation() {
-						lnConfig := ln.LightningConfig{
-							LndDir:       c.GlobalString("lnddir"),
-							TLSCertPath:  c.GlobalString("tlscertpath"),
-							MacaroonPath: c.GlobalString("macaroonpath"),
-							Network:      c.GlobalString("network"),
-							RPCServer:    c.GlobalString("lndrpcserver"),
-						}
 						lncli, err := ln.NewLNDClient(lnConfig)
 						if err != nil {
 							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
@@ -315,6 +382,58 @@ func main() {
 			return err
 		}
 		build.SetLogLevel(level)
+		log.Info("Setting log level to " + level.String())
+
+		networkString := c.GlobalString("network")
+		switch networkString {
+		case "mainnet":
+			network = chaincfg.MainNetParams
+		case "testnet", "testnet3":
+			network = chaincfg.TestNet3Params
+		case "regtest", "":
+			network = chaincfg.RegressionNetParams
+		default:
+			return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
+		}
+
+		lnConfig = ln.LightningConfig{
+			LndDir:       c.GlobalString("lnddir"),
+			TLSCertPath:  c.GlobalString("tlscertpath"),
+			MacaroonPath: c.GlobalString("macaroonpath"),
+			Network:      network,
+			RPCServer:    c.GlobalString("lndrpcserver"),
+		}
+
+		bitcoindConfig = bitcoind.Config{
+			ZmqPubRawTx:    c.GlobalString("zmqpubrawtx"),
+			ZmqPubRawBlock: c.GlobalString("zmqpubrawblock"),
+			RpcPort:        c.GlobalInt("bitcoind.rpcport"),
+			Password:       c.GlobalString("bitcoind.rpcpassword"),
+			User:           c.GlobalString("bitcoind.rpcuser"),
+			RpcHost:        c.GlobalString("bitcoind.rpchost"),
+		}
+
+		if bitcoindConfig.RpcPort == 0 {
+			log.Debug("bitcoind.rpcport flag is not set, falling back to network default")
+			port, err := bitcoind.DefaultRpcPort(network)
+			if err != nil {
+				log.Fatal(err)
+			}
+			bitcoindConfig.RpcPort = port
+		}
+
+		if bitcoindConfig.ZmqPubRawTx == "" {
+			log.Debug("zmqpubrawtx flag is not set, checking environment variable")
+			// env variable used in docker-compose.yml
+			bitcoindConfig.ZmqPubRawTx = "localhost:" + util.GetEnvOrFail("ZMQPUBRAWTX_PORT")
+		}
+
+		if bitcoindConfig.ZmqPubRawBlock == "" {
+			log.Debugf("zmqpubrawblock flag is not set, checking environment variable")
+			// env variable used in docker-compose.yml
+			bitcoindConfig.ZmqPubRawBlock = "localhost:" + util.GetEnvOrFail("ZMQPUBRAWBLOCK_PORT")
+		}
+
 		return nil
 	}
 	app.Flags = []cli.Flag{
@@ -324,18 +443,40 @@ func main() {
 			Usage: "path to lnd's base directory",
 		},
 		cli.StringFlag{
+			Name:  "zmqpubrawblock",
+			Usage: "The address listening for ZMQ connections to deliver raw block notifications",
+		},
+		cli.StringFlag{
+			Name:  "zmqpubrawtx",
+			Usage: "The address listening for ZMQ connections to deliver raw transaction notifications",
+		},
+		cli.StringFlag{
+			Name:  "bitcoind.rpcuser",
+			Usage: "The bitcoind RPC username",
+		},
+		cli.StringFlag{
+			Name:  "bitcoind.rpcpassword",
+			Usage: "The bitcoind RPC password",
+		},
+		cli.IntFlag{
+			Name:  "bitcoind.rpcport",
+			Usage: "The bitcoind RPC port",
+		},
+		cli.StringFlag{
+			Name:  "bitcoind.rpchost",
+			Usage: "The bitcoind RPC host",
+			Value: "localhost",
+		},
+		cli.StringFlag{
 			Name:  "tlscertpath",
-			Value: ln.DefaultTLSCertPath,
 			Usage: "path to TLS ceritiface(tls.cert)",
 		},
 		cli.StringFlag{
 			Name:  "macaroonpath",
-			Value: ln.DefaultMacaroonPath,
 			Usage: "path to macaroon folder",
 		},
 		cli.StringFlag{
 			Name:  "network",
-			Value: ln.DefaultNetwork,
 			Usage: "the network lnd is running on e.g. mainnet, testnet, etc.",
 		},
 		cli.StringFlag{

@@ -110,7 +110,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		// TODO: Create a middleware for logging request body
 		log.Infof("Received WithdrawOnChain request %+v\n", request)
 
-		transaction, err := transactions.WithdrawOnChain(r.db, *r.lncli, request)
+		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, request)
 		if err != nil {
 			log.Errorf("cannot withdraw onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,
@@ -150,7 +150,7 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 		}
 		log.Infof("Received DepositOnChain request %+v\n", request)
 
-		transaction, err := transactions.GetDeposit(r.db, *r.lncli, userID, request)
+		transaction, err := transactions.GetOrCreateDeposit(r.db, r.lncli, userID, request)
 		if err != nil {
 			log.Errorf("cannot deposit onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,

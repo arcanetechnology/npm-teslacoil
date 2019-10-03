@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/dchest/passwordreset"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pquerna/otp/totp"
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
@@ -33,20 +35,25 @@ import (
 var (
 	databaseConfig = testutil.GetDatabaseConfig("routes")
 	testDB         *db.DB
-	conf           = Config{LogLevel: logrus.InfoLevel}
+	conf           = Config{
+		LogLevel: logrus.InfoLevel,
+		Network:  chaincfg.RegressionNetParams,
+	}
 
 	h httptestutil.TestHarness
 
-	mockSendGridClient  = testutil.GetMockSendGridClient()
-	mockLightningClient = lntestutil.GetLightningMockClient()
-	mockHttpPoster      = testutil.GetMockHttpPoster()
+	mockSendGridClient                             = testutil.GetMockSendGridClient()
+	mockLightningClient lnrpc.LightningClient      = lntestutil.GetLightningMockClient()
+	mockBitcoindClient  bitcoind.TeslacoilBitcoind = lntestutil.TeslacoilBitcoindMockClient{}
+	mockHttpPoster                                 = testutil.GetMockHttpPoster()
 )
 
 func init() {
 	testDB = testutil.InitDatabase(databaseConfig)
 
 	app, err := NewApp(testDB, mockLightningClient,
-		mockSendGridClient, mockHttpPoster, conf)
+		mockSendGridClient, mockBitcoindClient,
+		mockHttpPoster, conf)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -987,7 +994,8 @@ func TestCreateInvoice(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	randomMockClient := lntestutil.GetRandomLightningMockClient()
-	app, _ := NewApp(testDB, randomMockClient, mockSendGridClient, mockHttpPoster, conf)
+	app, _ := NewApp(testDB, randomMockClient, mockSendGridClient,
+		mockBitcoindClient, mockHttpPoster, conf)
 	otherH := httptestutil.NewTestHarness(app.Router)
 
 	password := gofakeit.Password(true, true, true, true, true, 32)

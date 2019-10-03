@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
@@ -21,7 +22,7 @@ import (
 var (
 	databaseConfig = testutil.GetDatabaseConfig("routes_integration")
 	testDB         *db.DB
-	conf           = api.Config{LogLevel: logrus.InfoLevel}
+	conf           = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
 )
 
 func init() {
@@ -33,9 +34,12 @@ func init() {
 
 func TestCreateInvoiceRoute(t *testing.T) {
 	lntestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
-		app, err := api.NewApp(testDB, lnd,
+		app, err := api.NewApp(testDB,
+			lnd,
 			testutil.GetMockSendGridClient(),
-			testutil.GetMockHttpPoster(), conf)
+			lntestutil.TeslacoilBitcoindMockClient{},
+			testutil.GetMockHttpPoster(),
+			conf)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}

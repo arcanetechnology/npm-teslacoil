@@ -107,8 +107,8 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			request)
 
 		t, err := payments.NewPayment(
-			r.db, *r.lncli, payments.NewPaymentOpts{
-				UserID:      userID,
+			r.db, r.lncli, payments.NewPaymentOpts{
+				UserID:      claims.UserID,
 				AmountSat:   request.AmountSat,
 				Memo:        request.Memo,
 				Description: request.Description,
@@ -154,7 +154,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
-		t, err := payments.PayInvoiceWithDescription(r.db, *r.lncli, userID,
+		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, claims.UserID,
 			request.PaymentRequest, request.Description)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
