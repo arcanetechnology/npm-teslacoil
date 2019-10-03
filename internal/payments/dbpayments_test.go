@@ -19,6 +19,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
@@ -65,7 +66,7 @@ func TestMain(m *testing.M) {
 
 func TestNewPayment(t *testing.T) {
 	t.Parallel()
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	amount1 := rand.Int63n(4294967)
 	amount2 := rand.Int63n(4294967)
@@ -165,7 +166,7 @@ func TestGetByID(t *testing.T) {
 	amount1 := rand.Int63n(4294967)
 	amount2 := rand.Int63n(4294967)
 
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	testCases := []struct {
 		email          string
@@ -405,7 +406,7 @@ func TestPayInvoice(t *testing.T) {
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
-	u := CreateUserOrFail(t)
+	u := userstestutil.CreateUserOrFail(t, testDB)
 
 	var amount1 int64 = 50000
 	var amount2 int64 = 20000
@@ -637,7 +638,7 @@ func TestGetAllOffset(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	// Arrange
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	testInvoices := []struct {
 		Memo      string
@@ -765,7 +766,7 @@ func TestGetAllLimit(t *testing.T) {
 		},
 	}
 
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	for _, invoice := range testInvoices {
 		if _, err := NewPayment(testDB,
@@ -848,7 +849,7 @@ func TestWithAdditionalFieldsShouldBeExpired(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	payment := Payment{
 		UserID:         user.ID,
@@ -886,7 +887,7 @@ func TestWithAdditionalFields(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	invoices := []Payment{
 		Payment{
@@ -995,19 +996,4 @@ func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 	if !t.Failed() {
 		testutil.Succeed(t, "all values should be equal to expected values")
 	}
-}
-
-// CreateUserOrFail is a util function for creating a user
-func CreateUserOrFail(t *testing.T) users.User {
-	u, err := users.Create(testDB, users.CreateUserArgs{
-		Email:    testutil.GetTestEmail(t),
-		Password: "password",
-	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
-			t.Name(), err)
-	}
-
-	return u
 }

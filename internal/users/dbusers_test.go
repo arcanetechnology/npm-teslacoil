@@ -815,6 +815,10 @@ func TestIncreaseBalance(t *testing.T) {
 	}
 }
 
+// The following two functions are copy paste replicated here as well as in
+// the userstestutil package. This is to avoid a cyclical dependency (which
+// is a compiler failure)
+
 // CreateUserOrFail creates a user with a random email and password
 func CreateUserOrFail(t *testing.T) User {
 	passwordLen := gofakeit.Number(8, 32)
@@ -822,11 +826,11 @@ func CreateUserOrFail(t *testing.T) User {
 	return CreateUserOrFailWithPassword(t, password)
 }
 
-// CreateuserOrFailWithPassword creates a user with a random email and the
+// CreateUserOrFailWithPassword creates a user with a random email and the
 // given password
 func CreateUserOrFailWithPassword(t *testing.T, password string) User {
 	u, err := Create(testDB, CreateUserArgs{
-		Email:    testutil.GetTestEmail(t),
+		Email:    gofakeit.Email(),
 		Password: password,
 	})
 	if err != nil {
