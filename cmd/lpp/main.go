@@ -115,6 +115,22 @@ func awaitLnd(lncli lnrpc.LightningClient) error {
 	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach lnd")
 }
 
+// awaitLndMacaroonFile waits for the creation of the macaroon file in the given
+// configuration
+func awaitLndMacaroonFile(config ln.LightningConfig) error {
+	macaroon := config.MacaroonPath
+	if macaroon == "" {
+		macaroon = path.Join(config.LndDir,
+			ln.DefaultRelativeMacaroonPath(config.Network))
+	}
+	retry := func() bool {
+		_, err := os.Stat(macaroon)
+		return err == nil
+	}
+	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration,
+		retry, fmt.Sprintf("couldn't read macaroon file %q", macaroon))
+}
+
 // checkBitcoindConfig verifies that the given configuration has at least the
 // fields that we need to connect
 func checkBitcoindConfig(conf bitcoind.Config) error {
@@ -166,6 +182,10 @@ var (
 				return err
 			}
 			log.Info("bitcoind is properly started")
+
+			if err := awaitLndMacaroonFile(lnConfig); err != nil {
+				return err
+			}
 
 			lncli, err := ln.NewLNDClient(lnConfig)
 			if err != nil {
