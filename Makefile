@@ -22,13 +22,10 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
 endif
 
 serve: build-lpp
-	./lpp-dev serve
+	./scripts/serve-regtest.sh
 
 serve-testnet: build-lpp
-	docker-compose down
-	docker-compose up -d db
-	systemctl start lnd
-	./lpp-dev serve
+	./scripts/serve-testnet.sh
 
 test-only: 
 	go test ./... -run ${TEST_ARGS}

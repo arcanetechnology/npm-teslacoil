@@ -41,6 +41,7 @@ set_default() {
 # Set default variables if needed.
 RPCUSER=$(set_default "$RPCUSER" "devuser")
 RPCPASS=$(set_default "$RPCPASS" "devpass")
+RPCHOST=$(set_default "$RPCHOST" "localhost")
 DEBUG=$(set_default "$DEBUG" "debug")
 BITCOIN_NETWORK=$(set_default "$BITCOIN_NETWORK" "regtest")
 
@@ -51,11 +52,11 @@ PARAMS="\
 --bitcoin.$BITCOIN_NETWORK \
 --bitcoin.node=bitcoind \
 --rpclisten=0.0.0.0:10009 \
---bitcoind.rpchost=blockchain \
+--bitcoind.rpchost=$RPCHOST \
 --bitcoind.rpcuser=$RPCUSER \
 --bitcoind.rpcpass=$RPCPASS \
---bitcoind.zmqpubrawtx=tcp://blockchain:$ZMQPUBRAWTX_PORT
---bitcoind.zmqpubrawblock=tcp://blockchain:$ZMQPUBRAWBLOCK_PORT
+--bitcoind.zmqpubrawtx=tcp://$RPCHOST:$ZMQPUBRAWTX_PORT
+--bitcoind.zmqpubrawblock=tcp://$RPCHOST:$ZMQPUBRAWBLOCK_PORT
 --debuglevel=$DEBUG"
 
 
