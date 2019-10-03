@@ -31,6 +31,15 @@ func isNilValue(i interface{}) bool {
 // structs
 func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	t.Helper()
+
+	// we special case errors, to check if their error messages are the same
+	firstErr, firstOk := expected.(error)
+	secondErr, secondOk := actual.(error)
+	if firstOk && secondOk {
+		AssertEqual(t, firstErr.Error(), secondErr.Error())
+		return
+	}
+
 	if reflect.ValueOf(expected).Kind() == reflect.Struct && reflect.ValueOf(actual).Kind() == reflect.Struct {
 		if !reflect.DeepEqual(expected, actual) {
 			FatalMsgf(t, "expected structs to be equal: %s", cmp.Diff(expected, actual))
