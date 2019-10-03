@@ -1,2 +1,8 @@
 #! /usr/bin/env bash
-docker exec --user bitcoin bitcoind bitcoin-cli -regtest -rpcuser=$RPCUSER -rpcpassword=$RPCPASS  $@
+
+# If the -testnet flag hasn't been passed in, we add -regtest
+if [[ $* != *-testnet* ]]; then
+    NETWORK_FLAG="-regtest"
+fi
+
+docker exec --user bitcoin bitcoind bitcoin-cli $NETWORK_FLAG -rpcuser=$RPCUSER -rpcpassword=$RPCPASS $@
