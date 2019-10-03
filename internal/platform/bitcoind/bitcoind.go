@@ -2,11 +2,13 @@ package bitcoind
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"time"
 
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightninglabs/gozmq"
 
 	"github.com/btcsuite/btcd/rpcclient"
@@ -16,23 +18,33 @@ import (
 
 var (
 	log = build.Log
+
+	// check the interface is satisfied
+	_ TeslacoilBitcoind = &Conn{}
 )
 
 // Config contains everything we need to reliably start a bitcoind node.
-// RpcNetwork is not defined as bitcoin core MUST be running locally
 type Config struct {
-	RpcPort      int
-	User         string
-	Password     string
-	ZmqTxHost    string
-	ZmqBlockHost string
+	RpcPort  int
+	RpcHost  string
+	P2pPort  int
+	User     string
+	Password string
+	// ZmqPubRawTx is the host (and port) that bitcoind publishes raw TXs to
+	ZmqPubRawTx string
+	// ZmqPubRawBolck is the host (and port) that bitcoind publishes raw blocks to
+	ZmqPubRawBlock string
 }
 
 // ToConnConfig converts this BitcoindConfig to the format the rpcclient
 // library expects.
 func (conf *Config) ToConnConfig() *rpcclient.ConnConfig {
+	host := conf.RpcHost
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	return &rpcclient.ConnConfig{
-		Host:         fmt.Sprintf("127.0.0.1:%d", conf.RpcPort),
+		Host:         fmt.Sprintf("%s:%d", host, conf.RpcPort),
 		User:         conf.User,
 		Pass:         conf.Password,
 		DisableTLS:   true, // Bitcoin Core doesn't do TLS
@@ -40,11 +52,26 @@ func (conf *Config) ToConnConfig() *rpcclient.ConnConfig {
 	}
 }
 
+// DefaultRpcPort gets the default RPC port for the given chain parameters
+func DefaultRpcPort(params chaincfg.Params) (int, error) {
+	switch params.Name {
+	case chaincfg.MainNetParams.Name:
+		return 8332, nil
+	case chaincfg.TestNet3Params.Name:
+		return 18332, nil
+	case chaincfg.RegressionNetParams.Name:
+		return 18443, nil
+	case "":
+		return 0, errors.New("network is not set")
+	default:
+		return 0, fmt.Errorf("unknown network %q", params.Name)
+	}
+}
+
 // Conn represents a persistent client connection to a bitcoind node
 // that listens for events read from a ZMQ connection
 type Conn struct {
-	// client is the RPC client to bitcoind
-	Client *rpcclient.Client
+	client *rpcclient.Client
 	// zmqBlockConn is the ZMQ connection we'll use to read raw block
 	// events
 	zmqBlockConn *gozmq.Conn
@@ -79,12 +106,12 @@ func NewConn(conf Config, zmqPollInterval time.Duration,
 	// concern to ensure one type of event isn't dropped from the connection
 	// queue due to another type of event filling it up.
 	zmqBlockConn, err := gozmq.Subscribe(
-		conf.ZmqBlockHost, []string{"rawblock"}, zmqPollInterval)
+		conf.ZmqPubRawBlock, []string{"rawblock"}, zmqPollInterval)
 	if err != nil {
 		return nil, fmt.Errorf("unable to subscribe to zmq block events: %+v", err)
 	}
 	zmqTxConn, err := gozmq.Subscribe(
-		conf.ZmqTxHost, []string{"rawtx"}, zmqPollInterval)
+		conf.ZmqPubRawTx, []string{"rawtx"}, zmqPollInterval)
 	if err != nil {
 		closeErr := zmqBlockConn.Close()
 		if closeErr != nil {
@@ -97,7 +124,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration,
 	log.Info("tx: ", zmqTxConn)
 
 	conn := &Conn{
-		Client:       client,
+		client:       client,
 		zmqBlockConn: zmqBlockConn,
 		zmqTxConn:    zmqTxConn,
 		// We register the channels on the connection to make them accessible
@@ -107,6 +134,10 @@ func NewConn(conf Config, zmqPollInterval time.Duration,
 	}
 
 	return conn, nil
+}
+
+func (c *Conn) Client() RpcClient {
+	return c.client
 }
 
 // StartZmq attempts to establish a ZMQ connection to a bitcoind node. If
@@ -254,6 +285,14 @@ func (c *Conn) txEventHandler() {
 		}
 
 	}
+}
+
+func (c *Conn) GetZmqRawTxChannel() chan *wire.MsgTx {
+	return c.zmqTxCh
+}
+
+func (c *Conn) GetZmqRawBlockChannel() chan *wire.MsgBlock {
+	return c.zmqBlockCh
 }
 
 // ListenTxs receives readily parsed txs and prints them
