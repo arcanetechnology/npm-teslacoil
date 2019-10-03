@@ -23,13 +23,18 @@ RUN apk add --no-cache --update alpine-sdk \
 # Start a new, final image to reduce size.
 FROM alpine as final
 
-# Add bash.
+# Add bash and curl 
 RUN apk add --no-cache \
-    bash
+    bash \
+    curl 
 
 # Copy the entrypoint script.
 COPY "start-lnd.sh" .
 RUN chmod a+x start-lnd.sh
+
+# Copy the waiting script
+COPY "wait-for-bitcoind.sh" .
+RUN chmod a+x wait-for-bitcoind.sh
 
 # Prepare logging dir for LND
 RUN mkdir -p /data
