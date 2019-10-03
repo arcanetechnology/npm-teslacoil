@@ -176,7 +176,7 @@ func extractMethodAndPath(req *http.Request) string {
 func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 
-	bodyBytes := []byte{}
+	var bodyBytes []byte
 	var err error
 	if request.Body != nil {
 		// read the body bytes for potential error messages later
@@ -191,24 +191,9 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	response := httptest.NewRecorder()
 	harness.server.ServeHTTP(response, request)
 
-	if response.Code != 200 {
-		var parsedJsonBody string
-
-		// this is a bit strange way of doing things, but we unmarshal and then
-		// marshal again to get rid of any weird formatting, so we can print
-		// the JSON body in a compact, one-line way
-		var jsonDest map[string]interface{}
-		if err := json.Unmarshal(bodyBytes, &jsonDest); err != nil {
-			testutil.FatalMsgf(t, "Could not unmarshal JSON: %v. Body: %s", err, string(bodyBytes))
-		}
-		jsonBytes, err := json.Marshal(jsonDest)
-		parsedJsonBody = string(jsonBytes)
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not marshal JSON: %v", err)
-		}
-
-		testutil.FatalMsgf(t, "Got failure code (%d) on path %s %s",
-			response.Code, extractMethodAndPath(request), string(parsedJsonBody))
+	if response.Code >= 300 {
+		testutil.FatalMsgf(t, "Got failure code (%d) on path %s: %s",
+			response.Code, extractMethodAndPath(request), response.Body.String())
 	}
 
 	return response
