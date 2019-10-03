@@ -99,6 +99,7 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
 		c.String(200, "pong")
 	})
 
+	r.RegisterApiKeyRoutes()
 	r.RegisterAuthRoutes()
 	r.RegisterUserRoutes()
 	r.RegisterPaymentRoutes()
@@ -124,6 +125,13 @@ func (r *RestServer) RegisterAuthRoutes() {
 
 	auth.GET("refresh_token", r.RefreshToken())
 	auth.PUT("change_password", r.ChangePassword())
+}
+
+func (r *RestServer) RegisterApiKeyRoutes() {
+	keys := r.Router.Group("")
+	keys.Use(authenticateJWT)
+	keys.POST("apikey", r.CreateApiKey())
+
 }
 
 // RegisterUserRoutes registers all user routes on the router

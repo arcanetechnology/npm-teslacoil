@@ -12,7 +12,9 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp/totp"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -582,5 +584,38 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 		}
 
 		c.Status(http.StatusOK)
+	}
+}
+
+type CreateApiKeyResponse struct {
+	Key    uuid.UUID `json:"key"`
+	UserID int       `json:"userId"`
+}
+
+func (r *RestServer) CreateApiKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, ok := getJWTOrReject(c)
+		if !ok {
+			return
+		}
+
+		user, err := users.GetByID(r.db, claims.UserID)
+		if err != nil {
+			log.WithError(err).WithField("user", claims.UserID).Error("Could not get user")
+			c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		apiKey, err := apikeys.New(r.db, user)
+		if err != nil {
+			log.WithError(err).WithField("user", claims.UserID).Error("Could not create API key")
+			c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		c.JSON(http.StatusCreated, CreateApiKeyResponse{
+			Key:    apiKey.Key,
+			UserID: apiKey.UserID,
+		})
 	}
 }
