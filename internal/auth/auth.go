@@ -1,0 +1,152 @@
+package auth
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
+	"github.com/gin-gonic/gin"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+)
+
+var (
+	log = build.Log
+
+	// TODO change this before production
+	// tokenSigningKey is the key we use to sign and verify our JWTs
+	tokenSigningKey = []byte("secret_jwt_key")
+)
+
+// Header is the name of the header we check for authentication details
+const Header = "Authorization"
+
+// JWTClaims is the common form for our JWTs
+type JWTClaims struct {
+	Email  string `json:"email"`
+	UserID int    `json:"user_id"`
+	jwt.StandardClaims
+}
+
+// Middleware is a middleware that authenticates that the user supplies either
+// a Bearer JWT or an API key in their authorization header.
+func Middleware(c *gin.Context) {
+	authenticateJWT(c)
+}
+
+// authenticateJWT is the middleware applied to every request to authenticate
+// the jwt is issued by us. It aborts the following request if the supplied jwt
+// is not valid or has expired
+func authenticateJWT(c *gin.Context) {
+	// Here we extract the token from the header
+	tokenString := c.GetHeader(Header)
+
+	_, _, err := ParseBearerJwt(tokenString)
+	if err != nil {
+		c.JSONP(http.StatusForbidden, gin.H{"error": "bad authorization"})
+		c.Abort() // cancels the following request
+		return
+	}
+
+	log.Infof("jwt-token is valid: %s", tokenString)
+}
+
+func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClaims, error) {
+	claims := jwt.MapClaims{}
+
+	// Remove 'Bearer ' from tokenString. It is fine to do it this way because
+	// a malicious actor will just create an invalid JWT if anything other
+	// then Bearer is passed as the first 7 characters
+	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
+		return nil, nil, fmt.Errorf(
+			"invalid JWT please include token on form 'Bearer xx.xx.xx")
+	}
+
+	tokenString = tokenString[7:]
+
+	// Here we decode the token, verify it is signed with our secret key, and
+	// extract the claims
+	token, err := jwt.ParseWithClaims(tokenString, claims,
+		func(token *jwt.Token) (interface{}, error) {
+			return key, nil
+		})
+	if err != nil {
+		log.WithError(err).WithField("jwt", tokenString).Errorf("Parsing JWT failed")
+		return nil, nil, err
+	}
+
+	if !token.Valid {
+		log.WithField("jwt", tokenString).Error("Invalid JWT")
+		return nil, nil, err
+	}
+
+	// convert Claims tao a map-type we can extract fields from
+	mapClaims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, nil, err
+	}
+
+	// Extract fields from claims, and check they are of the correct type
+	email, ok := mapClaims["email"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid token, could not extract email from claim")
+	}
+
+	// The user ID is a float64 here because JWTs use JSON encoding, and
+	// JSON doesn't have integers. This is okay up until a point, where
+	// too large user IDs would suffer from imprecision issues. We should
+	// have a check when we create JWTs that the user ID cannot be set to
+	// a too high value
+	id, ok := mapClaims["user_id"].(float64)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid token, could not extract user_id from claim")
+	}
+
+	jwtClaims := &JWTClaims{
+		Email:  email,
+		UserID: int(id),
+	}
+
+	return token, jwtClaims, nil
+}
+
+// ParseBearerJwt parses a string representation of a JWT and validates
+// it is signed by us. It returns the token and the extracted claims.
+// If anything goes wrong, an error with a descriptive reason is returned.
+func ParseBearerJwt(tokenString string) (*jwt.Token, *JWTClaims, error) {
+	return parseBearerJwtWithKey(tokenString, tokenSigningKey)
+}
+
+func createJwtWithKey(email string, id int, key []byte) (string, error) {
+
+	expiresAt := time.Now().Add(5 * time.Hour).Unix()
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
+		&JWTClaims{
+			Email:  email,
+			UserID: id,
+			StandardClaims: jwt.StandardClaims{
+				ExpiresAt: expiresAt,
+			},
+		},
+	)
+
+	log.Trace("Created token: ", token)
+
+	tokenString, err := token.SignedString(key)
+	if err != nil {
+		log.WithError(err).Error("Signing JWT failed")
+		return "", err
+	}
+
+	log.WithField("jwt", tokenString).Trace("Signed token successfully")
+
+	return "Bearer " + tokenString, nil
+}
+
+// CreateJwt creates a new JWT with the supplied email as the
+// claim, a specific expiration time, and signed with our secret key.
+// It returns the string representation of the token.
+func CreateJwt(email string, id int) (string, error) {
+	return createJwtWithKey(email, id, tokenSigningKey)
+}

@@ -1,11 +1,8 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
-	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -14,6 +11,7 @@ import (
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/validation"
 	"gopkg.in/go-playground/validator.v8"
 
@@ -41,13 +39,6 @@ type RestServer struct {
 	db          *db.DB
 	lncli       *lnrpc.LightningClient
 	EmailSender EmailSender
-}
-
-// JWTClaims is the common form for our jwts
-type JWTClaims struct {
-	Email  string `json:"email"`
-	UserID int    `json:"user_id"`
-	jwt.StandardClaims
 }
 
 //NewApp creates a new app
@@ -99,6 +90,10 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
 		c.String(200, "pong")
 	})
 
+	r.Router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Route not found"})
+	})
+
 	r.RegisterApiKeyRoutes()
 	r.RegisterAuthRoutes()
 	r.RegisterUserRoutes()
@@ -110,26 +105,26 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
 
 // RegisterAuthRoutes registers all auth routes
 func (r *RestServer) RegisterAuthRoutes() {
-	auth := r.Router.Group("auth")
+	authGroup := r.Router.Group("auth")
 
 	// Does not need auth token to reset password
-	auth.PUT("reset_password", r.ResetPassword())
-	auth.POST("reset_password", r.SendPasswordResetEmail())
+	authGroup.PUT("reset_password", r.ResetPassword())
+	authGroup.POST("reset_password", r.SendPasswordResetEmail())
 
-	auth.Use(authenticateJWT)
+	authGroup.Use(auth.Middleware)
 
 	// 2FA methods
-	auth.POST("2fa", r.Enable2fa())
-	auth.PUT("2fa", r.Confirm2fa())
-	auth.DELETE("2fa", r.Delete2fa())
+	authGroup.POST("2fa", r.Enable2fa())
+	authGroup.PUT("2fa", r.Confirm2fa())
+	authGroup.DELETE("2fa", r.Delete2fa())
 
-	auth.GET("refresh_token", r.RefreshToken())
-	auth.PUT("change_password", r.ChangePassword())
+	authGroup.GET("refresh_token", r.RefreshToken())
+	authGroup.PUT("change_password", r.ChangePassword())
 }
 
 func (r *RestServer) RegisterApiKeyRoutes() {
 	keys := r.Router.Group("")
-	keys.Use(authenticateJWT)
+	keys.Use(auth.Middleware)
 	keys.POST("apikey", r.CreateApiKey())
 
 }
@@ -142,7 +137,7 @@ func (r *RestServer) RegisterUserRoutes() {
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read
 	users := r.Router.Group("")
-	users.Use(authenticateJWT)
+	users.Use(auth.Middleware)
 	users.GET("/users", r.GetAllUsers())
 	users.GET("/user", r.GetUser())
 	users.PUT("/user", r.UpdateUser())
@@ -153,7 +148,7 @@ func (r *RestServer) RegisterUserRoutes() {
 // can be found in payment packages
 func (r *RestServer) RegisterPaymentRoutes() {
 	payment := r.Router.Group("")
-	payment.Use(authenticateJWT)
+	payment.Use(auth.Middleware)
 
 	payment.GET("payments", r.GetAllPayments())
 	payment.GET("payment/:id", r.GetPaymentByID())
@@ -165,7 +160,7 @@ func (r *RestServer) RegisterPaymentRoutes() {
 // A transaction is defined as an on-chain transaction
 func (r *RestServer) RegisterTransactionRoutes() {
 	transaction := r.Router.Group("")
-	transaction.Use(authenticateJWT)
+	transaction.Use(auth.Middleware)
 
 	transaction.GET("/transactions", r.GetAllTransactions())
 	transaction.GET("/transaction/:id", r.GetTransactionByID())
@@ -173,91 +168,12 @@ func (r *RestServer) RegisterTransactionRoutes() {
 	transaction.POST("/deposit", r.NewDeposit())
 }
 
-// authenticateJWT is the middleware applied to every request to authenticate
-// the jwt is issued by us. It aborts the following request if the supplied jwt
-// is not valid or has expired
-func authenticateJWT(c *gin.Context) {
-	// Here we extract the token from the header
-	tokenString := c.GetHeader(Authorization)
-
-	_, _, err := parseBearerJWT(tokenString)
-	if err != nil {
-		c.JSONP(http.StatusForbidden, gin.H{"error": "bad authorization"})
-		c.Abort() // cancels the following request
-		return
-	}
-
-	log.Infof("jwt-token is valid: %s", tokenString)
-}
-
-// parseBearerJWT parses a string representation of a jwt-token, and validates
-// it is signed by us. It returns the token and the extracted claims.
-// If anything goes wrong, an error with a descriptive reason is returned.
-func parseBearerJWT(tokenString string) (*jwt.Token, *JWTClaims, error) {
-	claims := jwt.MapClaims{}
-
-	// Remove 'Bearer ' from tokenString. It is fine to do it this way because
-	// a malicious actor will just create an invalid jwt-token if anything other
-	// then Bearer is passed as the first 7 characters
-	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
-		return nil, nil, fmt.Errorf(
-			"invalid jwt-token, please include token on form 'Bearer xx.xx.xx")
-	}
-
-	tokenString = tokenString[7:]
-
-	// Here we decode the token, verify it is signed with our secret key, and
-	// extract the claims
-	token, err := jwt.ParseWithClaims(tokenString, claims,
-		func(token *jwt.Token) (interface{}, error) {
-			// TODO: This must be changed before production
-			return []byte("secret_key"), nil
-		})
-	if err != nil {
-		log.Errorf("parsing jwt-token %s failed %v", tokenString, err)
-		return nil, nil, errors.Wrap(err, "invalid request, restricted endpoint")
-	}
-
-	if !token.Valid {
-		log.Errorf("jwt-token invalid %s", tokenString)
-		return nil, nil, fmt.Errorf("invalid token, restricted endpoint. log in first")
-	}
-
-	// convert Claims to a map-type we can extract fields from
-	mapClaims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, nil, fmt.Errorf("invalid token, could not extract claims")
-	}
-
-	// Extract fields from claims, and check they are of the correct type
-	email, ok := mapClaims["email"].(string)
-	if !ok {
-		return nil, nil, fmt.Errorf("invalid token, could not extract email from claim")
-	}
-
-	// TODO(bo): For some reason, the UserID is converted to a float64 when extracted
-	// We need to write tests for this, to make sure it always is the case the
-	// UserID is a float64, not an int/int64 etc.
-	id, ok := mapClaims["user_id"].(float64)
-	if !ok {
-		log.Error(id)
-		return nil, nil, fmt.Errorf("invalid token, could not extract user_id from claim")
-	}
-
-	jwtClaims := &JWTClaims{
-		Email:  email,
-		UserID: int(id),
-	}
-
-	return token, jwtClaims, nil
-}
-
 // getJWTOrReject parses the bearer JWT of the request, rejecting it with
 // a Bad Request response if this fails. Second return value indicates whether
 // or not the operation succeded. The error is logged and sent to the user,
 // so the callee does not need to do anything more.
-func getJWTOrReject(c *gin.Context) (*JWTClaims, bool) {
-	_, claims, err := parseBearerJWT(c.GetHeader(Authorization))
+func getJWTOrReject(c *gin.Context) (*auth.JWTClaims, bool) {
+	_, claims, err := auth.ParseBearerJwt(c.GetHeader(auth.Header))
 	if err != nil {
 		log.Errorf("Could not parse bearer JWT: %v", err)
 		c.JSONP(http.StatusBadRequest, badRequestResponse)
@@ -288,33 +204,4 @@ func getQueryOrReject(c *gin.Context, body interface{}) bool {
 		return false
 	}
 	return true
-}
-
-// createJWTToken creates a new JWT token with the supplied email as the
-// claim, a specific expiration time, and signed with our secret key.
-// It returns the string representation of the token
-func createJWTToken(email string, id int) (string, error) {
-	expiresAt := time.Now().Add(5 * time.Hour).Unix()
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
-		&JWTClaims{
-			Email:  email,
-			UserID: id,
-			StandardClaims: jwt.StandardClaims{
-				ExpiresAt: expiresAt,
-			},
-		},
-	)
-
-	log.Info("created token: ", token)
-
-	tokenString, err := token.SignedString([]byte("secret_key"))
-	if err != nil {
-		log.Errorf("signing jwt-token failed %v", err)
-		return "", err
-	}
-
-	log.Infof("signed token making tokenString %s", tokenString)
-
-	return "Bearer " + tokenString, nil
 }

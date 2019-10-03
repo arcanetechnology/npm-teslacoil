@@ -14,6 +14,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
@@ -31,12 +32,6 @@ type UserResponse struct {
 var (
 	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
 	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
-)
-
-const (
-	// Authorization is the name of the header where we expect the access token
-	// to be found
-	Authorization = "Authorization"
 )
 
 // GetAllUsers is a GET request that returns all the users in the database
@@ -240,7 +235,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			}
 		}
 
-		tokenString, err := createJWTToken(request.Email, user.ID)
+		tokenString, err := auth.CreateJwt(request.Email, user.ID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
@@ -418,7 +413,7 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 			return
 		}
 
-		tokenString, err := createJWTToken(claims.Email, claims.UserID)
+		tokenString, err := auth.CreateJwt(claims.Email, claims.UserID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 		}
