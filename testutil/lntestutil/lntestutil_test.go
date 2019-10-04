@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 func TestStartBitcoindOrFail(t *testing.T) {
 	conf := GetBitcoindConfig(t)
 	client, cleanup := StartBitcoindOrFail(t, conf)
-	_, err := client.GetBlockChainInfo()
+	_, err := client.Btcctl().GetBlockChainInfo()
 	if err != nil {
 		testutil.FatalMsgf(t, "Could not start and communicate with bitcoind: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestStartBitcoindOrFail(t *testing.T) {
 		testutil.FatalMsg(t, err)
 	}
 
-	if info, err := client.GetBlockChainInfo(); err == nil {
+	if info, err := client.Btcctl().GetBlockChainInfo(); err == nil {
 		testutil.FatalMsgf(t, "Got info from stopped client: %v", info)
 	}
 }

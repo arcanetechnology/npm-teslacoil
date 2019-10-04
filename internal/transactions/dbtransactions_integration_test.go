@@ -3,23 +3,13 @@
 package transactions
 
 import (
-	"fmt"
 	"testing"
+	"time"
 
-	"github.com/brianvoe/gofakeit"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
-	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
-)
-
-var (
-	conf = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
 )
 
 func init() {
@@ -27,78 +17,96 @@ func init() {
 	// this probably shouldn't matter, as the conn.
 	// closes when the process exits anyway
 	testDB = testutil.InitDatabase(databaseConfig)
-	databaseConfig = testutil.GetDatabaseConfig("routes_integration")
+	databaseConfig = testutil.GetDatabaseConfig("transactions_integration")
 }
 
-func TestCreateInvoiceRoute(t *testing.T) {
-	lntestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
-		app, err := api.NewApp(testDB,
-			lnd,
-			testutil.GetMockSendGridClient(),
-			lntestutil.TeslacoilBitcoindMockClient{},
-			testutil.GetMockHttpPoster(),
-			conf)
+/*
+
+func TestNewDepositWithFields(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+}
+
+func TestGetOrCreateDeposit(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+}
+
+*/
+
+// TestTxListener tests whether the zmqTxVhannel sends the expected amount of
+// It can not run in parallell, because each new block mined also creates a
+// tx, thus filling us up with tx's
+func TestTxListener(t *testing.T) {
+	testutil.DescribeTest(t)
+
+	lntestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
+
+		bitcoin.StartZmq()
+
+		txCh := bitcoin.ZmqTxChannel()
+
+		var eventsReceived int
+		go func() {
+			for {
+				// We don't care for the result, juts the amount of events, therefore
+				// we ignore the tx
+				<-txCh
+				eventsReceived++
+			}
+		}()
+
+		var blocksGenerated uint32 = 101
+		_, err := lntestutil.GenerateToSelf(blocksGenerated, bitcoin)
 		if err != nil {
-			testutil.FatalMsg(t, err)
+			testutil.FatalMsgf(t, "could not generate to self: %+v", err)
 		}
 
-		h := httptestutil.NewTestHarness(app.Router)
+		hash, err := lntestutil.SendTxToSelf(bitcoin, 10)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not send tx: %+v", err)
+		}
+		testutil.Succeedf(t, "hash: %v", hash)
 
-		testutil.DescribeTest(t)
+		time.Sleep(1000 * time.Millisecond)
 
-		password := gofakeit.Password(true, true, true, true, true, 32)
-		accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
-			Email:    gofakeit.Email(),
-			Password: password,
-		})
-
-		t.Run("Create an invoice without memo and description", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
-			amountSat := gofakeit.Number(0,
-				int(ln.MaxAmountSatPerInvoice))
-
-			req := httptestutil.GetAuthRequest(t,
-				httptestutil.AuthRequestArgs{
-					AccessToken: accessToken,
-					Path:        "/invoices/create",
-					Method:      "POST",
-					Body: fmt.Sprintf(`{
-					"amountSat": %d
-				}`, amountSat),
-				})
-
-			res := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertMsg(t, res["memo"] == nil, "Memo was not empty")
-			testutil.AssertMsg(t, res["description"] == nil, "Description was not empty")
-
-		})
-
-		t.Run("Create an invoice with memo and description", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
-			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
-
-			memo := gofakeit.Sentence(gofakeit.Number(1, 20))
-			description := gofakeit.Sentence(gofakeit.Number(1, 20))
-
-			req := httptestutil.GetAuthRequest(t,
-				httptestutil.AuthRequestArgs{
-					AccessToken: accessToken,
-					Path:        "/invoices/create",
-					Method:      "POST",
-					Body: fmt.Sprintf(`{
-					"amountSat": %d,
-					"memo": %q,
-					"description": %q
-				}`, amountSat, memo, description),
-				})
-
-			res := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertEqual(t, res["memo"], memo)
-			testutil.AssertEqual(t, res["description"], description)
-
-		})
-
+		if eventsReceived != 2+int(blocksGenerated) {
+			testutil.FatalMsgf(t, "expected to receive 2 events, but received %d", eventsReceived)
+		}
 	})
+}
+
+func TestBlockListener(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	lntestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
+
+		bitcoin.StartZmq()
+
+		blockCh := bitcoin.ZmqBlockChannel()
+
+		var eventsReceived uint32
+		go func() {
+			for {
+				// We don't care for the result, just the amount of events, therefore
+				// we ignore the tx
+				<-blockCh
+				eventsReceived++
+			}
+		}()
+
+		var blocksToMine uint32 = 3
+		_, err := lntestutil.GenerateToSelf(blocksToMine, bitcoin)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not generate %d blocks to self", blocksToMine)
+		}
+
+		time.Sleep(1500 * time.Millisecond)
+
+		if eventsReceived != blocksToMine {
+			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
+		}
+	})
+
 }

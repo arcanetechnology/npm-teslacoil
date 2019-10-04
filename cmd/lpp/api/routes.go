@@ -88,6 +88,7 @@ func getGinEngine(config Config) *gin.Engine {
 }
 
 func checkBitcoindConnection(conn bitcoind.RpcClient, expected chaincfg.Params) error {
+
 	info, err := conn.GetBlockChainInfo()
 	if err != nil {
 		return errors.Wrap(err, "could not get bitcoind info")

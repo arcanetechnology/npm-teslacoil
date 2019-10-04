@@ -162,15 +162,14 @@ func GetBitcoindConfig(t *testing.T) bitcoind.Config {
 
 }
 
-// GetBitcoindClientOrFail returns a bitcoind RPC client, corresponding to
-// the given configuration.
-func GetBitcoindClientOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
-	bitcoin, err := bitcoind.NewConn(conf, time.Second)
-	if err != nil {
-		testutil.FatalMsgf(t, "could not start bitcoind: %+v", err)
+func GetBitcoinMockClient() TeslacoilBitcoindMockClient {
+	_ = bitcoind.Config{
+		Network: chaincfg.RegressionNetParams,
 	}
 
-	return bitcoin
+	x := TeslacoilBitcoindMockClient{}
+
+	return x
 }
 
 // StartBitcoindOrFail starts a bitcoind node with the given configuration,
@@ -183,6 +182,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (bitcoin bitcoind.T
 		testutil.FatalMsgf(t, "Could not create temporary bitcoind dir: %v", err)
 	}
 	args := []string{
+		// "-printtoconsole", // if you want to see output of bitcoind, uncomment this
 		"-datadir=" + tempDir,
 		"-server",
 		"-regtest",
@@ -194,6 +194,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (bitcoin bitcoind.T
 		"-txindex",
 		"-debug=rpc",
 		"-debug=zmq",
+		"-addresstype=bech32", // default addresstype, necessary for using GetNewAddress()
 		"-zmqpubrawtx=" + conf.ZmqPubRawTx,
 		"-zmqpubrawblock=" + conf.ZmqPubRawBlock,
 	}
@@ -231,7 +232,14 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (bitcoin bitcoind.T
 
 	log.Debugf("Started bitcoind client with pid %d", pid)
 
-	bitcoin = GetBitcoindClientOrFail(t, conf)
+	retry := func() error {
+		var err error
+		bitcoin, err = bitcoind.NewConn(conf, 100*time.Millisecond)
+		return err
+	}
+	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, retry); err != nil {
+		testutil.FatalMsg(t, err)
+	}
 	client := bitcoin.Btcctl()
 
 	// await bitcoind startup

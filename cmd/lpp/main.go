@@ -426,6 +426,7 @@ func main() {
 			RpcPort:        c.GlobalInt("bitcoind.rpcport"),
 			Password:       c.GlobalString("bitcoind.rpcpassword"),
 			User:           c.GlobalString("bitcoind.rpcuser"),
+			Network:        network,
 			RpcHost:        c.GlobalString("bitcoind.rpchost"),
 		}
 

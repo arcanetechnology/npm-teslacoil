@@ -2,10 +2,13 @@ package bitcoind
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -36,6 +39,31 @@ type Config struct {
 	ZmqPubRawTx string
 	// ZmqPubRawBlock is the host (and port) that bitcoind publishes raw blocks to
 	ZmqPubRawBlock string
+	// Network is the network we're running on
+	Network chaincfg.Params
+}
+
+// Conn represents a persistent client connection to a bitcoind node
+// that listens for events read from a ZMQ connection
+type Conn struct {
+	// btcctl is a bitcoind rpc connection
+	btcctl *rpcclient.Client
+	// zmqBlockConn is the ZMQ connection we'll use to read raw block
+	// events
+	zmqBlockConn *gozmq.Conn
+	// zmqBlockCh is the channel on which we return block events received
+	// from zmq
+	zmqBlockCh chan *wire.MsgBlock
+	// zmqTxConn is the ZMQ connection we'll use to read raw new
+	// transaction events
+	zmqTxConn *gozmq.Conn
+	// zmqTxCh is the channel on which we return tx events received
+	// from zmq
+	zmqTxCh chan *wire.MsgTx
+
+	config Config
+
+	network chaincfg.Params
 }
 
 // ToConnConfig converts this BitcoindConfig to the format the rpcclient
@@ -70,25 +98,6 @@ func DefaultRpcPort(params chaincfg.Params) (int, error) {
 	}
 }
 
-// Conn represents a persistent client connection to a bitcoind node
-// that listens for events read from a ZMQ connection
-type Conn struct {
-	// btcctl is a bitcoind rpc connection
-	btcctl *rpcclient.Client
-	// zmqBlockConn is the ZMQ connection we'll use to read raw block
-	// events
-	zmqBlockConn *gozmq.Conn
-	// zmqBlockCh is the channel on which we return block events received
-	// from zmq
-	zmqBlockCh chan *wire.MsgBlock
-	// zmqTxConn is the ZMQ connection we'll use to read raw new
-	// transaction events
-	zmqTxConn *gozmq.Conn
-	// zmqTxCh is the channel on which we return tx events received
-	// from zmq
-	zmqTxCh chan *wire.MsgTx
-}
-
 func (c *Conn) Btcctl() RpcClient {
 	return c.btcctl
 }
@@ -97,6 +106,52 @@ func (c *Conn) ZmqBlockChannel() chan *wire.MsgBlock {
 }
 func (c *Conn) ZmqTxChannel() chan *wire.MsgTx {
 	return c.zmqTxCh
+}
+func (c *Conn) Config() Config {
+	return c.config
+}
+func (c *Conn) Network() chaincfg.Params {
+	return c.network
+}
+
+func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcutil.Address) ([]*chainhash.Hash, error) {
+	body := fmt.Sprintf(`{
+		"jsonrpc": "1.0",
+		"method": "generatetoaddress",
+		"params": [%d, %q]
+	}`, numBlocks, address)
+	conf := bitcoin.Config()
+	url := fmt.Sprintf("http://%s:%s@%s:%d", conf.User, conf.Password, conf.RpcHost, conf.RpcPort)
+	req, _ := http.Post(
+		url,
+		"application/json",
+		bytes.NewReader([]byte(body)))
+
+	// read the body bytes for potential error messages later
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Errorf("Could not read body: %v", err)
+	}
+
+	type GenerateResponse struct {
+		Hashes []string `json:"result"`
+	}
+
+	var res GenerateResponse
+	if err := json.Unmarshal(bodyBytes, &res); err != nil {
+		log.Errorf("Could not unmarshal JSON: %v. Body: %s", err, string(bodyBytes))
+	}
+	var hashes []*chainhash.Hash
+	for _, hash := range res.Hashes {
+		newHash, err := chainhash.NewHashFromStr(hash)
+		if err != nil {
+			log.Errorf("could not create new hash from %s", hash)
+			continue
+		}
+		hashes = append(hashes, newHash)
+	}
+
+	return hashes, nil
 }
 
 // NewConn returns a BitcoindConn corresponding to the given
@@ -144,6 +199,8 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 		// to the blockEventHandler and txEventHandler functions
 		zmqTxCh:    zmqRawTxCh,
 		zmqBlockCh: zmqBlockCh,
+		config:     conf,
+		network:    conf.Network,
 	}
 
 	return conn, nil
@@ -220,9 +277,9 @@ func (c *Conn) blockEventHandler() {
 				continue
 			}
 
-			log.Errorf("Unable to receive ZMQ rawblock message: %v",
+			log.Errorf("earnable to receive ZMQ rawblock message: %v",
 				err)
-			continue
+			return
 		}
 
 		// We have an event! We'll now ensure it is a block event,
@@ -285,7 +342,7 @@ func (c *Conn) txEventHandler() {
 
 			log.Errorf("Unable to receive ZMQ rawtx message: %v",
 				err)
-			continue
+			return
 		}
 
 		// We have an event! We'll now ensure it is a transaction event,

@@ -2,6 +2,9 @@ package lntestutil
 
 import (
 	"encoding/json"
+	"fmt"
+
+	"github.com/btcsuite/btcd/chaincfg"
 
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -19,22 +22,31 @@ var (
 
 // TeslacoilBitcoindMockClient is a mocked out bitcoind.TeslacoilBitcoind
 // where the responses don't contain any meaningful info at all.
-type TeslacoilBitcoindMockClient struct{}
+type TeslacoilBitcoindMockClient struct {
+	BtcctlResponse *rpcclient.Client
+}
 
-func (t TeslacoilBitcoindMockClient) StartZmq() {}
-
-func (t TeslacoilBitcoindMockClient) StopZmq() {}
-
-func (t TeslacoilBitcoindMockClient) ZmqTxChannel() chan *wire.MsgTx {
-	return make(chan *wire.MsgTx)
+func (t TeslacoilBitcoindMockClient) StartZmq() {
+	fmt.Println("started zmq")
+}
+func (t TeslacoilBitcoindMockClient) StopZmq() {
+	fmt.Println("stopped zmq")
+}
+func (t TeslacoilBitcoindMockClient) Btcctl() bitcoind.RpcClient {
+	return BitcoindRpcMockClient{}
+}
+func (t TeslacoilBitcoindMockClient) Config() bitcoind.Config {
+	panic("cannot get config")
+}
+func (t TeslacoilBitcoindMockClient) Network() chaincfg.Params {
+	panic("cannot get network")
 }
 
 func (t TeslacoilBitcoindMockClient) ZmqBlockChannel() chan *wire.MsgBlock {
 	return make(chan *wire.MsgBlock)
 }
-
-func (t TeslacoilBitcoindMockClient) Btcctl() bitcoind.RpcClient {
-	return BitcoindRpcMockClient{}
+func (t TeslacoilBitcoindMockClient) ZmqTxChannel() chan *wire.MsgTx {
+	return make(chan *wire.MsgTx)
 }
 
 func (t TeslacoilBitcoindMockClient) FindVout(txid string, amountSat int64) (int, error) {
@@ -1172,4 +1184,8 @@ func (b BitcoindRpcMockClient) WalletPassphraseChange(old, new string) error {
 
 func (b BitcoindRpcMockClient) WalletPassphraseChangeAsync(old, new string) rpcclient.FutureWalletPassphraseChangeResult {
 	panic("not implemented: WalletPassphraseChangeAsync")
+}
+
+func (b BitcoindRpcMockClient) GenerateToAddress(numBlocks uint32, address btcutil.Address) ([]*chainhash.Hash, error) {
+	panic("not implemented: GenerateToAddress")
 }

@@ -26,12 +26,12 @@ services:
     image: ruimarinho/bitcoin-core:0.18
     container_name: bitcoind
 
-    volumes: 
+    volumes:
       - bitcoin:/home/bitcoin/.bitcoin
     command: 
       - -debug=rpc
       - -printtoconsole
-      - -$BITCOIN_NETWORK=1
+      - -$BITCOIN_NETWORK
       - -rpcuser=$RPCUSER
       - -rpcpassword=$RPCPASS
       - -rpcbind=0.0.0.0

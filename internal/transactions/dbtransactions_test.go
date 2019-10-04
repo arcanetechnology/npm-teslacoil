@@ -37,7 +37,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.InfoLevel)
+	build.SetLogLevel(logrus.DebugLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
@@ -267,27 +267,6 @@ func TestWithdrawOnChain(t *testing.T) {
 			testutil.FatalMsgf(t, "should return error and not send transaction: %+v", transaction)
 		}
 	})
-}
-
-func TestNewDepositWithFields(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-}
-
-func TestGetOrCreateDeposit(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-}
-
-func TestTxListener(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-}
-
-func TestBlockListener(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
 }
 
 func TestTransaction_SaveTxidToDeposit(t *testing.T) {
