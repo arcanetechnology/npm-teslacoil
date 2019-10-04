@@ -47,4 +47,4 @@ test:
     - go test -cover -tags integration  ./...
 
     # run linter
-    - golangci-lint run
+    - make lint

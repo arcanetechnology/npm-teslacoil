@@ -33,6 +33,9 @@ test:
 test-it:
 	go test ./... -tags integration
 
+lint: 
+	golangci-lint run	
+
 test_verbose:
 	go test ./... -v
 
