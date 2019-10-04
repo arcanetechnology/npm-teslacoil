@@ -156,7 +156,7 @@ func TestPostUsersRoute(t *testing.T) {
 
 	email := gofakeit.Email()
 	pass := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	accessToken := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    email,
 		Password: pass,
 	})
@@ -224,7 +224,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	pass := gofakeit.Password(true, true, true, true, true, 32)
 	newPass := gofakeit.Password(true, true, true, true, true, 32)
 
-	accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	accessToken := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    email,
 		Password: pass,
 	})
@@ -509,7 +509,7 @@ func TestPutUserRoute(t *testing.T) {
 
 	email := gofakeit.Email()
 	password := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	accessToken := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    email,
 		Password: password,
 	})
@@ -565,7 +565,7 @@ func TestPutUserRoute(t *testing.T) {
 
 func TestSendPasswordResetEmail(t *testing.T) {
 	email := gofakeit.Email()
-	h.CreateAndLoginUser(t, users.CreateUserArgs{
+	h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    email,
 		Password: gofakeit.Password(true, true, true, true, true, 32),
 	})
@@ -588,7 +588,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 
 	email := gofakeit.Email()
 	password := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	accessToken := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    email,
 		Password: password,
 	})
@@ -816,7 +816,7 @@ func createFakeDeposits(t *testing.T, amount int, accessToken string) []int {
 // }
 
 func TestGetTransactionByID(t *testing.T) {
-	token := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	token := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
@@ -861,7 +861,7 @@ func assertGetsRightAmount(t *testing.T, body *bytes.Buffer, expected int) {
 }
 
 func TestGetAllTransactions(t *testing.T) {
-	token := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	token := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
@@ -952,7 +952,7 @@ func TestGetAllTransactions(t *testing.T) {
 }
 
 func TestNewDeposit(t *testing.T) {
-	token := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	token := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
@@ -987,7 +987,7 @@ func TestCreateInvoice(t *testing.T) {
 	otherH := httptestutil.NewTestHarness(app.Router)
 
 	password := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken := otherH.CreateAndLoginUser(t, users.CreateUserArgs{
+	accessToken := otherH.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: password,
 	})
@@ -1100,7 +1100,7 @@ func TestRestServer_CreateApiKey(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	password := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
+	accessToken := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: password,
 	})

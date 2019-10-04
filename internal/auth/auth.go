@@ -23,8 +23,13 @@ var (
 	tokenSigningKey = []byte("secret_jwt_key")
 )
 
-// Header is the name of the header we check for authentication details
-const Header = "Authorization"
+const (
+	// Header is the name of the header we check for authentication details
+	Header = "Authorization"
+	// UserIdVariable is the Gin variable we store the authenticated user ID
+	// as
+	UserIdVariable = "user-id"
+)
 
 // JWTClaims is the common form for our JWTs
 type JWTClaims struct {
@@ -35,6 +40,9 @@ type JWTClaims struct {
 
 // GetMiddleware generates a middleware that authenticates that the user
 // supplies either a Bearer JWT or an API key in their authorization header.
+// It also inserts the user ID associated with the authenticated user as a
+// request variable that can be retrieved later, after the request has
+// passed through the middleware.
 func GetMiddleware(database *db.DB) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		header := c.GetHeader(Header)
@@ -43,39 +51,47 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 			c.Abort()
 			return
 		}
+		var userID int
 		if strings.HasPrefix(header, "Bearer ") {
-			authenticateJWT(c)
+			userID = authenticateJWT(c)
 		} else {
-			authenticateApiKey(database, c)
+			userID = authenticateApiKey(database, c)
 		}
+		c.Set(UserIdVariable, userID)
+
 	}
 }
 
-func authenticateApiKey(database *db.DB, c *gin.Context) {
+// authenticateApiKey tries to extract a valid API key from the authorization
+// header. If that doesn't succeed, it rejects the request. It returns the
+// user ID of the authenticated user.
+func authenticateApiKey(database *db.DB, c *gin.Context) int {
 	uuidString := c.GetHeader(Header)
 	parsedUuid, err := uuid.FromString(uuidString)
 	if err != nil {
 		log.WithError(err).Error("Bad authorization header for API key")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Malformed API key"})
 		c.Abort()
-		return
+		return 0
 	}
-	_, err = apikeys.Get(database, parsedUuid)
+	key, err := apikeys.Get(database, parsedUuid)
 	if err != nil {
 		log.WithError(err).WithField("key", parsedUuid).Error("Couldn't get API key")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "API key not found"})
 		c.Abort()
+		return 0
 	}
+	return key.UserID
 }
 
-// authenticateJWT is the middleware applied to every request to authenticate
-// the jwt is issued by us. It aborts the following request if the supplied jwt
-// is not valid or has expired
-func authenticateJWT(c *gin.Context) {
+// authenticateJWT tries to extract and verify a JWT from the authorization
+// header. If that doesn't succeed, it rejects the request. It returns the
+// user ID of the authenticated user.
+func authenticateJWT(c *gin.Context) int {
 	// Here we extract the token from the header
 	tokenString := c.GetHeader(Header)
 
-	_, _, err := ParseBearerJwt(tokenString)
+	_, claims, err := ParseBearerJwt(tokenString)
 	if err != nil {
 		var validationError *jwt.ValidationError
 		if errors.As(err, &validationError) {
@@ -83,29 +99,30 @@ func authenticateJWT(c *gin.Context) {
 			case jwt.ValidationErrorMalformed:
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Malformed JWT"})
 				c.Abort()
-				return
+				return 0
 			case jwt.ValidationErrorSignatureInvalid:
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT signature"})
 				c.Abort()
-				return
+				return 0
 			case jwt.ValidationErrorExpired:
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "JWT is expired"})
 				c.Abort()
-				return
+				return 0
 			case jwt.ValidationErrorIssuedAt:
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "JWT is not valid yet"})
 				c.Abort()
-				return
+				return 0
 			}
 		}
 
 		log.WithError(err).Info("Got unexpected error when parsing JWT")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong..."})
 		c.Abort()
-		return
+		return 0
 	}
 
 	log.WithField("jwt", tokenString).Trace("JWT is valid")
+	return claims.UserID
 }
 
 func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClaims, error) {

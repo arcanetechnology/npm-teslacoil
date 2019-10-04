@@ -172,13 +172,13 @@ func TestGetMiddleware(t *testing.T) {
 	})
 
 	t.Run("authentiate with API key", func(t *testing.T) {
-		apiKey, err := apikeys.New(testDB, user)
+		apiKey, _, err := apikeys.New(testDB, user)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
-		req.Header.Add(Header, apiKey.Key.String())
+		req.Header.Add(Header, apiKey.String())
 		router.ServeHTTP(w, req)
 		testutil.AssertEqual(t, w.Code, http.StatusOK)
 	})

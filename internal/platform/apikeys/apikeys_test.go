@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/brianvoe/gofakeit"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -32,12 +34,12 @@ func TestMain(m *testing.M) {
 func TestNew(t *testing.T) {
 	t.Run("creating an api key should work", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		key, err := New(testDB, user)
+		rawKey, key, err := New(testDB, user)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
 
-		found, err := Get(testDB, key.Key)
+		found, err := Get(testDB, rawKey)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -50,9 +52,16 @@ func TestNew(t *testing.T) {
 			ID: 123798123,
 		}
 
-		_, err := New(testDB, user)
+		_, _, err := New(testDB, user)
 		if err == nil {
 			testutil.FatalMsg(t, "Created an API key with no corresponding user")
+		}
+	})
+
+	t.Run("getting an non-existing key should not work", func(t *testing.T) {
+		_, err := Get(testDB, uuid.Must(uuid.FromString(gofakeit.UUID())))
+		if err == nil {
+			testutil.FatalMsg(t, "Was able to find non existant key!")
 		}
 	})
 }

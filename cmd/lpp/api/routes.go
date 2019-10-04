@@ -168,18 +168,25 @@ func (r *RestServer) RegisterTransactionRoutes() {
 	transaction.POST("/deposit", r.NewDeposit())
 }
 
-// getJWTOrReject parses the bearer JWT of the request, rejecting it with
-// a Bad Request response if this fails. Second return value indicates whether
-// or not the operation succeded. The error is logged and sent to the user,
-// so the callee does not need to do anything more.
-func getJWTOrReject(c *gin.Context) (*auth.JWTClaims, bool) {
-	_, claims, err := auth.ParseBearerJwt(c.GetHeader(auth.Header))
-	if err != nil {
-		log.Errorf("Could not parse bearer JWT: %v", err)
-		c.JSONP(http.StatusBadRequest, badRequestResponse)
-		return nil, false
+// getUserIdOrReject retrieves the user ID associated with this request. This
+// user ID should be set by the authentication middleware. This means that this
+// method can safely be called by all endpoints that use the authentication
+// middleware.
+func getUserIdOrReject(c *gin.Context) (int, bool) {
+	id, exists := c.Get(auth.UserIdVariable)
+	if !exists {
+		c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+		c.Abort()
+		log.Panic("User ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable.")
 	}
-	return claims, true
+	idInt, ok := id.(int)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+		c.Abort()
+		log.WithField("userID", id).Panic("User ID was not an int! This means our authentication middleware did something bad.")
+	}
+
+	return idInt, true
 }
 
 // getJSONOrReject extracts fields from the context and inserts

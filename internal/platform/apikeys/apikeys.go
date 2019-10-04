@@ -1,6 +1,7 @@
 package apikeys
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"time"
 
@@ -12,8 +13,7 @@ import (
 
 // Key is the database representation of our API keys
 type Key struct {
-	// TODO don't store the key directly, but a hashed version
-	Key       uuid.UUID  `db:"api_key"`
+	HashedKey []byte     `db:"hashed_key"`
 	UserID    int        `db:"user_id"`
 	CreatedAt time.Time  `db:"created_at"`
 	UpdatedAt time.Time  `db:"updated_at"`
@@ -24,47 +24,62 @@ type Key struct {
 	// TODO add IP whitelisting
 }
 
-func New(d *db.DB, user users.User) (Key, error) {
+// New creates a new API key for the given user. It returns both the inserted
+// DB struct as well as the raw API key. It's not possible to retrieve the raw
+// API key at a later point in time.
+func New(d *db.DB, user users.User) (uuid.UUID, Key, error) {
 	key := uuid.NewV4()
+
+	hasher := sha256.New()
+	// according to godoc, this operation never fails
+	_, _ = hasher.Write(key.Bytes())
+	hashedKey := hasher.Sum(nil)
+
 	apiKey := Key{
-		Key:    key,
-		UserID: user.ID,
+		HashedKey: hashedKey,
+		UserID:    user.ID,
 	}
 	query := `INSERT INTO api_keys 
-	VALUES (:api_key, :user_id) 
-	RETURNING api_key, user_id, created_at, updated_at, deleted_at `
+	VALUES (:hashed_key, :user_id) 
+	RETURNING hashed_key, user_id, created_at, updated_at, deleted_at `
 	rows, err := d.NamedQuery(query, apiKey)
 	if err != nil {
-		return Key{}, errors.Wrap(err, "could not insert API key")
+		return uuid.UUID{}, Key{}, errors.Wrap(err, "could not insert API key")
 	}
 	inserted := Key{}
 	if rows.Next() {
 		if err := rows.Scan(
-			&inserted.Key,
+			&inserted.HashedKey,
 			&inserted.UserID,
 			&inserted.CreatedAt,
 			&inserted.UpdatedAt,
 			&inserted.DeletedAt,
 		); err != nil {
-			return Key{}, errors.Wrap(err, "could not scan API key")
+			return uuid.UUID{}, Key{}, errors.Wrap(err, "could not scan API key")
 		}
 	} else {
-		return Key{}, errors.Wrap(sql.ErrNoRows, "could not scan API key")
+		return uuid.UUID{}, Key{}, errors.Wrap(sql.ErrNoRows, "could not scan API key")
 	}
 
 	if err := rows.Close(); err != nil {
-		return Key{}, err
+		return uuid.UUID{}, Key{}, err
 	}
-	return inserted, nil
+	return key, inserted, nil
 }
 
 func Get(d *db.DB, key uuid.UUID) (Key, error) {
-	query := `SELECT api_key, user_id, created_at, updated_at, deleted_at 
+
+	hasher := sha256.New()
+	// according to godoc, this operation never fails
+	_, _ = hasher.Write(key.Bytes())
+	hashedKey := hasher.Sum(nil)
+
+	query := `SELECT hashed_key, user_id, created_at, updated_at
 	FROM api_keys
-	WHERE api_key = $1
+	WHERE hashed_key = $1 AND deleted_at IS NULL
 	LIMIT 1`
 	apiKey := Key{}
-	if err := d.Get(&apiKey, query, key.String()); err != nil {
+	if err := d.Get(&apiKey, query, hashedKey); err != nil {
 		return Key{}, errors.Wrap(err, "API key not found")
 	}
 	return apiKey, nil
