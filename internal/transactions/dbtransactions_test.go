@@ -287,6 +287,7 @@ func TestTxListener(t *testing.T) {
 func TestBlockListener(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
+
 }
 
 func TestTransaction_SaveTxidToDeposit(t *testing.T) {

@@ -19,7 +19,6 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -165,23 +164,20 @@ func GetBitcoindConfig(t *testing.T) bitcoind.Config {
 
 // GetBitcoindClientOrFail returns a bitcoind RPC client, corresponding to
 // the given configuration.
-func GetBitcoindClientOrFail(t *testing.T, conf bitcoind.Config) *rpcclient.Client {
-	// Bitcoin Core doesn't do notifications
-	var notificationHandler *rpcclient.NotificationHandlers = nil
-
-	client, err := rpcclient.New(conf.ToConnConfig(), notificationHandler)
+func GetBitcoindClientOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
+	bitcoin, err := bitcoind.NewConn(conf, time.Second)
 	if err != nil {
-		testutil.FatalMsg(t, err)
+		testutil.FatalMsgf(t, "could not start bitcoind: %+v", err)
 	}
 
-	return client
+	return bitcoin
 }
 
 // StartBitcoindOrFail starts a bitcoind node with the given configuration,
 // with the data directory set to the users temporary directory. The function
 // returns the created client, as well as a function that cleans up the operation
 // (stopping the node and deleting the data directory).
-func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (client *rpcclient.Client, cleanup func() error) {
+func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (bitcoin bitcoind.TeslacoilBitcoind, cleanup func() error) {
 	tempDir, err := ioutil.TempDir("", "teslacoil-bitcoind-")
 	if err != nil {
 		testutil.FatalMsgf(t, "Could not create temporary bitcoind dir: %v", err)
@@ -235,7 +231,8 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (client *rpcclient.
 
 	log.Debugf("Started bitcoind client with pid %d", pid)
 
-	client = GetBitcoindClientOrFail(t, conf)
+	bitcoin = GetBitcoindClientOrFail(t, conf)
+	client := bitcoin.Btcctl()
 
 	// await bitcoind startup
 	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
@@ -265,9 +262,11 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (client *rpcclient.
 			return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
 		}
 		log.Debugf("Deleted bitcoind tmp directory %s", tempDir)
+
+		bitcoin.StopZmq()
 		return nil
 	}
-	return client, cleanup
+	return bitcoin, cleanup
 }
 
 type logWriter struct {
@@ -428,6 +427,60 @@ func RunWithLnd(t *testing.T, test func(lnd lnrpc.LightningClient)) {
 	}
 
 	test(lnd)
+
+	if err := cleanup(); err != nil {
+		t.Fatalf("Couldn't clean up after %q: %v", t.Name(), err)
+	}
+}
+
+// RunWithBitcoind lets you test functionality that requires actual bitcoind
+// node by creating starting up bitcoind, running the test and then running
+// the necessary cleanup.
+func RunWithBitcoind(t *testing.T, test func(bitcoin bitcoind.TeslacoilBitcoind)) {
+	bitcoindConf := GetBitcoindConfig(t)
+	bitcoin, cleanupBitcoind := StartBitcoindOrFail(t, bitcoindConf)
+
+	cleanup := func() error {
+		bitcoindErr := cleanupBitcoind()
+		if bitcoindErr != nil {
+			return fmt.Errorf("failed to cleanup bitcoind: %s",
+				bitcoindErr.Error())
+		}
+		return nil
+	}
+
+	test(bitcoin)
+
+	if err := cleanup(); err != nil {
+		t.Fatalf("Couldn't clean up after %q: %v", t.Name(), err)
+	}
+}
+
+// RunWithBitcoindAndLnd lets you test functionality that requires actual LND/bitcoind
+// nodes by creating the nodes, running your tests, and then performs the
+// necessary cleanup.
+func RunWithBitcoindAndLnd(t *testing.T, test func(lnd lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind)) {
+	bitcoindConf := GetBitcoindConfig(t)
+	lndConf := GetLightingConfig(t)
+	bitcoin, cleanupBitcoind := StartBitcoindOrFail(t, bitcoindConf)
+
+	lnd, cleanupLnd := StartLndOrFail(t, bitcoindConf, lndConf)
+
+	cleanup := func() error {
+		bitcoindErr := cleanupBitcoind()
+		lndErr := cleanupLnd()
+		if bitcoindErr != nil && lndErr != nil {
+			return fmt.Errorf("failed to cleanup bitcoind: %s and lnd: %s",
+				bitcoindErr.Error(), lndErr.Error())
+		} else if bitcoindErr != nil {
+			return bitcoindErr
+		} else if lndErr != nil {
+			return lndErr
+		}
+		return nil
+	}
+
+	test(lnd, bitcoin)
 
 	if err := cleanup(); err != nil {
 		t.Fatalf("Couldn't clean up after %q: %v", t.Name(), err)
