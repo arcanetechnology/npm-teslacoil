@@ -73,17 +73,18 @@ func DefaultRpcPort(params chaincfg.Params) (int, error) {
 // Conn represents a persistent client connection to a bitcoind node
 // that listens for events read from a ZMQ connection
 type Conn struct {
+	// btcctl is a bitcoind rpc connection
 	btcctl *rpcclient.Client
 	// zmqBlockConn is the ZMQ connection we'll use to read raw block
 	// events
 	zmqBlockConn *gozmq.Conn
-	// ZmqBlockCh is the channel on which we return block events received
+	// zmqBlockCh is the channel on which we return block events received
 	// from zmq
 	zmqBlockCh chan *wire.MsgBlock
 	// zmqTxConn is the ZMQ connection we'll use to read raw new
 	// transaction events
 	zmqTxConn *gozmq.Conn
-	// ZmqTxCh is the channel on which we return tx events received
+	// zmqTxCh is the channel on which we return tx events received
 	// from zmq
 	zmqTxCh chan *wire.MsgTx
 }
