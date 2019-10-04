@@ -13,7 +13,7 @@ import (
 // parameters, `limit` and `offset`
 func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claim, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -36,7 +36,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		t, err := payments.GetAll(r.db, claim.UserID, int(limit), int(offset))
+		t, err := payments.GetAll(r.db, userID, int(limit), int(offset))
 		if err != nil {
 			log.Errorf("Couldn't get payments: %v", err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
@@ -52,7 +52,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 // specified in the body
 func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -63,9 +63,9 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 			c.JSONP(404, gin.H{"error": "url param invoice id should be a integer"})
 			return
 		}
-		log.Infof("find payment %d for user %d", id, claims.UserID)
+		log.Infof("find payment %d for user %d", id, userID)
 
-		t, err := payments.GetByID(r.db, int(id), claims.UserID)
+		t, err := payments.GetByID(r.db, int(id), userID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
@@ -92,7 +92,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -103,12 +103,12 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		}
 
 		log.Debugf("received new request for CreateInvoice for user_id %d: %+v",
-			claims.UserID,
+			userID,
 			request)
 
 		t, err := payments.NewPayment(
 			r.db, *r.lncli, payments.NewPaymentOpts{
-				UserID:      claims.UserID,
+				UserID:      userID,
 				AmountSat:   request.AmountSat,
 				Memo:        request.Memo,
 				Description: request.Description,
@@ -121,7 +121,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			return
 		}
 
-		if t.UserID != claims.UserID {
+		if t.UserID != userID {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 		}
 
@@ -140,7 +140,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		// authenticate the user by extracting the id from the jwt-token
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -150,11 +150,11 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			return
 		}
 		log.Debugf("received new request for PayInvoice for userID %d: %+v",
-			claims.UserID, request)
+			userID, request)
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
-		t, err := payments.PayInvoiceWithDescription(r.db, *r.lncli, claims.UserID,
+		t, err := payments.PayInvoiceWithDescription(r.db, *r.lncli, userID,
 			request.PaymentRequest, request.Description)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)

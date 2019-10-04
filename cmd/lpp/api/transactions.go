@@ -18,7 +18,7 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		claim, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -28,16 +28,16 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 			return
 		}
 
-		log.Debugf("received request for %d: %+v", claim.UserID, params)
+		log.Debugf("received request for %d: %+v", userID, params)
 
 		var t []transactions.Transaction
 		var err error
 		if params.Limit == 0 && params.Offset == 0 {
-			t, err = transactions.GetAllTransactions(r.db, claim.UserID)
+			t, err = transactions.GetAllTransactions(r.db, userID)
 		} else if params.Limit == 0 {
-			t, err = transactions.GetAllTransactionsOffset(r.db, claim.UserID, params.Offset)
+			t, err = transactions.GetAllTransactionsOffset(r.db, userID, params.Offset)
 		} else {
-			t, err = transactions.GetAllTransactionsLimitOffset(r.db, claim.UserID, params.Limit, params.Offset)
+			t, err = transactions.GetAllTransactionsLimitOffset(r.db, userID, params.Limit, params.Offset)
 		}
 		if err != nil {
 			log.Errorf("Couldn't get transactions: %v", err)
@@ -54,7 +54,7 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 // specified in the body
 func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -66,8 +66,8 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 			return
 		}
 
-		log.Debugf("find transaction %d for user %d", id, claims.UserID)
-		t, err := transactions.GetTransactionByID(r.db, int(id), claims.UserID)
+		log.Debugf("find transaction %d for user %d", id, userID)
+		t, err := transactions.GetTransactionByID(r.db, int(id), userID)
 		if err != nil {
 			c.JSONP(
 				http.StatusNotFound,
@@ -95,7 +95,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -105,7 +105,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 			return
 		}
 		// add the userID to send coins from
-		request.UserID = claims.UserID
+		request.UserID = userID
 
 		// TODO: Create a middleware for logging request body
 		log.Infof("Received WithdrawOnChain request %+v\n", request)
@@ -139,7 +139,7 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -150,7 +150,7 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 		}
 		log.Infof("Received DepositOnChain request %+v\n", request)
 
-		transaction, err := transactions.GetDeposit(r.db, *r.lncli, claims.UserID, request)
+		transaction, err := transactions.GetDeposit(r.db, *r.lncli, userID, request)
 		if err != nil {
 			log.Errorf("cannot deposit onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,

@@ -10,6 +10,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -52,7 +53,7 @@ func TestGetTransactionByID(t *testing.T) {
 	amount1 := rand.Int63n(ln.MaxAmountSatPerInvoice)
 	amount2 := rand.Int63n(ln.MaxAmountSatPerInvoice)
 
-	user := CreateUserOrFail(t)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	testCases := []struct {
 		email          string
@@ -239,23 +240,8 @@ func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
 	}
 }
 
-// CreateUserOrFail is a util function for creating a user
-func CreateUserOrFail(t *testing.T) users.User {
-	u, err := users.Create(testDB, users.CreateUserArgs{
-		Email:    testutil.GetTestEmail(t),
-		Password: "password",
-	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
-			t.Name(), err)
-	}
-
-	return u
-}
-
 func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
-	u := CreateUserOrFail(t)
+	u := userstestutil.CreateUserOrFail(t, testDB)
 
 	tx := testDB.MustBegin()
 	user, err := users.IncreaseBalance(tx, users.ChangeBalance{

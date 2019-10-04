@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -176,7 +177,7 @@ func extractMethodAndPath(req *http.Request) string {
 func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 
-	bodyBytes := []byte{}
+	var bodyBytes []byte
 	var err error
 	if request.Body != nil {
 		// read the body bytes for potential error messages later
@@ -191,24 +192,9 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	response := httptest.NewRecorder()
 	harness.server.ServeHTTP(response, request)
 
-	if response.Code != 200 {
-		var parsedJsonBody string
-
-		// this is a bit strange way of doing things, but we unmarshal and then
-		// marshal again to get rid of any weird formatting, so we can print
-		// the JSON body in a compact, one-line way
-		var jsonDest map[string]interface{}
-		if err := json.Unmarshal(bodyBytes, &jsonDest); err != nil {
-			testutil.FatalMsgf(t, "Could not unmarshal JSON: %v. Body: %s", err, string(bodyBytes))
-		}
-		jsonBytes, err := json.Marshal(jsonDest)
-		parsedJsonBody = string(jsonBytes)
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not marshal JSON: %v", err)
-		}
-
-		testutil.FatalMsgf(t, "Got failure code (%d) on path %s %s",
-			response.Code, extractMethodAndPath(request), string(parsedJsonBody))
+	if response.Code >= 300 {
+		testutil.FatalMsgf(t, "Got failure code (%d) on path %s: %s",
+			response.Code, extractMethodAndPath(request), response.Body.String())
 	}
 
 	return response
@@ -226,9 +212,11 @@ func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, body *bytes
 	}
 }
 
-// Creates and logs in a user with the given email and password. Returns
-// the access token for this session.
-func (harness *TestHarness) CreateAndLoginUser(t *testing.T, args users.CreateUserArgs) string {
+// Creates and and authenticates a user with the given email and password.
+// We either log in (and return an access token), or create an API key (and
+// return that). They should be equivalent (until scopes are implemented, so
+// this should not matter and might uncover some edge cases.
+func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
 	_ = harness.CreateUser(t, args)
 
 	loginUserReq := GetRequest(t, RequestArgs{
@@ -240,18 +228,17 @@ func (harness *TestHarness) CreateAndLoginUser(t *testing.T, args users.CreateUs
 		}`, args.Email, args.Password),
 	})
 
+	fail := func(json map[string]interface{}, key, methodAndPath string) {
+		testutil.FatalMsgf(t, "Returned JSON (%+v) did not have string property '%s'. Path: %s",
+			json, key, methodAndPath)
+	}
+
 	jsonRes := harness.AssertResponseOkWithJson(t, loginUserReq)
 
 	tokenPath := "accessToken"
-	fail := func() {
-		methodAndPath := extractMethodAndPath(loginUserReq)
-		testutil.FatalMsgf(t, "Returned JSON (%+v) did have string property '%s'. Path: %s",
-			jsonRes, tokenPath, methodAndPath)
-	}
-
 	maybeNilToken, ok := jsonRes[tokenPath]
 	if !ok {
-		fail()
+		fail(jsonRes, tokenPath, extractMethodAndPath(loginUserReq))
 	}
 
 	var token string
@@ -259,8 +246,36 @@ func (harness *TestHarness) CreateAndLoginUser(t *testing.T, args users.CreateUs
 	case string:
 		token = untypedToken
 	default:
-		fail()
+		fail(jsonRes, tokenPath, extractMethodAndPath(loginUserReq))
 	}
 
-	return token
+	// we want to alternate between authenticating users with an API key or
+	// a JWT. We flip a coin here, and if the coin flip succeeds we create an
+	// API key and return that.
+	coinFlip := rand.Float32()
+	if coinFlip < 0.5 {
+		return token
+	}
+
+	apiKeyRequest := GetAuthRequest(t, AuthRequestArgs{
+		Path:        "/apikey",
+		Method:      "POST",
+		AccessToken: token,
+	})
+	apiKeyJson := harness.AssertResponseOkWithJson(t, apiKeyRequest)
+	apiKeyPath := "key"
+	maybeNilKey, ok := apiKeyJson[apiKeyPath]
+	if !ok {
+		fail(apiKeyJson, apiKeyPath, extractMethodAndPath(apiKeyRequest))
+	}
+
+	switch untypedKey := maybeNilKey.(type) {
+	case string:
+		return untypedKey
+	default:
+		fail(apiKeyJson, apiKeyPath, extractMethodAndPath(apiKeyRequest))
+		// won't reach this
+		panic("unreachable")
+	}
+
 }

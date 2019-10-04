@@ -45,7 +45,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		testutil.DescribeTest(t)
 
 		password := gofakeit.Password(true, true, true, true, true, 32)
-		accessToken := h.CreateAndLoginUser(t, users.CreateUserArgs{
+		accessToken := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 			Email:    gofakeit.Email(),
 			Password: password,
 		})

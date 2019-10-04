@@ -12,7 +12,10 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp/totp"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,12 +32,6 @@ type UserResponse struct {
 var (
 	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
 	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
-)
-
-const (
-	// Authorization is the name of the header where we expect the access token
-	// to be found
-	Authorization = "Authorization"
 )
 
 // GetAllUsers is a GET request that returns all the users in the database
@@ -62,7 +59,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -75,7 +72,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 		// TODO debug
 		log.Infof("Got update user request: %+v", request)
 
-		user, err := users.GetByID(r.db, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
@@ -116,12 +113,12 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 // GetUser is a GET request that returns users that match the one specified in the body
 func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
 
-		user, err := users.GetByID(r.db, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
 			log.Error(err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
@@ -238,7 +235,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			}
 		}
 
-		tokenString, err := createJWTToken(request.Email, user.ID)
+		tokenString, err := auth.CreateJwt(request.Email, user.ID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
@@ -268,21 +265,21 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 		Base64QR   string `json:"base64QrCode"`
 	}
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
 
-		user, err := users.GetByID(r.db, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Could not find user %d: %v", claims.UserID, err)
+			log.Errorf("Could not find user %d: %v", userID, err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
 		key, err := user.Create2faCredentials(r.db)
 		if err != nil {
-			log.Errorf("Could not create 2FA credentials for user %d: %v", claims.UserID, err)
+			log.Errorf("Could not create 2FA credentials for user %d: %v", userID, err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
@@ -320,7 +317,7 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 		Code string `json:"code" binding:"required"`
 	}
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -332,15 +329,15 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 			return
 		}
 
-		user, err := users.GetByID(r.db, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Could not get user %d", claims.UserID)
+			log.Errorf("Could not get user %d", userID)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
 		if _, err := user.Confirm2faCredentials(r.db, req.Code); err != nil {
-			log.Errorf("Could not enable 2FA credentials for user %d: %v", claims.UserID, err)
+			log.Errorf("Could not enable 2FA credentials for user %d: %v", userID, err)
 			switch err {
 			case users.Err2faNotEnabled:
 				c.JSONP(http.StatusBadRequest, gin.H{"error": "2FA is not enabled"})
@@ -354,7 +351,7 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 			return
 		}
 
-		log.Debugf("Confirmed 2FA setting for user %d", claims.UserID)
+		log.Debugf("Confirmed 2FA setting for user %d", userID)
 		c.Status(http.StatusOK)
 	}
 }
@@ -364,7 +361,7 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 		Code string `json:"code" binding:"required"`
 	}
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -376,15 +373,15 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 			return
 		}
 
-		user, err := users.GetByID(r.db, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Could not get user %d", claims.UserID)
+			log.Errorf("Could not get user %d", userID)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
 			return
 		}
 
 		if _, err := user.Delete2faCredentials(r.db, req.Code); err != nil {
-			log.Errorf("Could not delete 2FA credentials for user %d: %v", claims.UserID, err)
+			log.Errorf("Could not delete 2FA credentials for user %d: %v", userID, err)
 			switch {
 			case err == users.ErrInvalidTotpCode:
 				c.JSONP(http.StatusForbidden, gin.H{"error": "Invalid TOTP code"})
@@ -396,7 +393,7 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 			return
 		}
 
-		log.Debugf("Removed 2FA setting for user %d", claims.UserID)
+		log.Debugf("Removed 2FA setting for user %d", userID)
 		c.Status(http.StatusOK)
 	}
 }
@@ -411,21 +408,25 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
-
-		tokenString, err := createJWTToken(claims.Email, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		tokenString, err := auth.CreateJwt(user.Email, user.ID)
+		if err != nil {
+			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			return
 		}
 
 		res := &RefreshTokenResponse{
 			AccessToken: tokenString,
 		}
-
-		log.Info("RefreshTokenResponse: ", res)
 
 		c.JSONP(200, res)
 	}
@@ -552,7 +553,7 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 		RepeatedNewPassword string `json:"repeatedNewPassword" binding:"required,eqfield=NewPassword"`
 	}
 	return func(c *gin.Context) {
-		claims, ok := getJWTOrReject(c)
+		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -562,7 +563,7 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		user, err := users.GetByID(r.db, claims.UserID)
+		user, err := users.GetByID(r.db, userID)
 		if err != nil {
 			log.Errorf("Couldn't get user by ID when changing password: %v", err)
 			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
@@ -582,5 +583,38 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 		}
 
 		c.Status(http.StatusOK)
+	}
+}
+
+type CreateApiKeyResponse struct {
+	Key    uuid.UUID `json:"key"`
+	UserID int       `json:"userId"`
+}
+
+func (r *RestServer) CreateApiKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := getUserIdOrReject(c)
+		if !ok {
+			return
+		}
+
+		user, err := users.GetByID(r.db, userID)
+		if err != nil {
+			log.WithError(err).WithField("user", userID).Error("Could not get user")
+			c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		rawKey, key, err := apikeys.New(r.db, user)
+		if err != nil {
+			log.WithError(err).WithField("user", userID).Error("Could not create API key")
+			c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+			return
+		}
+
+		c.JSON(http.StatusCreated, CreateApiKeyResponse{
+			Key:    rawKey,
+			UserID: key.UserID,
+		})
 	}
 }
