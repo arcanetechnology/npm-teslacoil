@@ -41,21 +41,8 @@ type RestServer struct {
 	EmailSender EmailSender
 }
 
-//NewApp creates a new app
-func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
-	callbacks payments.HttpPoster, config Config) (RestServer, error) {
-	build.SetLogLevel(config.LogLevel)
-
-	g := gin.Default()
-
-	engine, ok := binding.Validator.Engine().(*validator.Validate)
-	if !ok {
-		log.Fatalf("Gin validator engine (%s) was validator.Validate", binding.Validator.Engine())
-	}
-	validators := validation.RegisterAllValidators(engine)
-	log.Infof("Registered custom validators: %s", validators)
-
-	g.Use(cors.New(cors.Config{
+func getCorsConfig() cors.Config {
+	return cors.Config{
 		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000"},
 		AllowMethods: []string{
 			http.MethodPut, http.MethodGet,
@@ -65,7 +52,41 @@ func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
 		AllowHeaders: []string{
 			"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
 			"Authorization"},
-	}))
+	}
+}
+
+// getGinEngine creates a new Gin engine, and applies middlewares used by
+// our API. This includes recovering from panics, logging with Logrus and
+// applying CORS configuration.
+func getGinEngine(config Config) *gin.Engine {
+	engine := gin.New()
+	log.Debug("Applying gin.Recovery middleware")
+	engine.Use(gin.Recovery())
+
+	log.Debug("Applying Gin logging middleware")
+	engine.Use(build.GinLoggingMiddleWare(log,
+		// TODO should we have a custom field for request logging in our config?
+		config.LogLevel))
+
+	log.Debug("Applying CORS middleware")
+	corsConfig := getCorsConfig()
+	engine.Use(cors.New(corsConfig))
+	return engine
+}
+
+//NewApp creates a new app
+func NewApp(d *db.DB, lncli lnrpc.LightningClient, email EmailSender,
+	callbacks payments.HttpPoster, config Config) (RestServer, error) {
+	build.SetLogLevel(config.LogLevel)
+
+	g := getGinEngine(config)
+
+	engine, ok := binding.Validator.Engine().(*validator.Validate)
+	if !ok {
+		log.Fatalf("Gin validator engine (%s) was validator.Validate", binding.Validator.Engine())
+	}
+	validators := validation.RegisterAllValidators(engine)
+	log.Infof("Registered custom validators: %s", validators)
 
 	r := RestServer{
 		Router:      g,
