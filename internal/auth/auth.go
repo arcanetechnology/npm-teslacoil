@@ -1,13 +1,18 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 )
 
 var (
@@ -28,10 +33,39 @@ type JWTClaims struct {
 	jwt.StandardClaims
 }
 
-// Middleware is a middleware that authenticates that the user supplies either
-// a Bearer JWT or an API key in their authorization header.
-func Middleware(c *gin.Context) {
-	authenticateJWT(c)
+// GetMiddleware generates a middleware that authenticates that the user
+// supplies either a Bearer JWT or an API key in their authorization header.
+func GetMiddleware(database *db.DB) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		header := c.GetHeader(Header)
+		if header == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Authorization header can't be empty"})
+			c.Abort()
+			return
+		}
+		if strings.HasPrefix(header, "Bearer ") {
+			authenticateJWT(c)
+		} else {
+			authenticateApiKey(database, c)
+		}
+	}
+}
+
+func authenticateApiKey(database *db.DB, c *gin.Context) {
+	uuidString := c.GetHeader(Header)
+	parsedUuid, err := uuid.FromString(uuidString)
+	if err != nil {
+		log.WithError(err).Error("Bad authorization header for API key")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Malformed API key"})
+		c.Abort()
+		return
+	}
+	_, err = apikeys.Get(database, parsedUuid)
+	if err != nil {
+		log.WithError(err).WithField("key", parsedUuid).Error("Couldn't get API key")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "API key not found"})
+		c.Abort()
+	}
 }
 
 // authenticateJWT is the middleware applied to every request to authenticate
@@ -43,12 +77,35 @@ func authenticateJWT(c *gin.Context) {
 
 	_, _, err := ParseBearerJwt(tokenString)
 	if err != nil {
-		c.JSONP(http.StatusForbidden, gin.H{"error": "bad authorization"})
-		c.Abort() // cancels the following request
+		var validationError *jwt.ValidationError
+		if errors.As(err, &validationError) {
+			switch validationError.Errors {
+			case jwt.ValidationErrorMalformed:
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Malformed JWT"})
+				c.Abort()
+				return
+			case jwt.ValidationErrorSignatureInvalid:
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT signature"})
+				c.Abort()
+				return
+			case jwt.ValidationErrorExpired:
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "JWT is expired"})
+				c.Abort()
+				return
+			case jwt.ValidationErrorIssuedAt:
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "JWT is not valid yet"})
+				c.Abort()
+				return
+			}
+		}
+
+		log.WithError(err).Info("Got unexpected error when parsing JWT")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong..."})
+		c.Abort()
 		return
 	}
 
-	log.Infof("jwt-token is valid: %s", tokenString)
+	log.WithField("jwt", tokenString).Trace("JWT is valid")
 }
 
 func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClaims, error) {
@@ -58,8 +115,7 @@ func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClai
 	// a malicious actor will just create an invalid JWT if anything other
 	// then Bearer is passed as the first 7 characters
 	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
-		return nil, nil, fmt.Errorf(
-			"invalid JWT please include token on form 'Bearer xx.xx.xx")
+		return nil, nil, jwt.NewValidationError("malformed JWT", jwt.ValidationErrorMalformed)
 	}
 
 	tokenString = tokenString[7:]
@@ -117,23 +173,38 @@ func ParseBearerJwt(tokenString string) (*jwt.Token, *JWTClaims, error) {
 	return parseBearerJwtWithKey(tokenString, tokenSigningKey)
 }
 
-func createJwtWithKey(email string, id int, key []byte) (string, error) {
+type createJwtArgs struct {
+	email string
+	id    int
+	key   []byte
+	now   func() time.Time
+}
 
-	expiresAt := time.Now().Add(5 * time.Hour).Unix()
+func createJwt(args createJwtArgs) (string, error) {
+	if args.now == nil {
+		args.now = time.Now
+	}
+
+	if args.key == nil {
+		args.key = tokenSigningKey
+	}
+
+	expiresAt := args.now().Add(5 * time.Hour).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		&JWTClaims{
-			Email:  email,
-			UserID: id,
+			Email:  args.email,
+			UserID: args.id,
 			StandardClaims: jwt.StandardClaims{
 				ExpiresAt: expiresAt,
+				IssuedAt:  args.now().Unix(),
 			},
 		},
 	)
 
 	log.Trace("Created token: ", token)
 
-	tokenString, err := token.SignedString(key)
+	tokenString, err := token.SignedString(args.key)
 	if err != nil {
 		log.WithError(err).Error("Signing JWT failed")
 		return "", err
@@ -148,5 +219,10 @@ func createJwtWithKey(email string, id int, key []byte) (string, error) {
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token.
 func CreateJwt(email string, id int) (string, error) {
-	return createJwtWithKey(email, id, tokenSigningKey)
+	return createJwt(createJwtArgs{
+		email: email,
+		id:    id,
+		key:   tokenSigningKey,
+		now:   time.Now,
+	})
 }

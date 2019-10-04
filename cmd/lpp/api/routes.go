@@ -111,7 +111,7 @@ func (r *RestServer) RegisterAuthRoutes() {
 	authGroup.PUT("reset_password", r.ResetPassword())
 	authGroup.POST("reset_password", r.SendPasswordResetEmail())
 
-	authGroup.Use(auth.Middleware)
+	authGroup.Use(auth.GetMiddleware(r.db))
 
 	// 2FA methods
 	authGroup.POST("2fa", r.Enable2fa())
@@ -124,7 +124,7 @@ func (r *RestServer) RegisterAuthRoutes() {
 
 func (r *RestServer) RegisterApiKeyRoutes() {
 	keys := r.Router.Group("")
-	keys.Use(auth.Middleware)
+	keys.Use(auth.GetMiddleware(r.db))
 	keys.POST("apikey", r.CreateApiKey())
 
 }
@@ -137,7 +137,7 @@ func (r *RestServer) RegisterUserRoutes() {
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read
 	users := r.Router.Group("")
-	users.Use(auth.Middleware)
+	users.Use(auth.GetMiddleware(r.db))
 	users.GET("/users", r.GetAllUsers())
 	users.GET("/user", r.GetUser())
 	users.PUT("/user", r.UpdateUser())
@@ -148,7 +148,7 @@ func (r *RestServer) RegisterUserRoutes() {
 // can be found in payment packages
 func (r *RestServer) RegisterPaymentRoutes() {
 	payment := r.Router.Group("")
-	payment.Use(auth.Middleware)
+	payment.Use(auth.GetMiddleware(r.db))
 
 	payment.GET("payments", r.GetAllPayments())
 	payment.GET("payment/:id", r.GetPaymentByID())
@@ -160,7 +160,7 @@ func (r *RestServer) RegisterPaymentRoutes() {
 // A transaction is defined as an on-chain transaction
 func (r *RestServer) RegisterTransactionRoutes() {
 	transaction := r.Router.Group("")
-	transaction.Use(auth.Middleware)
+	transaction.Use(auth.GetMiddleware(r.db))
 
 	transaction.GET("/transactions", r.GetAllTransactions())
 	transaction.GET("/transaction/:id", r.GetTransactionByID())

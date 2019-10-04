@@ -298,7 +298,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, newPass, pass, pass),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
+		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("should give an error on bad password", func(t *testing.T) {
@@ -598,7 +598,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 			Path:   "/auth/2fa",
 			Method: "POST",
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusForbidden)
+		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("enable 2FA", func(t *testing.T) {
