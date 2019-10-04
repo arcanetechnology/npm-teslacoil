@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
@@ -33,10 +34,19 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}) {
 	t.Helper()
 
 	// we special case errors, to check if their error messages are the same
-	firstErr, firstOk := expected.(error)
-	secondErr, secondOk := actual.(error)
-	if firstOk && secondOk {
+	firstErr, firstErrOk := expected.(error)
+	secondErr, secondErrOk := actual.(error)
+	if firstErrOk && secondErrOk {
 		AssertEqual(t, firstErr.Error(), secondErr.Error())
+		return
+	}
+
+	// special case byte slices
+	firstBytes, firstBytesOk := expected.([]byte)
+	secondBytes, secondBytesOk := actual.([]byte)
+	if firstBytesOk && secondBytesOk {
+		AssertMsg(t, bytes.Equal(firstBytes, secondBytes),
+			fmt.Sprintf("Byte slices %x and %x are not the same!", firstBytes, secondBytes))
 		return
 	}
 
