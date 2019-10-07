@@ -9,21 +9,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-
-	"gitlab.com/arcanecrypto/teslacoil/build"
-
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"github.com/btcsuite/btcutil"
 
 	"github.com/google/go-cmp/cmp"
-
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
@@ -272,19 +273,14 @@ type GetAddressArgs struct {
 	Vout *int `json:"vout"`
 }
 
-// NewDeposit is a wrapper function for creating a new Deposit without a description
-func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int) (Transaction, error) {
-	return NewDepositWithFields(d, lncli, userID, "", nil, nil)
-}
-
-// NewDepositWithFields retrieves a new address from lnd, and saves the address
+// NewDeposit retrieves a new address from lnd, and saves the address
 // in a new 'UNCONFIRMED', 'INBOUND' transaction together with the UserID
 // Returns the same transaction as insertTransaction(), in full
-func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
-	description string, vout *int, txid *string) (Transaction, error) {
+func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
+	description string, vout *int, txid *string, amountSat int64) (Transaction, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		// This type means lnd will force-create a new address
-		Type: lnrpc.AddressType_NESTED_PUBKEY_HASH,
+		Type: lnrpc.AddressType_UNUSED_WITNESS_PUBKEY_HASH,
 	})
 	if err != nil {
 		return Transaction{}, errors.Wrap(err, "lncli could not create NewAddress")
@@ -298,6 +294,7 @@ func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
 		Description: description,
 		Txid:        txid,
 		Vout:        vout,
+		AmountSat:   amountSat,
 	})
 	if err != nil {
 		return Transaction{}, errors.Wrap(err, "could not insert new inbound transaction")
@@ -310,34 +307,29 @@ func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
 // GetOrCreateDeposit attempts to retreive a deposit whose address has not yet received any coins
 // It does this by selecting the last inserted deposit whose txid == "" (order by id desc)
 // If the ForceNewAddress argument is true, or no deposit is found, the function creates a new deposit
-func GetOrCreateDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddressArgs) (Transaction, error) {
-	log.Infof("DepositOnChain(%d, %+v)", userID, args)
+func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddressArgs) (Transaction, error) {
+	log.Tracef("DepositOnChain(%d, %+v)", userID, args)
 	// If ForceNewAddress is supplied, we return a new deposit instantly
 	if args.ForceNewAddress {
-		return NewDepositWithFields(d, lncli, userID, args.Description, args.Vout, args.Txid)
+		return NewDeposit(db, lncli, userID, args.Description, args.Vout, args.Txid, 0)
 	}
 
 	// Get the latest INBOUND transaction whose txid is empty from the DB
 	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' AND txid='' ORDER BY id DESC LIMIT 1;"
 	var deposit Transaction
-	err := d.Get(&deposit, query, userID)
-	// if the user has never made a deposit before, no transactions exist
-	// and postgres will return sql.ErrNoRows
-	if err != nil && err != sql.ErrNoRows {
-		log.WithError(err).Error("could not select deposit transaction")
-		return Transaction{}, err
-	}
+	err := db.Get(&deposit, query, userID)
 
-	// the direction table has a NOT NULL constraint and will always
-	// be either INBOUND or OUTBOUND. If it is neither, it means the
-	// SELECT query returned no results(no rows in result set)
-	if deposit.Direction == "" {
+	switch {
+	case err != nil && err == sql.ErrNoRows:
+		// no deposit exists yet
 		log.Debug("SELECT found no transactions, creating new deposit")
-		return NewDepositWithFields(d, lncli, userID, args.Description, args.Vout, args.Txid)
+		return NewDeposit(db, lncli, userID, args.Description, args.Vout, args.Txid, 0)
+	case err == nil:
+		// we found a deposit
+		return deposit, nil
+	default:
+		return Transaction{}, errors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
 	}
-
-	// If we get here, we return the transaction the query returned
-	return deposit, nil
 }
 
 // TxListener receives tx's from the zmqTxChannel and checks whether
@@ -349,22 +341,21 @@ func GetOrCreateDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args 
 //
 // NOTE: This must be run as a goroutine
 func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.MsgTx,
-	chainCfg *chaincfg.Params) {
+	chainCfg chaincfg.Params) {
 	for {
 		tx := <-zmqRawTxCh
 
-		txHash := tx.TxHash()
 		// To listen for deposits, we loop through every output of
 		// the tx, and check if any of the addresses exists in our db
 		for vout, output := range tx.TxOut {
 			// to extract the address, we first need to parse the output-script
 			script, err := txscript.ParsePkScript(output.PkScript)
 			if err != nil {
-				log.WithField("error", err).Tracef("could not parse PK script %v", output.PkScript)
 				// we continue to keep listening for new trasactions
 				continue
 			}
-			address, err := script.Address(chainCfg)
+
+			address, err := script.Address(&chainCfg)
 			if err != nil {
 				log.WithError(err).Error("could not extract address from script")
 				continue
@@ -375,41 +366,44 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 			// from the SELECT query
 			query := "SELECT * FROM transactions WHERE address=$1"
 			result := []Transaction{}
-			if err := db.Get(&result, query, address.EncodeAddress()); err != nil {
-				if err == sql.ErrNoRows {
-					// address does not belong to us
-					continue
-				}
+			if err := db.Select(&result, query, address.EncodeAddress()); err != nil {
 				log.WithError(err).Errorf("query SELECT * FROM transactions WHERE address=%v failed",
 					address.EncodeAddress())
 				continue
 			}
-			log.Tracef("found transactions %+v for address %s", result, address.EncodeAddress())
+			if len(result) == 0 {
+				// address does not belong to us
+				continue
+			}
+			log.WithFields(logrus.Fields{"transactions": result, "address": address.EncodeAddress()}).
+				Tracef("found transactions for address")
 
+			amountSat := output.Value
+			txHash := tx.TxHash()
 			for i, transaction := range result {
-				err = transaction.SaveTxidToDeposit(db, txHash, vout)
-				if err != nil {
-					if i == len(result) {
-						txid := txHash.String()
-						// we reached the last found transaction without being able to save
-						// the txid. This means the user deposited to an address he has used
-						// before, without creating a new deposit
-						_, err = NewDepositWithFields(db, lncli, transaction.UserID,
-							"", &vout, &txid)
-						if err != nil {
-							log.WithError(err).Errorf("could not create new deposit for %d with txid %s:%d",
-								transaction.UserID, txid, vout)
-						}
+
+				err = transaction.SaveTxToDeposit(db, txHash, vout, amountSat)
+				switch {
+				case err == nil:
+					// if we get here, it means the txhash+vout was successfully
+					// saved to a transaction, and we don't need to loop through more
+					// transactions
+					break
+				case i == len(result)-1:
+					// we reached the last found transaction without being able to save
+					// the txid. This means the user deposited to an address he has used
+					// before, without creating a new deposit using our API
+
+					txid := txHash.String()
+					_, err = NewDeposit(db, lncli, transaction.UserID,
+						"", &vout, &txid, amountSat)
+					if err != nil {
+						log.WithError(err).Errorf("could not create new deposit for %d with txid %s:%d",
+							transaction.UserID, txid, vout)
 					}
-					if !strings.Contains(err.Error(), "transaction already has a TXID") {
-						log.WithError(err).Error("could not save txid to deposit")
-					}
-					continue
+				case !strings.Contains(err.Error(), "transaction already has a TXID"):
+					log.WithError(err).Error("could not save txid to deposit")
 				}
-				// if we get here, it means the txhash+vout was successfully
-				// saved to a transaction, and we don't need to loop through more
-				// transactions
-				break
 			}
 		}
 	}
@@ -448,31 +442,31 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 				log.WithError(err).Errorf("could not create chainhash from txid %q", *transaction.Txid)
 				continue
 			}
-			transactionResult, err := bitcoindRpc.GetTransaction(txHash)
+			rawTx, err := bitcoindRpc.GetRawTransactionVerbose(txHash)
 			if err != nil {
 				log.WithError(err).Errorf("could not get transaction with hash %q from bitcoind", txHash)
 				continue
 			}
 
-			if transactionResult.Confirmations >= confirmationLimit {
-				log.Infof("tx %s:%d has %d confirmations", *transaction.Txid, *transaction.Vout, transactionResult.Confirmations)
+			if rawTx.Confirmations >= confirmationLimit {
+				log.Infof("tx %s:%d has %d confirmations", *transaction.Txid, *transaction.Vout, rawTx.Confirmations)
 
-				tx, err := bitcoindRpc.GetRawTransaction(txHash)
-				if err != nil {
-					log.WithError(err).Errorf("could not get raw transaction for hash %q", txHash)
-				}
-
-				outputs := tx.MsgTx().TxOut
-
-				if len(outputs) < *transaction.Vout {
+				if len(rawTx.Vout) < *transaction.Vout {
 					// something really weird has happened, the transaction changed? we saved it wrong?
-					panic("saved transaction outpoint is greater than the number of outputs, check the logic")
+					log.Panic("saved transaction outpoint is greater than the number of outputs, check the logic")
 				}
 
-				output := outputs[*transaction.Vout]
+				var output btcjson.Vout
+				for _, out := range rawTx.Vout {
+					if out.N == uint32(*transaction.Vout) {
+						output = out
+					}
+				}
 
-				if output.Value != transaction.AmountSat {
-					panic("actual outputValue and saved transaction-amount not equal")
+				if math.Round(btcutil.SatoshiPerBitcoin*output.Value) != float64(transaction.AmountSat) {
+					log.WithFields(logrus.Fields{"value": output.Value, "amount": transaction.AmountSat}).
+						Errorf("actual outputValue and expected amount not equal, check logic")
+					continue
 				}
 
 				err = transaction.MarkAsConfirmed(db)
@@ -484,34 +478,37 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 	}
 }
 
-// SaveTxidToDeposit saves a txid with an vout to the transaction
+// SaveTxToDeposit saves a txid consisting of a txid, a vout and an amount to the
+// db transaction
 // If the transaction already has a txid, it returns an error
-func (t Transaction) SaveTxidToDeposit(db *db.DB, txHash chainhash.Hash, vout int) error {
+func (t Transaction) SaveTxToDeposit(db *db.DB, txHash chainhash.Hash, vout int,
+	amountSat int64) error {
 
 	if t.Txid != nil {
 		return errors.New("transaction already has a TXID")
 	}
 
-	uQuery := `UPDATE transactions SET txid = $1, vout = $2 WHERE id = $3`
+	uQuery := `UPDATE transactions SET txid = $1, vout = $2, amount_sat = $3 WHERE id = $4`
 	dbTx := db.MustBegin()
-	results, err := dbTx.Exec(uQuery, txHash.String(), vout, t.ID)
+	results, err := dbTx.Exec(uQuery, txHash.String(), vout, amountSat, t.ID)
 	if err != nil {
 		_ = dbTx.Rollback()
-		log.WithError(err).Error("could not update transaction")
+		return errors.Wrap(err, "could not update transaction")
 	}
 
 	rowsAffected, err := results.RowsAffected()
 	if err != nil {
 		_ = dbTx.Rollback()
-		log.WithError(err).Error("could not retreive num rows affected")
+		return errors.Wrap(err, "could not retreive num rows affected")
 	}
 	if rowsAffected != 1 {
-		log.Panicf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
+		_ = dbTx.Rollback()
+		return errors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
 	}
 
 	if err = dbTx.Commit(); err != nil {
 		_ = dbTx.Rollback()
-		log.WithError(err).Error("could not commit dbTx")
+		return errors.Wrap(err, "could not commit dbTx")
 	}
 
 	return nil
@@ -537,7 +534,8 @@ func (t Transaction) MarkAsConfirmed(db *db.DB) error {
 
 	rowsAffected, _ := rows.RowsAffected()
 	if rowsAffected != 1 {
-		log.Panicf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
+		_ = dbtx.Rollback()
+		return errors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
 	}
 
 	if _, err := users.IncreaseBalance(dbtx, users.ChangeBalance{

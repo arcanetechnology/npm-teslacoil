@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -113,7 +111,7 @@ func GetLightningMockClient() LightningMockClient {
 
 // GetLightingConfig returns a LN config that's suitable for testing purposes.
 func GetLightingConfig(t *testing.T) ln.LightningConfig {
-	port := getPortOrFail(t)
+	port := testutil.GetPortOrFail(t)
 	tempDir, err := ioutil.TempDir("", "teslacoil-lnd-")
 	if err != nil {
 		testutil.FatalMsgf(t, "Could not create temp lnd dir: %v", err)
@@ -122,169 +120,8 @@ func GetLightingConfig(t *testing.T) ln.LightningConfig {
 		LndDir:    tempDir,
 		Network:   chaincfg.RegressionNetParams,
 		RPCServer: fmt.Sprintf("localhost:%d", port),
-		P2pPort:   getPortOrFail(t),
+		P2pPort:   testutil.GetPortOrFail(t),
 	}
-}
-
-// Returns a unused port
-func getPortOrFail(t *testing.T) int {
-	const minPortNumber = 1024
-	const maxPortNumber = 40000
-	rand.Seed(time.Now().UnixNano())
-	port := rand.Intn(maxPortNumber)
-	// port is reserved, try again
-	if port < minPortNumber {
-		return getPortOrFail(t)
-	}
-
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-	// port is busy, try again
-	if err != nil {
-		return getPortOrFail(t)
-	}
-	if err := listener.Close(); err != nil {
-		testutil.FatalMsgf(t, "Couldn't close port: %sl", err)
-	}
-	return port
-
-}
-
-// GetBitcoindConfig returns a bitcoind config suitable for testing purposes
-func GetBitcoindConfig(t *testing.T) bitcoind.Config {
-	return bitcoind.Config{
-		P2pPort:        getPortOrFail(t),
-		RpcPort:        getPortOrFail(t),
-		User:           "rpc_user_for_tests",
-		Password:       "rpc_pass_for_tests",
-		ZmqPubRawTx:    fmt.Sprintf("tcp://0.0.0.0:%d", getPortOrFail(t)),
-		ZmqPubRawBlock: fmt.Sprintf("tcp://0.0.0.0:%d", getPortOrFail(t)),
-	}
-
-}
-
-func GetBitcoinMockClient() TeslacoilBitcoindMockClient {
-	_ = bitcoind.Config{
-		Network: chaincfg.RegressionNetParams,
-	}
-
-	x := TeslacoilBitcoindMockClient{}
-
-	return x
-}
-
-// StartBitcoindOrFail starts a bitcoind node with the given configuration,
-// with the data directory set to the users temporary directory. The function
-// returns the created client, as well as a function that cleans up the operation
-// (stopping the node and deleting the data directory).
-func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) (bitcoin bitcoind.TeslacoilBitcoind, cleanup func() error) {
-	tempDir, err := ioutil.TempDir("", "teslacoil-bitcoind-")
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not create temporary bitcoind dir: %v", err)
-	}
-	args := []string{
-		// "-printtoconsole", // if you want to see output of bitcoind, uncomment this
-		"-datadir=" + tempDir,
-		"-server",
-		"-regtest",
-		"-daemon",
-		fmt.Sprintf("-port=%d", conf.P2pPort),
-		"-rpcuser=" + conf.User,
-		"-rpcpassword=" + conf.Password,
-		fmt.Sprintf("-rpcport=%d", conf.RpcPort),
-		"-txindex",
-		"-debug=rpc",
-		"-debug=zmq",
-		"-addresstype=bech32", // default addresstype, necessary for using GetNewAddress()
-		"-zmqpubrawtx=" + conf.ZmqPubRawTx,
-		"-zmqpubrawblock=" + conf.ZmqPubRawBlock,
-	}
-
-	log.Debugf("Executing command: bitcoind %s", strings.Join(args, " "))
-	cmd := exec.Command("bitcoind", args...)
-
-	// pass bitcoind output to test log, wrapepd with a label
-	cmd.Stderr = logWriter{"bitcoind", logrus.ErrorLevel}
-	cmd.Stdout = logWriter{"bitcoind", logrus.DebugLevel}
-	if err := cmd.Run(); err != nil {
-		testutil.FatalMsgf(t, "Could not start bitcoind: %v", err)
-	}
-
-	pidFile := filepath.Join(tempDir, "regtest", "bitcoind.pid")
-
-	readPidFile := func() error {
-		_, err := os.Stat(pidFile)
-		return err
-	}
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, readPidFile); err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "could not read bitcoind pid file"))
-	}
-
-	pidBytes, err := ioutil.ReadFile(pidFile)
-	if err != nil {
-		testutil.FatalMsgf(t, "Couldn't read bitcoind pid: %s", err)
-	}
-
-	pidLines := strings.Split(string(pidBytes), "\n")
-	pid, err := strconv.Atoi(pidLines[0])
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not convert bitcoind pid bytes to int: %s", err)
-	}
-
-	log.Debugf("Started bitcoind client with pid %d", pid)
-
-	retry := func() error {
-		var err error
-		bitcoin, err = bitcoind.NewConn(conf, 100*time.Millisecond)
-		return err
-	}
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, retry); err != nil {
-		testutil.FatalMsg(t, err)
-	}
-	client := bitcoin.Btcctl()
-
-	// await bitcoind startup
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "could not communicate with bitcoind"))
-	}
-
-	cleanup = func() error {
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-			return errors.Wrap(err, "couldn't kill bitcoind process")
-		}
-
-		negativePing := func() error {
-			err := client.Ping()
-			if err == nil {
-				return errors.New("was able to ping client")
-			}
-			return nil
-		}
-
-		// await bitcoind shutdown
-		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
-			return err
-		}
-
-		log.Debug("Stopped bitcoind process")
-		if err := os.RemoveAll(tempDir); err != nil {
-			return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
-		}
-		log.Debugf("Deleted bitcoind tmp directory %s", tempDir)
-
-		bitcoin.StopZmq()
-		return nil
-	}
-	return bitcoin, cleanup
-}
-
-type logWriter struct {
-	label string
-	level logrus.Level
-}
-
-func (p logWriter) Write(data []byte) (n int, err error) {
-	log.Logf(p.level, "[%s] %s", p.label, string(data))
-	return len(data), nil
 }
 
 // StartLndOrFail starts a lnd node with the given configuration,
@@ -328,7 +165,7 @@ func StartLndOrFail(t *testing.T,
 		"--adminmacaroonpath=" + lndConfig.MacaroonPath,
 		"--rpclisten=" + lndConfig.RPCServer,
 		fmt.Sprintf("--listen=%d", lndConfig.P2pPort),
-		fmt.Sprintf("--restlisten=%d", getPortOrFail(t)),
+		fmt.Sprintf("--restlisten=%d", testutil.GetPortOrFail(t)),
 		"--bitcoind.rpcuser=" + bitcoindConfig.User,
 		"--bitcoind.rpcpass=" + bitcoindConfig.Password,
 		fmt.Sprintf("--bitcoind.rpchost=localhost:%d", +bitcoindConfig.RpcPort),
@@ -340,8 +177,8 @@ func StartLndOrFail(t *testing.T,
 	cmd := exec.Command("lnd", args...)
 
 	// pass LND output to test output, logged with a label
-	cmd.Stderr = logWriter{"LND", logrus.ErrorLevel}
-	cmd.Stdout = logWriter{"LND", logrus.DebugLevel}
+	cmd.Stderr = testutil.LogWriter{Label: "LND", Level: logrus.ErrorLevel}
+	cmd.Stdout = testutil.LogWriter{Label: "LND", Level: logrus.DebugLevel}
 
 	log.Debugf("Executing command: %s", strings.Join(cmd.Args, " "))
 	if err := cmd.Start(); err != nil {
@@ -414,9 +251,9 @@ func StartLndOrFail(t *testing.T,
 // nodes by creating the nodes, running your tests, and then performs the
 // necessary cleanup.
 func RunWithLnd(t *testing.T, test func(lnd lnrpc.LightningClient)) {
-	bitcoindConf := GetBitcoindConfig(t)
+	bitcoindConf := bitcoind.GetBitcoindConfig(t)
 	lndConf := GetLightingConfig(t)
-	_, cleanupBitcoind := StartBitcoindOrFail(t, bitcoindConf)
+	_, cleanupBitcoind := bitcoind.StartBitcoindOrFail(t, bitcoindConf)
 
 	lnd, cleanupLnd := StartLndOrFail(t, bitcoindConf, lndConf)
 
@@ -441,36 +278,13 @@ func RunWithLnd(t *testing.T, test func(lnd lnrpc.LightningClient)) {
 	}
 }
 
-// RunWithBitcoind lets you test functionality that requires actual bitcoind
-// node by creating starting up bitcoind, running the test and then running
-// the necessary cleanup.
-func RunWithBitcoind(t *testing.T, test func(bitcoin bitcoind.TeslacoilBitcoind)) {
-	bitcoindConf := GetBitcoindConfig(t)
-	bitcoin, cleanupBitcoind := StartBitcoindOrFail(t, bitcoindConf)
-
-	cleanup := func() error {
-		bitcoindErr := cleanupBitcoind()
-		if bitcoindErr != nil {
-			return fmt.Errorf("failed to cleanup bitcoind: %s",
-				bitcoindErr.Error())
-		}
-		return nil
-	}
-
-	test(bitcoin)
-
-	if err := cleanup(); err != nil {
-		t.Fatalf("Couldn't clean up after %q: %v", t.Name(), err)
-	}
-}
-
 // RunWithBitcoindAndLnd lets you test functionality that requires actual LND/bitcoind
 // nodes by creating the nodes, running your tests, and then performs the
 // necessary cleanup.
 func RunWithBitcoindAndLnd(t *testing.T, test func(lnd lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind)) {
-	bitcoindConf := GetBitcoindConfig(t)
+	bitcoindConf := bitcoind.GetBitcoindConfig(t)
 	lndConf := GetLightingConfig(t)
-	bitcoin, cleanupBitcoind := StartBitcoindOrFail(t, bitcoindConf)
+	bitcoin, cleanupBitcoind := bitcoind.StartBitcoindOrFail(t, bitcoindConf)
 
 	lnd, cleanupLnd := StartLndOrFail(t, bitcoindConf, lndConf)
 

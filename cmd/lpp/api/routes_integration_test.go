@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -37,7 +39,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		app, err := api.NewApp(testDB,
 			lnd,
 			testutil.GetMockSendGridClient(),
-			lntestutil.TeslacoilBitcoindMockClient{},
+			bitcoind.TeslacoilBitcoindMockClient{},
 			testutil.GetMockHttpPoster(),
 			conf)
 		if err != nil {

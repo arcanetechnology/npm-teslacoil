@@ -60,9 +60,9 @@ type Conn struct {
 	// zmqTxCh is the channel on which we return tx events received
 	// from zmq
 	zmqTxCh chan *wire.MsgTx
-
+	// config is the config used for this connection
 	config Config
-
+	// network is the network this cnonection is running on
 	network chaincfg.Params
 }
 
@@ -127,7 +127,6 @@ func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcu
 		"application/json",
 		bytes.NewReader([]byte(body)))
 
-	// read the body bytes for potential error messages later
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		log.Errorf("Could not read body: %v", err)
@@ -139,7 +138,7 @@ func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcu
 
 	var res GenerateResponse
 	if err := json.Unmarshal(bodyBytes, &res); err != nil {
-		log.Errorf("Could not unmarshal JSON: %v. Body: %s", err, string(bodyBytes))
+		return nil, errors.Wrapf(err, "could not unmarshal JSON: %+v. Body : %s", err, string(bodyBytes))
 	}
 	var hashes []*chainhash.Hash
 	for _, hash := range res.Hashes {
@@ -189,7 +188,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 	}
 
 	zmqRawTxCh := make(chan *wire.MsgTx)
-	zmqBlockCh := make(chan *wire.MsgBlock)
+	zmqRawBlockCh := make(chan *wire.MsgBlock)
 
 	conn := &Conn{
 		btcctl:       client,
@@ -198,7 +197,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 		// We register the channels on the connection to make them accessible
 		// to the blockEventHandler and txEventHandler functions
 		zmqTxCh:    zmqRawTxCh,
-		zmqBlockCh: zmqBlockCh,
+		zmqBlockCh: zmqRawBlockCh,
 		config:     conf,
 		network:    conf.Network,
 	}
@@ -225,6 +224,8 @@ func (c *Conn) StopZmq() {
 	_ = c.zmqTxConn.Close()
 }
 
+// FindVout finds a vout for transaction with `txid` and `amountSat`
+// by quering bitcoin core for the txid
 func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
 
 	txHash, err := chainhash.NewHashFromStr(txid)
@@ -232,18 +233,18 @@ func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
 		return -1, errors.Wrapf(err, "could not create txHash using txid %q", txHash)
 	}
 
-	transactionResult, err := c.Btcctl().GetTransaction(txHash)
+	transactionResult, err := c.Btcctl().GetRawTransactionVerbose(txHash)
 	if err != nil {
 		return -1, errors.Wrapf(err, "could not GetTransaction(%s)", txHash)
 	}
 
-	for _, tx := range transactionResult.Details {
+	for _, tx := range transactionResult.Vout {
 
-		amount := math.Round(btcutil.SatoshiPerBitcoin * tx.Amount)
+		amount := math.Round(btcutil.SatoshiPerBitcoin * tx.Value)
 		log.Tracef("found output with amount %f", amount)
 
 		if amount == float64(amountSat) {
-			return int(tx.Vout), nil
+			return int(tx.N), nil
 		}
 
 	}
@@ -277,8 +278,10 @@ func (c *Conn) blockEventHandler() {
 				continue
 			}
 
-			log.Errorf("earnable to receive ZMQ rawblock message: %v",
+			log.Errorf("Unable to receive ZMQ rawblock message: %v",
 				err)
+
+			// TODO: Silence error if it is of type 'cannot receive from a closed connection'
 			return
 		}
 
@@ -322,8 +325,7 @@ func (c *Conn) txEventHandler() {
 	log.Info("Started listening for bitcoind transaction notifications via ZMQ")
 
 	for {
-		// Poll an event from the ZMQ socket. This is where the goroutine
-		// will hang
+		// Poll an event from the ZMQ socket
 		msgBytes, err := c.zmqTxConn.Receive()
 		if err != nil {
 			// EOF should only be returned if the connection was
@@ -342,6 +344,8 @@ func (c *Conn) txEventHandler() {
 
 			log.Errorf("Unable to receive ZMQ rawtx message: %v",
 				err)
+			// TODO: Silence error if it is of type 'cannot receive from a closed connection'
+			//  and dont return here, but continue
 			return
 		}
 

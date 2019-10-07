@@ -32,6 +32,7 @@ test-only:
 
 test:
 	go test ./...
+	golangci-lint run
 
 test-it:
 	go test ./... -tags integration

@@ -5,8 +5,11 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
@@ -80,7 +83,7 @@ func MockTxid() string {
 	return string(b)
 }
 
-func MockStringOfLength(n int) string {
+func MockTxidOfLength(n int) string {
 	var letters = []rune("abcdef1234567890")
 
 	b := make([]rune, n)
@@ -88,4 +91,26 @@ func MockStringOfLength(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+// GetPortOrFail returns a unused port
+func GetPortOrFail(t *testing.T) int {
+	const minPortNumber = 1024
+	const maxPortNumber = 40000
+	rand.Seed(time.Now().UnixNano())
+	port := rand.Intn(maxPortNumber)
+	// port is reserved, try again
+	if port < minPortNumber {
+		return GetPortOrFail(t)
+	}
+
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	// port is busy, try again
+	if err != nil {
+		return GetPortOrFail(t)
+	}
+	if err := listener.Close(); err != nil {
+		FatalMsgf(t, "Couldn't close port: %sl", err)
+	}
+	return port
 }

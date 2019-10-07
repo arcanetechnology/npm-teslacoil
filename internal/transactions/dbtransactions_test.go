@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 
 	"github.com/brianvoe/gofakeit"
@@ -30,9 +32,6 @@ import (
 var (
 	databaseConfig = testutil.GetDatabaseConfig("transactions")
 	testDB         *db.DB
-)
-
-var (
 	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
 )
 
@@ -129,7 +128,7 @@ func TestGetAllLimit(t *testing.T) {
 func TestWithdrawOnChain(t *testing.T) {
 	t.Parallel()
 
-	mockBitcoin := lntestutil.TeslacoilBitcoindMockClient{}
+	mockBitcoin := bitcoind.TeslacoilBitcoindMockClient{}
 
 	t.Run("ignores amount and withdraws all the users balance", func(t *testing.T) {
 
@@ -269,22 +268,22 @@ func TestWithdrawOnChain(t *testing.T) {
 	})
 }
 
-func TestTransaction_SaveTxidToDeposit(t *testing.T) {
+func TestTransaction_SaveTxToDeposit(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
 	t.Run("should be able to save txid and vout", func(t *testing.T) {
-		user := CreateUserOrFail(t)
+		user := userstestutil.CreateUserOrFail(t, testDB)
 		transaction := CreateTransactionOrFail(t, user.ID)
 
-		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
+		hash, err := chainhash.NewHash([]byte(testutil.MockTxidOfLength(32)))
 		if err != nil {
 			testutil.FatalMsgf(t, "should be able to create hash: %+v", err)
 		}
 
-		err = transaction.SaveTxidToDeposit(testDB, *hash, 0)
+		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
 		if err != nil {
-			testutil.FatalMsgf(t, "SaveTxidToDeposit(): %+v", err)
+			testutil.FatalMsgf(t, "SaveTxToDeposit(): %+v", err)
 		}
 
 		transaction, err = GetTransactionByID(testDB, transaction.ID, transaction.UserID)
@@ -309,12 +308,12 @@ func TestTransaction_SaveTxidToDeposit(t *testing.T) {
 			Vout: &vout,
 		}
 
-		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
+		hash, err := chainhash.NewHash([]byte(testutil.MockTxidOfLength(32)))
 		if err != nil {
 			testutil.FatalMsgf(t, "should be able to create hash: %+v", hash)
 		}
 
-		err = transaction.SaveTxidToDeposit(testDB, *hash, 0)
+		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
 		if err != nil && !strings.Contains(err.Error(), "transaction already has a TXID") {
 			testutil.FatalMsgf(t, "error should contain 'transaction already has a TXID': %+v", err)
 		}
@@ -326,7 +325,7 @@ func TestTransaction_MarkAsConfirmed(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
-		user := CreateUserOrFail(t)
+		user := userstestutil.CreateUserOrFail(t, testDB)
 		transaction := CreateTransactionOrFail(t, user.ID)
 
 		err := transaction.MarkAsConfirmed(testDB)

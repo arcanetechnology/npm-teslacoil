@@ -44,7 +44,7 @@ var (
 
 	mockSendGridClient                             = testutil.GetMockSendGridClient()
 	mockLightningClient lnrpc.LightningClient      = lntestutil.GetLightningMockClient()
-	mockBitcoindClient  bitcoind.TeslacoilBitcoind = lntestutil.GetBitcoinMockClient()
+	mockBitcoindClient  bitcoind.TeslacoilBitcoind = bitcoind.GetBitcoinMockClient()
 	mockHttpPoster                                 = testutil.GetMockHttpPoster()
 )
 

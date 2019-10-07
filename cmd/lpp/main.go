@@ -201,6 +201,9 @@ var (
 			}
 			a, err := api.NewApp(database, lncli, sendGridClient,
 				bitcoindConn, realHttpSender{}, config)
+			if err != nil {
+				return err
+			}
 
 			log.Info("opened connection to bitcoind")
 

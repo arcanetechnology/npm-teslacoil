@@ -10,8 +10,6 @@ import (
 	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -119,11 +117,8 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 }
 
 //NewApp creates a new app
-func NewApp(db *db.DB,
-	lncli lnrpc.LightningClient,
-	sender EmailSender,
-	bitcoin bitcoind.TeslacoilBitcoind,
-	callbacks payments.HttpPoster,
+func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
+	bitcoin bitcoind.TeslacoilBitcoind, callbacks payments.HttpPoster,
 	config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
 
@@ -131,7 +126,7 @@ func NewApp(db *db.DB,
 		return RestServer{}, errors.New("config.Network is not set")
 	}
 
-	g := gin.Default()
+	g := getGinEngine(config)
 
 	engine, ok := binding.Validator.Engine().(*validator.Validate)
 	if !ok {
@@ -142,18 +137,6 @@ func NewApp(db *db.DB,
 	}
 	validators := validation.RegisterAllValidators(engine)
 	log.Infof("Registered custom validators: %s", validators)
-
-	g.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000"},
-		AllowMethods: []string{
-			http.MethodPut, http.MethodGet,
-			http.MethodPost, http.MethodPatch,
-			http.MethodDelete,
-		},
-		AllowHeaders: []string{
-			"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
-			"Authorization"},
-	}))
 
 	log.Info("Checking bitcoind connection")
 	if err := checkBitcoindConnection(bitcoin.Btcctl(), config.Network); err != nil {
@@ -168,7 +151,7 @@ func NewApp(db *db.DB,
 	// Start two goroutines for listening to zmq events
 	bitcoin.StartZmq()
 
-	go transactions.TxListener(db, lncli, bitcoin.ZmqTxChannel(), &config.Network)
+	go transactions.TxListener(db, lncli, bitcoin.ZmqTxChannel(), config.Network)
 	go transactions.BlockListener(db, bitcoin.Btcctl(), bitcoin.ZmqBlockChannel())
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)

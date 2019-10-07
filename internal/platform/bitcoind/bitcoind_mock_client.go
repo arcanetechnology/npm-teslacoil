@@ -1,8 +1,7 @@
-package lntestutil
+package bitcoind
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/btcsuite/btcd/chaincfg"
 
@@ -11,13 +10,12 @@ import (
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 )
 
 var (
 	// check that mock clients satisfies interfaces
-	_ bitcoind.RpcClient         = BitcoindRpcMockClient{}
-	_ bitcoind.TeslacoilBitcoind = TeslacoilBitcoindMockClient{}
+	_ RpcClient         = BitcoindRpcMockClient{}
+	_ TeslacoilBitcoind = TeslacoilBitcoindMockClient{}
 )
 
 // TeslacoilBitcoindMockClient is a mocked out bitcoind.TeslacoilBitcoind
@@ -27,15 +25,15 @@ type TeslacoilBitcoindMockClient struct {
 }
 
 func (t TeslacoilBitcoindMockClient) StartZmq() {
-	fmt.Println("started zmq")
+	log.Info("started zmq")
 }
 func (t TeslacoilBitcoindMockClient) StopZmq() {
-	fmt.Println("stopped zmq")
+	log.Info("stopped zmq")
 }
-func (t TeslacoilBitcoindMockClient) Btcctl() bitcoind.RpcClient {
+func (t TeslacoilBitcoindMockClient) Btcctl() RpcClient {
 	return BitcoindRpcMockClient{}
 }
-func (t TeslacoilBitcoindMockClient) Config() bitcoind.Config {
+func (t TeslacoilBitcoindMockClient) Config() Config {
 	panic("cannot get config")
 }
 func (t TeslacoilBitcoindMockClient) Network() chaincfg.Params {
@@ -51,6 +49,10 @@ func (t TeslacoilBitcoindMockClient) ZmqTxChannel() chan *wire.MsgTx {
 
 func (t TeslacoilBitcoindMockClient) FindVout(txid string, amountSat int64) (int, error) {
 	return 0, nil
+}
+
+func GetBitcoinMockClient() TeslacoilBitcoindMockClient {
+	return TeslacoilBitcoindMockClient{}
 }
 
 // BitcoindRpcMockClient is a mocked out bitcoind.RpcClient where the responses
