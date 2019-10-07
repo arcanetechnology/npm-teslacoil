@@ -3,9 +3,11 @@ package apikeys
 import (
 	"crypto/sha256"
 	"database/sql"
+	origerrors "errors"
 	"time"
 
 	"github.com/pkg/errors"
+
 	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
@@ -83,4 +85,17 @@ func Get(d *db.DB, key uuid.UUID) (Key, error) {
 		return Key{}, errors.Wrap(err, "API key not found")
 	}
 	return apiKey, nil
+}
+
+// GetByUserId gets all API keys associated with the given user ID
+func GetByUserId(d *db.DB, userId int) ([]Key, error) {
+	query := `SELECT * FROM api_keys WHERE user_id = $1`
+	var keys []Key
+	if err := d.Select(&keys, query, userId); err != nil {
+		if origerrors.Is(err, sql.ErrNoRows) {
+			return []Key{}, nil
+		}
+		return nil, err
+	}
+	return keys, nil
 }
