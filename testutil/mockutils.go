@@ -3,6 +3,7 @@ package testutil
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"testing"
@@ -40,6 +41,7 @@ func (mock *mockSendGridClient) GetSentEmails() int {
 
 type mockHttpPoster struct {
 	sentPostRequests int
+	sentBodies       [][]byte
 }
 
 func GetMockHttpPoster() *mockHttpPoster {
@@ -48,6 +50,13 @@ func GetMockHttpPoster() *mockHttpPoster {
 
 func (m *mockHttpPoster) Post(url, contentType string, reader io.Reader) (*http.Response, error) {
 	m.sentPostRequests += 1
+
+	body, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	m.sentBodies = append(m.sentBodies, body)
+
 	return &http.Response{
 		StatusCode: 200,
 	}, nil
@@ -55,4 +64,8 @@ func (m *mockHttpPoster) Post(url, contentType string, reader io.Reader) (*http.
 
 func (m *mockHttpPoster) GetSentPostRequests() int {
 	return m.sentPostRequests
+}
+
+func (m *mockHttpPoster) GetSentPostRequest(index int) []byte {
+	return m.sentBodies[index]
 }

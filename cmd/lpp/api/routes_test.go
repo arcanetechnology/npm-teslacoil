@@ -2,6 +2,9 @@ package api
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -17,6 +20,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
@@ -987,8 +991,9 @@ func TestCreateInvoice(t *testing.T) {
 	otherH := httptestutil.NewTestHarness(app.Router)
 
 	password := gofakeit.Password(true, true, true, true, true, 32)
+	email := gofakeit.Email()
 	accessToken := otherH.CreateAndAuthenticateUser(t, users.CreateUserArgs{
-		Email:    gofakeit.Email(),
+		Email:    email,
 		Password: password,
 	})
 
@@ -1072,11 +1077,27 @@ func TestCreateInvoice(t *testing.T) {
 				"callbackUrl": "https://example.com"
 			}`, mockInvoice.Value),
 		})
-		json := otherH.AssertResponseOkWithJson(t, req)
-		testutil.AssertMsg(t, json["callbackUrl"] != nil, "callback URL was nil!")
+		invoicesJson := otherH.AssertResponseOkWithJson(t, req)
+		testutil.AssertMsg(t, invoicesJson["callbackUrl"] != nil, "callback URL was nil!")
 
 		t.Run("receive a POST to the given URL when paying the invoice",
 			func(t *testing.T) {
+				user, err := users.GetByEmail(testDB, email)
+				if err != nil {
+					testutil.FatalMsg(t, err)
+				}
+
+				var apiKey apikeys.Key
+				// check if there are any API keys
+				if keys, err := apikeys.GetByUserId(testDB, user.ID); err == nil && len(keys) > 0 {
+					apiKey = keys[0]
+					// if not, try to create one, fail it if doesn't work
+				} else if _, key, err := apikeys.New(testDB, user); err != nil {
+					testutil.FatalMsg(t, err)
+				} else {
+					apiKey = key
+				}
+
 				if _, err := payments.UpdateInvoiceStatus(*mockInvoice,
 					testDB, mockHttpPoster); err != nil {
 					testutil.FatalMsg(t, err)
@@ -1088,10 +1109,22 @@ func TestCreateInvoice(t *testing.T) {
 
 				// emails are sent in a go-routine, so can't assume they're sent fast
 				// enough for test to pick up
-				if err := asyncutil.Await(10,
+				if err := asyncutil.Await(8,
 					time.Millisecond*20, checkPostSent); err != nil {
 					testutil.FatalMsg(t, err)
 				}
+
+				bodyBytes := mockHttpPoster.GetSentPostRequest(0)
+				body := payments.CallbackBody{}
+
+				if err := json.Unmarshal(bodyBytes, &body); err != nil {
+					testutil.FatalMsg(t, err)
+				}
+				hmac := hmac.New(sha256.New, apiKey.HashedKey)
+				_, _ = hmac.Write([]byte(fmt.Sprintf("%d", body.Payment.ID)))
+
+				sum := hmac.Sum(nil)
+				testutil.AssertEqual(t, sum, body.Hash)
 			})
 	})
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
@@ -553,6 +554,13 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		t.Parallel()
 		testutil.DescribeTest(t)
 
+		// for the callback to be executed, we need to create an API key for the
+		// current user. this is because the callback body is hashed with the
+		// users API key
+		if _, _, err := apikeys.New(testDB, u); err != nil {
+			testutil.FatalMsg(t, errors.Wrap(err, "Could not make API key"))
+		}
+
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
@@ -579,7 +587,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			return httpPoster.GetSentPostRequests() == 1
 		}
 
-		// emails are sent in go-routing, so can't assume they're sent fast
+		// emails are sent in go-routine, so can't assume they're sent fast
 		// enough for test to pick up
 		if err := asyncutil.Await(8,
 			time.Millisecond*20, checkPostSent); err != nil {
@@ -587,7 +595,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("callback URL should not be called with non-setted invoice", func(t *testing.T) {
+	t.Run("callback URL should not be called with non-settled invoice", func(t *testing.T) {
 		t.Parallel()
 		lnMock := lntestutil.GetLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
