@@ -460,9 +460,7 @@ func StartBitcoindOrFail(t *testing.T, conf BitcoindConfig) (client *rpcclient.C
 		return err
 	}
 	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, readPidFile); err != nil {
-		duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
-		testutil.FatalMsgf(t, "Could not read bitcoind pid file after %d attempts and %s total sleep duration",
-			retryAttempts, duration)
+		testutil.FatalMsg(t, errors.Wrap(err, "could not read bitcoind pid file"))
 	}
 
 	pidBytes, err := ioutil.ReadFile(pidFile)
@@ -482,9 +480,7 @@ func StartBitcoindOrFail(t *testing.T, conf BitcoindConfig) (client *rpcclient.C
 
 	// await bitcoind startup
 	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
-		duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
-		testutil.FatalMsgf(t, "Could not communicate with bitcoind after %d attempts and %s total sleep duration",
-			retryAttempts, duration)
+		testutil.FatalMsg(t, errors.Wrap(err, "could not communicate with bitcoind"))
 	}
 
 	cleanup = func() error {
@@ -502,9 +498,7 @@ func StartBitcoindOrFail(t *testing.T, conf BitcoindConfig) (client *rpcclient.C
 
 		// await bitcoind shutdown
 		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
-			duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
-			return fmt.Errorf("could communicate with stopped bitcoind after %d attempts and %s total sleep duration",
-				retryAttempts, duration)
+			return err
 		}
 
 		log.Debug("Stopped bitcoind process")
@@ -601,9 +595,7 @@ func StartLndOrFail(t *testing.T, bitcoindConfig BitcoindConfig, lndConfig ln.Li
 	}
 
 	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, isReady); err != nil {
-		duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
-		testutil.FatalMsgf(t, "lnd cert and macaroon file did not greated after waiting %d",
-			duration)
+		testutil.FatalMsg(t, errors.Wrap(err, "lnd cert and macaroon file was not created"))
 	}
 	log.Debugf("lnd cert file and macaroon file exists")
 
@@ -633,9 +625,7 @@ func StartLndOrFail(t *testing.T, bitcoindConfig BitcoindConfig, lndConfig ln.Li
 
 		// await lnd shutdown
 		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
-			duration := asyncutil.GetTotalRetryDuration(retryAttempts, retrySleepDuration)
-			return fmt.Errorf("could communicate with stopped lnd after %d attempts and %s total sleep duration",
-				retryAttempts, duration)
+			return err
 		}
 		log.Debug("Stopped lnd process")
 
