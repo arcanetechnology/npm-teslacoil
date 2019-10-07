@@ -30,6 +30,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 )
 
 var (
@@ -68,8 +69,13 @@ func TestMain(m *testing.M) {
 	gofakeit.Seed(0)
 
 	result := m.Run()
+
+	if err := nodetestutil.CleanupNodes(); err != nil {
+		panic(err)
+	}
+
 	if err := testDB.Close(); err != nil {
-		panic(err.Error())
+		panic(err)
 	}
 	os.Exit(result)
 }
