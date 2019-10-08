@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -62,25 +61,6 @@ func configDefaultLndDir() string {
 	return btcutil.AppDataDir("lnd", false)
 }
 
-func configDefaultLndPort() int {
-	env := os.Getenv("LND_PORT")
-	if len(env) != 0 {
-		port, err := strconv.Atoi(env)
-		if err != nil {
-			log.Fatalf("Environment variable LND_PORT is not a valid int: %s", env)
-		}
-		return port
-	}
-	return 10009
-}
-
-var (
-	// DefaultPort is the default lnd port (10009)
-	DefaultPort = configDefaultLndPort()
-	// DefaultRPCHostPort is the default host port of lnd
-	DefaultRPCHostPort = fmt.Sprintf("localhost:%d", DefaultPort)
-)
-
 func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 	name := network.Name
 	if name == "testnet3" {
@@ -93,6 +73,11 @@ func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 func DefaultMacaroonPath(params chaincfg.Params) string {
 	return filepath.Join(DefaultLndDir, DefaultRelativeMacaroonPath(params))
 }
+
+const (
+	DefaultRpcServer = "localhost:" + DefaultRpcPort
+	DefaultRpcPort   = "10009"
+)
 
 var (
 	// DefaultLndDir is the default location of .lnd

@@ -156,6 +156,55 @@ var (
 	serveCommand   = cli.Command{
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
+		Before: func(c *cli.Context) error {
+			networkString := c.GlobalString("network")
+			switch networkString {
+			case "mainnet":
+				network = chaincfg.MainNetParams
+			case "testnet", "testnet3":
+				network = chaincfg.TestNet3Params
+			case "regtest", "":
+				network = chaincfg.RegressionNetParams
+			default:
+				return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
+			}
+
+			lnConfig = ln.LightningConfig{
+				LndDir:       c.GlobalString("lnddir"),
+				TLSCertPath:  c.GlobalString("tlscertpath"),
+				MacaroonPath: c.GlobalString("macaroonpath"),
+				Network:      network,
+				RPCServer:    c.GlobalString("lndrpcserver"),
+			}
+
+			bitcoindConfig = bitcoind.Config{
+				ZmqPubRawTx:    c.GlobalString("zmqpubrawtx"),
+				ZmqPubRawBlock: c.GlobalString("zmqpubrawblock"),
+				RpcPort:        c.GlobalInt("bitcoind.rpcport"),
+				Password:       c.GlobalString("bitcoind.rpcpassword"),
+				User:           c.GlobalString("bitcoind.rpcuser"),
+				Network:        network,
+				RpcHost:        c.GlobalString("bitcoind.rpchost"),
+			}
+
+			if bitcoindConfig.RpcPort == 0 {
+				log.Debug("bitcoind.rpcport flag is not set, falling back to network default")
+				port, err := bitcoind.DefaultRpcPort(network)
+				if err != nil {
+					return err
+				}
+				bitcoindConfig.RpcPort = port
+			}
+
+			if bitcoindConfig.ZmqPubRawTx == "" {
+				return errors.New("zmqpubrawtx flag is not set")
+			}
+
+			if bitcoindConfig.ZmqPubRawBlock == "" {
+				return errors.New("zmqpubrawblock flag is not set")
+			}
+			return nil
+		},
 		Action: func(c *cli.Context) error {
 
 			database, err := db.Open(databaseConfig)
@@ -397,62 +446,10 @@ func main() {
 	app.Before = func(c *cli.Context) error {
 		level, err := build.ToLogLevel(c.GlobalString("loglevel"))
 		if err != nil {
-			log.Fatal(err)
 			return err
 		}
 		build.SetLogLevel(level)
 		log.Info("Setting log level to " + level.String())
-
-		networkString := c.GlobalString("network")
-		switch networkString {
-		case "mainnet":
-			network = chaincfg.MainNetParams
-		case "testnet", "testnet3":
-			network = chaincfg.TestNet3Params
-		case "regtest", "":
-			network = chaincfg.RegressionNetParams
-		default:
-			return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
-		}
-
-		lnConfig = ln.LightningConfig{
-			LndDir:       c.GlobalString("lnddir"),
-			TLSCertPath:  c.GlobalString("tlscertpath"),
-			MacaroonPath: c.GlobalString("macaroonpath"),
-			Network:      network,
-			RPCServer:    c.GlobalString("lndrpcserver"),
-		}
-
-		bitcoindConfig = bitcoind.Config{
-			ZmqPubRawTx:    c.GlobalString("zmqpubrawtx"),
-			ZmqPubRawBlock: c.GlobalString("zmqpubrawblock"),
-			RpcPort:        c.GlobalInt("bitcoind.rpcport"),
-			Password:       c.GlobalString("bitcoind.rpcpassword"),
-			User:           c.GlobalString("bitcoind.rpcuser"),
-			Network:        network,
-			RpcHost:        c.GlobalString("bitcoind.rpchost"),
-		}
-
-		if bitcoindConfig.RpcPort == 0 {
-			log.Debug("bitcoind.rpcport flag is not set, falling back to network default")
-			port, err := bitcoind.DefaultRpcPort(network)
-			if err != nil {
-				log.Fatal(err)
-			}
-			bitcoindConfig.RpcPort = port
-		}
-
-		if bitcoindConfig.ZmqPubRawTx == "" {
-			log.Debug("zmqpubrawtx flag is not set, checking environment variable")
-			// env variable used in docker-compose.yml
-			bitcoindConfig.ZmqPubRawTx = "localhost:" + util.GetEnvOrFail("ZMQPUBRAWTX_PORT")
-		}
-
-		if bitcoindConfig.ZmqPubRawBlock == "" {
-			log.Debugf("zmqpubrawblock flag is not set, checking environment variable")
-			// env variable used in docker-compose.yml
-			bitcoindConfig.ZmqPubRawBlock = "localhost:" + util.GetEnvOrFail("ZMQPUBRAWBLOCK_PORT")
-		}
 
 		return nil
 	}
@@ -501,7 +498,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "lndrpcserver",
-			Value: ln.DefaultRPCHostPort,
+			Value: ln.DefaultRpcServer,
 			Usage: "host:port of ln daemon",
 		},
 		cli.StringFlag{
