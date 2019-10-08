@@ -65,3 +65,38 @@ func TestNew(t *testing.T) {
 		}
 	})
 }
+
+func TestGetByUserId(t *testing.T) {
+	user := userstestutil.CreateUserOrFail(t, testDB)
+
+	zero, err := GetByUserId(testDB, user.ID)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+	testutil.AssertMsgf(t, len(zero) == 0, "Got unexpected key list length %d", len(zero))
+
+	if _, _, err := New(testDB, user); err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	one, err := GetByUserId(testDB, user.ID)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+	testutil.AssertMsgf(t, len(one) == 1, "Got unexpected key list length %d", len(one))
+
+	two, err := GetByUserId(testDB, user.ID)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+	testutil.AssertMsgf(t, len(two) == 1, "Got unexpected key list length %d", len(two))
+
+	t.Run("Get empty list of keys for new user", func(t *testing.T) {
+		otherUser := userstestutil.CreateUserOrFail(t, testDB)
+		keys, err := GetByUserId(testDB, otherUser.ID)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertMsgf(t, len(keys) == 0, "Got keys for user: %v", keys)
+	})
+}
