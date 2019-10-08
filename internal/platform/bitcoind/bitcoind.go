@@ -122,14 +122,17 @@ func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcu
 	}`, numBlocks, address)
 	conf := bitcoin.Config()
 	url := fmt.Sprintf("http://%s:%s@%s:%d", conf.User, conf.Password, conf.RpcHost, conf.RpcPort)
-	req, _ := http.Post(
+	req, err := http.Post(
 		url,
 		"application/json",
 		bytes.NewReader([]byte(body)))
+	if err != nil {
+		return nil, errors.Wrap(err, "could not post generatetoaddress request")
+	}
 
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Errorf("Could not read body: %v", err)
+		return nil, errors.Wrap(err, "could not read body")
 	}
 
 	type GenerateResponse struct {

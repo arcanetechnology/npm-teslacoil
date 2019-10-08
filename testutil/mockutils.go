@@ -83,8 +83,8 @@ func MockTxid() string {
 	return string(b)
 }
 
-func MockTxidOfLength(n int) string {
-	var letters = []rune("abcdef1234567890")
+func MockStringOfLength(n int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
 
 	b := make([]rune, n)
 	for i := range b {

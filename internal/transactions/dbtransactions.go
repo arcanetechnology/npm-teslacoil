@@ -3,10 +3,10 @@ package transactions
 import (
 	"context"
 	"database/sql"
+	origError "errors"
 	"fmt"
 	"math"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/btcsuite/btcd/btcjson"
@@ -30,6 +30,10 @@ import (
 )
 
 var log = build.Log
+
+var (
+	ErrTxHashTxid = errors.New("transaction already has txid, cant overwrite")
+)
 
 // Transaction is the db and json type for an on-chain transaction
 type Transaction struct {
@@ -401,7 +405,7 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 						log.WithError(err).Errorf("could not create new deposit for %d with txid %s:%d",
 							transaction.UserID, txid, vout)
 					}
-				case !strings.Contains(err.Error(), "transaction already has a TXID"):
+				case !origError.Is(err, ErrTxHashTxid):
 					log.WithError(err).Error("could not save txid to deposit")
 				}
 			}
@@ -485,7 +489,7 @@ func (t Transaction) SaveTxToDeposit(db *db.DB, txHash chainhash.Hash, vout int,
 	amountSat int64) error {
 
 	if t.Txid != nil {
-		return errors.New("transaction already has a TXID")
+		return ErrTxHashTxid
 	}
 
 	uQuery := `UPDATE transactions SET txid = $1, vout = $2, amount_sat = $3 WHERE id = $4`

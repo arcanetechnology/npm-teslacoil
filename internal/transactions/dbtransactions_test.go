@@ -1,11 +1,11 @@
 package transactions
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -276,7 +276,7 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
 		transaction := CreateTransactionOrFail(t, user.ID)
 
-		hash, err := chainhash.NewHash([]byte(testutil.MockTxidOfLength(32)))
+		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
 		if err != nil {
 			testutil.FatalMsgf(t, "should be able to create hash: %+v", err)
 		}
@@ -308,14 +308,14 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 			Vout: &vout,
 		}
 
-		hash, err := chainhash.NewHash([]byte(testutil.MockTxidOfLength(32)))
+		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
 		if err != nil {
 			testutil.FatalMsgf(t, "should be able to create hash: %+v", hash)
 		}
 
 		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
-		if err != nil && !strings.Contains(err.Error(), "transaction already has a TXID") {
-			testutil.FatalMsgf(t, "error should contain 'transaction already has a TXID': %+v", err)
+		if err != nil && !errors.Is(err, ErrTxHashTxid) {
+			testutil.FatalMsgf(t, "error should contain be of type `ErrTxHasTxid`")
 		}
 	})
 }

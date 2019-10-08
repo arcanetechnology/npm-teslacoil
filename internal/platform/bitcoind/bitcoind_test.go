@@ -64,11 +64,10 @@ func TestTxListener(t *testing.T) {
 			return true
 		}
 
-		err = asyncutil.Await(3, 500*time.Millisecond, check)
+		err = asyncutil.Await(15, 100*time.Millisecond, check)
 		if err != nil {
 			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", 1+1+blocksGenerated, eventsReceived)
 		}
-		time.Sleep(1000 * time.Millisecond)
 
 	})
 }
@@ -108,7 +107,7 @@ func TestBlockListener(t *testing.T) {
 			return true
 		}
 
-		err = asyncutil.Await(3, 500*time.Millisecond, check)
+		err = asyncutil.Await(15, 100*time.Millisecond, check)
 		if err != nil {
 			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
 		}
