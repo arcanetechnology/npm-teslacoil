@@ -319,7 +319,7 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, args
 	}
 
 	// Get the latest INBOUND transaction whose txid is empty from the DB
-	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' AND txid='' ORDER BY id DESC LIMIT 1;"
+	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' AND txid ISNULL ORDER BY id DESC LIMIT 1;"
 	var deposit Transaction
 	err := db.Get(&deposit, query, userID)
 
