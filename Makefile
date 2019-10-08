@@ -22,13 +22,17 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
 endif
 
 serve: build-lpp
-	./lpp-dev serve
+	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
+
+serve-testnet: build-lpp
+	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
 test-only: 
 	go test ./... -run ${TEST_ARGS}
 
 test:
 	go test ./...
+	golangci-lint run
 
 test-it:
 	go test ./... -tags integration

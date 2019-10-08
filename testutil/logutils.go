@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+
 	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
@@ -27,6 +29,16 @@ const (
 )
 
 var log = build.Log
+
+type LogWriter struct {
+	Label string
+	Level logrus.Level
+}
+
+func (p LogWriter) Write(data []byte) (n int, err error) {
+	log.Logf(p.Level, "[%s] %s", p.Label, string(data))
+	return len(data), nil
+}
 
 // FatalMsg fails the test immedetialy, printing a red
 // error message containing the given test message

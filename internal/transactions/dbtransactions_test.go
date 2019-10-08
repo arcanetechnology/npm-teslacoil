@@ -1,11 +1,19 @@
 package transactions
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
 	"testing"
+	"time"
+
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+
+	"github.com/brianvoe/gofakeit"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
@@ -24,15 +32,11 @@ import (
 var (
 	databaseConfig = testutil.GetDatabaseConfig("transactions")
 	testDB         *db.DB
-)
-
-var (
 	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
-	simnetAddress  = "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4"
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevel(logrus.DebugLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
@@ -69,8 +73,8 @@ func TestGetTransactionByID(t *testing.T) {
 				AmountSat:   amount1,
 				Address:     "bar",
 				Description: "foo",
-				Status:      TransactionStatus("UNCONFIRMED"),
 				Direction:   payments.Direction("INBOUND"),
+				Confirmed:   false,
 			},
 		},
 		{
@@ -82,8 +86,8 @@ func TestGetTransactionByID(t *testing.T) {
 				AmountSat:   amount2,
 				Address:     "bar",
 				Description: "foo",
-				Status:      TransactionStatus("UNCONFIRMED"),
 				Direction:   payments.Direction("INBOUND"),
+				Confirmed:   false,
 			},
 		},
 	}
@@ -121,88 +125,43 @@ func TestGetAllLimit(t *testing.T) {
 	testutil.DescribeTest(t)
 }
 
-func TestWithdrawOnChainBadOpts(t *testing.T) {
+func TestWithdrawOnChain(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		scenario  string
-		balance   int64
-		amountSat int64
-	}{
-		{
-			scenario:  "withdraw more than balance",
-			balance:   1000,
-			amountSat: 2000,
-		},
-		{
-			scenario:  "withdraw negative amount",
-			balance:   1000,
-			amountSat: -5000,
-		},
-		{
-			scenario:  "withdraw 0 amount",
-			balance:   2000,
-			amountSat: 0,
-		},
-	}
-	mockLNcli := lntestutil.LightningMockClient{
-		SendCoinsResponse: lnrpc.SendCoinsResponse{
-			Txid: "owrgkpoaerkgpok",
-		},
-	}
+	mockBitcoin := bitcoind.TeslacoilBitcoindMockClient{}
 
-	for _, test := range testCases {
-		user := CreateUserWithBalanceOrFail(t, test.balance)
+	t.Run("ignores amount and withdraws all the users balance", func(t *testing.T) {
 
-		t.Run(test.scenario, func(t *testing.T) {
-			txid, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
-				UserID:    user.ID,
-				AmountSat: test.amountSat,
-				Address:   simnetAddress,
-			})
-			if err == nil || txid != nil {
-				testutil.FatalMsgf(t, "should not send transaction, bad opts")
-			}
-		})
-	}
+		testCases := []struct {
+			balance int64
+			// We specify amountSat to make sure it is ignored when sendAll is true
+			amountSat int64
+		}{
+			{
+				balance:   10000,
+				amountSat: 500000,
+			},
+			{
+				balance:   20000,
+				amountSat: -500000,
+			},
+			{
+				balance:   500, // 20 000
+				amountSat: 0,
+			},
+		}
 
-}
-
-func TestWithdrawOnChainSendAll(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		balance int64
-		// We specify amountSat to make sure it is ignored when sendAll is true
-		amountSat int64
-	}{
-		{
-			balance:   10000,
-			amountSat: 500000,
-		},
-		{
-			balance:   20000,
-			amountSat: -500000,
-		},
-		{
-			balance:   500, // 20 000
-			amountSat: 0,
-		},
-	}
-
-	for _, test := range testCases {
-
-		user := CreateUserWithBalanceOrFail(t, test.balance)
-
-		t.Run("can withdraw on-chain", func(t *testing.T) {
+		for _, test := range testCases {
 
 			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: "owrgkpoaerkgpok",
+					Txid: testutil.MockTxid(),
 				},
 			}
 
-			_, err := WithdrawOnChain(testDB, mockLNcli, WithdrawOnChainArgs{
+			user := CreateUserWithBalanceOrFail(t, test.balance)
+
+			_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
 				UserID:    user.ID,
 				AmountSat: test.amountSat,
 				Address:   testnetAddress,
@@ -217,19 +176,327 @@ func TestWithdrawOnChainSendAll(t *testing.T) {
 			// Look up the txid on-chain, and check the amount
 			// fmt.Println("txid: ", txid)
 			// })
+
+			// Assert
+			t.Run("users balance is 0", func(t *testing.T) {
+				user, err := users.GetByID(testDB, user.ID)
+				if err != nil {
+					testutil.FatalMsgf(t, "could not get user %+v", err)
+				}
+				if user.Balance != 0 {
+					testutil.FatalMsgf(t, "users balance was not 0 %+v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("withdraw more than balance fails", func(t *testing.T) {
+		user := CreateUserWithBalanceOrFail(t, 500)
+		mockLNcli := lntestutil.LightningMockClient{
+			SendCoinsResponse: lnrpc.SendCoinsResponse{
+				Txid: testutil.MockTxid(),
+			},
+		}
+
+		log.Infof("users balance is %d", user.Balance)
+
+		transaction, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+			UserID:    user.ID,
+			AmountSat: 5000,
+			Address:   testnetAddress,
 		})
 
-		// Assert
-		t.Run("users balance is 0", func(t *testing.T) {
-			user, err := users.GetByID(testDB, user.ID)
-			if err != nil {
-				testutil.FatalMsgf(t, "could not get user %+v", err)
-			}
-			if user.Balance != 0 {
-				testutil.FatalMsgf(t, "users balance was not 0 %+v", err)
-			}
+		if err == nil {
+			testutil.FatalMsgf(t, "should return error and not send transaction: %+v", transaction)
+		}
+	})
+	t.Run("withdraw negative amount fails", func(t *testing.T) {
+		user := CreateUserWithBalanceOrFail(t, 500)
+		mockLNcli := lntestutil.LightningMockClient{
+			SendCoinsResponse: lnrpc.SendCoinsResponse{
+				Txid: testutil.MockTxid(),
+			},
+		}
+
+		transaction, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+			UserID:    user.ID,
+			AmountSat: -5000,
+			Address:   testnetAddress,
 		})
-	}
+
+		if err == nil {
+			testutil.FatalMsgf(t, "should return error and not send transaction: %+v", transaction)
+		}
+	})
+	t.Run("withdraw 0 amount fails", func(t *testing.T) {
+		user := CreateUserWithBalanceOrFail(t, 500)
+		mockLNcli := lntestutil.LightningMockClient{
+			SendCoinsResponse: lnrpc.SendCoinsResponse{
+				Txid: testutil.MockTxid(),
+			},
+		}
+
+		transaction, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+			UserID:    user.ID,
+			AmountSat: 0,
+			Address:   testnetAddress,
+		})
+
+		if err == nil {
+			testutil.FatalMsgf(t, "should return error and not send transaction: %+v", transaction)
+		}
+	})
+
+	t.Run("inserting bad txid fails", func(t *testing.T) {
+		mockLNcli := lntestutil.LightningMockClient{
+			SendCoinsResponse: lnrpc.SendCoinsResponse{
+				Txid: "I am a bad txid",
+			},
+		}
+		user := CreateUserWithBalanceOrFail(t, 10000)
+
+		transaction, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+			UserID:    user.ID,
+			AmountSat: 5000,
+			Address:   testnetAddress,
+			SendAll:   true,
+		})
+
+		if err == nil {
+			testutil.FatalMsgf(t, "should return error and not send transaction: %+v", transaction)
+		}
+	})
+}
+
+func TestTransaction_SaveTxToDeposit(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	t.Run("should be able to save txid and vout", func(t *testing.T) {
+		user := userstestutil.CreateUserOrFail(t, testDB)
+		transaction := CreateTransactionOrFail(t, user.ID)
+
+		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
+		if err != nil {
+			testutil.FatalMsgf(t, "should be able to create hash: %+v", err)
+		}
+
+		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
+		if err != nil {
+			testutil.FatalMsgf(t, "SaveTxToDeposit(): %+v", err)
+		}
+
+		transaction, err = GetTransactionByID(testDB, transaction.ID, transaction.UserID)
+		if err != nil {
+			testutil.FatalMsgf(t, "should be able to GetTransactionByID: %+v", err)
+		}
+
+		if *transaction.Vout != 0 {
+			testutil.FatalMsgf(t, "expected vout to be 0, but is %d", *transaction.Vout)
+		}
+
+		if *transaction.Txid != hash.String() {
+			testutil.FatalMsgf(t, "expected txid to be %s, but is %s", hash.String(), *transaction.Txid)
+		}
+	})
+
+	t.Run("transaction with txid should fail with 'transaction already has TXID'", func(t *testing.T) {
+		txid := "FOO"
+		vout := 0
+		transaction := Transaction{
+			Txid: &txid,
+			Vout: &vout,
+		}
+
+		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
+		if err != nil {
+			testutil.FatalMsgf(t, "should be able to create hash: %+v", hash)
+		}
+
+		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
+		if err != nil && !errors.Is(err, ErrTxHashTxid) {
+			testutil.FatalMsgf(t, "error should contain be of type `ErrTxHasTxid`")
+		}
+	})
+}
+
+func TestTransaction_MarkAsConfirmed(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
+		user := userstestutil.CreateUserOrFail(t, testDB)
+		transaction := CreateTransactionOrFail(t, user.ID)
+
+		err := transaction.MarkAsConfirmed(testDB)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not mark as confirmed: %+v", err)
+		}
+
+		transaction, _ = GetTransactionByID(testDB, transaction.ID, user.ID)
+
+		if !transaction.Confirmed {
+			testutil.FatalMsgf(t, "should be confirmed")
+		}
+
+		if transaction.ConfirmedAt == nil {
+			testutil.FatalMsgf(t, "ConfirmedAt should have a value")
+		}
+	})
+}
+
+func TestTransaction_ExactlyEqual(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	t.Run("should be equal", func(t *testing.T) {
+		t1 := Transaction{
+			ID:      3,
+			UserID:  3,
+			Address: "footy",
+		}
+
+		t2 := Transaction{
+			ID:      3,
+			UserID:  3,
+			Address: "footy",
+		}
+
+		equal, reason := t1.ExactlyEqual(t2)
+		if !equal {
+			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
+		}
+	})
+	t.Run("different dates should not be equal", func(t *testing.T) {
+		t1 := Transaction{
+			ID:        3,
+			UserID:    3,
+			Address:   "footy",
+			UpdatedAt: time.Unix(5000, 0),
+			CreatedAt: time.Unix(5000, 0),
+		}
+
+		t2 := Transaction{
+			ID:        3,
+			UserID:    3,
+			Address:   "footy",
+			UpdatedAt: time.Unix(1000, 0),
+			CreatedAt: time.Unix(1000, 0),
+		}
+
+		equal, _ := t1.ExactlyEqual(t2)
+		if equal {
+			testutil.FatalMsgf(t, "should not be equal, but are")
+		}
+	})
+	t.Run("different ID's should not be equal", func(t *testing.T) {
+		t1 := Transaction{
+			ID:      1,
+			UserID:  3,
+			Address: "footy",
+		}
+
+		t2 := Transaction{
+			ID:      2,
+			UserID:  3,
+			Address: "footy",
+		}
+
+		equal, _ := t1.ExactlyEqual(t2)
+		if equal {
+			testutil.FatalMsgf(t, "should not be equal, but are")
+		}
+	})
+}
+
+func TestTransaction_Equal(t *testing.T) {
+	t.Parallel()
+	testutil.DescribeTest(t)
+
+	t.Run("should be equal", func(t *testing.T) {
+		t1 := Transaction{
+			ID:      3,
+			UserID:  3,
+			Address: "footy",
+		}
+
+		t2 := Transaction{
+			ID:      3,
+			UserID:  3,
+			Address: "footy",
+		}
+
+		equal, reason := t1.Equal(t2)
+		if !equal {
+			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
+		}
+	})
+	t.Run("different dates should be equal", func(t *testing.T) {
+		deletedAt1 := time.Unix(5000, 0)
+		deletedAt2 := time.Unix(1000, 0)
+		t1 := Transaction{
+			ID:        3,
+			UserID:    3,
+			Address:   "footy",
+			CreatedAt: time.Unix(5000, 0),
+			UpdatedAt: time.Unix(5000, 0),
+			DeletedAt: &deletedAt1,
+		}
+
+		t2 := Transaction{
+			ID:        3,
+			UserID:    3,
+			Address:   "footy",
+			CreatedAt: time.Unix(1000, 0),
+			UpdatedAt: time.Unix(1000, 0),
+			DeletedAt: &deletedAt2,
+		}
+
+		equal, reason := t1.Equal(t2)
+		if !equal {
+			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
+		}
+	})
+	t.Run("different dates and ID's should be equal", func(t *testing.T) {
+		deletedAt1 := time.Unix(5000, 0)
+		deletedAt2 := time.Unix(1000, 0)
+		t1 := Transaction{
+			ID:        1,
+			UserID:    3,
+			Address:   "footy",
+			CreatedAt: time.Unix(5000, 0),
+			UpdatedAt: time.Unix(5000, 0),
+			DeletedAt: &deletedAt1,
+		}
+
+		t2 := Transaction{
+			ID:        2,
+			UserID:    3,
+			Address:   "footy",
+			CreatedAt: time.Unix(1000, 0),
+			UpdatedAt: time.Unix(1000, 0),
+			DeletedAt: &deletedAt2,
+		}
+
+		equal, reason := t1.Equal(t2)
+		if !equal {
+			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
+		}
+	})
+	t.Run("should not be equal", func(t *testing.T) {
+		t1 := Transaction{
+			Address: "footy",
+		}
+
+		t2 := Transaction{
+			Address: "footyBar",
+		}
+
+		equal, _ := t1.Equal(t2)
+		if equal {
+			testutil.FatalMsgf(t, "should not be equal, but are")
+		}
+	})
 }
 
 func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
@@ -264,4 +531,27 @@ func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
 	}
 
 	return user
+}
+
+func CreateTransactionOrFail(t *testing.T, userID int) Transaction {
+	tx := testDB.MustBegin()
+
+	txs := Transaction{
+		UserID:      userID,
+		AmountSat:   int64(gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)),
+		Address:     "foo",
+		Description: "bar",
+		Direction:   payments.Direction("INBOUND"),
+		Confirmed:   false,
+	}
+
+	transaction, err := insertTransaction(tx, txs)
+
+	if err != nil {
+		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
+			err)
+	}
+	_ = tx.Commit()
+
+	return transaction
 }

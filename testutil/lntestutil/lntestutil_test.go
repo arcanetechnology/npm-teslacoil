@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -18,27 +20,10 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestStartBitcoindOrFail(t *testing.T) {
-	conf := GetBitcoindConfig(t)
-	client, cleanup := StartBitcoindOrFail(t, conf)
-	_, err := client.GetBlockChainInfo()
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not start and communicate with bitcoind: %v", err)
-	}
-
-	if err := cleanup(); err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	if info, err := client.GetBlockChainInfo(); err == nil {
-		testutil.FatalMsgf(t, "Got info from stopped client: %v", info)
-	}
-}
-
 func TestStartLndOrFail(t *testing.T) {
-	bitcoindConf := GetBitcoindConfig(t)
+	bitcoindConf := bitcoind.GetBitcoindConfig(t)
 	lndConf := GetLightingConfig(t)
-	_, cleanupBitcoind := StartBitcoindOrFail(t, bitcoindConf)
+	_, cleanupBitcoind := bitcoind.StartBitcoindOrFail(t, bitcoindConf)
 	defer func() {
 		if err := cleanupBitcoind(); err != nil {
 			testutil.FatalMsg(t, err)

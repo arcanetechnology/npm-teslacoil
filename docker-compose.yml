@@ -26,10 +26,12 @@ services:
     image: ruimarinho/bitcoin-core:0.18
     container_name: bitcoind
 
-    volumes: 
+    volumes:
       - bitcoin:/home/bitcoin/.bitcoin
     command: 
-      - -$BITCOIN_NETWORK=1
+      - -debug=rpc
+      - -printtoconsole
+      - -$BITCOIN_NETWORK
       - -rpcuser=$RPCUSER
       - -rpcpassword=$RPCPASS
       - -rpcbind=0.0.0.0
@@ -37,6 +39,7 @@ services:
       - -txindex
       - -zmqpubrawtx=tcp://0.0.0.0:$ZMQPUBRAWTX_PORT
       - -zmqpubrawblock=tcp://0.0.0.0:$ZMQPUBRAWBLOCK_PORT
+
   lnd:
     build:
       context: docker/lnd
@@ -52,17 +55,19 @@ services:
       - RPCUSER
       - RPCPASS
       - BITCOIN_NETWORK
-      - CHAIN
+      - RPCHOST
       - DEBUG
       - ZMQPUBRAWTX_PORT
       - ZMQPUBRAWBLOCK_PORT
-    entrypoint: ['./start-lnd.sh']
+    command: sh -c './wait-for-bitcoind.sh && ./start-lnd.sh'
 
   bob:
     depends_on: 
       - bitcoind
     extends: lnd
     container_name: bob
+    environment: 
+      - RPCHOST=blockchain
     # expose Bob's LND RPC as a different than ALice's port
     ports:
       - '10010:10009'
@@ -77,6 +82,8 @@ services:
       - bitcoind
     extends: lnd
     container_name: alice
+    environment: 
+      - RPCHOST=blockchain
     # expose Alice's LND RPC port
     ports:
       - '10009:10009'

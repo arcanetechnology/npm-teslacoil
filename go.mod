@@ -20,6 +20,7 @@ require (
 	github.com/iancoleman/strcase v0.0.0-20190422225806-e506e3ef7365
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lib/pq v1.2.0
+	github.com/lightninglabs/gozmq v0.0.0-20180324010646-462a8a753885
 	github.com/lightningnetwork/lnd v0.7.0-beta
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d

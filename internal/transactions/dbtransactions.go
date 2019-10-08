@@ -2,46 +2,50 @@ package transactions
 
 import (
 	"context"
+	"database/sql"
+	origError "errors"
 	"fmt"
 	"math"
 	"reflect"
-	"strings"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/build"
-
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"github.com/btcsuite/btcd/btcjson"
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
 
 	"github.com/google/go-cmp/cmp"
-
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
-// TransactionStatus is the status of an on-chain transaction
-type TransactionStatus string
-
-const (
-	UNCONFIRMED = "UNCONFIRMED"
-	CONFIRMED   = "CONFIRMED"
-)
-
 var log = build.Log
+
+var (
+	ErrTxHashTxid = errors.New("transaction already has txid, cant overwrite")
+)
 
 // Transaction is the db and json type for an on-chain transaction
 type Transaction struct {
 	ID          int                `db:"id" json:"id"`
 	UserID      int                `db:"user_id" json:"userId"`
 	Address     string             `db:"address" json:"address"`
-	Txid        string             `db:"txid" json:"txid"`
-	Outpoint    int                `db:"outpoint" json:"outpoint"`
+	Txid        *string            `db:"txid" json:"txid"`
+	Vout        *int               `db:"vout" json:"vout"`
 	Direction   payments.Direction `db:"direction" json:"direction"`
 	AmountSat   int64              `db:"amount_sat" json:"amountSat"`
 	Description string             `db:"description" json:"description"`
-	Status      TransactionStatus  `db:"status" json:"status"`
+	Confirmed   bool               `db:"confirmed" json:"confirmed"`
 
 	ConfirmedAt *time.Time `db:"confirmed_at" json:"confirmedAt"`
 	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
@@ -54,10 +58,16 @@ func insertTransaction(tx *sqlx.Tx, t Transaction) (Transaction, error) {
 		return Transaction{}, errors.New("invalid transaction, missing some fields")
 	}
 
+	if t.Txid == nil && t.Vout != nil || t.Txid != nil && t.Vout == nil {
+		return Transaction{}, errors.New("txid and vout must either both be defined, or neither be defined")
+	}
+
+	log.Infof("inserting transaction %+v", t)
+
 	createTransactionQuery := `
-	INSERT INTO transactions (user_id, address, txid, outpoint, direction, amount_sat,  description, status)
-	VALUES (:user_id, :address, :txid, :outpoint, :direction, :amount_sat, :description, :status)
-	RETURNING id, user_id, address, txid, outpoint, direction, amount_sat, description, status, confirmed_at,
+	INSERT INTO transactions (user_id, address, txid, vout, direction, amount_sat,  description, confirmed)
+	VALUES (:user_id, :address, :txid, :vout, :direction, :amount_sat, :description, :confirmed)
+	RETURNING id, user_id, address, txid, vout, direction, amount_sat, description, confirmed, confirmed_at,
 			  created_at, updated_at, deleted_at`
 
 	rows, err := tx.NamedQuery(createTransactionQuery, t)
@@ -179,10 +189,10 @@ type WithdrawOnChainArgs struct {
 // using our function SendOnChain
 // If the user does not have enough balance, the transaction is aborted
 // See WithdrawOnChainArgs for more information about the possible arguments
-func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
+func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind,
 	args WithdrawOnChainArgs) (*Transaction, error) {
 
-	user, err := users.GetByID(d, args.UserID)
+	user, err := users.GetByID(db, args.UserID)
 	if err != nil {
 		return nil, errors.Wrap(err, "withdrawonchain could not get user")
 	}
@@ -200,7 +210,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 			args.AmountSat))
 	}
 
-	tx := d.MustBegin()
+	tx := db.MustBegin()
 	user, err = users.DecreaseBalance(tx, users.ChangeBalance{
 		UserID:    user.ID,
 		AmountSat: args.AmountSat,
@@ -220,21 +230,24 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 	})
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
-			log.Error("txErr: ", txErr)
+			log.WithError(txErr).Error("could not rollback tx")
 		}
 		return nil, errors.Wrap(err, "could not send on-chain")
 	}
 
-	log.Debug("txid: ", txid)
+	vout, err := bitcoin.FindVout(txid, args.AmountSat)
+	if err != nil {
+		log.WithError(err).Error("could not find output")
+	}
 
 	transaction, err := insertTransaction(tx, Transaction{
 		UserID:      user.ID,
 		Address:     args.Address,
 		AmountSat:   args.AmountSat,
 		Description: args.Description,
-		Txid:        txid,
+		Txid:        &txid,
+		Vout:        &vout,
 		Direction:   payments.OUTBOUND,
-		Status:      "UNCONFIRMED",
 	})
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
@@ -242,6 +255,7 @@ func WithdrawOnChain(d *db.DB, lncli lnrpc.LightningClient,
 		}
 		return nil, errors.Wrap(err, "could not insert transaction")
 	}
+
 	err = tx.Commit()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not commit transaction")
@@ -257,23 +271,23 @@ type GetAddressArgs struct {
 	ForceNewAddress bool `json:"forceNewAddress"`
 	// A personal description for the transaction
 	Description string `json:"description"`
+	// The transaction hash of a deposit
+	Txid *string `json:"txid"`
+	// The output index
+	Vout *int `json:"vout"`
 }
 
-// NewDeposit is a wrapper function for creating a new Deposit without a description
-func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int) (Transaction, error) {
-	return NewDepositWithDescription(d, lncli, userID, "")
-}
-
-// NewDepositWithDescription retrieves a new address from lnd, and saves the address
+// NewDeposit retrieves a new address from lnd, and saves the address
 // in a new 'UNCONFIRMED', 'INBOUND' transaction together with the UserID
 // Returns the same transaction as insertTransaction(), in full
-func NewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int, description string) (Transaction, error) {
+func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
+	description string, vout *int, txid *string, amountSat int64) (Transaction, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		// This type means lnd will force-create a new address
-		Type: lnrpc.AddressType_NESTED_PUBKEY_HASH,
+		Type: lnrpc.AddressType_UNUSED_WITNESS_PUBKEY_HASH,
 	})
 	if err != nil {
-		panic(err)
+		return Transaction{}, errors.Wrap(err, "lncli could not create NewAddress")
 	}
 
 	tx := d.MustBegin()
@@ -282,10 +296,11 @@ func NewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int
 		Address:     address.Address,
 		Direction:   payments.INBOUND,
 		Description: description,
-		Status:      UNCONFIRMED,
+		Txid:        txid,
+		Vout:        vout,
+		AmountSat:   amountSat,
 	})
 	if err != nil {
-		log.Error(err)
 		return Transaction{}, errors.Wrap(err, "could not insert new inbound transaction")
 	}
 	_ = tx.Commit()
@@ -293,40 +308,254 @@ func NewDepositWithDescription(d *db.DB, lncli lnrpc.LightningClient, userID int
 	return transaction, nil
 }
 
-// GetDeposit attempts to retreive a deposit whose address has not yet received any coins
+// GetOrCreateDeposit attempts to retreive a deposit whose address has not yet received any coins
 // It does this by selecting the last inserted deposit whose txid == "" (order by id desc)
 // If the ForceNewAddress argument is true, or no deposit is found, the function creates a new deposit
-func GetDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddressArgs) (Transaction, error) {
+func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, args GetAddressArgs) (Transaction, error) {
+	log.Tracef("DepositOnChain(%d, %+v)", userID, args)
 	// If ForceNewAddress is supplied, we return a new deposit instantly
 	if args.ForceNewAddress {
-		return NewDepositWithDescription(d, lncli, userID, args.Description)
+		return NewDeposit(db, lncli, userID, args.Description, args.Vout, args.Txid, 0)
 	}
-	log.Infof("DepositOnChain(%d, %+v)", userID, args)
 
 	// Get the latest INBOUND transaction whose txid is empty from the DB
 	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' AND txid='' ORDER BY id DESC LIMIT 1;"
 	var deposit Transaction
-	err := d.Get(&deposit, query, userID)
-	if err != nil {
-		// In case the user has never made a deposit before, we get here
-		// This error is OKAY
-		if !strings.Contains(err.Error(), "no rows in result set") {
-			log.Error(err)
-			return Transaction{}, errors.Wrap(err, "could not get a transaction")
+	err := db.Get(&deposit, query, userID)
+
+	switch {
+	case err != nil && err == sql.ErrNoRows:
+		// no deposit exists yet
+		log.Debug("SELECT found no transactions, creating new deposit")
+		return NewDeposit(db, lncli, userID, args.Description, args.Vout, args.Txid, 0)
+	case err == nil:
+		// we found a deposit
+		return deposit, nil
+	default:
+		return Transaction{}, errors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
+	}
+}
+
+// TxListener receives tx's from the zmqTxChannel and checks whether
+// any of the tx outputs is a deposit to one of our addresses. If an
+// output is a deposit to us, we save the txid+vout in the DB.
+// Every output of a tx is always checked, and if a single tx has
+// several outputs which are a deposit to teslacoil, we save each
+// txid+vout as a unique entry in the DB
+//
+// NOTE: This must be run as a goroutine
+func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.MsgTx,
+	chainCfg chaincfg.Params) {
+	for {
+		tx := <-zmqRawTxCh
+
+		// To listen for deposits, we loop through every output of
+		// the tx, and check if any of the addresses exists in our db
+		for vout, output := range tx.TxOut {
+			// to extract the address, we first need to parse the output-script
+			script, err := txscript.ParsePkScript(output.PkScript)
+			if err != nil {
+				// we continue to keep listening for new trasactions
+				continue
+			}
+
+			address, err := script.Address(&chainCfg)
+			if err != nil {
+				log.WithError(err).Error("could not extract address from script")
+				continue
+			}
+
+			// Because it is possible to deposit to an on-chain address
+			// several times, we expect up to several transactions returned
+			// from the SELECT query
+			query := "SELECT * FROM transactions WHERE address=$1"
+			result := []Transaction{}
+			if err := db.Select(&result, query, address.EncodeAddress()); err != nil {
+				log.WithError(err).Errorf("query SELECT * FROM transactions WHERE address=%v failed",
+					address.EncodeAddress())
+				continue
+			}
+			if len(result) == 0 {
+				// address does not belong to us
+				continue
+			}
+			log.WithFields(logrus.Fields{"transactions": result, "address": address.EncodeAddress()}).
+				Tracef("found transactions for address")
+
+			amountSat := output.Value
+			txHash := tx.TxHash()
+			for i, transaction := range result {
+
+				err = transaction.SaveTxToDeposit(db, txHash, vout, amountSat)
+				switch {
+				case err == nil:
+					// if we get here, it means the txhash+vout was successfully
+					// saved to a transaction, and we don't need to loop through more
+					// transactions
+					break
+				case i == len(result)-1:
+					// we reached the last found transaction without being able to save
+					// the txid. This means the user deposited to an address he has used
+					// before, without creating a new deposit using our API
+
+					txid := txHash.String()
+					_, err = NewDeposit(db, lncli, transaction.UserID,
+						"", &vout, &txid, amountSat)
+					if err != nil {
+						log.WithError(err).Errorf("could not create new deposit for %d with txid %s:%d",
+							transaction.UserID, txid, vout)
+					}
+				case !origError.Is(err, ErrTxHashTxid):
+					log.WithError(err).Error("could not save txid to deposit")
+				}
+			}
 		}
 	}
+}
 
-	// If the user has never made a deposit before, the query returns nothing,
-	// and we need to create a new deposit
-	log.Debugf("deposit  %+v", deposit)
-	if deposit.UserID == 0 && deposit.Direction == "" {
-		log.Debug("deposit == emptyTransaction, creating new")
-		return NewDepositWithDescription(d, lncli, userID, args.Description)
+// BlockListener receives parsed blocks from the zmqBlockChannel and
+// for every unconfirmed transaction in our database, checks whether
+// it is now confirmed by looking up the txid using bitcoind RPC.
+// If the transaction is now confirmed, the transaction is marked
+// as confirmed and we credit the user with the transaction amount
+//
+// NOTE: This must be run as a goroutine
+func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgBlock) {
+	const confirmationLimit = 3
+
+	for {
+		// we don't actually use the block contents for anything, because
+		// we query bitcoind directly for the status of every transaction
+		// TODO?: Check all the transactions to see whether they are
+		//  a deposit to us, but is not saved in our DB yet
+		<-ch
+
+		query := "SELECT * FROM transactions WHERE confirmed = false and txid NOTNULL"
+		queryResult := []Transaction{}
+		if err := db.Select(&queryResult, query); err != nil {
+			if err != sql.ErrNoRows {
+				log.WithError(err).Errorf("query %q failed", query)
+			}
+			continue
+		}
+		log.Tracef("found transactions: %+v", queryResult)
+
+		for _, transaction := range queryResult {
+			txHash, err := chainhash.NewHashFromStr(*transaction.Txid)
+			if err != nil {
+				log.WithError(err).Errorf("could not create chainhash from txid %q", *transaction.Txid)
+				continue
+			}
+			rawTx, err := bitcoindRpc.GetRawTransactionVerbose(txHash)
+			if err != nil {
+				log.WithError(err).Errorf("could not get transaction with hash %q from bitcoind", txHash)
+				continue
+			}
+
+			if rawTx.Confirmations >= confirmationLimit {
+				log.Infof("tx %s:%d has %d confirmations", *transaction.Txid, *transaction.Vout, rawTx.Confirmations)
+
+				if len(rawTx.Vout) < *transaction.Vout {
+					// something really weird has happened, the transaction changed? we saved it wrong?
+					log.Panic("saved transaction outpoint is greater than the number of outputs, check the logic")
+				}
+
+				var output btcjson.Vout
+				for _, out := range rawTx.Vout {
+					if out.N == uint32(*transaction.Vout) {
+						output = out
+					}
+				}
+
+				if math.Round(btcutil.SatoshiPerBitcoin*output.Value) != float64(transaction.AmountSat) {
+					log.WithFields(logrus.Fields{"value": output.Value, "amount": transaction.AmountSat}).
+						Errorf("actual outputValue and expected amount not equal, check logic")
+					continue
+				}
+
+				err = transaction.MarkAsConfirmed(db)
+				if err != nil {
+					log.WithError(err).Error("could not mark transaction as confirmed")
+				}
+			}
+		}
+	}
+}
+
+// SaveTxToDeposit saves a txid consisting of a txid, a vout and an amount to the
+// db transaction
+// If the transaction already has a txid, it returns an error
+func (t Transaction) SaveTxToDeposit(db *db.DB, txHash chainhash.Hash, vout int,
+	amountSat int64) error {
+
+	if t.Txid != nil {
+		return ErrTxHashTxid
 	}
 
-	// If we get here, we return the transaction the query returned
-	log.Debug("returning found deposit")
-	return deposit, nil
+	uQuery := `UPDATE transactions SET txid = $1, vout = $2, amount_sat = $3 WHERE id = $4`
+	dbTx := db.MustBegin()
+	results, err := dbTx.Exec(uQuery, txHash.String(), vout, amountSat, t.ID)
+	if err != nil {
+		_ = dbTx.Rollback()
+		return errors.Wrap(err, "could not update transaction")
+	}
+
+	rowsAffected, err := results.RowsAffected()
+	if err != nil {
+		_ = dbTx.Rollback()
+		return errors.Wrap(err, "could not retreive num rows affected")
+	}
+	if rowsAffected != 1 {
+		_ = dbTx.Rollback()
+		return errors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
+	}
+
+	if err = dbTx.Commit(); err != nil {
+		_ = dbTx.Rollback()
+		return errors.Wrap(err, "could not commit dbTx")
+	}
+
+	return nil
+}
+
+// MarkAsConfirmed updates the transaction stored in the db
+// with Confirmed = true and ConfirmedAt = Now(). After updating the transaction
+// it attempts to credit the user with the tx amount. Should anything fail, all
+// changes are rolled back
+func (t Transaction) MarkAsConfirmed(db *db.DB) error {
+
+	query := `UPDATE transactions
+		SET confirmed_at = $1, confirmed = true
+		WHERE id=$2`
+
+	dbtx := db.MustBegin()
+	rows, err := dbtx.Exec(query, time.Now(), t.ID)
+	if err != nil {
+		_ = dbtx.Rollback()
+		return errors.Wrapf(err, "query %q for transaction.ID %d failed",
+			query, t.ID)
+	}
+
+	rowsAffected, _ := rows.RowsAffected()
+	if rowsAffected != 1 {
+		_ = dbtx.Rollback()
+		return errors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
+	}
+
+	if _, err := users.IncreaseBalance(dbtx, users.ChangeBalance{
+		UserID:    t.UserID,
+		AmountSat: t.AmountSat,
+	}); err != nil {
+		_ = dbtx.Rollback()
+		return errors.Wrapf(err, "could not credit user")
+	}
+
+	if err = dbtx.Commit(); err != nil {
+		_ = dbtx.Rollback()
+		return errors.Wrap(err, "could not commit changes")
+	}
+
+	return nil
 }
 
 // ExactlyEqual checks whether the two transactions are exactly

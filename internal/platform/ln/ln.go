@@ -8,10 +8,10 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
@@ -48,7 +48,7 @@ type LightningConfig struct {
 	// MacaroonPath corresponds to the --adminmacaroonpath startup option of
 	// lnd
 	MacaroonPath string
-	Network      string
+	Network      chaincfg.Params
 	RPCServer    string
 	// P2pPort is the port lnd listens to peer connections on
 	P2pPort int
@@ -61,60 +61,27 @@ func configDefaultLndDir() string {
 	return btcutil.AppDataDir("lnd", false)
 }
 
-func configDefaultLndNet() string {
-	if env := os.Getenv("BITCOIN_NETWORK"); env != "" {
-		switch env {
-		case "mainnet", "testnet", "regtest":
-			return env
-		default:
-			log.Fatalf("Environment variable BITCOIN_NETWORK is not a valid network: %s", env)
-		}
+func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
+	name := network.Name
+	if name == "testnet3" {
+		name = "testnet"
 	}
-	return "testnet"
+	return filepath.Join("data", "chain",
+		"bitcoin", name, "admin.macaroon")
 }
 
-func configDefaultLndPort() int {
-	env := os.Getenv("LND_PORT")
-	if len(env) != 0 {
-		port, err := strconv.Atoi(env)
-		if err != nil {
-			log.Fatalf("Environment variable LND_PORT is not a valid int: %s", env)
-		}
-		return port
-	}
-	return 10009
+func DefaultMacaroonPath(params chaincfg.Params) string {
+	return filepath.Join(DefaultLndDir, DefaultRelativeMacaroonPath(params))
 }
 
-var (
-	// DefaultNetwork is the default network
-	DefaultNetwork = configDefaultLndNet()
-	// DefaultPort is the default lnd port (10009)
-	DefaultPort = configDefaultLndPort()
-	// DefaultRPCHostPort is the default host port of lnd
-	DefaultRPCHostPort = fmt.Sprintf("localhost:%d", DefaultPort)
-	// DefaultTLSCertFileName is the default filename of the tls certificate
-	DefaultTLSCertFileName = "tls.cert"
+const (
+	DefaultRpcServer = "localhost:" + DefaultRpcPort
+	DefaultRpcPort   = "10009"
 )
 
 var (
 	// DefaultLndDir is the default location of .lnd
 	DefaultLndDir = configDefaultLndDir()
-	// LndNetwork is the default LND network (testnet)
-	LndNetwork = configDefaultLndNet()
-	// DefaultTLSCertPath is the default location of tls.cert
-	DefaultTLSCertPath = filepath.Join(DefaultLndDir, "tls.cert")
-	// DefaultMacaroonPath is the default dir of x.macaroon
-	DefaultMacaroonPath = filepath.Join(DefaultLndDir, "data", "chain",
-		"bitcoin", DefaultNetwork, "admin.macaroon")
-
-	// DefaultCfg is a config interface with default values
-	DefaultCfg = LightningConfig{
-		LndDir:       DefaultLndDir,
-		TLSCertPath:  DefaultTLSCertPath,
-		MacaroonPath: DefaultMacaroonPath,
-		Network:      DefaultNetwork,
-		RPCServer:    DefaultRPCHostPort,
-	}
 )
 
 // NewLNDClient opens a new connection to LND and returns the client
@@ -128,10 +95,13 @@ func NewLNDClient(options LightningConfig) (
 		RPCServer:    options.RPCServer,
 	}
 
-	if options.LndDir != DefaultLndDir {
-		cfg.LndDir = options.LndDir
-		cfg.TLSCertPath = filepath.Join(cfg.LndDir, DefaultTLSCertFileName)
-		cfg.MacaroonPath = filepath.Join(cfg.LndDir, "data", "chain", "bitcoin", cfg.Network, "admin.macaroon")
+	if cfg.TLSCertPath == "" {
+		cfg.TLSCertPath = filepath.Join(cfg.LndDir, "tls.cert")
+	}
+
+	if cfg.MacaroonPath == "" {
+		cfg.MacaroonPath = filepath.Join(cfg.LndDir,
+			DefaultRelativeMacaroonPath(options.Network))
 	}
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
@@ -162,8 +132,8 @@ func NewLNDClient(options LightningConfig) (
 	withTimeout, cancel := context.WithTimeout(backgroundContext, 5*time.Second)
 	defer cancel()
 
-	log.Infof("Connecting to LND with lnddir=%v, tlsCertPath=%v, macaroonPath=%v, network=%v, rpcServer=%v",
-		cfg.LndDir, cfg.TLSCertPath, cfg.MacaroonPath, cfg.Network, cfg.RPCServer)
+	log.Infof("Connecting to LND with lnddir=%s, tlsCertPath=%s, macaroonPath=%s, network=%s, rpcServer=%s",
+		cfg.LndDir, cfg.TLSCertPath, cfg.MacaroonPath, cfg.Network.Name, cfg.RPCServer)
 
 	conn, err := grpc.DialContext(withTimeout, cfg.RPCServer, opts...)
 	if err != nil {
@@ -262,7 +232,7 @@ func (l LightningConfig) String() string {
 	str := fmt.Sprintf("LndDir: %s\n", l.LndDir)
 	str += fmt.Sprintf("TLSCertPath: %s\n", l.TLSCertPath)
 	str += fmt.Sprintf("MacaroonPath: %s\n", l.MacaroonPath)
-	str += fmt.Sprintf("Network: %s\n", l.Network)
+	str += fmt.Sprintf("Network: %s\n", l.Network.Name)
 	str += fmt.Sprintf("RPCServer: %s\n", l.RPCServer)
 
 	return str
