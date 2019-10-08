@@ -302,6 +302,7 @@ func (c *Conn) blockEventHandler() {
 				continue
 			}
 
+			log.Infof("received new block %v", block.BlockHash())
 			// send the deserialized block to the block channel
 			c.zmqBlockCh <- block
 
