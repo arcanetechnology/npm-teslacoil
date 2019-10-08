@@ -1,4 +1,5 @@
 .envrc
+.systemd-variables
 logs/
 .idea/dataSources.xml
 .idea/teslacoil.iml
