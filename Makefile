@@ -7,6 +7,9 @@ BINARIES := lpp lpp-dev
 build-lpp:
 	go build -o ${LPP} ./cmd/lpp
 
+deploy-testnet: install
+	./scripts/deployTestnet.sh
+
 start-db:
 	if [  -z `docker-compose ps -q db` ]; then docker-compose up -d db && sleep 3; fi
 
@@ -22,6 +25,7 @@ drop-db: build-lpp start-db
 dummy-data: build-lpp start-db migrate-db-up start-regtest-alice
 	./lpp-dev --network regtest db dummy --force --only-once
 	docker-compose stop alice bitcoind
+
 
 clean: 
 	rm -f ${BINARIES}
