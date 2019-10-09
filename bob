@@ -1,2 +1,6 @@
 #! /usr/bin/env bash
+if [[ $* != *--network* ]]; then
+    BITCOIN_NETWORK="regtest"
+fi
+
 lncli --lnddir=docker/.bob --rpcserver=localhost:10010 --network $BITCOIN_NETWORK $@
