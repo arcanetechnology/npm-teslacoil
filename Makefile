@@ -7,6 +7,22 @@ BINARIES := lpp lpp-dev
 build-lpp:
 	go build -o ${LPP} ./cmd/lpp
 
+start-db:
+	if [  -z `docker-compose ps -q db` ]; then docker-compose up -d db && sleep 3; fi
+
+start-regtest-alice: 
+	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 
+
+migrate-db-up: build-lpp start-db
+	./lpp-dev db up
+
+drop-db: build-lpp start-db
+	./lpp-dev db drop --force
+
+dummy-data: build-lpp start-db migrate-db-up start-regtest-alice
+	./lpp-dev --network regtest db dummy --force --only-once
+	docker-compose stop alice bitcoind
+
 clean: 
 	rm -f ${BINARIES}
 
@@ -21,10 +37,10 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-serve: build-lpp
+serve: dummy-data build-lpp 
 	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
 
-serve-testnet: build-lpp
+serve-testnet: dummy-data build-lpp 
 	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
 test-only: 
