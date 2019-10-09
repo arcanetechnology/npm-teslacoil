@@ -10,6 +10,9 @@ build-lpp:
 deploy-testnet: install
 	./scripts/deployTestnet.sh
 
+deploy-mainnet: install
+	./scripts/deployMainnet.sh
+
 start-db:
 	if [  -z `docker-compose ps -q db` ]; then docker-compose up -d db && sleep 3; fi
 
