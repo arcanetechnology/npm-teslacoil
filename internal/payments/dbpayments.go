@@ -338,7 +338,7 @@ func MarkInvoiceAsPaid(d *db.DB, userID int,
 		return err
 	}
 	rows, _ := result.RowsAffected()
-	log.Infof("Marking an invoice as paid resulted in %d updated rows", rows)
+	log.Tracef("Marking an invoice as paid resulted in %d updated rows", rows)
 
 	if err = tx.Commit(); err != nil {
 		return err

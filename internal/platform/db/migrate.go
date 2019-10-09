@@ -47,6 +47,7 @@ func (d *DB) MigrationStatus(migrationsPath string) error {
 func (d *DB) MigrateUp(migrationsPath string) error {
 	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
+		log.WithError(err).Error("Could not get Postgres instance")
 		return err
 	}
 	m, err := migrate.NewWithDatabaseInstance(
@@ -55,11 +56,14 @@ func (d *DB) MigrateUp(migrationsPath string) error {
 		driver,
 	)
 	if err != nil {
+		log.WithError(err).Error("Could not get migration instance")
 		return err
 	}
 
 	// Migrate all the way up ...
-	return m.Up()
+	err = m.Up()
+	log.Info("Succesfully migrated up")
+	return err
 }
 
 // MigrateDown migrates down

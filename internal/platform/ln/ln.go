@@ -196,7 +196,7 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 		return nil, err
 	}
 
-	log.Infof("added invoice %s with hash %s",
+	log.Debugf("added invoice %s with hash %s",
 		inv.PaymentRequest, hex.EncodeToString(inv.RHash))
 
 	return invoice, nil
