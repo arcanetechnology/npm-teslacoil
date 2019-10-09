@@ -155,25 +155,6 @@ var (
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Before: func(c *cli.Context) error {
-			networkString := c.GlobalString("network")
-			switch networkString {
-			case "mainnet":
-				network = chaincfg.MainNetParams
-			case "testnet", "testnet3":
-				network = chaincfg.TestNet3Params
-			case "regtest", "":
-				network = chaincfg.RegressionNetParams
-			default:
-				return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
-			}
-
-			lnConfig = ln.LightningConfig{
-				LndDir:       c.GlobalString("lnddir"),
-				TLSCertPath:  c.GlobalString("tlscertpath"),
-				MacaroonPath: c.GlobalString("macaroonpath"),
-				Network:      network,
-				RPCServer:    c.GlobalString("lndrpcserver"),
-			}
 
 			bitcoindConfig = bitcoind.Config{
 				ZmqPubRawTx:    c.GlobalString("zmqpubrawtx"),
@@ -479,6 +460,26 @@ func main() {
 		}
 		build.SetLogLevel(level)
 		log.Info("Setting log level to " + level.String())
+
+		networkString := c.GlobalString("network")
+		switch networkString {
+		case "mainnet":
+			network = chaincfg.MainNetParams
+		case "testnet", "testnet3":
+			network = chaincfg.TestNet3Params
+		case "regtest", "":
+			network = chaincfg.RegressionNetParams
+		default:
+			return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
+		}
+
+		lnConfig = ln.LightningConfig{
+			LndDir:       c.GlobalString("lnddir"),
+			TLSCertPath:  c.GlobalString("tlscertpath"),
+			MacaroonPath: c.GlobalString("macaroonpath"),
+			Network:      network,
+			RPCServer:    c.GlobalString("lndrpcserver"),
+		}
 
 		return nil
 	}
