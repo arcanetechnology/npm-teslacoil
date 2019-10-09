@@ -179,6 +179,23 @@ func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http
 	return destination
 }
 
+// First performs `assertResponseOk`, then asserts that the body of the response
+// can be parsed as a JSON list, and then returns the parsed JSON list
+func (harness *TestHarness) AssertResponseOkWithJsonList(t *testing.T, request *http.Request) []map[string]interface{} {
+
+	t.Helper()
+	response := harness.AssertResponseOk(t, request)
+	var destination []map[string]interface{}
+
+	if err := json.Unmarshal(response.Body.Bytes(), &destination); err != nil {
+		stringBody := response.Body.String()
+		testutil.FatalMsgf(t, "%+v. Body: %s ",
+			err, stringBody)
+
+	}
+	return destination
+}
+
 func extractMethodAndPath(req *http.Request) string {
 	return req.Method + " " + req.URL.Path
 }
@@ -224,12 +241,7 @@ func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, body *bytes
 	}
 }
 
-// Creates and and authenticates a user with the given email and password.
-// We either log in (and return an access token), or create an API key (and
-// return that). They should be equivalent (until scopes are implemented, so
-// this should not matter and might uncover some edge cases.
-func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
-	_ = harness.CreateUser(t, args)
+func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) string {
 
 	loginUserReq := GetRequest(t, RequestArgs{
 		Path:   "/login",
@@ -289,5 +301,15 @@ func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.C
 		// won't reach this
 		panic("unreachable")
 	}
+}
+
+// Creates and and authenticates a user with the given email and password.
+// We either log in (and return an access token), or create an API key (and
+// return that). They should be equivalent (until scopes are implemented, so
+// this should not matter and might uncover some edge cases.
+func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
+	_ = harness.CreateUser(t, args)
+
+	return harness.AuthenticaticateUser(t, args)
 
 }

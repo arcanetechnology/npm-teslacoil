@@ -511,7 +511,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 				lnMock := lntestutil.LightningMockClient{
 					InvoiceResponse: test.triggerInvoice,
 				}
-				_ = NewPaymentOrFail(t, lnMock, NewPaymentOpts{
+				_ = CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
 					UserID:    u.ID,
 					AmountSat: test.amountSat,
 					Memo:      test.memo,
@@ -564,7 +564,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		payment := NewPaymentOrFail(t, lnMock, NewPaymentOpts{
+		payment := CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
 			UserID:      u.ID,
 			AmountSat:   mockInvoice.Value,
 			CallbackURL: "https://example.com",
@@ -600,7 +600,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		payment := NewPaymentOrFail(t, lnMock, NewPaymentOpts{
+		payment := CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
 			UserID:      u.ID,
 			AmountSat:   mockInvoice.Value,
 			CallbackURL: "https://example.com",
@@ -629,17 +629,6 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled payment")
 		}
 	})
-}
-
-func NewPaymentOrFail(t *testing.T, ln ln.AddLookupInvoiceClient,
-	opts NewPaymentOpts) Payment {
-	payment, err := NewPayment(testDB, ln, opts)
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"should be able to CreateInvoice. Error:  %+v\n",
-			err)
-	}
-	return payment
 }
 
 func TestGetAllOffset(t *testing.T) {

@@ -31,6 +31,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
 var (
@@ -1175,4 +1176,62 @@ func TestRestServer_CreateApiKey(t *testing.T) {
 			testutil.AssertNotEqual(t, json["userId"], nil)
 		})
 	})
+}
+
+func TestRestServer_GetAllPayments(t *testing.T) {
+	t.Parallel()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
+	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+	accessToken := h.AuthenticaticateUser(t, users.CreateUserArgs{
+		Email:    user.Email,
+		Password: pass,
+	})
+
+	t.Run("fail with bad query parameters", func(t *testing.T) {
+		t.Run("string argument", func(t *testing.T) {
+			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        fmt.Sprintf("/payments?limit=foobar&offset=0"),
+				Method:      "GET",
+			})
+
+			h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		})
+		t.Run("negative argument", func(t *testing.T) {
+			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        fmt.Sprintf("/payments?offset=-1"),
+				Method:      "GET",
+			})
+
+			h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		})
+	})
+
+	t.Run("succeed with query parameters", func(t *testing.T) {
+		opts := payments.NewPaymentOpts{
+			UserID:    user.ID,
+			AmountSat: 123,
+		}
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		const numPayments = 6
+
+		const limit = 3
+		const offset = 2
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        fmt.Sprintf("/payments?limit=%d&offset=%d", limit, offset),
+			Method:      "GET",
+		})
+
+		res := h.AssertResponseOkWithJsonList(t, req)
+		testutil.AssertMsgf(t, len(res) == numPayments-limit, "Unexpected number of payments: %d", len(res))
+
+	})
+
 }

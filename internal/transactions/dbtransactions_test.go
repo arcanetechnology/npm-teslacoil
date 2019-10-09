@@ -13,8 +13,6 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 
-	"github.com/brianvoe/gofakeit"
-
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
@@ -274,7 +272,7 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 
 	t.Run("should be able to save txid and vout", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		transaction := CreateTransactionOrFail(t, user.ID)
+		transaction := CreateTransactionOrFail(t, testDB, user.ID)
 
 		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
 		if err != nil {
@@ -326,7 +324,7 @@ func TestTransaction_MarkAsConfirmed(t *testing.T) {
 
 	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		transaction := CreateTransactionOrFail(t, user.ID)
+		transaction := CreateTransactionOrFail(t, testDB, user.ID)
 
 		err := transaction.MarkAsConfirmed(testDB)
 		if err != nil {
@@ -531,27 +529,4 @@ func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
 	}
 
 	return user
-}
-
-func CreateTransactionOrFail(t *testing.T, userID int) Transaction {
-	tx := testDB.MustBegin()
-
-	txs := Transaction{
-		UserID:      userID,
-		AmountSat:   int64(gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)),
-		Address:     "foo",
-		Description: "bar",
-		Direction:   payments.Direction("INBOUND"),
-		Confirmed:   false,
-	}
-
-	transaction, err := insertTransaction(tx, txs)
-
-	if err != nil {
-		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
-			err)
-	}
-	_ = tx.Commit()
-
-	return transaction
 }
