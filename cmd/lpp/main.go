@@ -15,6 +15,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/lightningnetwork/lnd/lnrpc"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/sendgrid/sendgrid-go"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -380,21 +381,36 @@ var (
 				Name:    "dummy",
 				Aliases: []string{"dd"},
 				Usage:   "fills the database with dummy data",
+				Flags: []cli.Flag{
+					cli.BoolFlag{
+						Name:  "force",
+						Usage: "Don't ask for confirmation before populating the DB",
+					},
+					cli.BoolFlag{
+						Name:  "only-once",
+						Usage: "Only fill with dummy data if DB is empty",
+					},
+				},
 				Action: func(c *cli.Context) error {
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
 					defer func() { err = database.Close() }()
-					fmt.Println("Are you sure you want to fill dummy data? y/n")
-					if askForConfirmation() {
-						lncli, err := ln.NewLNDClient(lnConfig)
-						if err != nil {
-							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
+					force := c.Bool("force")
+					if !force {
+						fmt.Println("Are you sure you want to fill dummy data? y/n")
+						if !askForConfirmation() {
+							log.Info("Not populating DB with dummy data")
+							return nil
 						}
-						return FillWithDummyData(database, lncli)
 					}
-					return err
+
+					lncli, err := ln.NewLNDClient(lnConfig)
+					if err != nil {
+						return pkgerrors.Wrap(err, "could not connect to lnd")
+					}
+					return FillWithDummyData(database, lncli, c.Bool("only-once"))
 				},
 			},
 		},
