@@ -1,2 +1,6 @@
 #! /usr/bin/env bash
+if [[ $* != *--network* ]]; then
+   BITCOIN_NETWORK="regtest"
+fi
+
 lncli --lnddir=docker/.alice --network $BITCOIN_NETWORK $@
