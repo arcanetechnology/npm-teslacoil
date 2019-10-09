@@ -4,38 +4,49 @@
 
 A custodial payment processor running in the lightning network using lnd.
 
-## Installation
+## Getting started with development
 
 1. Install direnv `sudo apt install direnv` and add `direnv hook fish | source`
    to your Fish config file (`$HOME/.config/fish/config.fish`)
    See here if you are using a different shell https://direnv.net/docs/hook.md
 
 2. Create `.envrc` and fill in details (see defaults in `.envrc-example`)
-3. Build and install `lpp`: `go install ./...`
-4. Start the LND/`btcd`/Postgres cluster: `docker-compose up -d`
-5. Migrate the db: `lpp db up`
-
-Run: `go get` to install dependencies
+3. Start the API: `make serve`
 
 ## Start the API
 
-`lpp serve`
+#### Regtest
+
+```bash
+make serve
+```
+
+#### Testnet
+
+```bash
+make serve-testnet
+```
 
 ## DB management etc.
 
 Run `lpp db` to see options.
 
-## LND simnet for development
-
-Fill inn instructions here.
-
 ## Testing
 
-To run basic tests use `make test`.
+#### Basic tests
 
-To run tests using lnd on simnet use `make test tags="lnd"`.
-This does however require you to have one or two simnet lnd nodes running.
-See instructions above.
+```bash
+make test
+```
+
+#### Integration tests
+
+These tests take a bit longer to run, as they create and destroy `lnd` and 
+`bitcoind` nodes. 
+
+```bash
+make test-it
+```
 
 ## General coding guidelines
 
@@ -64,12 +75,20 @@ ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
 
 ## Docker
 
+We use Docker and Docker Compose to manage infrastructure such as `lnd`, `bitcoind` and 
+Postgres. 
+
 ### Spinning up cluster
 
-Spinning up local cluster with `btcd`, two LND nodes and Postgres DB:
+Generally speaking, the Docker cluster should be managed through `make` targets. For example,
+when doing `make serve`, containers are started for you with the correct configuration values.
+
+If you want to spin up individual services by yourself, that can be done. For example, to 
+up a cluster with `bitcoind`, two `lnd` nodes and a Postgres DB:
+
 
 ```bash
-$ docker-compose up --detach # can also use -d
+$ docker-compose up --detach alice bob bitcoind db# can also use -d
 ```
 
 ### Logs
