@@ -132,6 +132,13 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 // NewDeposit is a request handler used for creating a new deposit
 // If successful, response with an address, and the saved description
 func (r *RestServer) NewDeposit() gin.HandlerFunc {
+	type NewDepositRequest struct {
+		// Whether to discard the old address and force create a new one
+		ForceNewAddress bool `json:"forceNewAddress"`
+		// A personal description for the transaction
+		Description string `json:"description"`
+	}
+
 	type NewDepositResponse struct {
 		ID          int    `json:"id"`
 		Address     string `json:"address"`
@@ -144,13 +151,13 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 			return
 		}
 
-		var request transactions.GetAddressArgs
-		if ok := getJSONOrReject(c, &request); !ok {
+		var req NewDepositRequest
+		if ok := getJSONOrReject(c, &req); !ok {
 			return
 		}
-		log.Infof("Received DepositOnChain request %+v\n", request)
 
-		transaction, err := transactions.GetOrCreateDeposit(r.db, r.lncli, userID, request)
+		transaction, err := transactions.GetOrCreateDeposit(r.db, r.lncli, userID,
+			req.ForceNewAddress, req.Description)
 		if err != nil {
 			log.Errorf("cannot deposit onchain: %v", err)
 			c.JSONP(http.StatusInternalServerError,
