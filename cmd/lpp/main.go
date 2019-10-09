@@ -314,8 +314,7 @@ var (
 				Name:    "up",
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
-				Action: func(c *cli.Context) error {
-
+				Action: func(c *cli.Context) (err error) {
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
@@ -324,7 +323,8 @@ var (
 
 					err = database.MigrateUp(
 						path.Join("file://", db.MigrationsPath))
-					return err
+
+					return
 				},
 			}, {
 				Name:    "status",
@@ -360,21 +360,37 @@ var (
 				Name:    "drop",
 				Aliases: []string{"dr"},
 				Usage:   "drops the entire database.",
-				Action: func(c *cli.Context) error {
+				Flags: []cli.Flag{
+					cli.BoolFlag{
+						Name:  "force",
+						Usage: "Don't ask for confirmation before dropping the DB",
+					},
+				},
+				Action: func(c *cli.Context) (err error) {
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
 					defer func() { err = database.Close() }()
 
-					fmt.Println(
-						"Are you sure you want to drop the entire database? y/n")
-					if askForConfirmation() {
-						err = database.Drop(
-							path.Join("file://", db.MigrationsPath))
+					force := c.Bool("force")
+					if !force {
+						fmt.Println(
+							"Are you sure you want to drop the entire database? y/n")
+						if !askForConfirmation() {
+							log.Debug("Not dropping DB")
+							return nil
+						}
+					}
+					err = database.Drop(
+						path.Join("file://", db.MigrationsPath))
+					if err != nil {
+						log.WithError(err).Error("Could not drop DB")
+						return err
 					}
 
-					return err
+					log.Info("Dropped DB")
+					return
 				},
 			},
 			{
