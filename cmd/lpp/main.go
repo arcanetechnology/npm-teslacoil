@@ -17,6 +17,7 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sendgrid/sendgrid-go"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
@@ -25,10 +26,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/util"
 	"gopkg.in/urfave/cli.v1"
-)
-
-const (
-	defaultLoggingLevel = "trace"
 )
 
 var (
@@ -535,7 +532,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "loglevel",
-			Value: defaultLoggingLevel,
+			Value: logrus.InfoLevel.String(),
 			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, fatal, panic}",
 		},
 	}
