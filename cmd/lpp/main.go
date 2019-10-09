@@ -15,7 +15,9 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/lightningnetwork/lnd/lnrpc"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/sendgrid/sendgrid-go"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
@@ -24,10 +26,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/util"
 	"gopkg.in/urfave/cli.v1"
-)
-
-const (
-	defaultLoggingLevel = "trace"
 )
 
 var (
@@ -157,25 +155,6 @@ var (
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Before: func(c *cli.Context) error {
-			networkString := c.GlobalString("network")
-			switch networkString {
-			case "mainnet":
-				network = chaincfg.MainNetParams
-			case "testnet", "testnet3":
-				network = chaincfg.TestNet3Params
-			case "regtest", "":
-				network = chaincfg.RegressionNetParams
-			default:
-				return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
-			}
-
-			lnConfig = ln.LightningConfig{
-				LndDir:       c.GlobalString("lnddir"),
-				TLSCertPath:  c.GlobalString("tlscertpath"),
-				MacaroonPath: c.GlobalString("macaroonpath"),
-				Network:      network,
-				RPCServer:    c.GlobalString("lndrpcserver"),
-			}
 
 			bitcoindConfig = bitcoind.Config{
 				ZmqPubRawTx:    c.GlobalString("zmqpubrawtx"),
@@ -313,8 +292,7 @@ var (
 				Name:    "up",
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
-				Action: func(c *cli.Context) error {
-
+				Action: func(c *cli.Context) (err error) {
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
@@ -323,7 +301,8 @@ var (
 
 					err = database.MigrateUp(
 						path.Join("file://", db.MigrationsPath))
-					return err
+
+					return
 				},
 			}, {
 				Name:    "status",
@@ -359,42 +338,73 @@ var (
 				Name:    "drop",
 				Aliases: []string{"dr"},
 				Usage:   "drops the entire database.",
-				Action: func(c *cli.Context) error {
+				Flags: []cli.Flag{
+					cli.BoolFlag{
+						Name:  "force",
+						Usage: "Don't ask for confirmation before dropping the DB",
+					},
+				},
+				Action: func(c *cli.Context) (err error) {
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
 					defer func() { err = database.Close() }()
 
-					fmt.Println(
-						"Are you sure you want to drop the entire database? y/n")
-					if askForConfirmation() {
-						err = database.Drop(
-							path.Join("file://", db.MigrationsPath))
+					force := c.Bool("force")
+					if !force {
+						fmt.Println(
+							"Are you sure you want to drop the entire database? y/n")
+						if !askForConfirmation() {
+							log.Debug("Not dropping DB")
+							return nil
+						}
+					}
+					err = database.Drop(
+						path.Join("file://", db.MigrationsPath))
+					if err != nil {
+						log.WithError(err).Error("Could not drop DB")
+						return err
 					}
 
-					return err
+					log.Info("Dropped DB")
+					return
 				},
 			},
 			{
 				Name:    "dummy",
 				Aliases: []string{"dd"},
 				Usage:   "fills the database with dummy data",
+				Flags: []cli.Flag{
+					cli.BoolFlag{
+						Name:  "force",
+						Usage: "Don't ask for confirmation before populating the DB",
+					},
+					cli.BoolFlag{
+						Name:  "only-once",
+						Usage: "Only fill with dummy data if DB is empty",
+					},
+				},
 				Action: func(c *cli.Context) error {
 					database, err := db.Open(databaseConfig)
 					if err != nil {
 						return err
 					}
 					defer func() { err = database.Close() }()
-					fmt.Println("Are you sure you want to fill dummy data? y/n")
-					if askForConfirmation() {
-						lncli, err := ln.NewLNDClient(lnConfig)
-						if err != nil {
-							log.Fatalf("Could not connect to LND. ln.NewLNDClient(%+v): %+v", lnConfig, err)
+					force := c.Bool("force")
+					if !force {
+						fmt.Println("Are you sure you want to fill dummy data? y/n")
+						if !askForConfirmation() {
+							log.Info("Not populating DB with dummy data")
+							return nil
 						}
-						return FillWithDummyData(database, lncli)
 					}
-					return err
+
+					lncli, err := ln.NewLNDClient(lnConfig)
+					if err != nil {
+						return pkgerrors.Wrap(err, "could not connect to lnd")
+					}
+					return FillWithDummyData(database, lncli, c.Bool("only-once"))
 				},
 			},
 		},
@@ -451,6 +461,26 @@ func main() {
 		build.SetLogLevel(level)
 		log.Info("Setting log level to " + level.String())
 
+		networkString := c.GlobalString("network")
+		switch networkString {
+		case "mainnet":
+			network = chaincfg.MainNetParams
+		case "testnet", "testnet3":
+			network = chaincfg.TestNet3Params
+		case "regtest", "":
+			network = chaincfg.RegressionNetParams
+		default:
+			return fmt.Errorf("unknown network: %s. Valid: mainnet, testnet, regtest", networkString)
+		}
+
+		lnConfig = ln.LightningConfig{
+			LndDir:       c.GlobalString("lnddir"),
+			TLSCertPath:  c.GlobalString("tlscertpath"),
+			MacaroonPath: c.GlobalString("macaroonpath"),
+			Network:      network,
+			RPCServer:    c.GlobalString("lndrpcserver"),
+		}
+
 		return nil
 	}
 	app.Flags = []cli.Flag{
@@ -503,7 +533,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "loglevel",
-			Value: defaultLoggingLevel,
+			Value: logrus.InfoLevel.String(),
 			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, fatal, panic}",
 		},
 	}

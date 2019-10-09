@@ -1,7 +1,6 @@
 package db
 
 import (
-	"database/sql"
 	"net/url"
 	"path"
 	"runtime"
@@ -98,7 +97,9 @@ func (d *DB) MigrateOrReset(conf DatabaseConfig) error {
 	err := d.MigrateUp(path.Join("file://", MigrationsPath))
 
 	if err != nil {
+		log.WithError(err).Error("Error when migrating or resetting")
 		if err.Error() == "no change" {
+			log.Info("Resetting")
 			return d.Reset(conf)
 		}
 		log.Error(err)
@@ -136,11 +137,6 @@ func (d *DB) Reset(conf DatabaseConfig) error {
 	}
 
 	return nil
-}
-
-//ToNullString converts the argument s to a sql.NullString
-func ToNullString(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: true}
 }
 
 // Drop drops the existing database

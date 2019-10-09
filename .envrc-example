@@ -5,7 +5,7 @@ export DATABASE_NAME="lpp"
 export DATABASE_PORT=5432
 
 # LND/Bitcoin Core
-export LND_DIR=~/.lnd
+export LND_DIR=docker/.alice
 
 export BITCOIN_NETWORK=regtest
 

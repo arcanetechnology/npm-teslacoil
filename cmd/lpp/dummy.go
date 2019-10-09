@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"time"
 
 	"github.com/brianvoe/gofakeit"
@@ -10,10 +11,17 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
-// FillWithDummyData creates three entries in each table
-func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
+// FillWithDummyData populates the database with dummy data
+func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) error {
+	log.WithField("onlyOnce", onlyOnce).Info("Populating DB with dummy data")
 	gofakeit.Seed(time.Now().UnixNano())
 
+	if foundUsers, _ := users.GetAll(d); onlyOnce {
+		if len(foundUsers) != 0 {
+			log.Info("DB has data, not populating with further data")
+			return nil
+		}
+	}
 	// Initial user
 	email := "test_user@example.com"
 	pass := "password"
@@ -40,8 +48,9 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
 	}
 
 	userCount := 20
+	createUser := func(wg *sync.WaitGroup) {
+		defer wg.Done()
 
-	for u := 1; u <= userCount; u++ {
 		var first string
 		var last string
 		if gofakeit.Int8() == 0 {
@@ -59,17 +68,27 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient) error {
 			LastName:  &last,
 		})
 		if err != nil {
-			return err
+			log.WithError(err).Error("Could not create user")
+			return
 		}
 
-		log.Warnf("Generated user %+v\n", user)
+		log.WithField("userId", user.ID).Debug("Generated user")
 
-		err = createPaymentsForUser(d, lncli, user)
-		if err != nil {
-			return err
+		if err := createPaymentsForUser(d, lncli, user); err != nil {
+			log.WithError(err).WithField("user", user).Error("Could not create payments")
+			return
 		}
-
+		log.WithField("userId", user.ID).Debug("Created payments for user")
 	}
+
+	var wg sync.WaitGroup
+	for u := 1; u <= userCount; u++ {
+		wg.Add(1)
+		go createUser(&wg)
+	}
+
+	wg.Wait()
+	log.WithField("userCount", userCount).Info("Created dummy data")
 
 	return nil
 }
