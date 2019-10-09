@@ -18,7 +18,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
-	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 )
 
 var (
@@ -35,7 +35,7 @@ func init() {
 }
 
 func TestCreateInvoiceRoute(t *testing.T) {
-	lntestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
+	nodetestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
 		app, err := api.NewApp(testDB,
 			lnd,
 			testutil.GetMockSendGridClient(),
@@ -59,8 +59,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		t.Run("Create an invoice without memo and description", func(t *testing.T) {
 			testutil.DescribeTest(t)
 
-			amountSat := gofakeit.Number(0,
-				int(ln.MaxAmountSatPerInvoice))
+			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{

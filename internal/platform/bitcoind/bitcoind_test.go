@@ -1,6 +1,6 @@
 //+build integration
 
-package bitcoind
+package bitcoind_test
 
 import (
 	"os"
@@ -8,15 +8,23 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
-
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 )
+
+var log = build.Log
 
 func TestMain(m *testing.M) {
 	build.SetLogLevel(logrus.DebugLevel)
-	os.Exit(m.Run())
+	code := m.Run()
+	if err := nodetestutil.CleanupNodes(); err != nil {
+		panic(err)
+	}
+	os.Exit(code)
 }
 
 // TestTxListener tests whether the zmqTxVhannel sends the expected amount of
@@ -25,7 +33,7 @@ func TestMain(m *testing.M) {
 func TestTxListener(t *testing.T) {
 	testutil.DescribeTest(t)
 
-	RunWithBitcoind(t, func(bitcoin TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
 
@@ -43,12 +51,12 @@ func TestTxListener(t *testing.T) {
 		}()
 
 		const blocksGenerated = 101
-		_, err := GenerateToSelf(blocksGenerated, bitcoin)
+		_, err := bitcoindtestutil.GenerateToSelf(blocksGenerated, bitcoin)
 		if err != nil {
 			testutil.FatalMsgf(t, "could not generate to self: %+v", err)
 		}
 
-		hash, err := SendTxToSelf(bitcoin, 10)
+		hash, err := bitcoindtestutil.SendTxToSelf(bitcoin, 10)
 		if err != nil {
 			testutil.FatalMsgf(t, "could not send tx: %+v", err)
 		}
@@ -58,13 +66,14 @@ func TestTxListener(t *testing.T) {
 			// For some reason the channel receives a tx with one input every time it connects
 			// without sending a tx or generating a block. Therefore we add 1
 			const mysteriousTx = 1
-			if eventsReceived != 1+mysteriousTx+blocksGenerated {
+			log.Info("eventsReceived", eventsReceived)
+			if eventsReceived < mysteriousTx+blocksGenerated {
 				return false
 			}
 			return true
 		}
 
-		err = asyncutil.Await(15, 100*time.Millisecond, check)
+		err = asyncutil.Await(8, 100*time.Millisecond, check)
 		if err != nil {
 			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", 1+1+blocksGenerated, eventsReceived)
 		}
@@ -78,7 +87,7 @@ func TestBlockListener(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	RunWithBitcoind(t, func(bitcoin TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
 
@@ -95,9 +104,9 @@ func TestBlockListener(t *testing.T) {
 		}()
 
 		const blocksToMine = 3
-		_, err := GenerateToSelf(blocksToMine, bitcoin)
+		_, err := bitcoindtestutil.GenerateToSelf(blocksToMine, bitcoin)
 		if err != nil {
-			testutil.FatalMsgf(t, "could not generate %d blocks to self", blocksToMine)
+			testutil.FatalMsgf(t, "could not generate %d blocks to self: %v", blocksToMine, err)
 		}
 
 		check := func() bool {
@@ -114,23 +123,4 @@ func TestBlockListener(t *testing.T) {
 
 	})
 
-}
-
-// TestStartBitcoindOrFail tests that a test config can connect to,
-// start and GetBlockchainInfo from the bitcoind rpc connection
-func TestStartBitcoindOrFail(t *testing.T) {
-	conf := GetBitcoindConfig(t)
-	client, cleanup := StartBitcoindOrFail(t, conf)
-	_, err := client.Btcctl().GetBlockChainInfo()
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not start and communicate with bitcoind: %v", err)
-	}
-
-	if err := cleanup(); err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	if info, err := client.Btcctl().GetBlockChainInfo(); err == nil {
-		testutil.FatalMsgf(t, "Got info from stopped client: %v", info)
-	}
 }
