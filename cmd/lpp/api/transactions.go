@@ -1,9 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
@@ -69,14 +71,11 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 		log.Debugf("find transaction %d for user %d", id, userID)
 		t, err := transactions.GetTransactionByID(r.db, int(id), userID)
 		if err != nil {
-			c.JSONP(
-				http.StatusNotFound,
-				gin.H{"error": "invoice not found"},
-			)
+			err := c.AbortWithError(http.StatusNotFound, fmt.Errorf("transaction not found"))
+			_ = err.SetMeta(errhandling.ErrTransactionNotFound)
+			_ = err.SetType(gin.ErrorTypePublic)
 			return
 		}
-
-		log.Debugf("found transaction %v", t)
 
 		// Return the user when it is found and no errors where encountered
 		c.JSONP(http.StatusOK, httptypes.Response(t))

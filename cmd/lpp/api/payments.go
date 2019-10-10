@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
@@ -57,10 +59,9 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 
 		t, err := payments.GetByID(r.db, int(id), userID)
 		if err != nil {
-			c.JSONP(
-				http.StatusNotFound,
-				gin.H{"error": "invoice not found"},
-			)
+			err := c.AbortWithError(http.StatusNotFound, errors.New("invoice not found"))
+			_ = err.SetType(gin.ErrorTypePublic)
+			_ = err.SetMeta(errhandling.ErrInvoiceNotFound)
 			return
 		}
 
@@ -75,7 +76,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	// CreateInvoiceRequest is a deposit
 	type CreateInvoiceRequest struct {
-		AmountSat   int64  `json:"amountSat" binding:"required,gt=0"`
+		AmountSat   int64  `json:"amountSat" binding:"required,gt=0,lte=4294967"`
 		Memo        string `json:"memo" binding:"max=256"`
 		Description string `json:"description"`
 		CallbackURL string `json:"callbackUrl" binding:"omitempty,url"`

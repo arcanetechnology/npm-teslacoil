@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/base64"
+	stderr "errors"
 	"fmt"
 	"image/png"
 	"net/http"
@@ -203,26 +204,34 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			return
 		}
 
-		log.Info("logging in user: ", request)
-
 		user, err := users.GetByCredentials(r.db, request.Email, request.Password)
 		if err != nil {
-			log.Error(err)
-			_ = c.Error(err)
+			switch {
+			case stderr.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+				err := c.AbortWithError(http.StatusForbidden, errors.New("Invalid credentials"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrIncorrectPassword)
+			default:
+				log.WithError(err).Error("Couldn't get by credentials")
+				_ = c.Error(err)
+			}
 			return
 		}
-		log.Info("found user: ", user)
 
 		// user has 2FA enabled
 		if user.TotpSecret != nil {
 			if request.TotpCode == "" {
-				c.JSONP(http.StatusBadRequest, gin.H{"error": "Missing TOTP code"})
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("Missing TOTP code"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrMissingTotpCode)
 				return
 			}
 
 			if !totp.Validate(request.TotpCode, *user.TotpSecret) {
-				log.Errorf("User provided invalid TOTP code")
-				c.JSONP(http.StatusForbidden, gin.H{"error": "Bad TOTP code"})
+				log.Error("User provided invalid TOTP code")
+				err := c.AbortWithError(http.StatusForbidden, errors.New("Bad TOTP code"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrBadTotpCode)
 				return
 			}
 		}
@@ -241,7 +250,6 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			Firstname:   user.Firstname,
 			Lastname:    user.Lastname,
 		}
-		log.Info("LoginResponse: ", res)
 
 		c.JSONP(200, httptypes.Response(res))
 	}
@@ -514,14 +522,20 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == passwordreset.ErrMalformedToken:
-				c.JSONP(http.StatusBadRequest, gin.H{"error": "Token is malformed"})
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("JWT is malformed"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrMalformedJwt)
 				return
 
 			case err == passwordreset.ErrExpiredToken:
-				c.JSONP(http.StatusBadRequest, gin.H{"error": "Token is expired"})
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("JWT is expired"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrExpiredJwt)
 				return
 			case err == passwordreset.ErrWrongSignature:
-				c.JSONP(http.StatusForbidden, gin.H{"error": "Token has bad signature"})
+				err := c.AbortWithError(http.StatusForbidden, errors.New("JWT has bad signature"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrInvalidJwtSignature)
 				return
 			}
 		}

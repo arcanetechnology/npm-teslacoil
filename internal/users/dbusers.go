@@ -128,7 +128,7 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	err := bcrypt.CompareHashAndPassword(
 		userResult.HashedPassword, []byte(password))
 	if err != nil {
-		return User{}, errors.Wrap(err, "password authentication failed")
+		return User{}, err
 	}
 
 	log.Tracef("%s received user %v", uQuery, userResult)

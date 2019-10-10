@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -140,27 +141,47 @@ func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	return res
 }
 
-// TODO Assert that if failure, contains reasonably shaped JSON
-func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
+// Asserts that the given request fails, and that it conforms to our
+// expected error format.
+func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) (*httptest.ResponseRecorder, httptypes.StandardError) {
 	t.Helper()
 	response := httptest.NewRecorder()
 	harness.server.ServeHTTP(response, request)
 	if response.Code < 300 {
 		testutil.FatalMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
 	}
-	return response
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "could not read body"))
+	}
+	var parsed httptypes.StandardResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "could not parse body into StandardResponse"))
+	}
+	testutil.AssertMsg(t, parsed.Error != nil, "Error was nil!")
+	testutil.AssertMsgf(t, parsed.Error.Message != "", "Error message was empty! JSON: %s", body)
+	testutil.AssertMsgf(t, parsed.Error.Code != "", "Error code was empty! JSON: %s", body)
+
+	testutil.AssertMsg(t, parsed.Error.Code != errhandling.ErrUnknownError, "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
+
+	testutil.AssertMsg(t, parsed.Error.Fields != nil, "Fields was nil! Expected at least empty list")
+	for _, field := range parsed.Error.Fields {
+		testutil.AssertMsgf(t, field.Code != errhandling.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
+	}
+	return response, *parsed.Error
 }
 
 // AssertResponseNotOkWithCode checks that the given request results in the
 // given HTTP status code. It returns the response to the request.
-func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) *httptest.ResponseRecorder {
+func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) (*httptest.ResponseRecorder, httptypes.StandardError) {
 	testutil.AssertMsgf(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
 	t.Helper()
 
-	response := harness.AssertResponseNotOk(t, request)
+	response, error := harness.AssertResponseNotOk(t, request)
 	testutil.AssertMsgf(t, response.Code == code,
 		"Expected code (%d) does not match with found code (%d)", code, response.Code)
-	return response
+	return response, error
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response

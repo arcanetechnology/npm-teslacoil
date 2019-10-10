@@ -110,10 +110,10 @@ func TestJsonValidation(t *testing.T) {
 			barOkErrorCheck := false
 			fooOkErrorCheck := false
 			for _, field := range err.Fields {
-				if field.Field == "bar" && field.Message == "bar is required" && field.Code == "required" {
+				if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 					barOkErrorCheck = true
 				}
-				if field.Field == "foo" && field.Message == "foo is required" && field.Code == "required" {
+				if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 					fooOkErrorCheck = true
 				}
 			}
@@ -134,7 +134,7 @@ func TestJsonValidation(t *testing.T) {
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
 			field := err.Fields[0]
-			if field.Field == "bar" && field.Message == "bar is required" && field.Code == "required" {
+			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
 			}
 			testutil.AssertMsg(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
@@ -151,7 +151,7 @@ func TestJsonValidation(t *testing.T) {
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
 			field := err.Fields[0]
-			if field.Field == "foo" && field.Message == "foo is required" && field.Code == "required" {
+			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true
 			}
 			testutil.AssertMsg(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
@@ -185,10 +185,10 @@ func TestQueryValidation(t *testing.T) {
 			barOkErrorCheck := false
 			fooOkErrorCheck := false
 			for _, field := range err.Fields {
-				if field.Field == "bar" && field.Message == "bar is required" && field.Code == "required" {
+				if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 					barOkErrorCheck = true
 				}
-				if field.Field == "foo" && field.Message == "foo is required" && field.Code == "required" {
+				if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 					fooOkErrorCheck = true
 				}
 			}
@@ -205,7 +205,7 @@ func TestQueryValidation(t *testing.T) {
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
 			field := err.Fields[0]
-			if field.Field == "bar" && field.Message == "bar is required" && field.Code == "required" {
+			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
 			}
 			testutil.AssertMsg(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
@@ -218,7 +218,7 @@ func TestQueryValidation(t *testing.T) {
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
 			field := err.Fields[0]
-			if field.Field == "foo" && field.Message == "foo is required" && field.Code == "required" {
+			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true
 			}
 			testutil.AssertMsg(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
