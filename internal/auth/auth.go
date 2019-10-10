@@ -15,6 +15,7 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 )
@@ -97,8 +98,10 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		header := c.GetHeader(Header)
 		if header == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Authorization header can't be empty"})
-			c.Abort()
+			err := c.AbortWithError(http.StatusBadRequest,
+				errors.New("authorization header can't be empty"))
+			_ = err.SetType(gin.ErrorTypePublic)
+			_ = err.SetMeta(errhandling.ErrMissingAuthHeader)
 			return
 		}
 		var userID int
@@ -120,15 +123,17 @@ func authenticateApiKey(database *db.DB, c *gin.Context) int {
 	parsedUuid, err := uuid.FromString(uuidString)
 	if err != nil {
 		log.WithError(err).Error("Bad authorization header for API key")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Malformed API key"})
-		c.Abort()
+		err := c.AbortWithError(http.StatusBadRequest, errors.New("malformed API key"))
+		_ = err.SetType(gin.ErrorTypePublic)
+		_ = err.SetMeta(errhandling.ErrMalformedApiKey)
 		return 0
 	}
 	key, err := apikeys.Get(database, parsedUuid)
 	if err != nil {
 		log.WithError(err).WithField("key", parsedUuid).Error("Couldn't get API key")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "API key not found"})
-		c.Abort()
+		err := c.AbortWithError(http.StatusUnauthorized, errors.New("API key not found"))
+		_ = err.SetType(gin.ErrorTypePublic)
+		_ = err.SetMeta(errhandling.ErrApiKeyNotFound)
 		return 0
 	}
 	return key.UserID
@@ -147,26 +152,30 @@ func authenticateJWT(c *gin.Context) int {
 		if errors.As(err, &validationError) {
 			switch validationError.Errors {
 			case jwt.ValidationErrorMalformed:
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Malformed JWT"})
-				c.Abort()
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("malformed JWT"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrMalformedJwt)
 				return 0
 			case jwt.ValidationErrorSignatureInvalid:
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT signature"})
-				c.Abort()
+				err := c.AbortWithError(http.StatusUnauthorized, errors.New("invalid JWT signature"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrInvalidJwtSignature)
 				return 0
 			case jwt.ValidationErrorExpired:
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "JWT is expired"})
-				c.Abort()
+				err := c.AbortWithError(http.StatusUnauthorized, errors.New("JWT is expired"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrExpiredJwt)
 				return 0
 			case jwt.ValidationErrorIssuedAt:
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "JWT is not valid yet"})
-				c.Abort()
+				err := c.AbortWithError(http.StatusUnauthorized, errors.New("JWT is not valid yet"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrJwtNotValidYet)
 				return 0
 			}
 		}
 
 		log.WithError(err).Info("Got unexpected error when parsing JWT")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Something went wrong..."})
+		_ = c.Error(err)
 		c.Abort()
 		return 0
 	}

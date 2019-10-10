@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
@@ -29,13 +29,12 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 
 		t, err := payments.GetAll(r.db, userID, params.Limit, params.Offset)
 		if err != nil {
-			log.Errorf("Couldn't get payments: %v", err)
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			log.WithError(err).Errorf("Couldn't get payments")
+			_ = c.Error(err)
 			return
 		}
 
-		c.JSONP(http.StatusOK, t)
+		c.JSONP(http.StatusOK, httptypes.Response(t))
 	}
 }
 
@@ -68,7 +67,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 		log.Infof("found payment %v", t)
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(http.StatusOK, t)
+		c.JSONP(http.StatusOK, httptypes.Response(t))
 	}
 }
 
@@ -107,16 +106,17 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			})
 
 		if err != nil {
-			log.Error(errors.Wrapf(err, "could not add new payment"))
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not add new payment")
+			_ = c.Error(err)
 			return
 		}
 
 		if t.UserID != userID {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
+			return
 		}
 
-		c.JSONP(http.StatusOK, t)
+		c.JSONP(http.StatusOK, httptypes.Response(t))
 	}
 }
 
@@ -148,10 +148,10 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, userID,
 			request.PaymentRequest, request.Description)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
-		c.JSONP(http.StatusOK, t)
+		c.JSONP(http.StatusOK, httptypes.Response(t))
 	}
 }

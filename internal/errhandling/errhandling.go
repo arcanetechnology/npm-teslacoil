@@ -23,6 +23,22 @@ const (
 
 	// ErrRouteNotFound means the requested HTTP route wasn't found
 	ErrRouteNotFound = "ERR_ROUTE_NOT_FOUND"
+
+	// ErrMissingAuthHeader means the HTTP request had an empty auth header
+	ErrMissingAuthHeader = "ERR_MISSING_AUTH_HEADER"
+
+	ErrIncorrectPassword = "ERR_INCORRECT_PASSWORD"
+
+	Err2faNotEnabled       = "ERR_2FA_NOT_ENABLED"
+	Err2faAlreadyEnabled   = "ERR_2FA_ALREADY_ENABLED"
+	ErrInvalidTotpCode     = "ERR_INVALID_TOTP_CODE"
+	ErrBadRequest          = "ERR_BAD_REQUEST"
+	ErrMalformedApiKey     = "ERR_MALFORMED_API_KEY"
+	ErrApiKeyNotFound      = "ERR_API_KEY_NOT_FOUND"
+	ErrMalformedJwt        = "ERR_MALFORMED_JWT"
+	ErrInvalidJwtSignature = "ERR_INVALID_JWT_SIGNATURE"
+	ErrExpiredJwt          = "ERR_EXPIRED_JWT"
+	ErrJwtNotValidYet      = "ERR_JWT_NOT_VALID_YET"
 )
 
 // decapitalize makes the first element of a string lowercase

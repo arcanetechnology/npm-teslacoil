@@ -11,10 +11,13 @@ import (
 
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
+	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
+	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
@@ -29,22 +32,17 @@ type UserResponse struct {
 	Lastname  *string `json:"lastName"`
 }
 
-var (
-	badRequestResponse          = gin.H{"error": "Bad request, see documentation"}
-	internalServerErrorResponse = gin.H{"error": "Internal server error, please try again or contact us"}
-)
-
 // GetAllUsers is a GET request that returns all the users in the database
 // TODO: Restrict this to only the admin user
 func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userResponse, err := users.GetAll(r.db)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, gin.H{"error": err})
+			log.WithError(err).Error("Couldn't get all users")
+			_ = c.Error(err)
 			return
 		}
-		c.JSONP(200, userResponse)
+		c.JSONP(200, httptypes.Response(userResponse))
 	}
 }
 
@@ -69,12 +67,9 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
-		// TODO debug
-		log.Infof("Got update user request: %+v", request)
-
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
@@ -90,8 +85,8 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 		}
 		updated, err := user.Update(r.db, opts)
 		if err != nil {
-			log.Errorf("Could not update user: %v", err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not update user")
+			_ = c.Error(err)
 			return
 		}
 
@@ -105,7 +100,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 
 		log.Infof("Update user result: %+v", response)
 
-		c.JSONP(http.StatusOK, response)
+		c.JSONP(http.StatusOK, httptypes.Response(response))
 
 	}
 }
@@ -120,8 +115,9 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not get user")
+			_ = c.Error(err)
+			return
 		}
 
 		res := UserResponse{
@@ -132,10 +128,8 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 			Lastname:  user.Lastname,
 		}
 
-		log.Infof("GetUserResponse %v", res)
-
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, res)
+		c.JSONP(200, httptypes.Response(res))
 	}
 }
 
@@ -156,8 +150,6 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 			return
 		}
 
-		log.Info("creating user with credentials: ", request)
-
 		// because the email column in users table has the unique tag, we don't
 		// double check the email is unique
 		u, err := users.Create(r.db, users.CreateUserArgs{
@@ -167,8 +159,8 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 			LastName:  request.LastName,
 		})
 		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not create user ")
+			_ = c.Error(err)
 			return
 		}
 
@@ -181,7 +173,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 		}
 		log.Info("successfully created user: ", res)
 
-		c.JSONP(200, res)
+		c.JSONP(200, httptypes.Response(res))
 	}
 }
 
@@ -216,7 +208,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		user, err := users.GetByCredentials(r.db, request.Email, request.Password)
 		if err != nil {
 			log.Error(err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 		log.Info("found user: ", user)
@@ -237,7 +229,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 
 		tokenString, err := auth.CreateJwt(request.Email, user.ID)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
@@ -251,7 +243,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		}
 		log.Info("LoginResponse: ", res)
 
-		c.JSONP(200, res)
+		c.JSONP(200, httptypes.Response(res))
 	}
 }
 
@@ -272,29 +264,29 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Could not find user %d: %v", userID, err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Errorf("Could not find user %d", userID)
+			_ = c.Error(err)
 			return
 		}
 
 		key, err := user.Create2faCredentials(r.db)
 		if err != nil {
 			log.Errorf("Could not create 2FA credentials for user %d: %v", userID, err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
 		img, err := key.Image(200, 200)
 		if err != nil {
 			log.Errorf("Could not decode TOTP secret to image: %v", err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
 		var imgBuf bytes.Buffer
 		if err := png.Encode(&imgBuf, img); err != nil {
 			log.Errorf("Could not encode TOTP secret image to base64: %v", err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
@@ -304,7 +296,7 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 			TotpSecret: key.Secret(),
 			Base64QR:   base64Image,
 		}
-		c.JSONP(http.StatusOK, response)
+		c.JSONP(http.StatusOK, httptypes.Response(response))
 
 	}
 }
@@ -329,8 +321,8 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Could not get user %d", userID)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Errorf("Could not get user %d", userID)
+			_ = c.Error(err)
 			return
 		}
 
@@ -338,13 +330,19 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 			log.Errorf("Could not enable 2FA credentials for user %d: %v", userID, err)
 			switch err {
 			case users.Err2faNotEnabled:
-				c.JSONP(http.StatusBadRequest, gin.H{"error": "2FA is not enabled"})
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("2FA is not enabled"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.Err2faNotEnabled)
 			case users.Err2faAlreadyEnabled:
-				c.JSONP(http.StatusBadRequest, gin.H{"error": "2FA is already enabled"})
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("2FA is already enabled"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.Err2faAlreadyEnabled)
 			case users.ErrInvalidTotpCode:
-				c.JSONP(http.StatusForbidden, gin.H{"error": "Invalid TOTP code"})
+				err := c.AbortWithError(http.StatusForbidden, errors.New("invalid TOTP code"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrInvalidTotpCode)
 			default:
-				c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+				_ = c.Error(err)
 			}
 			return
 		}
@@ -371,8 +369,8 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Could not get user %d", userID)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Errorf("Could not get user %d", userID)
+			_ = c.Error(err)
 			return
 		}
 
@@ -380,11 +378,16 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 			log.Errorf("Could not delete 2FA credentials for user %d: %v", userID, err)
 			switch {
 			case err == users.ErrInvalidTotpCode:
-				c.JSONP(http.StatusForbidden, gin.H{"error": "Invalid TOTP code"})
+				err := c.AbortWithError(http.StatusForbidden, errors.New("Invalid TOTP code"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrInvalidTotpCode)
 			case err == users.Err2faNotEnabled:
-				c.JSONP(http.StatusBadRequest, badRequestResponse)
+				// we don't want to leak that the user hasn't enabled 2fa
+				err := c.AbortWithError(http.StatusBadRequest, errors.New("Bad request"))
+				_ = err.SetType(gin.ErrorTypePublic)
+				_ = err.SetMeta(errhandling.ErrBadRequest)
 			default:
-				c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+				_ = c.Error(err)
 			}
 			return
 		}
@@ -410,13 +413,15 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 		}
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not refresh token")
+			_ = c.Error(err)
 			return
 		}
 
 		tokenString, err := auth.CreateJwt(user.Email, user.ID)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not create JWT")
+			_ = c.Error(err)
 			return
 		}
 
@@ -424,7 +429,7 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 			AccessToken: tokenString,
 		}
 
-		c.JSONP(200, res)
+		c.JSONP(200, httptypes.Response(res))
 	}
 }
 
@@ -447,7 +452,7 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 		// TODO: email. We don't want to leak what emails our users have.
 		user, err := users.GetByEmail(r.db, request.Email)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
@@ -470,8 +475,7 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 		to := mail.NewEmail(recipientName, user.Email)
 		resetToken, err := users.GetPasswordResetToken(r.db, user.Email)
 		if err != nil {
-			// TODO better response
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
@@ -484,8 +488,8 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 
 		response, err := r.EmailSender.Send(message)
 		if err != nil {
-			log.Errorf("Could not send email to %s: %v", to.Address, err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Errorf("Could not send email to %s", to.Address)
+			_ = c.Error(err)
 			return
 		}
 		log.Infof("Sent email successfully. Response: %+v", response)
@@ -523,12 +527,12 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 		}
 		user, err := users.GetByEmail(r.db, login)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
 		if _, err := user.ResetPassword(r.db, request.Password); err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
@@ -559,20 +563,21 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
-			log.Errorf("Couldn't get user by ID when changing password: %v", err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Errorf("Couldn't get user by ID when changing password")
+			_ = c.Error(err)
 			return
 		}
 
 		if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(request.OldPassword)); err != nil {
-			log.Errorf("Hashed password of user and given old password in request didn't match up!")
-			c.JSONP(http.StatusForbidden, gin.H{"error": "Incorrect password"})
+			err := c.AbortWithError(http.StatusForbidden, errors.New("incorrect password"))
+			_ = err.SetType(gin.ErrorTypePublic)
+			_ = err.SetMeta(errhandling.ErrIncorrectPassword)
 			return
 		}
 
 		if _, err := user.ResetPassword(r.db, request.NewPassword); err != nil {
-			log.Errorf("Couldn't update user password: %v", err)
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Errorf("Couldn't update user password")
+			_ = c.Error(err)
 			return
 		}
 
@@ -595,20 +600,20 @@ func (r *RestServer) CreateApiKey() gin.HandlerFunc {
 		user, err := users.GetByID(r.db, userID)
 		if err != nil {
 			log.WithError(err).WithField("user", userID).Error("Could not get user")
-			c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
 		rawKey, key, err := apikeys.New(r.db, user)
 		if err != nil {
 			log.WithError(err).WithField("user", userID).Error("Could not create API key")
-			c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 
-		c.JSON(http.StatusCreated, CreateApiKeyResponse{
+		c.JSON(http.StatusCreated, httptypes.Response(CreateApiKeyResponse{
 			Key:    rawKey,
 			UserID: key.UserID,
-		})
+		}))
 	}
 }

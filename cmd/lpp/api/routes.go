@@ -8,6 +8,8 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
+	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
 	"github.com/gin-contrib/cors"
@@ -82,6 +84,9 @@ func getGinEngine(config Config) *gin.Engine {
 	log.Debug("Applying CORS middleware")
 	corsConfig := getCorsConfig()
 	engine.Use(cors.New(corsConfig))
+
+	log.Debug("Applying error handler middleware")
+	engine.Use(errhandling.GetMiddleware(log))
 	return engine
 }
 
@@ -178,7 +183,9 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
 	})
 
 	r.Router.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Route not found"})
+		err := c.AbortWithError(http.StatusNotFound, errors.New("Route not found"))
+		_ = err.SetType(gin.ErrorTypePublic).SetMeta(errhandling.ErrRouteNotFound)
+
 	})
 
 	r.RegisterApiKeyRoutes()
@@ -197,40 +204,35 @@ func (r *RestServer) RegisterAdminRoutes() {
 	getInfo := func(c *gin.Context) {
 		chainInfo, err := r.bitcoind.Btcctl().GetBlockChainInfo()
 		if err != nil {
-			log.WithError(err).Error("bitcoind.getblockchaininfo")
-			c.JSONP(http.StatusInternalServerError, err)
+			_ = c.Error(err).SetMeta("bitcoind.getblockchaininfo")
 			return
 		}
 
 		bitcoindBalance, err := r.bitcoind.Btcctl().GetBalance("*")
 		if err != nil {
-			log.WithError(err).Error("bitcoind.getbalance")
-			c.JSONP(http.StatusInternalServerError, err)
+			_ = c.Error(err).SetMeta("bitcoind.getbalance")
 			return
 		}
 
 		lndWalletBalance, err := r.lncli.WalletBalance(context.Background(), &lnrpc.WalletBalanceRequest{})
 		if err != nil {
-			log.WithError(err).Error("lncli.walletbalance")
-			c.JSONP(http.StatusInternalServerError, err)
+			_ = c.Error(err).SetMeta("lncli.walletbalance")
 			return
 		}
 
 		lndChannelBalance, err := r.lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
 		if err != nil {
-			log.WithError(err).Error("lncli.channelbalance")
-			c.JSONP(http.StatusInternalServerError, err)
+			_ = c.Error(err).SetMeta("lncli.channelbalance")
 			return
 		}
 
 		lndInfo, err := r.lncli.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
 		if err != nil {
-			log.WithError(err).Error("lncli.getinfo")
-			c.JSONP(http.StatusInternalServerError, err)
+			_ = c.Error(err).SetMeta("lncli.getinfo")
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(http.StatusOK, httptypes.Response(gin.H{
 			"network":               chainInfo.Chain,
 			"bestBlockHash":         chainInfo.BestBlockHash,
 			"blockCount":            chainInfo.Blocks,
@@ -241,7 +243,7 @@ func (r *RestServer) RegisterAdminRoutes() {
 			"activeChannels":        lndInfo.NumActiveChannels,
 			"pendingChannels":       lndInfo.NumPendingChannels,
 			"inactiveChannels":      lndInfo.NumInactiveChannels,
-		})
+		}))
 
 	}
 
@@ -320,15 +322,15 @@ func (r *RestServer) RegisterTransactionRoutes() {
 func getUserIdOrReject(c *gin.Context) (int, bool) {
 	id, exists := c.Get(auth.UserIdVariable)
 	if !exists {
-		c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
-		c.Abort()
-		log.Panic("User ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable.")
+		msg := "User ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable."
+		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
+		return -1, false
 	}
 	idInt, ok := id.(int)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, internalServerErrorResponse)
-		c.Abort()
-		log.WithField("userID", id).Panic("User ID was not an int! This means our authentication middleware did something bad.")
+		msg := "User ID was not an int! This means our authentication middleware did something bad."
+		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
+		return -1, false
 	}
 
 	return idInt, true

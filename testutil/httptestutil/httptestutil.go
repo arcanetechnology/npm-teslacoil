@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -163,37 +164,56 @@ func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *h
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response
-// can be parsed as JSON, and then returns the parsed JSON
-func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http.Request) map[string]interface{} {
-
+// can be parsed as JSON conforming to the standard response type.
+func (harness *TestHarness) AssertResponseOkWithStandardResponse(t *testing.T, request *http.Request) httptypes.StandardResponse {
 	t.Helper()
 	response := harness.AssertResponseOk(t, request)
-	var destination map[string]interface{}
+	var destination httptypes.StandardResponse
 
 	if err := json.Unmarshal(response.Body.Bytes(), &destination); err != nil {
 		stringBody := response.Body.String()
-		testutil.FatalMsgf(t, "%+v. Body: %s ",
-			err, stringBody)
-
+		testutil.FatalMsg(t,
+			errors.Wrap(err, fmt.Sprintf(
+				"could not unmarshal response to standard response. Body: %s",
+				stringBody)))
 	}
 	return destination
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response
+// can be parsed as JSON, and then returns the parsed JSON
+func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http.Request) map[string]interface{} {
+	t.Helper()
+
+	destination := harness.AssertResponseOkWithStandardResponse(t, request)
+	result, ok := destination.Result.(map[string]interface{})
+	if !ok {
+		testutil.FatalMsgf(t, "Could not cast result to map[string]interface{}. Result: %v", destination)
+	}
+	return result
+}
+
+// First performs `assertResponseOk`, then asserts that the body of the response
 // can be parsed as a JSON list, and then returns the parsed JSON list
 func (harness *TestHarness) AssertResponseOkWithJsonList(t *testing.T, request *http.Request) []map[string]interface{} {
-
 	t.Helper()
-	response := harness.AssertResponseOk(t, request)
-	var destination []map[string]interface{}
-
-	if err := json.Unmarshal(response.Body.Bytes(), &destination); err != nil {
-		stringBody := response.Body.String()
-		testutil.FatalMsgf(t, "%+v. Body: %s ",
-			err, stringBody)
-
+	destination := harness.AssertResponseOkWithStandardResponse(t, request)
+	firstResult, ok := destination.Result.([]interface{})
+	if !ok {
+		testutil.FatalMsgf(t, "Could not cast result to []interface{}. Result: %v", destination)
 	}
-	return destination
+
+	var result []map[string]interface{}
+	for _, elem := range firstResult {
+		casted, ok := elem.(map[string]interface{})
+		if !ok {
+			testutil.FatalMsgf(t, "Could not cast element to map[string]interface{}. Elem: %s", elem)
+		}
+		result = append(result, casted)
+	}
+
+	return result
+
 }
 
 func extractMethodAndPath(req *http.Request) string {

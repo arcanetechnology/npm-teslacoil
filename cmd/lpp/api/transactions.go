@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
 	"github.com/gin-gonic/gin"
@@ -40,13 +41,12 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 			t, err = transactions.GetAllTransactionsLimitOffset(r.db, userID, params.Limit, params.Offset)
 		}
 		if err != nil {
-			log.Errorf("Couldn't get transactions: %v", err)
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			log.WithError(err).Error("Couldn't get transactions")
+			_ = c.Error(err)
 			return
 		}
 
-		c.JSONP(http.StatusOK, t)
+		c.JSONP(http.StatusOK, httptypes.Response(t))
 	}
 }
 
@@ -79,7 +79,7 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 		log.Debugf("found transaction %v", t)
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(http.StatusOK, t)
+		c.JSONP(http.StatusOK, httptypes.Response(t))
 	}
 }
 
@@ -107,24 +107,19 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		// add the userID to send coins from
 		request.UserID = userID
 
-		// TODO: Create a middleware for logging request body
-		log.Infof("Received WithdrawOnChain request %+v\n", request)
-
 		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, request)
 		if err != nil {
-			log.Errorf("cannot withdraw onchain: %v", err)
-			c.JSONP(http.StatusInternalServerError,
-				internalServerErrorResponse,
-			)
+			log.WithError(err).Errorf("Cannot withdraw onchain")
+			_ = c.Error(err)
 			return
 		}
 
-		c.JSONP(http.StatusOK, WithdrawResponse{
+		c.JSONP(http.StatusOK, httptypes.Response(WithdrawResponse{
 			Txid:        transaction.Txid,
 			Address:     transaction.Address,
 			AmountSat:   transaction.AmountSat,
 			Description: transaction.Description,
-		})
+		}))
 	}
 
 }
@@ -159,17 +154,15 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 		transaction, err := transactions.GetOrCreateDeposit(r.db, r.lncli, userID,
 			req.ForceNewAddress, req.Description)
 		if err != nil {
-			log.Errorf("cannot deposit onchain: %v", err)
-			c.JSONP(http.StatusInternalServerError,
-				internalServerErrorResponse,
-			)
+			log.WithError(err).Error("Cannot deposit onchain")
+			_ = c.Error(err)
 			return
 		}
 
-		c.JSONP(http.StatusOK, NewDepositResponse{
+		c.JSONP(http.StatusOK, httptypes.Response(NewDepositResponse{
 			ID:          transaction.ID,
 			Address:     transaction.Address,
 			Description: transaction.Description,
-		})
+		}))
 	}
 }
