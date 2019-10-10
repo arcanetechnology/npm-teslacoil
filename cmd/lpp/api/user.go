@@ -65,7 +65,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 		}
 
 		var request UpdateUserRequest
-		if ok := getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -152,7 +152,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		var request CreateUserRequest
-		if ok := getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -207,7 +207,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		var request LoginRequest
-		if ok := getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -323,9 +323,7 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 		}
 
 		var req Confirm2faRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Errorf("Could not bind Confirm2faRequest: %v", err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
@@ -367,9 +365,7 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 		}
 
 		var req Delete2faRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Errorf("Could not bind Delete2faRequest: %v", err)
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
@@ -443,8 +439,7 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		var request SendPasswordResetEmailRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -507,8 +502,7 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		var request ResetPasswordRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -559,7 +553,7 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 		}
 
 		var request ChangePasswordRequest
-		if ok := getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 

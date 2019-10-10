@@ -333,27 +333,3 @@ func getUserIdOrReject(c *gin.Context) (int, bool) {
 
 	return idInt, true
 }
-
-// getJSONOrReject extracts fields from the context and inserts
-// them into the passed body argument. If an error occurs, the
-// error is logged and a response with StatusBadRequest is sent
-// body MUST be an address to a variable, not a variable
-func getJSONOrReject(c *gin.Context, body interface{}) bool {
-	if err := c.ShouldBindJSON(body); err != nil {
-		log.Errorf("%s could not bind JSON %+v", c.Request.URL.Path, err)
-		c.JSON(http.StatusBadRequest, badRequestResponse)
-		return false
-	}
-
-	return true
-}
-
-func getQueryOrReject(c *gin.Context, body interface{}) bool {
-	if err := c.ShouldBindQuery(body); err != nil {
-		err = errors.Wrapf(err, "wrong query parameter format, check the documentation")
-		log.Error(err)
-		c.JSON(http.StatusBadRequest, err.Error())
-		return false
-	}
-	return true
-}

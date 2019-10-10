@@ -12,31 +12,22 @@ import (
 // GetAllPayments finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
 func (r *RestServer) GetAllPayments() gin.HandlerFunc {
+	type Params struct {
+		Limit  int `form:"limit" binding:"gte=0"`
+		Offset int `form:"offset" binding:"gte=0"`
+	}
 	return func(c *gin.Context) {
 		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
 
-		URLParams := c.Request.URL.Query()
-
-		limitStr := URLParams.Get("limit")
-		offsetStr := URLParams.Get("offset")
-
-		limit, err := strconv.ParseInt(limitStr, 10, 64)
-		if err != nil {
-			log.Errorf(`Couldn't parse "limit" to an integer: %v`, err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param \"limit\" should be a integer"})
-			return
-		}
-		offset, err := strconv.ParseInt(offsetStr, 10, 64)
-		if err != nil {
-			log.Errorf(`Couldn't parse "offset" to an integer: %v`, offset)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param \"offset\" should be a integer"})
+		var params Params
+		if c.BindQuery(&params) != nil {
 			return
 		}
 
-		t, err := payments.GetAll(r.db, userID, int(limit), int(offset))
+		t, err := payments.GetAll(r.db, userID, params.Limit, params.Offset)
 		if err != nil {
 			log.Errorf("Couldn't get payments: %v", err)
 			c.JSONP(http.StatusInternalServerError, gin.H{
@@ -98,7 +89,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		}
 
 		var request CreateInvoiceRequest
-		if ok := getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -146,7 +137,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		}
 
 		var request PayInvoiceRequest
-		if ok = getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 		log.Debugf("received new request for PayInvoice for userID %d: %+v",

@@ -24,7 +24,7 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 		}
 
 		var params Params
-		if !getQueryOrReject(c, &params) {
+		if c.BindQuery(&params) != nil {
 			return
 		}
 
@@ -101,7 +101,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		}
 
 		var request transactions.WithdrawOnChainArgs
-		if !getJSONOrReject(c, &request) {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 		// add the userID to send coins from
@@ -152,7 +152,7 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 		}
 
 		var req NewDepositRequest
-		if ok := getJSONOrReject(c, &req); !ok {
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
