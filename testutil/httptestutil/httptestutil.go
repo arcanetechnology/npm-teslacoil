@@ -141,15 +141,7 @@ func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	return res
 }
 
-// Asserts that the given request fails, and that it conforms to our
-// expected error format.
-func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) (*httptest.ResponseRecorder, httptypes.StandardError) {
-	t.Helper()
-	response := httptest.NewRecorder()
-	harness.server.ServeHTTP(response, request)
-	if response.Code < 300 {
-		testutil.FatalMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
-	}
+func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httptest.ResponseRecorder, httptypes.StandardError) {
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -170,6 +162,20 @@ func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Requ
 		testutil.AssertMsgf(t, field.Code != errhandling.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
 	}
 	return response, *parsed.Error
+}
+
+// Asserts that the given request fails, and that it conforms to our
+// expected error format.
+func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) (*httptest.ResponseRecorder, httptypes.StandardError) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	harness.server.ServeHTTP(response, request)
+	if response.Code < 300 {
+		testutil.FatalMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
+	}
+
+	return assertErrorIsOk(t, response)
+
 }
 
 // AssertResponseNotOkWithCode checks that the given request results in the
@@ -263,8 +269,9 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	harness.server.ServeHTTP(response, request)
 
 	if response.Code >= 300 {
-		testutil.FatalMsgf(t, "Got failure code (%d) on path %s: %s",
+		testutil.FailMsgf(t, "Got failure code (%d) on path %s: %s",
 			response.Code, extractMethodAndPath(request), response.Body.String())
+		assertErrorIsOk(t, response)
 	}
 
 	return response
