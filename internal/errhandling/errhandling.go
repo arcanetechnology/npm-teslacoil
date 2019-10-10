@@ -139,6 +139,11 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 	// is returned instead of nil
 	fieldErrors := []httptypes.FieldError{}
 	for _, err := range c.Errors.ByType(gin.ErrorTypeBind) {
+		// not all errors encountered in validation is a nice validator.ValidationErrors type
+		// if you request an int in a form for example, parsing of that int will fail before
+		// proper validation happens, and we're left with this ugly error type.
+		// see these GitHub issues:  https://github.com/gin-gonic/gin/issues/1093
+		//							 https://github.com/gin-gonic/gin/issues/1907
 		if numError, ok := err.Err.(*strconv.NumError); ok {
 			fieldErrors = append(fieldErrors, httptypes.FieldError{
 				// don't know how to find out which field failed here...
