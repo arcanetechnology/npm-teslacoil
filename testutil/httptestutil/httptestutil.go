@@ -232,12 +232,16 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 // AssertResponseOKWithStruct attempts to unmarshal the body into the
 // struct passed as an argument. third argument MUST be a pointer to a
 // struct
-func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, body *bytes.Buffer, s interface{}) {
+func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, request *http.Request, s interface{}) {
 	t.Helper()
 
-	err := json.Unmarshal(body.Bytes(), s)
+	response := harness.AssertResponseOkWithStandardResponse(t, request)
+	marshalled, err := json.Marshal(response.Result)
 	if err != nil {
-		t.Fatalf("could not unmarshal body into %+v", s)
+		testutil.FatalMsg(t, errors.Wrap(err, "could not marshal JSON"))
+	}
+	if err := json.Unmarshal(marshalled, s); err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "could not unmarshal JSON"))
 	}
 }
 

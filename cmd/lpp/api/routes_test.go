@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
@@ -802,10 +801,9 @@ func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, d
 			forceNewAddress,
 			description),
 	})
-	res := h.AssertResponseOk(t, req)
 
 	var trans transactions.Transaction
-	h.AssertResponseOKWithStruct(t, res.Body, &trans)
+	h.AssertResponseOKWithStruct(t, req, &trans)
 
 	return trans.ID
 }
@@ -848,9 +846,8 @@ func TestGetTransactionByID(t *testing.T) {
 			Method:      "GET",
 		})
 
-		res := h.AssertResponseOk(t, req)
 		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, res.Body, &trans)
+		h.AssertResponseOKWithStruct(t, req, &trans)
 
 		if trans.ID != ids[0] {
 			testutil.FailMsgf(t, "id's not equal, expected %d got %d", ids[0], trans.ID)
@@ -870,9 +867,9 @@ func TestGetTransactionByID(t *testing.T) {
 
 }
 
-func assertGetsRightAmount(t *testing.T, body *bytes.Buffer, expected int) {
+func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {
 	var trans []transactions.Transaction
-	h.AssertResponseOKWithStruct(t, body, &trans)
+	h.AssertResponseOKWithStruct(t, req, &trans)
 	if len(trans) != expected {
 		testutil.FailMsgf(t, "expected %d transactions, got %d", expected, len(trans))
 	}
@@ -891,9 +888,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get transactions with limit 10 should get 10", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -901,9 +897,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=10",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get transactions with limit 5 should get 5", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -911,9 +906,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=5",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 5)
+		assertGetsRightAmount(t, req, 5)
 	})
 	t.Run("get transactions with limit 0 should get all", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -921,9 +915,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=0",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get /transactions with offset 10 should get 0", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -931,9 +924,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?offset=10",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 0)
+		assertGetsRightAmount(t, req, 0)
 	})
 
 	t.Run("get /transactions with offset 0 should get 10", func(t *testing.T) {
@@ -942,9 +934,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?offset=0",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 
 	t.Run("get /transactions with offset 5 should get 5", func(t *testing.T) {
@@ -953,9 +944,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?offset=5",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 5)
+		assertGetsRightAmount(t, req, 5)
 	})
 	t.Run("get /transactions with offset 5 and limit 3 should get 3", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -963,9 +953,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=3&offset=5",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 3)
+		assertGetsRightAmount(t, req, 3)
 	})
 }
 
@@ -987,12 +976,11 @@ func TestNewDeposit(t *testing.T) {
 				description),
 		})
 
-		res := h.AssertResponseOk(t, req)
 		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, res.Body, &trans)
+		h.AssertResponseOKWithStruct(t, req, &trans)
 
 		if trans.Description != description {
-			testutil.FailMsgf(t, "descriptions not equal, expected %s got %s", description, trans.Description)
+			testutil.FailMsgf(t, "descriptions not equal, expected %q got %q", description, trans.Description)
 		}
 	})
 }
