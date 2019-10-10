@@ -1,12 +1,11 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
@@ -59,9 +58,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 
 		t, err := payments.GetByID(r.db, int(id), userID)
 		if err != nil {
-			err := c.AbortWithError(http.StatusNotFound, errors.New("invoice not found"))
-			_ = err.SetType(gin.ErrorTypePublic)
-			_ = err.SetMeta(errhandling.ErrInvoiceNotFound)
+			apierr.Public(c, http.StatusNotFound, apierr.ErrInvoiceNotFound)
 			return
 		}
 

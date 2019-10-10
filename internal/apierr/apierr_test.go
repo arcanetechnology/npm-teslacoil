@@ -1,4 +1,4 @@
-package errhandling
+package apierr
 
 import (
 	"bytes"
@@ -25,8 +25,10 @@ var (
 	router     = setupRouter(middleware)
 	emptyBody  = bytes.NewBuffer([]byte(""))
 
-	publicError = errors.New("this is a public error")
-	metaMessage = "META_MESSAGE"
+	publicError = apiError{
+		err:  errors.New("this is a public error"),
+		code: "ERR_PUBLIC",
+	}
 )
 
 func setupRouter(middleware gin.HandlerFunc) *gin.Engine {
@@ -50,10 +52,7 @@ func setupRouter(middleware gin.HandlerFunc) *gin.Engine {
 		_ = c.Error(errors.New("this is a private error"))
 	})
 	r.GET("/public", func(c *gin.Context) {
-		_ = c.Error(publicError).SetType(gin.ErrorTypePublic)
-	})
-	r.GET("/publicWithMeta", func(c *gin.Context) {
-		_ = c.Error(publicError).SetType(gin.ErrorTypePublic).SetMeta(metaMessage)
+		Public(c, http.StatusInternalServerError, publicError)
 	})
 	r.GET("/withCode", func(c *gin.Context) {
 		_ = c.AbortWithError(http.StatusUnauthorized, errors.New("with a code"))
@@ -88,7 +87,7 @@ func TestJsonValidation(t *testing.T) {
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 0)
 			testutil.AssertMsg(t, err.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.Code, ErrInvalidJson)
+			testutil.AssertEqual(t, err.Code, ErrInvalidJson.code)
 		})
 		t.Run("Invalid JSON", func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -98,7 +97,7 @@ func TestJsonValidation(t *testing.T) {
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 0)
 			testutil.AssertMsg(t, err.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.Code, ErrInvalidJson)
+			testutil.AssertEqual(t, err.Code, ErrInvalidJson.code)
 		})
 
 		t.Run("no parameters", func(t *testing.T) {
@@ -256,21 +255,5 @@ func TestPublicError(t *testing.T) {
 	testutil.AssertEqual(t, w.Code, http.StatusInternalServerError)
 
 	err := assertErrorResponseOk(t, w, 0)
-	testutil.AssertEqual(t, err.Message, publicError.Error())
-	testutil.AssertEqual(t, err.Code, ErrUnknownError)
-}
-
-// When a request errors with a public error we expect that error message to
-// be sent. Also, when a meta message is attached we expect that meta message
-// to be the error code.
-func TestPublicErrorWithMeta(t *testing.T) {
-	t.Parallel()
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/publicWithMeta", emptyBody)
-	router.ServeHTTP(w, req)
-	testutil.AssertEqual(t, w.Code, http.StatusInternalServerError)
-
-	err := assertErrorResponseOk(t, w, 0)
-	testutil.AssertEqual(t, err.Message, publicError.Error())
-	testutil.AssertEqual(t, err.Code, metaMessage)
+	testutil.AssertEqual(t, err, publicError)
 }

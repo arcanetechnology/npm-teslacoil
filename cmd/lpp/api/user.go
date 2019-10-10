@@ -12,12 +12,11 @@ import (
 
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
@@ -208,12 +207,11 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case stderr.Is(err, bcrypt.ErrMismatchedHashAndPassword):
-				err := c.AbortWithError(http.StatusForbidden, errors.New("Invalid credentials"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrIncorrectPassword)
+				apierr.Public(c, http.StatusForbidden, apierr.ErrIncorrectPassword)
 			default:
 				log.WithError(err).Error("Couldn't get by credentials")
 				_ = c.Error(err)
+				c.Abort()
 			}
 			return
 		}
@@ -221,17 +219,13 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		// user has 2FA enabled
 		if user.TotpSecret != nil {
 			if request.TotpCode == "" {
-				err := c.AbortWithError(http.StatusBadRequest, errors.New("Missing TOTP code"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrMissingTotpCode)
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrMissingTotpCode)
 				return
 			}
 
 			if !totp.Validate(request.TotpCode, *user.TotpSecret) {
 				log.Error("User provided invalid TOTP code")
-				err := c.AbortWithError(http.StatusForbidden, errors.New("Bad TOTP code"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrBadTotpCode)
+				apierr.Public(c, http.StatusForbidden, apierr.ErrBadTotpCode)
 				return
 			}
 		}
@@ -239,6 +233,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		tokenString, err := auth.CreateJwt(request.Email, user.ID)
 		if err != nil {
 			_ = c.Error(err)
+			c.Abort()
 			return
 		}
 
@@ -338,17 +333,11 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 			log.Errorf("Could not enable 2FA credentials for user %d: %v", userID, err)
 			switch err {
 			case users.Err2faNotEnabled:
-				err := c.AbortWithError(http.StatusBadRequest, errors.New("2FA is not enabled"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.Err2faNotEnabled)
+				apierr.Public(c, http.StatusBadRequest, apierr.Err2faNotEnabled)
 			case users.Err2faAlreadyEnabled:
-				err := c.AbortWithError(http.StatusBadRequest, errors.New("2FA is already enabled"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.Err2faAlreadyEnabled)
+				apierr.Public(c, http.StatusBadRequest, apierr.Err2faAlreadyEnabled)
 			case users.ErrInvalidTotpCode:
-				err := c.AbortWithError(http.StatusForbidden, errors.New("invalid TOTP code"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrInvalidTotpCode)
+				apierr.Public(c, http.StatusForbidden, apierr.ErrInvalidTotpCode)
 			default:
 				_ = c.Error(err)
 			}
@@ -386,14 +375,10 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 			log.Errorf("Could not delete 2FA credentials for user %d: %v", userID, err)
 			switch {
 			case err == users.ErrInvalidTotpCode:
-				err := c.AbortWithError(http.StatusForbidden, errors.New("Invalid TOTP code"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrInvalidTotpCode)
+				apierr.Public(c, http.StatusForbidden, apierr.ErrInvalidTotpCode)
 			case err == users.Err2faNotEnabled:
 				// we don't want to leak that the user hasn't enabled 2fa
-				err := c.AbortWithError(http.StatusBadRequest, errors.New("Bad request"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrBadRequest)
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrBadRequest)
 			default:
 				_ = c.Error(err)
 			}
@@ -522,20 +507,14 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 		if err != nil {
 			switch {
 			case err == passwordreset.ErrMalformedToken:
-				err := c.AbortWithError(http.StatusBadRequest, errors.New("JWT is malformed"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrMalformedJwt)
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrMalformedJwt)
 				return
 
 			case err == passwordreset.ErrExpiredToken:
-				err := c.AbortWithError(http.StatusBadRequest, errors.New("JWT is expired"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrExpiredJwt)
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrExpiredJwt)
 				return
 			case err == passwordreset.ErrWrongSignature:
-				err := c.AbortWithError(http.StatusForbidden, errors.New("JWT has bad signature"))
-				_ = err.SetType(gin.ErrorTypePublic)
-				_ = err.SetMeta(errhandling.ErrInvalidJwtSignature)
+				apierr.Public(c, http.StatusForbidden, apierr.ErrInvalidJwtSignature)
 				return
 			}
 		}
@@ -583,9 +562,7 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 		}
 
 		if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(request.OldPassword)); err != nil {
-			err := c.AbortWithError(http.StatusForbidden, errors.New("incorrect password"))
-			_ = err.SetType(gin.ErrorTypePublic)
-			_ = err.SetMeta(errhandling.ErrIncorrectPassword)
+			apierr.Public(c, http.StatusForbidden, apierr.ErrIncorrectPassword)
 			return
 		}
 

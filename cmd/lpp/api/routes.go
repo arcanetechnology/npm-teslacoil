@@ -8,7 +8,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
-	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
@@ -86,7 +86,7 @@ func getGinEngine(config Config) *gin.Engine {
 	engine.Use(cors.New(corsConfig))
 
 	log.Debug("Applying error handler middleware")
-	engine.Use(errhandling.GetMiddleware(log))
+	engine.Use(apierr.GetMiddleware(log))
 	return engine
 }
 
@@ -183,9 +183,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
 	})
 
 	r.Router.NoRoute(func(c *gin.Context) {
-		err := c.AbortWithError(http.StatusNotFound, errors.New("Route not found"))
-		_ = err.SetType(gin.ErrorTypePublic).SetMeta(errhandling.ErrRouteNotFound)
-
+		apierr.Public(c, http.StatusNotFound, apierr.ErrRouteNotFound)
 	})
 
 	r.RegisterApiKeyRoutes()

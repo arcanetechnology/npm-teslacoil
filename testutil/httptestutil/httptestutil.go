@@ -5,6 +5,7 @@ import (
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -13,9 +14,8 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-
-	"gitlab.com/arcanecrypto/teslacoil/internal/errhandling"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -155,11 +155,11 @@ func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httpte
 	testutil.AssertMsgf(t, parsed.Error.Message != "", "Error message was empty! JSON: %s", body)
 	testutil.AssertMsgf(t, parsed.Error.Code != "", "Error code was empty! JSON: %s", body)
 
-	testutil.AssertMsg(t, parsed.Error.Code != errhandling.ErrUnknownError, "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
+	testutil.AssertMsg(t, !stderrors.Is(parsed.Error, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
 
 	testutil.AssertMsg(t, parsed.Error.Fields != nil, "Fields was nil! Expected at least empty list")
 	for _, field := range parsed.Error.Fields {
-		testutil.AssertMsgf(t, field.Code != errhandling.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
+		testutil.AssertMsgf(t, field.Code != apierr.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
 	}
 	return response, *parsed.Error
 }
@@ -249,7 +249,6 @@ func extractMethodAndPath(req *http.Request) string {
 
 // Performs the given request against the API. Asserts that the
 // response completed successfully. Returns the response from the API
-// TODO Assert that if failure, contains reasonably shaped JSON
 func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -271,7 +270,7 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	if response.Code >= 300 {
 		testutil.FailMsgf(t, "Got failure code (%d) on path %s: %s",
 			response.Code, extractMethodAndPath(request), response.Body.String())
-		assertErrorIsOk(t, response)
+		_, _ = assertErrorIsOk(t, response)
 	}
 
 	return response

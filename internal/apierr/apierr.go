@@ -1,4 +1,8 @@
-package errhandling
+// package apierr provides functionality for handling errors in our API.
+// This includes both creating middleware for this, as well as terminating
+// requests in a way that ensure a smooth user experience.
+
+package apierr
 
 import (
 	"encoding/json"
@@ -10,46 +14,126 @@ import (
 	"unicode"
 
 	"github.com/gin-gonic/gin"
+	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gopkg.in/go-playground/validator.v8"
 )
 
-const (
+// apiError is a type we can pass in to the Public method of this package.
+// It ensure we're both giving a unique error code and a meaningful error
+// message.
+type apiError struct {
+	err  error
+	code string
+}
+
+func (a apiError) Error() string {
+	return pkgerrors.Wrap(a.err, a.code).Error()
+}
+
+func (a apiError) Is(err error) bool {
+	if stdErr, ok := err.(httptypes.StandardError); ok {
+		return stdErr.Code == a.code
+	}
+	return a.err.Error() == err.Error()
+}
+
+var (
 	// ErrInvalidJson means we got sent invalid JSON
-	ErrInvalidJson = "ERR_INVALID_JSON"
+	ErrInvalidJson = apiError{
+		err:  errors.New("invalid JSON"),
+		code: "ERR_INVALID_JSON",
+	}
 
 	// ErrUnknownError means we don't know exactly what went wrong
-	ErrUnknownError = "ERR_UNKNOWN_ERROR"
+	ErrUnknownError = apiError{
+		err:  errors.New("unknown error"),
+		code: "ERR_UNKNOWN_ERROR",
+	}
 
 	// ErrRouteNotFound means the requested HTTP route wasn't found
-	ErrRouteNotFound = "ERR_ROUTE_NOT_FOUND"
+	ErrRouteNotFound = apiError{
+		err:  errors.New("route not found"),
+		code: "ERR_ROUTE_NOT_FOUND",
+	}
 
 	// ErrMissingAuthHeader means the HTTP request had an empty auth header
-	ErrMissingAuthHeader = "ERR_MISSING_AUTH_HEADER"
+	ErrMissingAuthHeader = apiError{
+		err:  errors.New("missing authentication header"),
+		code: "ERR_MISSING_AUTH_HEADER",
+	}
 
-	ErrIncorrectPassword = "ERR_INCORRECT_PASSWORD"
+	ErrIncorrectPassword = apiError{
+		err:  errors.New("incorrect password"),
+		code: "ERR_INCORRECT_PASSWORD",
+	}
 
-	Err2faNotEnabled     = "ERR_2FA_NOT_ENABLED"
-	Err2faAlreadyEnabled = "ERR_2FA_ALREADY_ENABLED"
+	Err2faNotEnabled = apiError{
+		err:  errors.New("2FA is not enabled"),
+		code: "ERR_2FA_NOT_ENABLED",
+	}
+	Err2faAlreadyEnabled = apiError{
+		err:  errors.New("2FA is already enabled"),
+		code: "ERR_2FA_ALREADY_ENABLED",
+	}
 
 	// The given TOTP code was not on a valid format
-	ErrInvalidTotpCode     = "ERR_INVALID_TOTP_CODE"
-	ErrBadRequest          = "ERR_BAD_REQUEST"
-	ErrMalformedApiKey     = "ERR_MALFORMED_API_KEY"
-	ErrApiKeyNotFound      = "ERR_API_KEY_NOT_FOUND"
-	ErrMalformedJwt        = "ERR_MALFORMED_JWT"
-	ErrInvalidJwtSignature = "ERR_INVALID_JWT_SIGNATURE"
-	ErrExpiredJwt          = "ERR_EXPIRED_JWT"
-	ErrJwtNotValidYet      = "ERR_JWT_NOT_VALID_YET"
-	ErrMissingTotpCode     = "ERR_MISSING_TOTP_CODE"
+	ErrInvalidTotpCode = apiError{
+		err:  errors.New("invalid TOTP code format"),
+		code: "ERR_INVALID_TOTP_CODE",
+	}
+	ErrBadRequest = apiError{
+		err:  errors.New("bad request"),
+		code: "ERR_BAD_REQUEST",
+	}
+	ErrMalformedApiKey = apiError{
+		err:  errors.New("malformed API key"),
+		code: "ERR_MALFORMED_API_KEY",
+	}
+	ErrApiKeyNotFound = apiError{
+		err:  errors.New("API key not found"),
+		code: "ERR_API_KEY_NOT_FOUND",
+	}
+	ErrMalformedJwt = apiError{
+		err:  errors.New("malformed JWT"),
+		code: "ERR_MALFORMED_JWT",
+	}
+	ErrInvalidJwtSignature = apiError{
+		err:  errors.New("invalid JWT signature"),
+		code: "ERR_INVALID_JWT_SIGNATURE",
+	}
+	ErrExpiredJwt = apiError{
+		err:  errors.New("expired JWT"),
+		code: "ERR_EXPIRED_JWT",
+	}
+	ErrJwtNotValidYet = apiError{
+		err:  errors.New("JWT is not valid yet"),
+		code: "ERR_JWT_NOT_VALID_YET",
+	}
+	ErrMissingTotpCode = apiError{
+		err:  errors.New("missing TOTP code"),
+		code: "ERR_MISSING_TOTP_CODE",
+	}
 
 	// The given TOTP code did not match up with the expected one
-	ErrBadTotpCode = "ERR_BAD_TOTP_CODE"
+	ErrBadTotpCode = apiError{
+		err:  errors.New("bad TOTP code"),
+		code: "ERR_BAD_TOTP_CODE",
+	}
 
-	ErrRequestValidationFailed = "ERR_REQUEST_VALIDATION_FAILED"
-	ErrInvoiceNotFound         = "ERR_INVOICE_NOT_FOUND"
-	ErrTransactionNotFound     = "ERR_TRANSACTION_NOT_FOUND"
+	ErrRequestValidationFailed = apiError{
+		err:  errors.New("request validation failed"),
+		code: "ERR_REQUEST_VALIDATION_FAILED",
+	}
+	ErrInvoiceNotFound = apiError{
+		err:  errors.New("invoice not found"),
+		code: "ERR_INVOICE_NOT_FOUND",
+	}
+	ErrTransactionNotFound = apiError{
+		err:  errors.New("transaction not found"),
+		code: "ERR_TRANSACTION_NOT_FOUND",
+	}
 )
 
 // decapitalize makes the first element of a string lowercase
@@ -97,8 +181,8 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		for _, err := range c.Errors {
 			var syntaxErr *json.SyntaxError
 			if errors.Is(err.Err, io.EOF) || errors.As(err.Err, &syntaxErr) {
-				response.Error.Code = ErrInvalidJson
-				response.Error.Message = "Not valid JSON"
+				response.Error.Code = ErrInvalidJson.code
+				response.Error.Message = ErrInvalidJson.err.Error()
 				c.JSON(httpCode, response)
 				return
 			}
@@ -109,27 +193,36 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		if len(publicErrors) > 0 {
 			// we only take the last one
 			err := publicErrors.Last()
-			response.Error.Message = err.Err.Error()
-			if metaString, ok := err.Meta.(string); ok && metaString != "" {
-				response.Error.Code = metaString
+			if apiErr, ok := err.Err.(apiError); ok {
+				response.Error.Code = apiErr.code
+				response.Error.Message = apiErr.err.Error()
 			} else {
-				// TODO log this
-				response.Error.Code = ErrUnknownError
+				log.WithError(err).Warn("Got public error in error handler that was not apiError type")
+				response.Error.Code = ErrUnknownError.code
+				response.Error.Message = ErrUnknownError.err.Error()
 			}
 		}
 
 		if response.Error.Code == "" {
 			if len(fieldErrors) > 0 {
-				response.Error.Code = ErrRequestValidationFailed
-				response.Error.Message = "Request validation failed"
+				response.Error.Code = ErrRequestValidationFailed.code
+				response.Error.Message = ErrRequestValidationFailed.err.Error()
 			} else {
-				response.Error.Code = ErrUnknownError
-				response.Error.Message = "Something bad happened..."
+				response.Error.Code = ErrUnknownError.code
+				response.Error.Message = ErrUnknownError.err.Error()
 			}
 		}
 
 		c.JSON(httpCode, response)
 	}
+}
+
+// Public fails the given Gin request with the given error. It sets the error
+// type as public, causing it to later be returned to the end user with a
+// fitting error message.
+func Public(c *gin.Context, code int, err apiError) {
+	cErr := c.AbortWithError(code, err)
+	_ = cErr.SetType(gin.ErrorTypePublic)
 }
 
 const UnknownValidationTag = "unknown"

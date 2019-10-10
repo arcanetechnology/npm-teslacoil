@@ -1,5 +1,7 @@
 package httptypes
 
+import "fmt"
+
 // StandardResponse is the standard response type that all responses sent
 // frm our API should conform to.
 type StandardResponse struct {
@@ -13,6 +15,10 @@ type StandardError struct {
 	Message string       `json:"message"`
 	Code    string       `json:"code"`
 	Fields  []FieldError `json:"fields" binding:"required"`
+}
+
+func (s StandardError) Error() string {
+	return fmt.Errorf("%s: %s", s.Code, s.Message).Error()
 }
 
 // FieldError is the type for a request field validation error message.
