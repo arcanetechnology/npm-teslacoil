@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -40,7 +42,18 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) err
 		if err != nil {
 			return err
 		}
-		if err = createPaymentsForUser(d, lncli, firstUser); err != nil {
+
+		token, err := users.GetEmailVerificationToken(d, firstUser.Email)
+		if err != nil {
+			return errors.Wrap(err, "could not get email verification token")
+		}
+
+		verified, err := users.VerifyEmail(d, token)
+		if err != nil {
+			return errors.Wrap(err, "could not verify email")
+		}
+
+		if err = createPaymentsForUser(d, lncli, verified); err != nil {
 			return err
 		}
 	} else {
@@ -72,13 +85,25 @@ func FillWithDummyData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) err
 			return
 		}
 
-		log.WithField("userId", user.ID).Debug("Generated user")
-
-		if err := createPaymentsForUser(d, lncli, user); err != nil {
-			log.WithError(err).WithField("user", user).Error("Could not create payments")
+		token, err := users.GetEmailVerificationToken(d, user.Email)
+		if err != nil {
+			log.WithError(err).Error("Could not get email verification token")
 			return
 		}
-		log.WithField("userId", user.ID).Debug("Created payments for user")
+
+		verified, err := users.VerifyEmail(d, token)
+		if err != nil {
+			log.WithError(err).Error("Could not verify email")
+			return
+		}
+
+		log.WithField("userId", verified.ID).Debug("Generated user")
+
+		if err := createPaymentsForUser(d, lncli, verified); err != nil {
+			log.WithError(err).WithField("user", verified).Error("Could not create payments")
+			return
+		}
+		log.WithField("userId", verified.ID).Debug("Created payments for user")
 	}
 
 	var wg sync.WaitGroup
