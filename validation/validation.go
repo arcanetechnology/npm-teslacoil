@@ -3,7 +3,11 @@
 package validation
 
 import (
+	"fmt"
 	"reflect"
+
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/lightningnetwork/lnd/zpay32"
 
 	"github.com/nbutton23/zxcvbn-go"
 	"github.com/pkg/errors"
@@ -37,6 +41,24 @@ func IsValidPassword(
 	return strength.Score >= RequiredValidationScore
 }
 
+// IsValidPaymentRequest checks if a payment request is valid per the configured network
+func IsValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
+	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
+		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
+
+		stringVal := field.String()
+
+		// if tag is payreq, check that the value is decodable
+		decoded, err := zpay32.Decode(stringVal, &chainCfg)
+		if err != nil {
+			return false
+		}
+		fmt.Printf("decoded successfully %+v", decoded)
+
+		return true
+	}
+}
+
 // RegisterValidator registers a validator in our validation engine with the
 // given name.
 func RegisterValidator(engine *validator.Validate, name string, function validator.Func) error {
@@ -50,7 +72,7 @@ func RegisterValidator(engine *validator.Validate, name string, function validat
 // RegisterAllValidators registers all known validators to the Validator engine,
 // quitting if this results in an error. This function should typically be
 // called at startup.
-func RegisterAllValidators(engine *validator.Validate) []string {
+func RegisterAllValidators(engine *validator.Validate, chainCfg chaincfg.Params) []string {
 	type Validator struct {
 		Name     string
 		Function validator.Func
@@ -58,7 +80,12 @@ func RegisterAllValidators(engine *validator.Validate) []string {
 	validators := []Validator{{
 		Name:     "password",
 		Function: IsValidPassword,
-	}}
+	},
+		{
+			Name:     "payreq",
+			Function: IsValidPaymentRequest(chainCfg),
+		},
+	}
 	names := make([]string, len(validators))
 	for i, elem := range validators {
 		names[i] = elem.Name

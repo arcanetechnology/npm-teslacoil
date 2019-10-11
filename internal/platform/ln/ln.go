@@ -50,6 +50,7 @@ type LightningConfig struct {
 	MacaroonPath string
 	Network      chaincfg.Params
 	RPCServer    string
+	RPCPort      int
 	// P2pPort is the port lnd listens to peer connections on
 	P2pPort int
 }
@@ -226,6 +227,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
 
 		msgCh <- &invoice
 	}
+
 }
 
 func (l LightningConfig) String() string {

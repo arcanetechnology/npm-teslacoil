@@ -79,19 +79,12 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := getUserIdOrReject(c)
+
+		var request CreateInvoiceRequest
+		userID, ok := validateJSONRequest(c, &request)
 		if !ok {
 			return
 		}
-
-		var request CreateInvoiceRequest
-		if c.BindJSON(&request) != nil {
-			return
-		}
-
-		log.Debugf("received new request for CreateInvoice for user_id %d: %+v",
-			userID,
-			request)
 
 		t, err := payments.NewPayment(
 			r.db, r.lncli, payments.NewPaymentOpts{
@@ -122,29 +115,25 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	// PayInvoiceRequest is the required and optional fields for initiating a
 	// withdrawal.
 	type PayInvoiceRequest struct {
-		PaymentRequest string `json:"paymentRequest" binding:"required"`
+		PaymentRequest string `json:"paymentRequest" binding:"required" validate:"payreq"`
 		Description    string `json:"description"`
 	}
 
 	return func(c *gin.Context) {
 		// authenticate the user by extracting the id from the jwt-token
-		userID, ok := getUserIdOrReject(c)
-		if !ok {
-			return
-		}
-
 		var request PayInvoiceRequest
-		if c.BindJSON(&request) != nil {
+		userID, ok := validateJSONRequest(c, &request)
+		if !ok {
+			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
-		log.Debugf("received new request for PayInvoice for userID %d: %+v",
-			userID, request)
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
 		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, userID,
 			request.PaymentRequest, request.Description)
 		if err != nil {
+			log.Error("payinvoicewithdescriptionerr: ", err)
 			_ = c.Error(err)
 			return
 		}

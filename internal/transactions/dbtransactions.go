@@ -281,7 +281,7 @@ func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
 	description string, vout *int, txid *string, amountSat int64) (Transaction, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		// This type means lnd will force-create a new address
-		Type: lnrpc.AddressType_UNUSED_WITNESS_PUBKEY_HASH,
+		Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
 	})
 	if err != nil {
 		return Transaction{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")

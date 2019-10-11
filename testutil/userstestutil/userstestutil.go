@@ -30,3 +30,30 @@ func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) user
 	}
 	return u
 }
+
+// CreateUserWithBalanceOrFail creates a user with an initial balance
+func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, balance int) users.User {
+	u := CreateUserOrFail(t, db)
+
+	tx := db.MustBegin()
+	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
+		UserID:    u.ID,
+		AmountSat: int64(balance),
+	})
+	if err != nil {
+		testutil.FatalMsgf(t,
+			"[%s] could not increase balance by %d for user %d: %+v", t.Name(),
+			balance, u.ID, err)
+	}
+	err = tx.Commit()
+	if err != nil {
+		testutil.FatalMsg(t, "could not commit tx")
+	}
+
+	if user.Balance != int64(balance) {
+		testutil.FatalMsgf(t, "wrong balance, expected [%d], got [%d]", balance,
+			user.Balance)
+	}
+
+	return user
+}

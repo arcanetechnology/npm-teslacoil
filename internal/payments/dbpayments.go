@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -76,10 +75,15 @@ type Payment struct {
 	Expired bool `json:"expired"`
 }
 
-// UserPaymentResponse is a user payment response
-type UserPaymentResponse struct {
-	Payment Payment    `json:"payment"`
-	User    users.User `json:"user"`
+var (
+	ErrCouldNotGetByID            = errors.New("could not get payment by ID")
+	ErrUserBalanceTooLow          = errors.New("user balance too low, cant decrease")
+	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
+)
+
+// PaymentResponse is a user payment response
+type PaymentResponse struct {
+	Payment Payment `json:"payment"`
 }
 
 // WithAdditionalFields adds useful fields for dealing with a payment
@@ -117,6 +121,9 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 	if p.Memo != nil && *p.Memo == "" {
 		p.Memo = nil
 	}
+	if p.AmountSat == 0 {
+		return Payment{}, Err0AmountInvoiceNotSupported
+	}
 
 	createOffchainTXQuery := `INSERT INTO 
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
@@ -135,7 +142,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 		log.Error(err)
 		return Payment{}, errors.Wrapf(
 			err,
-			"insertPayment->tx.NamedQuery(%s, %+v)",
+			"insert->tx.NamedQuery(%s, %+v)",
 			createOffchainTXQuery,
 			p,
 		)
@@ -284,7 +291,7 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 		AmountSat:      invoice.Value,
 		AmountMSat:     invoice.Value * 1000,
 		Expiry:         invoice.Expiry,
-		PaymentRequest: strings.ToUpper(invoice.PaymentRequest),
+		PaymentRequest: invoice.PaymentRequest,
 		HashedPreimage: hex.EncodeToString(invoice.RHash),
 		Status:         OPEN,
 		Direction:      INBOUND,
@@ -318,17 +325,42 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 }
 
 // MarkInvoiceAsPaid marks the given payment request as paid at the given date
-func MarkInvoiceAsPaid(d *db.DB, userID int,
-	paymentRequest string, paidAt time.Time) error {
+func MarkInvoiceAsPaid(d *db.DB, paymentRequest string, paidAt time.Time) error {
 	updateOffchainTxQuery := `UPDATE offchaintx 
 		SET settled_at = $1, status = $2
 		WHERE payment_request = $3`
 
 	tx := d.MustBegin()
 
+	log.Infof("marking %s as paid", paymentRequest)
+
 	result, err := tx.Exec(updateOffchainTxQuery, paidAt, SUCCEEDED, paymentRequest)
 	if err != nil {
 		log.Errorf("Couldn't mark invoice as paid: %+v", err)
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	log.Infof("Marking an invoice as paid resulted in %d updated rows", rows)
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+// MarkInvoiceAsPaid marks the given payment request as paid at the given date
+func MarkInvoiceAsFailed(d *db.DB, paymentRequest string) error {
+	updateOffchainTxQuery := `UPDATE offchaintx 
+		SET status = $1
+		WHERE payment_request = $2`
+
+	tx := d.MustBegin()
+
+	result, err := tx.Exec(updateOffchainTxQuery, FAILED, paymentRequest)
+	if err != nil {
+		log.Errorf("Couldn't mark invoice as failed: %+v", err)
 		return err
 	}
 	rows, _ := result.RowsAffected()
@@ -339,112 +371,120 @@ func MarkInvoiceAsPaid(d *db.DB, userID int,
 	}
 
 	return nil
-
 }
 
 // PayInvoice is used to Pay an invoice without a description
 func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
-	paymentRequest string) (UserPaymentResponse, error) {
+	paymentRequest string) (*Payment, error) {
 	return PayInvoiceWithDescription(d, lncli, userID, paymentRequest, "")
 }
 
 // PayInvoiceWithDescription first persists an outbound payment with the supplied invoice to
 // the database. Then attempts to pay the invoice using SendPaymentSync
-// Should the payment fail, we do not decrease the users balance.
-// This logic is completely fucked, as the user could initiate a payment for
-// 10 000 000 satoshis, and the logic wouldn't complain until AFTER the payment
-// is complete(that is, we no longer have the money)
-// TODO: Decrease the users balance BEFORE attempting to send the payment.
-// If at any point the payment/db transaction should fail, increase the users
-// balance.
-func PayInvoiceWithDescription(d *db.DB, lncli ln.DecodeSendClient, userID int,
-	paymentRequest string, description string) (UserPaymentResponse, error) {
+// Should the payment fail, we rollback all changes made to the DB
+func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
+	paymentRequest string, description string) (*Payment, error) {
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
 	if err != nil {
 		log.Error(err)
-		return UserPaymentResponse{}, err
+		return nil, err
 	}
 
-	sendRequest := &lnrpc.SendRequest{
-		PaymentRequest: paymentRequest,
+	if payreq.NumSatoshis == 0 {
+		return nil, Err0AmountInvoiceNotSupported
 	}
 
-	// We instantiate an empty struct fill up information as we go, and return
-	// all the information we have thus far should there be an error
-	var upr UserPaymentResponse
+	// decrease users balance
+	tx := db.MustBegin()
 
-	upr.Payment = Payment{
+	user, err := users.DecreaseBalance(tx, users.ChangeBalance{
+		UserID:    userID,
+		AmountSat: payreq.NumSatoshis,
+	})
+	if err != nil {
+		_ = tx.Rollback()
+		log.WithError(err).Errorf("could not decrease user %d balance by %d", userID, payreq.NumSatoshis)
+		return nil, ErrUserBalanceTooLow
+	}
+	log.Infof("decreased users balance, new balance is %d", user.Balance)
+
+	// insert pay_req into DB
+	payment := Payment{
 		UserID:         userID,
-		Direction:      OUTBOUND,
-		Description:    &description,
-		PaymentRequest: strings.ToUpper(paymentRequest),
-		Status:         OPEN,
+		PaymentRequest: paymentRequest,
 		HashedPreimage: payreq.PaymentHash,
+		Expiry:         payreq.Expiry,
+		Status:         OPEN,
 		Memo:           &payreq.Description,
+		Description:    &description,
+		Direction:      OUTBOUND,
 		AmountSat:      payreq.NumSatoshis,
 		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
 
-	tx := d.MustBegin()
-
-	upr.User, err = users.DecreaseBalance(tx, users.ChangeBalance{
-		UserID:    upr.Payment.UserID,
-		AmountSat: upr.Payment.AmountSat,
-	})
-	if err != nil {
-		_ = tx.Rollback()
-		return upr, errors.Wrapf(err,
-			"PayInvoice->updateUserBalance(tx, %d, %d)",
-			upr.Payment.UserID, upr.Payment.AmountSat)
-	}
-
-	// We insert the transaction in the DB before we attempt to send it to
-	// avoid issues with attempted updates to the payment before it is added to
-	// the DB
-	upr.Payment, err = insert(tx, upr.Payment)
+	payment, err = insert(tx, payment)
 	if err != nil {
 		log.Error(err)
 		_ = tx.Rollback()
-		return upr, errors.Wrapf(
-			err, "insertPayment(db, %+v)", upr.Payment)
+		return nil, errors.Wrapf(
+			err, "insert(db, %+v)", payment)
 	}
 
-	// TODO(henrik): Need to improve this step to allow for slow paying invoices.
-	// See logic in lightningspin-api for possible solution
+	log.Info("inserted payment")
+
+	// attempt to pay invoice
 	paymentResponse, err := lncli.SendPaymentSync(
-		context.Background(), sendRequest)
+		context.Background(), &lnrpc.SendRequest{
+			PaymentRequest: paymentRequest,
+		})
 	if err != nil {
+		_ = tx.Rollback()
 		log.Error(err)
-		return upr, err
+		return nil, err
 	}
 
-	if paymentResponse.PaymentError == "" {
-		t := time.Now()
-		upr.Payment.SettledAt = &t
-		upr.Payment.Status = SUCCEEDED
-		preimage := hex.EncodeToString(paymentResponse.PaymentPreimage)
-		upr.Payment.Preimage = &preimage
-	} else {
+	log.Infof("sent payment %+v", paymentResponse)
+
+	// if payment failed, mark it as failed and rollback
+	if paymentResponse.PaymentError != "" {
 		err = tx.Rollback()
 		if err != nil {
-			return upr, errors.Wrap(err, "could not rollback DB")
+			return nil, errors.Wrap(err, "could not rollback DB")
 		}
-
-		upr.Payment.Status = FAILED
-		return upr, errors.New(paymentResponse.PaymentError)
+		err = MarkInvoiceAsFailed(db, paymentRequest)
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New(paymentResponse.PaymentError)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return UserPaymentResponse{}, errors.Wrap(
+		_ = tx.Rollback()
+		return nil, errors.Wrap(
 			err, "PayInvoice: could not commit")
 	}
 
-	return UserPaymentResponse{
-		Payment: upr.Payment,
-		User:    upr.User,
-	}, nil
+	settledAt := time.Now()
+	err = MarkInvoiceAsPaid(db, paymentRequest, settledAt)
+	if err != nil {
+		// we never want to be in this situation. we now have an
+		// OPEN invoice in the db, but the use has decreased the balance
+		panic("could not mark invoice as paid, although it was paid")
+	}
+
+	log.Infof("updated payment %+v", payment)
+
+	// to always return the latest state of the payment, we retreive it from the DB
+	payment, err = GetByID(db, payment.ID, user.ID)
+	if err != nil {
+		return nil, ErrCouldNotGetByID
+	}
+
+	log.Infof("got by ID %+v", payment)
+
+	return &payment, nil
 }
 
 // InvoiceStatusListener is
@@ -477,7 +517,7 @@ func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 // (newly added/settled invoices). If received payment was successful, updates
 // the payment stored in our db and increases the users balance
 func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPoster) (
-	*UserPaymentResponse, error) {
+	*PaymentResponse, error) {
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
 	// Define a custom response struct to include user details
@@ -485,7 +525,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 	if err := database.Get(
 		&payment,
 		tQuery,
-		strings.ToUpper(invoice.PaymentRequest)); err != nil {
+		invoice.PaymentRequest); err != nil {
 		return nil, errors.Wrapf(err,
 			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
 			invoice.PaymentRequest,
@@ -498,9 +538,8 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 	}).Debug("Updating invoice status of payment", payment.ID, invoice.Settled)
 
 	if !invoice.Settled {
-		return &UserPaymentResponse{
+		return &PaymentResponse{
 			Payment: payment,
-			User:    users.User{},
 		}, nil
 	}
 	now := time.Now()
@@ -554,7 +593,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 		}
 	}
 
-	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
+	_, err = users.IncreaseBalance(tx, users.ChangeBalance{
 		AmountSat: payment.AmountSat,
 		UserID:    payment.UserID})
 	if err != nil {
@@ -581,9 +620,8 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 		log.WithField("id", payment.ID).Debug("Invoice did not have callback URL")
 	}
 
-	return &UserPaymentResponse{
+	return &PaymentResponse{
 		Payment: payment,
-		User:    user,
 	}, nil
 }
 

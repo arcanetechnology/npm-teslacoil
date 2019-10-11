@@ -72,6 +72,7 @@ func getCorsConfig() cors.Config {
 // applying CORS configuration.
 func getGinEngine(config Config) *gin.Engine {
 	engine := gin.New()
+
 	log.Debug("Applying gin.Recovery middleware")
 	engine.Use(gin.Recovery())
 
@@ -139,7 +140,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
 			binding.Validator.Engine(),
 		)
 	}
-	validators := validation.RegisterAllValidators(engine)
+	validators := validation.RegisterAllValidators(engine, config.Network)
 	log.Infof("Registered custom validators: %s", validators)
 
 	log.Info("Checking bitcoind connection")
@@ -332,3 +333,47 @@ func getUserIdOrReject(c *gin.Context) (int, bool) {
 
 	return idInt, true
 }
+<<<<<<< HEAD
+=======
+
+// getJSONOrReject extracts fields from the context and inserts
+// them into the passed body argument. If an error occurs, the
+// error is logged and a response with StatusBadRequest is sent
+// body MUST be an address to a variable, not a variable
+func getJSONOrReject(c *gin.Context, body interface{}) bool {
+	if err := c.ShouldBindJSON(body); err != nil {
+		log.Errorf("%s could not bind JSON %+v", c.Request.URL.Path, err)
+		c.JSON(http.StatusBadRequest, badRequestResponse)
+		return false
+	}
+
+	return true
+}
+
+func getQueryOrReject(c *gin.Context, body interface{}) bool {
+	if err := c.ShouldBindQuery(body); err != nil {
+		err = errors.Wrapf(err, "wrong query parameter format, check the documentation")
+		log.Error(err)
+		c.JSON(http.StatusBadRequest, err.Error())
+		return false
+	}
+	return true
+}
+
+// validateJSONRequest gets the userID from the jwt, gets JSON from the request body,
+// and validates our custom tag `validate:"payreq"`
+func validateJSONRequest(c *gin.Context, request interface{}) (int, bool) {
+	userID, ok := getUserIdOrReject(c)
+
+	if !ok {
+		return -1, false
+	}
+
+	if ok = getJSONOrReject(c, request); !ok {
+		return -1, false
+	}
+
+	return userID, true
+
+}
+>>>>>>> c417adf... add MarkInvoiceAsFailed method

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcutil"
@@ -21,8 +22,8 @@ func GetBitcoindConfig(t *testing.T) bitcoind.Config {
 		Password:       "rpc_pass_for_tests",
 		ZmqPubRawTx:    fmt.Sprintf("tcp://0.0.0.0:%d", testutil.GetPortOrFail(t)),
 		ZmqPubRawBlock: fmt.Sprintf("tcp://0.0.0.0:%d", testutil.GetPortOrFail(t)),
+		Network:        chaincfg.RegressionNetParams,
 	}
-
 }
 
 // GetBitcoindClientOrFail returns a bitcoind RPC client, corresponding to
@@ -63,6 +64,19 @@ func SendTxToSelf(bitcoin bitcoind.TeslacoilBitcoind, amountBtc float64) (*chain
 	}
 
 	return txHash, nil
+}
+
+// ConvertToAddressOrFail converts a string address into a
+// btcutil.Address type. If the conversion fails - the string
+// is not an address for the given chain - we panic
+func ConvertToAddressOrFail(address string, params chaincfg.Params) btcutil.Address {
+
+	addr, err := btcutil.DecodeAddress(address, &params)
+	if err != nil {
+		panic(err)
+	}
+
+	return addr
 }
 
 // GenerateToSelf is a helper function for easily generating a block

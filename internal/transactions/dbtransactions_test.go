@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 
+	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
@@ -131,7 +132,7 @@ func TestWithdrawOnChain(t *testing.T) {
 	t.Run("ignores amount and withdraws all the users balance", func(t *testing.T) {
 
 		testCases := []struct {
-			balance int64
+			balance int
 			// We specify amountSat to make sure it is ignored when sendAll is true
 			amountSat int64
 		}{
@@ -157,7 +158,7 @@ func TestWithdrawOnChain(t *testing.T) {
 				},
 			}
 
-			user := CreateUserWithBalanceOrFail(t, test.balance)
+			user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, test.balance)
 
 			_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
 				UserID:    user.ID,
@@ -189,7 +190,8 @@ func TestWithdrawOnChain(t *testing.T) {
 	})
 
 	t.Run("withdraw more than balance fails", func(t *testing.T) {
-		user := CreateUserWithBalanceOrFail(t, 500)
+		user := userstestutil.CreateUserWithBalanceOrFail(t, testDB,
+			500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
 				Txid: testutil.MockTxid(),
@@ -209,7 +211,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		}
 	})
 	t.Run("withdraw negative amount fails", func(t *testing.T) {
-		user := CreateUserWithBalanceOrFail(t, 500)
+		user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, 500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
 				Txid: testutil.MockTxid(),
@@ -227,7 +229,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		}
 	})
 	t.Run("withdraw 0 amount fails", func(t *testing.T) {
-		user := CreateUserWithBalanceOrFail(t, 500)
+		user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, 500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
 				Txid: testutil.MockTxid(),
@@ -251,7 +253,7 @@ func TestWithdrawOnChain(t *testing.T) {
 				Txid: "I am a bad txid",
 			},
 		}
-		user := CreateUserWithBalanceOrFail(t, 10000)
+		user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, 10000)
 
 		transaction, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
 			UserID:    user.ID,
@@ -529,4 +531,28 @@ func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
 	}
 
 	return user
+
+}
+
+func CreateTransactionOrFail(t *testing.T, userID int) Transaction {
+	tx := testDB.MustBegin()
+
+	txs := Transaction{
+		UserID:      userID,
+		AmountSat:   int64(gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)),
+		Address:     "foo",
+		Description: "bar",
+		Direction:   payments.Direction("INBOUND"),
+		Confirmed:   false,
+	}
+
+	transaction, err := insertTransaction(tx, txs)
+
+	if err != nil {
+		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
+			err)
+	}
+	_ = tx.Commit()
+
+	return transaction
 }

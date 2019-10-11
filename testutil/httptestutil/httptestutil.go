@@ -2,6 +2,7 @@ package httptestutil
 
 import (
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -11,13 +12,17 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"testing"
 
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -292,7 +297,7 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 	jsonRes := harness.AssertResponseOkWithJson(t, loginUserReq)
 
 	tokenPath := "accessToken"
-	maybeNilToken, ok := jsonRes[tokenPath]
+	maybeNilToken, ok := jsonRes["accessToken"]
 	if !ok {
 		fail(jsonRes, tokenPath, extractMethodAndPath(loginUserReq))
 	}
@@ -305,12 +310,26 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 		fail(jsonRes, tokenPath, extractMethodAndPath(loginUserReq))
 	}
 
+	userID, ok := jsonRes["userId"]
+	if !ok {
+		fail(jsonRes, "userId", extractMethodAndPath(loginUserReq))
+	}
+
+	var idFloat float64
+	switch untypedId := userID.(type) {
+	case float64:
+		idFloat = untypedId
+	default:
+		fail(jsonRes, "userId", extractMethodAndPath(loginUserReq))
+	}
+	id := int(idFloat)
+
 	// we want to alternate between authenticating users with an API key or
 	// a JWT. We flip a coin here, and if the coin flip succeeds we create an
 	// API key and return that.
 	coinFlip := rand.Float32()
 	if coinFlip < 0.5 {
-		return token
+		return token, id
 	}
 
 	apiKeyRequest := GetAuthRequest(t, AuthRequestArgs{
@@ -327,7 +346,7 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 
 	switch untypedKey := maybeNilKey.(type) {
 	case string:
-		return untypedKey
+		return untypedKey, id
 	default:
 		fail(apiKeyJson, apiKeyPath, extractMethodAndPath(apiKeyRequest))
 		// won't reach this
@@ -344,4 +363,51 @@ func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.C
 
 	return harness.AuthenticaticateUser(t, args)
 
+}
+
+func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind, accessToken string) bool {
+
+	getDepositAddr := GetAuthRequest(t, AuthRequestArgs{
+		AccessToken: accessToken,
+		Path:        "/deposit",
+		Method:      "POST",
+		Body: fmt.Sprintf(`{
+			"forceNewAddress": %t,
+			"description": ""
+		}`, false),
+	})
+
+	jsonRes := harness.AssertResponseOkWithJson(t, getDepositAddr)
+
+	maybeNilAddress, ok := jsonRes["address"]
+	if !ok {
+		testutil.FailMsg(t, "address does not exist on jsonRes")
+		return false
+	}
+
+	var address string
+	switch untypedAddress := maybeNilAddress.(type) {
+	case string:
+		address = untypedAddress
+	default:
+		testutil.FailMsgf(t, "expected address to be string, but is %v", reflect.TypeOf(untypedAddress))
+		return false
+	}
+
+	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
+		Addr:   address,
+		Amount: 50000000,
+	})
+	if err != nil {
+		testutil.FatalMsgf(t, "could not send coins to %s: %v", address, err)
+	}
+
+	// confirm it
+	_, err = bitcoin.Btcctl().Generate(7)
+	if err != nil {
+		testutil.FatalMsgf(t, "could not generate coins: %v", err)
+		return false
+	}
+
+	return true
 }

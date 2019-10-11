@@ -127,7 +127,7 @@ func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcu
 		"application/json",
 		bytes.NewReader([]byte(body)))
 	if err != nil {
-		return nil, errors.Wrap(err, "could not post generatetoaddress request")
+		return nil, errors.Wrap(err, "generatetoaddress")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(req.Body)
@@ -177,7 +177,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 	zmqBlockConn, err := gozmq.Subscribe(
 		conf.ZmqPubRawBlock, []string{"rawblock"}, zmqPollInterval)
 	if err != nil {
-		return nil, fmt.Errorf("unable to subscribe to zmq block events: %+v", err)
+		return nil, fmt.Errorf("gozmq.Subscribe rawblock: %+v", err)
 	}
 
 	zmqTxConn, err := gozmq.Subscribe(
@@ -187,7 +187,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 		if closeErr != nil {
 			log.Errorf("could not close zmqBlockConn: %+v", closeErr)
 		}
-		return nil, fmt.Errorf("unable to subscribe to zmq tx events: %+v", err)
+		return nil, fmt.Errorf("gozmq.Subscribe rawtx: %+v", err)
 	}
 
 	zmqRawTxCh := make(chan *wire.MsgTx)
@@ -233,12 +233,12 @@ func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
 
 	txHash, err := chainhash.NewHashFromStr(txid)
 	if err != nil {
-		return -1, errors.Wrapf(err, "could not create txHash using txid %q", txHash)
+		return -1, errors.Wrapf(err, "newhashfromstr(%s)", txHash)
 	}
 
 	transactionResult, err := c.Btcctl().GetRawTransactionVerbose(txHash)
 	if err != nil {
-		return -1, errors.Wrapf(err, "could not GetTransaction(%s)", txHash)
+		return -1, errors.Wrapf(err, "getrawtransaction %s", txHash)
 	}
 
 	for _, tx := range transactionResult.Vout {
@@ -302,7 +302,7 @@ func (c *Conn) blockEventHandler() {
 				continue
 			}
 
-			log.Infof("received new block %v", block.BlockHash())
+			log.Tracef("received new block %v", block.BlockHash())
 			// send the deserialized block to the block channel
 			c.zmqBlockCh <- block
 

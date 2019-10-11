@@ -37,7 +37,7 @@ func (t TeslacoilBitcoindMockClient) Config() Config {
 	panic("cannot get config")
 }
 func (t TeslacoilBitcoindMockClient) Network() chaincfg.Params {
-	panic("cannot get network")
+	return chaincfg.RegressionNetParams
 }
 
 func (t TeslacoilBitcoindMockClient) ZmqBlockChannel() chan *wire.MsgBlock {
