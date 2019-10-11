@@ -314,7 +314,7 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 		}
 
 		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
-		if err != nil && !errors.Is(err, ErrTxHashTxid) {
+		if err != nil && !errors.Is(err, ErrTxHasTxid) {
 			testutil.FatalMsgf(t, "error should contain be of type `ErrTxHasTxid`")
 		}
 	})

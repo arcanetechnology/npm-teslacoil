@@ -3,15 +3,15 @@ services:
   db:
     container_name: postgres
     command:
-      - postgres 
-      - -c 
-      - logging_collector=on  
-      - -c 
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
       - log_directory=/var/log/postgresql
-      - -c 
+      - -c
       - log_filename=postgres.log
-      - -c 
-      -  log_statement=all
+      - -c
+      - log_statement=all
     build:
       context: docker/postgres
     volumes:
@@ -21,14 +21,14 @@ services:
     ports:
       # expose default Postgres port as 5434 on host
       - 5434:5432
-  bitcoind: 
+  bitcoind:
     # https://github.com/ruimarinho/docker-bitcoin-core
     image: ruimarinho/bitcoin-core:0.18
     container_name: bitcoind
 
     volumes:
       - bitcoin:/home/bitcoin/.bitcoin
-    command: 
+    command:
       - -debug=rpc
       - -printtoconsole
       - -$BITCOIN_NETWORK
@@ -50,7 +50,7 @@ services:
         # prevents us from reading the files we need
         UID: $UID
         GID: $GID
-        LND_VERSION: '0.7.1-beta'
+        LND_VERSION: '0.8.0-beta-rc2'
     environment:
       - RPCUSER
       - RPCPASS
@@ -62,11 +62,11 @@ services:
     command: sh -c './wait-for-bitcoind.sh && ./start-lnd.sh'
 
   bob:
-    depends_on: 
+    depends_on:
       - bitcoind
     extends: lnd
     container_name: bob
-    environment: 
+    environment:
       - RPCHOST=blockchain
     # expose Bob's LND RPC as a different than ALice's port
     ports:
@@ -78,11 +78,11 @@ services:
       - 'bitcoind:blockchain'
 
   alice:
-    depends_on: 
+    depends_on:
       - bitcoind
     extends: lnd
     container_name: alice
-    environment: 
+    environment:
       - RPCHOST=blockchain
     # expose Alice's LND RPC port
     ports:

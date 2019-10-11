@@ -23,6 +23,10 @@ type LightningMockClient struct {
 	SendCoinsResponse       lnrpc.SendCoinsResponse
 }
 
+func (client LightningMockClient) ChannelAcceptor(ctx context.Context, opts ...grpc.CallOption) (lnrpc.Lightning_ChannelAcceptorClient, error) {
+	panic("ChannelAcceptor")
+}
+
 func (client LightningMockClient) WalletBalance(ctx context.Context, in *lnrpc.WalletBalanceRequest, opts ...grpc.CallOption) (*lnrpc.WalletBalanceResponse, error) {
 	panic("WalletBalance")
 }
