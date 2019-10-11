@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
 	"github.com/gin-gonic/gin"
@@ -47,7 +46,7 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, httptypes.Response(t))
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -75,7 +74,7 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 		}
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(http.StatusOK, httptypes.Response(t))
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -110,12 +109,12 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, httptypes.Response(WithdrawResponse{
+		c.JSONP(http.StatusOK, WithdrawResponse{
 			Txid:        transaction.Txid,
 			Address:     transaction.Address,
 			AmountSat:   transaction.AmountSat,
 			Description: transaction.Description,
-		}))
+		})
 	}
 
 }
@@ -155,10 +154,10 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, httptypes.Response(NewDepositResponse{
+		c.JSONP(http.StatusOK, NewDepositResponse{
 			ID:          transaction.ID,
 			Address:     transaction.Address,
 			Description: transaction.Description,
-		}))
+		})
 	}
 }

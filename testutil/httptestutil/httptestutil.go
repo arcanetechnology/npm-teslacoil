@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -141,37 +142,40 @@ func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	return res
 }
 
-func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httptest.ResponseRecorder, httptypes.StandardError) {
+// Word that starts with ERR_ and only contains A-Z, _ or digits
+var uppercaseAndUnderScoreRegex = regexp.MustCompile("^ERR_([A-Z]|_|[0-9])+$")
+
+func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
 
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		testutil.FatalMsg(t, errors.Wrap(err, "could not read body"))
 	}
-	var parsed httptypes.StandardResponse
+	var parsed httptypes.StandardErrorResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		testutil.FatalMsg(t, errors.Wrap(err, "could not parse body into StandardResponse"))
 	}
-	testutil.AssertMsg(t, parsed.Error != nil, "Error was nil!")
-	testutil.AssertMsgf(t, parsed.Error.Message != "", "Error message was empty! JSON: %s", body)
-	testutil.AssertMsgf(t, parsed.Error.Code != "", "Error code was empty! JSON: %s", body)
+	testutil.AssertMsgf(t, parsed.ErrorField.Message != "", "Error message was empty! JSON: %s", body)
+	testutil.AssertMsgf(t, parsed.ErrorField.Code != "", "Error code was empty! JSON: %s", body)
+	testutil.AssertMsgf(t, uppercaseAndUnderScoreRegex.MatchString(parsed.ErrorField.Code), "Code didn't match regex! Code: %s", parsed.ErrorField.Code)
 
-	testutil.AssertMsg(t, !stderrors.Is(parsed.Error, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
+	testutil.AssertMsg(t, !stderrors.Is(parsed, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
 
-	testutil.AssertMsg(t, parsed.Error.Fields != nil, "Fields was nil! Expected at least empty list")
-	for _, field := range parsed.Error.Fields {
+	testutil.AssertMsg(t, parsed.ErrorField.Fields != nil, "Fields was nil! Expected at least empty list")
+	for _, field := range parsed.ErrorField.Fields {
 		testutil.AssertMsgf(t, field.Code != apierr.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
 	}
-	return response, *parsed.Error
+	return response, parsed
 }
 
 // Asserts that the given request fails, and that it conforms to our
 // expected error format.
-func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) (*httptest.ResponseRecorder, httptypes.StandardError) {
+func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
 	t.Helper()
 	response := httptest.NewRecorder()
 	harness.server.ServeHTTP(response, request)
 	if response.Code < 300 {
-		testutil.FatalMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
+		testutil.FailMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
 	}
 
 	return assertErrorIsOk(t, response)
@@ -180,7 +184,7 @@ func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Requ
 
 // AssertResponseNotOkWithCode checks that the given request results in the
 // given HTTP status code. It returns the response to the request.
-func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) (*httptest.ResponseRecorder, httptypes.StandardError) {
+func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
 	testutil.AssertMsgf(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
 	t.Helper()
 
@@ -190,56 +194,36 @@ func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *h
 	return response, error
 }
 
-// First performs `assertResponseOk`, then asserts that the body of the response
-// can be parsed as JSON conforming to the standard response type.
-func (harness *TestHarness) AssertResponseOkWithStandardResponse(t *testing.T, request *http.Request) httptypes.StandardResponse {
+func (harness *TestHarness) AssertResponseOkWithBody(t *testing.T, request *http.Request) bytes.Buffer {
 	t.Helper()
 	response := harness.AssertResponseOk(t, request)
-	var destination httptypes.StandardResponse
 
-	if err := json.Unmarshal(response.Body.Bytes(), &destination); err != nil {
-		stringBody := response.Body.String()
-		testutil.FatalMsg(t,
-			errors.Wrap(err, fmt.Sprintf(
-				"could not unmarshal response to standard response. Body: %s",
-				stringBody)))
-	}
-	return destination
+	testutil.AssertMsg(t, response.Body.Len() != 0, "Body was empty!")
+
+	return *response.Body
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response
 // can be parsed as JSON, and then returns the parsed JSON
 func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http.Request) map[string]interface{} {
 	t.Helper()
-
-	destination := harness.AssertResponseOkWithStandardResponse(t, request)
-	result, ok := destination.Result.(map[string]interface{})
-	if !ok {
-		testutil.FatalMsgf(t, "Could not cast result to map[string]interface{}. Result: %v", destination)
+	var destination map[string]interface{}
+	harness.AssertResponseOKWithStruct(t, request, &destination)
+	if err, ok := destination["error"]; ok {
+		testutil.FailMsgf(t, `JSON body had field named "error": %v`, err)
 	}
-	return result
+	return destination
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response
 // can be parsed as a JSON list, and then returns the parsed JSON list
 func (harness *TestHarness) AssertResponseOkWithJsonList(t *testing.T, request *http.Request) []map[string]interface{} {
 	t.Helper()
-	destination := harness.AssertResponseOkWithStandardResponse(t, request)
-	firstResult, ok := destination.Result.([]interface{})
-	if !ok {
-		testutil.FatalMsgf(t, "Could not cast result to []interface{}. Result: %v", destination)
-	}
 
-	var result []map[string]interface{}
-	for _, elem := range firstResult {
-		casted, ok := elem.(map[string]interface{})
-		if !ok {
-			testutil.FatalMsgf(t, "Could not cast element to map[string]interface{}. Elem: %s", elem)
-		}
-		result = append(result, casted)
-	}
+	var destination []map[string]interface{}
+	harness.AssertResponseOKWithStruct(t, request, &destination)
 
-	return result
+	return destination
 
 }
 
@@ -282,13 +266,10 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, request *http.Request, s interface{}) {
 	t.Helper()
 
-	response := harness.AssertResponseOkWithStandardResponse(t, request)
-	marshalled, err := json.Marshal(response.Result)
-	if err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "could not marshal JSON"))
-	}
-	if err := json.Unmarshal(marshalled, s); err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "could not unmarshal JSON"))
+	response := harness.AssertResponseOkWithBody(t, request)
+
+	if err := json.Unmarshal(response.Bytes(), s); err != nil {
+		testutil.FailMsg(t, errors.Wrap(err, "could not unmarshal JSON"))
 	}
 }
 

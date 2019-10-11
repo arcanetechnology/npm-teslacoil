@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
@@ -35,7 +34,7 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, httptypes.Response(t))
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -65,7 +64,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 		log.Infof("found payment %v", t)
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(http.StatusOK, httptypes.Response(t))
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -114,7 +113,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, httptypes.Response(t))
+		c.JSONP(http.StatusOK, t)
 	}
 }
 
@@ -150,6 +149,6 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, httptypes.Response(t))
+		c.JSONP(http.StatusOK, t)
 	}
 }

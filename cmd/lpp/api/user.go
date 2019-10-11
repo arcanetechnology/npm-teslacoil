@@ -17,7 +17,6 @@ import (
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"golang.org/x/crypto/bcrypt"
@@ -42,7 +41,7 @@ func (r *RestServer) GetAllUsers() gin.HandlerFunc {
 			_ = c.Error(err)
 			return
 		}
-		c.JSONP(200, httptypes.Response(userResponse))
+		c.JSONP(200, userResponse)
 	}
 }
 
@@ -100,7 +99,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 
 		log.Infof("Update user result: %+v", response)
 
-		c.JSONP(http.StatusOK, httptypes.Response(response))
+		c.JSONP(http.StatusOK, response)
 
 	}
 }
@@ -129,7 +128,7 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 		}
 
 		// Return the user when it is found and no errors where encountered
-		c.JSONP(200, httptypes.Response(res))
+		c.JSONP(200, res)
 	}
 }
 
@@ -173,7 +172,7 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 		}
 		log.Info("successfully created user: ", res)
 
-		c.JSONP(200, httptypes.Response(res))
+		c.JSONP(200, res)
 	}
 }
 
@@ -246,7 +245,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			Lastname:    user.Lastname,
 		}
 
-		c.JSONP(200, httptypes.Response(res))
+		c.JSONP(200, res)
 	}
 }
 
@@ -299,7 +298,7 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 			TotpSecret: key.Secret(),
 			Base64QR:   base64Image,
 		}
-		c.JSONP(http.StatusOK, httptypes.Response(response))
+		c.JSONP(http.StatusOK, response)
 
 	}
 }
@@ -422,7 +421,7 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 			AccessToken: tokenString,
 		}
 
-		c.JSONP(200, httptypes.Response(res))
+		c.JSONP(200, res)
 	}
 }
 
@@ -602,9 +601,9 @@ func (r *RestServer) CreateApiKey() gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusCreated, httptypes.Response(CreateApiKeyResponse{
+		c.JSON(http.StatusCreated, CreateApiKeyResponse{
 			Key:    rawKey,
 			UserID: key.UserID,
-		}))
+		})
 	}
 }

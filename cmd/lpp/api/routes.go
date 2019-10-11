@@ -9,7 +9,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
 	"github.com/gin-contrib/cors"
@@ -230,7 +229,7 @@ func (r *RestServer) RegisterAdminRoutes() {
 			return
 		}
 
-		c.JSON(http.StatusOK, httptypes.Response(gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"network":               chainInfo.Chain,
 			"bestBlockHash":         chainInfo.BestBlockHash,
 			"blockCount":            chainInfo.Blocks,
@@ -241,7 +240,7 @@ func (r *RestServer) RegisterAdminRoutes() {
 			"activeChannels":        lndInfo.NumActiveChannels,
 			"pendingChannels":       lndInfo.NumPendingChannels,
 			"inactiveChannels":      lndInfo.NumInactiveChannels,
-		}))
+		})
 
 	}
 

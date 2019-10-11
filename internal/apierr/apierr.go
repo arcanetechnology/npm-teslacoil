@@ -33,8 +33,8 @@ func (a apiError) Error() string {
 }
 
 func (a apiError) Is(err error) bool {
-	if stdErr, ok := err.(httptypes.StandardError); ok {
-		return stdErr.Code == a.code
+	if stdErr, ok := err.(httptypes.StandardErrorResponse); ok {
+		return stdErr.ErrorField.Code == a.code
 	}
 	return a.err.Error() == err.Error()
 }
@@ -172,17 +172,18 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		}
 
 		fieldErrors := handleValidationErrors(c, log)
-		var response httptypes.StandardResponse
-		response.Error = &httptypes.StandardError{
-			Fields: fieldErrors,
+		response := &httptypes.StandardErrorResponse{
+			ErrorField: httptypes.StandardError{
+				Fields: fieldErrors,
+			},
 		}
 
 		// Check for JSON parsing errors
 		for _, err := range c.Errors {
 			var syntaxErr *json.SyntaxError
 			if errors.Is(err.Err, io.EOF) || errors.As(err.Err, &syntaxErr) {
-				response.Error.Code = ErrInvalidJson.code
-				response.Error.Message = ErrInvalidJson.err.Error()
+				response.ErrorField.Code = ErrInvalidJson.code
+				response.ErrorField.Message = ErrInvalidJson.err.Error()
 				c.JSON(httpCode, response)
 				return
 			}
@@ -194,22 +195,22 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 			// we only take the last one
 			err := publicErrors.Last()
 			if apiErr, ok := err.Err.(apiError); ok {
-				response.Error.Code = apiErr.code
-				response.Error.Message = apiErr.err.Error()
+				response.ErrorField.Code = apiErr.code
+				response.ErrorField.Message = apiErr.err.Error()
 			} else {
 				log.WithError(err).Warn("Got public error in error handler that was not apiError type")
-				response.Error.Code = ErrUnknownError.code
-				response.Error.Message = ErrUnknownError.err.Error()
+				response.ErrorField.Code = ErrUnknownError.code
+				response.ErrorField.Message = ErrUnknownError.err.Error()
 			}
 		}
 
-		if response.Error.Code == "" {
+		if response.ErrorField.Code == "" {
 			if len(fieldErrors) > 0 {
-				response.Error.Code = ErrRequestValidationFailed.code
-				response.Error.Message = ErrRequestValidationFailed.err.Error()
+				response.ErrorField.Code = ErrRequestValidationFailed.code
+				response.ErrorField.Message = ErrRequestValidationFailed.err.Error()
 			} else {
-				response.Error.Code = ErrUnknownError.code
-				response.Error.Message = ErrUnknownError.err.Error()
+				response.ErrorField.Code = ErrUnknownError.code
+				response.ErrorField.Message = ErrUnknownError.err.Error()
 			}
 		}
 

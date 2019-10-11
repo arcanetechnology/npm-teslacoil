@@ -60,21 +60,18 @@ func setupRouter(middleware gin.HandlerFunc) *gin.Engine {
 	return r
 }
 
-func assertErrorResponseOk(t *testing.T, w *httptest.ResponseRecorder, expectedFieldErrors int) httptypes.StandardError {
+func assertErrorResponseOk(t *testing.T, w *httptest.ResponseRecorder, expectedFieldErrors int) httptypes.StandardErrorResponse {
 	bodyBytes, err := ioutil.ReadAll(w.Body)
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
-	var res httptypes.StandardResponse
+	var res httptypes.StandardErrorResponse
 	if err := json.Unmarshal(bodyBytes, &res); err != nil {
 		testutil.FatalMsg(t, err)
 	}
-	testutil.AssertMsg(t, !(res.Error == nil && res.Result == nil), "Both error and result was nil!")
-	testutil.AssertMsg(t, !(res.Error != nil && res.Result != nil), "Both error and result was not nil!")
-	testutil.AssertMsg(t, res.Error != nil, "error was nil!")
-	testutil.AssertMsg(t, res.Error.Fields != nil, "Fields was nil!")
-	testutil.AssertMsgf(t, len(res.Error.Fields) == expectedFieldErrors, "Unexpected number of errors: %d", len(res.Error.Fields))
-	return *res.Error
+	testutil.AssertMsg(t, res.ErrorField.Fields != nil, "Fields was nil!")
+	testutil.AssertMsgf(t, len(res.ErrorField.Fields) == expectedFieldErrors, "Unexpected number of errors: %d", len(res.ErrorField.Fields))
+	return res
 }
 
 func TestJsonValidation(t *testing.T) {
@@ -86,8 +83,8 @@ func TestJsonValidation(t *testing.T) {
 			router.ServeHTTP(w, req)
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 0)
-			testutil.AssertMsg(t, err.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.Code, ErrInvalidJson.code)
+			testutil.AssertMsg(t, err.ErrorField.Message != "", "Error message was empty")
+			testutil.AssertEqual(t, err.ErrorField.Code, ErrInvalidJson.code)
 		})
 		t.Run("Invalid JSON", func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -96,8 +93,8 @@ func TestJsonValidation(t *testing.T) {
 			router.ServeHTTP(w, req)
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 0)
-			testutil.AssertMsg(t, err.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.Code, ErrInvalidJson.code)
+			testutil.AssertMsg(t, err.ErrorField.Message != "", "Error message was empty")
+			testutil.AssertEqual(t, err.ErrorField.Code, ErrInvalidJson.code)
 		})
 
 		t.Run("no parameters", func(t *testing.T) {
@@ -108,7 +105,7 @@ func TestJsonValidation(t *testing.T) {
 			err := assertErrorResponseOk(t, w, 2)
 			barOkErrorCheck := false
 			fooOkErrorCheck := false
-			for _, field := range err.Fields {
+			for _, field := range err.ErrorField.Fields {
 				if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 					barOkErrorCheck = true
 				}
@@ -132,7 +129,8 @@ func TestJsonValidation(t *testing.T) {
 
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
-			field := err.Fields[0]
+			testutil.AssertMsgf(t, len(err.ErrorField.Fields) > 0, "no field errors! Err: %v", err)
+			field := err.ErrorField.Fields[0]
 			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
 			}
@@ -149,7 +147,7 @@ func TestJsonValidation(t *testing.T) {
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
-			field := err.Fields[0]
+			field := err.ErrorField.Fields[0]
 			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true
 			}
@@ -183,7 +181,7 @@ func TestQueryValidation(t *testing.T) {
 			err := assertErrorResponseOk(t, w, 2)
 			barOkErrorCheck := false
 			fooOkErrorCheck := false
-			for _, field := range err.Fields {
+			for _, field := range err.ErrorField.Fields {
 				if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 					barOkErrorCheck = true
 				}
@@ -203,7 +201,7 @@ func TestQueryValidation(t *testing.T) {
 
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
-			field := err.Fields[0]
+			field := err.ErrorField.Fields[0]
 			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
 			}
@@ -216,7 +214,7 @@ func TestQueryValidation(t *testing.T) {
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
-			field := err.Fields[0]
+			field := err.ErrorField.Fields[0]
 			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true
 			}
