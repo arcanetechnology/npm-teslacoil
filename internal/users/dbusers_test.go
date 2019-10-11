@@ -1,7 +1,6 @@
 package users
 
 import (
-	"flag"
 	"math/rand"
 	"os"
 	"strings"
@@ -30,9 +29,6 @@ func TestMain(m *testing.M) {
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
-	log.Info("Configuring user test database")
-
-	flag.Parse()
 	result := m.Run()
 
 	if err := testDB.Close(); err != nil {
@@ -291,22 +287,8 @@ func TestCanCreateUser(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		expectedResult := tt.expectedResult
-
-		if user.Email != expectedResult.Email {
-			testutil.FatalMsgf(t,
-				"Email should be equal to expected Email. Expected \"%s\" got \"%s\"",
-				expectedResult.Email,
-				user.Email,
-			)
-		}
-		if user.Balance != expectedResult.Balance {
-			testutil.FatalMsgf(t,
-				"Balance should be equal to expected Balance. Expected: %d, got: %d",
-				expectedResult.Balance,
-				user.Balance,
-			)
-		}
+		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -331,9 +313,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 		},
 	}
 
-	for i, tt := range tests {
-
-		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
+	for _, tt := range tests {
 
 		tx := testDB.MustBegin()
 		user, err := insertUser(tx, tt.user)
@@ -349,26 +329,8 @@ func TestCanGetUserByEmail(t *testing.T) {
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
-
-		expectedResult := tt.expectedResult
-
-		if user.Email != expectedResult.Email {
-			testutil.FatalMsgf(
-				t,
-				"Email should be equal to expected Email. Expected \"%s\" got \"%s\"",
-				expectedResult.Email,
-				user.Email,
-			)
-		}
-		if user.Balance != expectedResult.Balance {
-			testutil.FatalMsgf(
-
-				t,
-				"Balance should be equal to expected Balance. Expected: %d, got: %d",
-				expectedResult.Balance,
-				user.Balance,
-			)
-		}
+		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -392,11 +354,7 @@ func TestCanGetUserByCredentials(t *testing.T) {
 		},
 	}
 
-	t.Log("testing can get user by email")
-
-	for i, tt := range tests {
-		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.email)
-
+	for _, tt := range tests {
 		user, err := Create(testDB, CreateUserArgs{
 			Email: tt.email, Password: tt.password,
 		})
@@ -409,24 +367,8 @@ func TestCanGetUserByCredentials(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		expectedResult := tt.expectedResult
-
-		if user.Email != expectedResult.Email {
-			testutil.FatalMsgf(
-				t,
-				"Email should be equal to expected Email. Expected \"%s\" got \"%s\"",
-				expectedResult.Email,
-				user.Email,
-			)
-		}
-		if user.Balance != expectedResult.Balance {
-			testutil.FatalMsgf(
-				t,
-				"Balance should be equal to expected Balance. Expected: %d, got: %d",
-				expectedResult.Balance,
-				user.Balance,
-			)
-		}
+		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -470,26 +412,8 @@ func TestCanGetUserByID(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		expectedResult := tt.expectedResult
-
-		if user.Email != expectedResult.Email {
-			testutil.FatalMsgf(
-				t,
-				"Email should be equal to expected Email. Expected \"%s\" got \"%s\"",
-				expectedResult.Email,
-				user.Email,
-			)
-		}
-
-		if user.Balance != expectedResult.Balance {
-			testutil.FatalMsgf(
-				t,
-				"Balance should be equal to expected Balance. Expected: %d, got: %d",
-				expectedResult.Balance,
-				user.Balance,
-			)
-		}
-
+		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -648,10 +572,7 @@ func TestDecreaseBalance(t *testing.T) {
 		},
 	}
 
-	for i, tt := range tests {
-		t.Logf("\ttest: %d\twhen decreasing balance by %d for user %d",
-			i, tt.dec.AmountSat, tt.dec.UserID)
-
+	for _, tt := range tests {
 		_, err := GetByID(testDB, tt.expectedResult.ID)
 		if err != nil {
 			testutil.FatalMsg(t, err)
@@ -669,35 +590,9 @@ func TestDecreaseBalance(t *testing.T) {
 				"Could not commit balance decrease: %v", err)
 		}
 
-		expectedResult := tt.expectedResult
-
-		if u.ID != expectedResult.ID {
-			testutil.FailMsgf(
-				t,
-				"ID should be equal to expected ID. Expected \"%d\" got \"%d\"",
-				expectedResult.ID,
-				u.ID,
-			)
-		}
-
-		if u.Email != expectedResult.Email {
-			testutil.FailMsgf(
-				t,
-				"Email should be equal to expected Email. Expected \"%s\" got \"%s\"",
-				expectedResult.Email,
-				u.Email,
-			)
-		}
-
-		if u.Balance != expectedResult.Balance {
-			testutil.FailMsgf(
-				t,
-				"Balance should be equal to expected Balance. Expected \"%d\" got \"%d\"",
-				expectedResult.Balance,
-				u.Balance,
-			)
-		}
-
+		testutil.AssertEqual(t, u.ID, tt.expectedResult.ID)
+		testutil.AssertEqual(t, u.Email, tt.expectedResult.Email)
+		testutil.AssertEqual(t, u.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -765,10 +660,7 @@ func TestIncreaseBalance(t *testing.T) {
 		},
 	}
 
-	for i, tt := range tests {
-		t.Logf("\ttest: %d\twhen increasing balance by %d for user %d",
-			i, tt.amountSat, tt.userID)
-
+	for _, tt := range tests {
 		tx := testDB.MustBegin()
 
 		user, err := IncreaseBalance(tx, ChangeBalance{UserID: tt.userID, AmountSat: tt.amountSat})
@@ -785,32 +677,9 @@ func TestIncreaseBalance(t *testing.T) {
 			testutil.FatalMsgf(t, "Could not commit: %v", err)
 		}
 
-		expectedResult := tt.expectedResult
-		if user.ID != expectedResult.ID {
-			testutil.FailMsgf(t,
-				"tID should be equal to expected ID. Expected \"%d\" got \"%d\"",
-				expectedResult.ID,
-				user.ID,
-			)
-		}
-
-		if user.Email != expectedResult.Email {
-			testutil.FailMsgf(
-				t,
-				"Email should be equal to expected Email. Expected \"%s\" got \"%s\"",
-				expectedResult.Email,
-				user.Email,
-			)
-		}
-
-		if user.Balance != expectedResult.Balance {
-			testutil.FailMsgf(
-				t,
-				"Balance should be equal to expected Balance. Expected \"%d\" got \"%d\"",
-				expectedResult.Balance,
-				user.Balance,
-			)
-		}
+		testutil.AssertEqual(t, user.ID, tt.expectedResult.ID)
+		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 
 	}
 }

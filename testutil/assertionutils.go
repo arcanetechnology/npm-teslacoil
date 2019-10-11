@@ -15,6 +15,14 @@ func isNilValue(i interface{}) bool {
 		return true
 	case int:
 		return t == 0
+	case int64:
+		return t == 0
+	case int32:
+		return t == 0
+	case int16:
+		return t == 0
+	case int8:
+		return t == 0
 	case string:
 		return t == ""
 	case float32:
