@@ -107,6 +107,29 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 	}
 }
 
+func (r *RestServer) VerifyEmail() gin.HandlerFunc {
+	type Request struct {
+		Token string `json:"token" binding:"required"`
+	}
+
+	return func(c *gin.Context) {
+		var req Request
+		if c.BindJSON(&req) != nil {
+			return
+		}
+
+		user, err := users.VerifyEmail(r.db, req.Token)
+		if err != nil {
+			log.WithError(err).Error("Couldn't verify email")
+			_ = c.Error(err)
+			return
+		}
+
+		log.WithField("userId", user.ID).Debug("Verified email")
+		c.Status(http.StatusOK)
+	}
+}
+
 // GetUser is a GET request that returns users that match the one specified in the body
 func (r *RestServer) GetUser() gin.HandlerFunc {
 	return func(c *gin.Context) {

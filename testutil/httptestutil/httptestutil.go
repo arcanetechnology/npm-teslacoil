@@ -92,7 +92,36 @@ func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) 
 		}`, args.Email, args.Password, firstName, lastName),
 	})
 
-	return harness.AssertResponseOkWithJson(t, createUserRequest)
+	createUserResponse := harness.AssertResponseOkWithJson(t, createUserRequest)
+
+	email := createUserResponse["email"].(string)
+	if email == "" {
+		testutil.FatalMsgf(t, "Did not get email in create user response! Response: %+v", createUserResponse)
+
+	}
+	token, err := users.GetEmailVerificationToken(harness.database, email)
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to get email verification token: %v", err)
+	}
+
+	verifyEmailRequest := GetRequest(t, RequestArgs{
+		Path:   "/user/verify_email",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"token": %q
+		}`, token),
+	})
+
+	harness.AssertResponseOk(t, verifyEmailRequest)
+
+	verified, err := users.GetByEmail(harness.database, email)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	testutil.AssertMsg(t, verified.HasVerifiedEmail, "User hasn't verified email!")
+
+	return createUserResponse
 }
 
 type AuthRequestArgs struct {

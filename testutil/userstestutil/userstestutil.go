@@ -9,7 +9,8 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
-// CreateUserOrFail creates a user with a random email and password
+// CreateUserOrFail creates a user with a random email and password. The
+// method also verifies the users email.
 func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
 	passwordLen := gofakeit.Number(8, 32)
 	password := gofakeit.Password(true, true, true, true, true, passwordLen)
@@ -17,7 +18,7 @@ func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
 }
 
 // CreateUserOrFailWithPassword creates a user with a random email and the
-// given password
+// given password. The method also verifies the users email.
 func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) users.User {
 	u, err := users.Create(db, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
@@ -28,7 +29,18 @@ func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) user
 			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
 			t.Name(), err)
 	}
-	return u
+
+	token, err := users.GetEmailVerificationToken(db, u.Email)
+	if err != nil {
+		testutil.FatalMsgf(t, "Could not get email verification token: %v", err)
+	}
+
+	verified, err := users.VerifyEmail(db, token)
+	if err != nil {
+		testutil.FatalMsgf(t, "Could not verify email: %v", verified)
+	}
+
+	return verified
 }
 
 // CreateUserWithBalanceOrFail creates a user with an initial balance
