@@ -277,7 +277,6 @@ func TestPostLoginRoute(t *testing.T) {
 		testutil.AssertEqual(t, res["email"], email)
 		testutil.AssertEqual(t, res["balance"], 0.0)
 	})
-
 	t.Run("fail to login with invalid credentials", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
@@ -291,7 +290,6 @@ func TestPostLoginRoute(t *testing.T) {
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
 		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
 	})
-
 	t.Run("fail to login with non-existant credentials", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
@@ -304,6 +302,23 @@ func TestPostLoginRoute(t *testing.T) {
 		})
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
 		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
+	})
+
+	t.Run("fail to login with non-verified email", func(t *testing.T) {
+		nonVerifiedEmail := gofakeit.Email()
+		newPass := gofakeit.Password(true, true, true, true, true, 32)
+		_ = h.CreateUserNoVerifyEmail(t, users.CreateUserArgs{Email: nonVerifiedEmail, Password: newPass})
+
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, nonVerifiedEmail, newPass),
+		})
+
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
 	})
 }
 
@@ -461,16 +476,9 @@ func TestChangePasswordRoute(t *testing.T) {
 }
 
 func TestResetPasswordRoute(t *testing.T) {
-	email := gofakeit.Email()
 	pass := gofakeit.Password(true, true, true, true, true, 32)
 	newPass := gofakeit.Password(true, true, true, true, true, 32)
-	user, err := users.Create(testDB, users.CreateUserArgs{
-		Email:    email,
-		Password: pass,
-	})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
 
 	t.Run("should not be able to reset to a weak password", func(t *testing.T) {
 		badPass := "12345678"
@@ -491,7 +499,7 @@ func TestResetPasswordRoute(t *testing.T) {
 
 	t.Run("Should not be able to reset the user password by using a bad token", func(t *testing.T) {
 		badSecretKey := []byte("this is a secret key which we expect to fail")
-		badToken := passwordreset.NewToken(email, users.PasswordResetTokenDuration,
+		badToken := passwordreset.NewToken(user.Email, users.PasswordResetTokenDuration,
 			user.HashedPassword, badSecretKey)
 		badTokenReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/auth/reset_password",
@@ -510,7 +518,7 @@ func TestResetPasswordRoute(t *testing.T) {
 			Body: fmt.Sprintf(`{
 				"password": %q,
 				"email": %q
-			}`, pass, email),
+			}`, pass, user.Email),
 		})
 		h.AssertResponseOk(t, loginReq)
 
@@ -521,7 +529,7 @@ func TestResetPasswordRoute(t *testing.T) {
 			Body: fmt.Sprintf(`{
 				"password": %q,
 				"email": %q
-			}`, newPass, email),
+			}`, newPass, user.Email),
 		})
 		_, _ = h.AssertResponseNotOk(t, badLoginReq)
 	})
@@ -548,7 +556,7 @@ func TestResetPasswordRoute(t *testing.T) {
 			Body: fmt.Sprintf(`{
 				"password": %q,
 				"email": %q
-			}`, newPass, email),
+			}`, newPass, user.Email),
 		})
 		h.AssertResponseOk(t, loginReq)
 
@@ -559,7 +567,7 @@ func TestResetPasswordRoute(t *testing.T) {
 			Body: fmt.Sprintf(`{
 				"password": %q,
 				"email": %q
-			}`, pass, email),
+			}`, pass, user.Email),
 		})
 		_, _ = h.AssertResponseNotOk(t, badLoginReq)
 	})

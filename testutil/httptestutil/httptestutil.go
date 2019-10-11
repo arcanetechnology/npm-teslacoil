@@ -58,7 +58,9 @@ func isJSONString(s string) bool {
 	return err == nil
 }
 
-func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+func (harness *TestHarness) CreateUserNoVerifyEmail(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	t.Helper()
+
 	if args.Password == "" {
 		testutil.FatalMsg(t, "You forgot to set the password!")
 	}
@@ -92,14 +94,15 @@ func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) 
 		}`, args.Email, args.Password, firstName, lastName),
 	})
 
-	createUserResponse := harness.AssertResponseOkWithJson(t, createUserRequest)
+	return harness.AssertResponseOkWithJson(t, createUserRequest)
+}
 
-	email := createUserResponse["email"].(string)
-	if email == "" {
-		testutil.FatalMsgf(t, "Did not get email in create user response! Response: %+v", createUserResponse)
+func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	t.Helper()
 
-	}
-	token, err := users.GetEmailVerificationToken(harness.database, email)
+	createUserResponse := harness.CreateUserNoVerifyEmail(t, args)
+
+	token, err := users.GetEmailVerificationToken(harness.database, args.Email)
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to get email verification token: %v", err)
 	}
@@ -114,7 +117,7 @@ func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) 
 
 	harness.AssertResponseOk(t, verifyEmailRequest)
 
-	verified, err := users.GetByEmail(harness.database, email)
+	verified, err := users.GetByEmail(harness.database, args.Email)
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}

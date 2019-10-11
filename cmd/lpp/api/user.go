@@ -250,6 +250,12 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			return
 		}
 
+		if !user.HasVerifiedEmail {
+			log.WithField("userId", user.ID).Error("User has not verified email")
+			apierr.Public(c, http.StatusUnauthorized, apierr.ErrEmailNotVerified)
+			return
+		}
+
 		// user has 2FA enabled
 		if user.TotpSecret != nil {
 			if req.TotpCode == "" {
