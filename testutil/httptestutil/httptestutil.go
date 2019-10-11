@@ -22,6 +22,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -36,18 +37,18 @@ type Server interface {
 // At the moment this only includes HTTP serving, but in the future this
 // is likely to expand.
 type TestHarness struct {
-	server Server
+	server   Server
+	database *db.DB
 }
 
-func NewTestHarness(server Server) TestHarness {
+func NewTestHarness(server Server, database *db.DB) TestHarness {
 	randomKey, err := rsa.GenerateKey(cryptorand.Reader, 4096)
 	if err != nil {
 		panic(errors.Wrap(err, "could not generate RSA key"))
 	}
 
 	auth.SetJwtPrivateKey(randomKey)
-
-	return TestHarness{server: server}
+	return TestHarness{server: server, database: database}
 }
 
 // Checks if the given string is valid JSON

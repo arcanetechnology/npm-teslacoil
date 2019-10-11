@@ -4,8 +4,11 @@ import (
 	"net/http"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
+
+var emptyDb = &db.DB{}
 
 type badJson struct{}
 
@@ -46,7 +49,7 @@ func (s badServer) ServeHTTP(response http.ResponseWriter, request *http.Request
 func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 	t.Run("accept a normal JSON body", func(t *testing.T) {
 		server := goodObject{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -56,7 +59,7 @@ func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 
 	t.Run(`fail with a JSON body containing "error"`, func(t *testing.T) {
 		server := badServer{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -68,7 +71,7 @@ func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 
 	t.Run(`fail with invalid JSON`, func(t *testing.T) {
 		server := badJson{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -82,7 +85,7 @@ func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 func TestTestHarness_AssertResponseOkWithJsonList(t *testing.T) {
 	t.Run("accept a normal JSON body", func(t *testing.T) {
 		server := goodList{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -92,7 +95,7 @@ func TestTestHarness_AssertResponseOkWithJsonList(t *testing.T) {
 
 	t.Run(`fail with invalid JSON`, func(t *testing.T) {
 		server := badJson{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -136,7 +139,7 @@ func (s goodError) ServeHTTP(response http.ResponseWriter, request *http.Request
 func TestTestHarness_AssertResponseNotOk(t *testing.T) {
 	t.Run("accept a good error response", func(t *testing.T) {
 		server := goodError{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -146,7 +149,7 @@ func TestTestHarness_AssertResponseNotOk(t *testing.T) {
 
 	t.Run("fail with a 200 code", func(t *testing.T) {
 		server := goodObject{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",
@@ -159,7 +162,7 @@ func TestTestHarness_AssertResponseNotOk(t *testing.T) {
 
 	t.Run("fail with a error code that doesn't have a correct error response", func(t *testing.T) {
 		server := badError{}
-		h := NewTestHarness(server)
+		h := NewTestHarness(server, emptyDb)
 		req := GetRequest(t, RequestArgs{
 			Path:   "/ping",
 			Method: "GET",

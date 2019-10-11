@@ -60,7 +60,7 @@ func init() {
 		panic(err.Error())
 	}
 
-	h = httptestutil.NewTestHarness(app.Router)
+	h = httptestutil.NewTestHarness(app.Router, testDB)
 }
 
 func TestMain(m *testing.M) {
@@ -1096,7 +1096,7 @@ func TestCreateInvoice(t *testing.T) {
 	randomMockClient := lntestutil.GetRandomLightningMockClient()
 	app, _ := NewApp(testDB, randomMockClient, mockSendGridClient,
 		mockBitcoindClient, mockHttpPoster, conf)
-	otherH := httptestutil.NewTestHarness(app.Router)
+	otherH := httptestutil.NewTestHarness(app.Router, testDB)
 
 	password := gofakeit.Password(true, true, true, true, true, 32)
 	email := gofakeit.Email()
