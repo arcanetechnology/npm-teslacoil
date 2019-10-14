@@ -41,10 +41,10 @@ RUN mkdir -p /data
 RUN chmod a+rw /data
 
 # user ID
-ARG UID
+ARG uid
 
 # group ID
-ARG GID
+ARG gid
 
 # Create new user, but only if the default user name
 # is not overriden. If that is overriden, it's because
@@ -54,8 +54,8 @@ ARG GID
 # but if everything is running as root (as on CI), 
 # this is not an issue. 
 ARG UNAME=lnd
-RUN if [[ $UNAME = "lnd" ]]; then addgroup -g $GID $UNAME; fi
-RUN if [[ $UNAME = "lnd" ]]; then adduser -u $UID -G $UNAME -D -s /bin/bash $UNAME; fi
+RUN if [[ $UNAME = "lnd" ]]; then addgroup -g $gid $UNAME; fi
+RUN if [[ $UNAME = "lnd" ]]; then adduser -u $uid -G $UNAME -D -s /bin/bash $UNAME; fi
 
 # Run as newly created user
 USER $UNAME

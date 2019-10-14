@@ -13,8 +13,8 @@ export RPCPASS=devpass
 export RPCUSER=devuser
 
 # Docker
-export UID=1001 # This should be your user ID: `id -u`
-export GID=1001 # This should be your group ID: `id -g`
+export uid=1001 # This should be your user ID: `id -u`
+export gid=1001 # This should be your group ID: `id -g`
 
 # Other
 export GO111MODULE=on
