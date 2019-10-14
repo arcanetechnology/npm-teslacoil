@@ -1,8 +1,12 @@
 package auth
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -18,10 +22,58 @@ import (
 var (
 	log = build.Log
 
-	// TODO change this before production
 	// tokenSigningKey is the key we use to sign and verify our JWTs
-	tokenSigningKey = []byte("secret_jwt_key")
+	privateKey               *rsa.PrivateKey
+	publicKey                *rsa.PublicKey
+	ErrPrivateKeyIsNotInArgs = errors.New("private key not present in args")
 )
+
+func init() {
+	privateKey, publicKey = loadPrivateKey("/home/bo/gocode/src/gitlab.com/arcanecrypto/teslacoil/key.pem", "")
+}
+
+// loadPrivateKey loads the RSA private key from `rsaPrivKeyPath` with password `rsaPrivKeyPassword`
+// if the RSA private key does not have a password, pass the empty string ""
+// Because this is necessary for the application to run, the function will panic should anything go wrong
+func loadPrivateKey(rsaPrivKeyPath, rsaPrivKeyPassword string) (*rsa.PrivateKey, *rsa.PublicKey) {
+
+	priv, err := ioutil.ReadFile(rsaPrivKeyPath)
+	if err != nil {
+		log.Error(err)
+		panic("No RSA private key found")
+	}
+
+	privPem, _ := pem.Decode(priv)
+	if privPem.Type != "RSA PRIVATE KEY" {
+		panic("key is of wrong type, not a RSA key")
+	}
+
+	var privPemBytes []byte
+	if rsaPrivKeyPassword == "" {
+		privPemBytes = privPem.Bytes
+	} else {
+		privPemBytes, err = x509.DecryptPEMBlock(privPem, []byte(rsaPrivKeyPassword))
+		if err != nil {
+			log.Error(err)
+			panic("unable to decode pem block, wrong password?")
+		}
+	}
+
+	var parsedKey interface{}
+	if parsedKey, err = x509.ParsePKCS1PrivateKey(privPemBytes); err != nil {
+		if parsedKey, err = x509.ParsePKCS8PrivateKey(privPemBytes); err != nil {
+			log.Error(err)
+			panic("unable to parse RSA private key")
+		}
+	}
+
+	privateKey, ok := parsedKey.(*rsa.PrivateKey)
+	if !ok {
+		panic("unable to parse convert interface to rsa.PrivateKey")
+	}
+
+	return privateKey, &privateKey.PublicKey
+}
 
 const (
 	// Header is the name of the header we check for authentication details
@@ -44,6 +96,7 @@ type JWTClaims struct {
 // request variable that can be retrieved later, after the request has
 // passed through the middleware.
 func GetMiddleware(database *db.DB) func(c *gin.Context) {
+
 	return func(c *gin.Context) {
 		header := c.GetHeader(Header)
 		if header == "" {
@@ -125,7 +178,7 @@ func authenticateJWT(c *gin.Context) int {
 	return claims.UserID
 }
 
-func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClaims, error) {
+func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.Token, *JWTClaims, error) {
 	claims := jwt.MapClaims{}
 
 	// Remove 'Bearer ' from tokenString. It is fine to do it this way because
@@ -141,7 +194,7 @@ func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClai
 	// extract the claims
 	token, err := jwt.ParseWithClaims(tokenString, claims,
 		func(token *jwt.Token) (interface{}, error) {
-			return key, nil
+			return publicKey, nil
 		})
 	if err != nil {
 		log.WithError(err).WithField("jwt", tokenString).Errorf("Parsing JWT failed")
@@ -187,14 +240,14 @@ func parseBearerJwtWithKey(tokenString string, key []byte) (*jwt.Token, *JWTClai
 // it is signed by us. It returns the token and the extracted claims.
 // If anything goes wrong, an error with a descriptive reason is returned.
 func ParseBearerJwt(tokenString string) (*jwt.Token, *JWTClaims, error) {
-	return parseBearerJwtWithKey(tokenString, tokenSigningKey)
+	return parseBearerJwtWithKey(tokenString, publicKey)
 }
 
 type createJwtArgs struct {
-	email string
-	id    int
-	key   []byte
-	now   func() time.Time
+	email      string
+	id         int
+	privateKey *rsa.PrivateKey
+	now        func() time.Time
 }
 
 func createJwt(args createJwtArgs) (string, error) {
@@ -202,13 +255,13 @@ func createJwt(args createJwtArgs) (string, error) {
 		args.now = time.Now
 	}
 
-	if args.key == nil {
-		args.key = tokenSigningKey
+	if args.privateKey == nil {
+		return "", ErrPrivateKeyIsNotInArgs
 	}
 
 	expiresAt := args.now().Add(5 * time.Hour).Unix()
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
+	token := jwt.NewWithClaims(jwt.SigningMethodRS512,
 		&JWTClaims{
 			Email:  args.email,
 			UserID: args.id,
@@ -221,7 +274,7 @@ func createJwt(args createJwtArgs) (string, error) {
 
 	log.Trace("Created token: ", token)
 
-	tokenString, err := token.SignedString(args.key)
+	tokenString, err := token.SignedString(args.privateKey)
 	if err != nil {
 		log.WithError(err).Error("Signing JWT failed")
 		return "", err
@@ -237,9 +290,9 @@ func createJwt(args createJwtArgs) (string, error) {
 // It returns the string representation of the token.
 func CreateJwt(email string, id int) (string, error) {
 	return createJwt(createJwtArgs{
-		email: email,
-		id:    id,
-		key:   tokenSigningKey,
-		now:   time.Now,
+		email:      email,
+		id:         id,
+		privateKey: privateKey,
+		now:        time.Now,
 	})
 }
