@@ -95,7 +95,7 @@ func AssertNotEqual(t *testing.T, expected interface{}, actual interface{}) {
 func AssertMsg(t *testing.T, cond bool, message string) {
 	t.Helper()
 	if !cond {
-		FatalMsgf(t, "Assertion error: %s", message)
+		FailMsgf(t, "Assertion error: %s", message)
 	}
 }
 

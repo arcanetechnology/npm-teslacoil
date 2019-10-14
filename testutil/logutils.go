@@ -66,9 +66,9 @@ func FatalMsgf(t *testing.T, format string, args ...interface{}) {
 	t.Fatalf("\t%s%s\t error: %s%s", red, cross, message, reset)
 }
 
-func FailMsg(t *testing.T, message string) {
+func FailMsg(t *testing.T, message interface{}) {
 	t.Helper()
-	FailMsgf(t, message)
+	FailMsgf(t, "%v", message)
 }
 
 func FailMsgf(t *testing.T, format string, args ...interface{}) {

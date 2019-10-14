@@ -5,42 +5,32 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
 
 // GetAllPayments finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
 func (r *RestServer) GetAllPayments() gin.HandlerFunc {
+	type Params struct {
+		Limit  int `form:"limit" binding:"gte=0"`
+		Offset int `form:"offset" binding:"gte=0"`
+	}
 	return func(c *gin.Context) {
 		userID, ok := getUserIdOrReject(c)
 		if !ok {
 			return
 		}
 
-		URLParams := c.Request.URL.Query()
-
-		limitStr := URLParams.Get("limit")
-		offsetStr := URLParams.Get("offset")
-
-		limit, err := strconv.ParseInt(limitStr, 10, 64)
-		if err != nil {
-			log.Errorf(`Couldn't parse "limit" to an integer: %v`, err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param \"limit\" should be a integer"})
-			return
-		}
-		offset, err := strconv.ParseInt(offsetStr, 10, 64)
-		if err != nil {
-			log.Errorf(`Couldn't parse "offset" to an integer: %v`, offset)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param \"offset\" should be a integer"})
+		var params Params
+		if c.BindQuery(&params) != nil {
 			return
 		}
 
-		t, err := payments.GetAll(r.db, userID, int(limit), int(offset))
+		t, err := payments.GetAll(r.db, userID, params.Limit, params.Offset)
 		if err != nil {
-			log.Errorf("Couldn't get payments: %v", err)
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			log.WithError(err).Errorf("Couldn't get payments")
+			_ = c.Error(err)
 			return
 		}
 
@@ -67,10 +57,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 
 		t, err := payments.GetByID(r.db, int(id), userID)
 		if err != nil {
-			c.JSONP(
-				http.StatusNotFound,
-				gin.H{"error": "invoice not found"},
-			)
+			apierr.Public(c, http.StatusNotFound, apierr.ErrInvoiceNotFound)
 			return
 		}
 
@@ -85,7 +72,7 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	// CreateInvoiceRequest is a deposit
 	type CreateInvoiceRequest struct {
-		AmountSat   int64  `json:"amountSat" binding:"required,gt=0"`
+		AmountSat   int64  `json:"amountSat" binding:"required,gt=0,lte=4294967"`
 		Memo        string `json:"memo" binding:"max=256"`
 		Description string `json:"description"`
 		CallbackURL string `json:"callbackUrl" binding:"omitempty,url"`
@@ -98,7 +85,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		}
 
 		var request CreateInvoiceRequest
-		if ok := getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 
@@ -116,13 +103,14 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			})
 
 		if err != nil {
-			log.Error(errors.Wrapf(err, "could not add new payment"))
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			log.WithError(err).Error("Could not add new payment")
+			_ = c.Error(err)
 			return
 		}
 
 		if t.UserID != userID {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
+			return
 		}
 
 		c.JSONP(http.StatusOK, t)
@@ -146,7 +134,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		}
 
 		var request PayInvoiceRequest
-		if ok = getJSONOrReject(c, &request); !ok {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 		log.Debugf("received new request for PayInvoice for userID %d: %+v",
@@ -157,7 +145,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, userID,
 			request.PaymentRequest, request.Description)
 		if err != nil {
-			c.JSONP(http.StatusInternalServerError, internalServerErrorResponse)
+			_ = c.Error(err)
 			return
 		}
 

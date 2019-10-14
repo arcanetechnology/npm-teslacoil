@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +25,7 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 		}
 
 		var params Params
-		if !getQueryOrReject(c, &params) {
+		if c.BindQuery(&params) != nil {
 			return
 		}
 
@@ -40,9 +41,8 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 			t, err = transactions.GetAllTransactionsLimitOffset(r.db, userID, params.Limit, params.Offset)
 		}
 		if err != nil {
-			log.Errorf("Couldn't get transactions: %v", err)
-			c.JSONP(http.StatusInternalServerError, gin.H{
-				"error": "internal server error, please try again or contact support"})
+			log.WithError(err).Error("Couldn't get transactions")
+			_ = c.Error(err)
 			return
 		}
 
@@ -69,14 +69,9 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 		log.Debugf("find transaction %d for user %d", id, userID)
 		t, err := transactions.GetTransactionByID(r.db, int(id), userID)
 		if err != nil {
-			c.JSONP(
-				http.StatusNotFound,
-				gin.H{"error": "invoice not found"},
-			)
+			apierr.Public(c, http.StatusNotFound, apierr.ErrTransactionNotFound)
 			return
 		}
-
-		log.Debugf("found transaction %v", t)
 
 		// Return the user when it is found and no errors where encountered
 		c.JSONP(http.StatusOK, t)
@@ -101,21 +96,16 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		}
 
 		var request transactions.WithdrawOnChainArgs
-		if !getJSONOrReject(c, &request) {
+		if c.BindJSON(&request) != nil {
 			return
 		}
 		// add the userID to send coins from
 		request.UserID = userID
 
-		// TODO: Create a middleware for logging request body
-		log.Infof("Received WithdrawOnChain request %+v\n", request)
-
 		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, request)
 		if err != nil {
-			log.Errorf("cannot withdraw onchain: %v", err)
-			c.JSONP(http.StatusInternalServerError,
-				internalServerErrorResponse,
-			)
+			log.WithError(err).Errorf("Cannot withdraw onchain")
+			_ = c.Error(err)
 			return
 		}
 
@@ -152,17 +142,15 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 		}
 
 		var req NewDepositRequest
-		if ok := getJSONOrReject(c, &req); !ok {
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
 		transaction, err := transactions.GetOrCreateDeposit(r.db, r.lncli, userID,
 			req.ForceNewAddress, req.Description)
 		if err != nil {
-			log.Errorf("cannot deposit onchain: %v", err)
-			c.JSONP(http.StatusInternalServerError,
-				internalServerErrorResponse,
-			)
+			log.WithError(err).Error("Cannot deposit onchain")
+			_ = c.Error(err)
 			return
 		}
 

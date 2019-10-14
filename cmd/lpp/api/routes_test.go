@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
@@ -31,6 +30,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
 var (
@@ -90,7 +90,7 @@ func TestCreateUser(t *testing.T) {
 				"email": %q
 			}`, gofakeit.Email()),
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 	t.Run("Creating a user must fail without an email", func(t *testing.T) {
 		testutil.DescribeTest(t)
@@ -100,7 +100,7 @@ func TestCreateUser(t *testing.T) {
 				"password": %q
 			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("Creating a user must fail with an empty email", func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestCreateUser(t *testing.T) {
 				"email": ""
 			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("creating an user with an invalid email should fail", func(t *testing.T) {
@@ -125,7 +125,7 @@ func TestCreateUser(t *testing.T) {
 				"email": "this-is-not@a-valid-mail"
 			}`, pass),
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("It should be possible to create a user without any names", func(t *testing.T) {
@@ -215,7 +215,7 @@ func TestPostLoginRoute(t *testing.T) {
 			"password": %q
 		}`, badEmail, password),
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("login with proper email", func(t *testing.T) {
@@ -257,7 +257,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, newPass, newPass),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("Should give an error if not including the new password", func(t *testing.T) {
@@ -271,7 +271,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, pass, newPass),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("Should give an error if not including the repeated password", func(t *testing.T) {
@@ -285,7 +285,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, pass, newPass),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("Should give an error if including the wrong repeated password", func(t *testing.T) {
@@ -301,7 +301,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, pass, newPass, anotherNewPassword),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("Should give an error if not including the access token", func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, newPass, pass, pass),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("should give an error on bad password", func(t *testing.T) {
@@ -330,7 +330,7 @@ func TestChangePasswordRoute(t *testing.T) {
 			"repeatedNewPassword": %q
 		}`, pass, badNewPass, badNewPass),
 		})
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusBadRequest)
 	})
 
 	t.Run("Must be able to change password", func(t *testing.T) {
@@ -366,7 +366,7 @@ func TestChangePasswordRoute(t *testing.T) {
 				"password": %q
 			}`, email, pass),
 		})
-		h.AssertResponseNotOk(t, badLoginReq)
+		_, _ = h.AssertResponseNotOk(t, badLoginReq)
 
 	})
 
@@ -383,7 +383,7 @@ func TestChangePasswordRoute(t *testing.T) {
 		}`, badPass, newPass, newPass),
 		})
 
-		h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
+		_, _ = h.AssertResponseNotOkWithCode(t, changePassReq, http.StatusForbidden)
 	})
 
 }
@@ -414,7 +414,7 @@ func TestResetPasswordRoute(t *testing.T) {
 				"password": %q
 			}`, token, badPass),
 		})
-		h.AssertResponseNotOkWithCode(t, resetPassReq, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, resetPassReq, http.StatusBadRequest)
 	})
 
 	t.Run("Should not be able to reset the user password by using a bad token", func(t *testing.T) {
@@ -429,7 +429,7 @@ func TestResetPasswordRoute(t *testing.T) {
 				"password": %q
 			}`, badToken, newPass),
 		})
-		h.AssertResponseNotOkWithCode(t, badTokenReq, http.StatusForbidden)
+		_, _ = h.AssertResponseNotOkWithCode(t, badTokenReq, http.StatusForbidden)
 
 		// we should be able to log in with old credentials
 		loginReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
@@ -451,7 +451,7 @@ func TestResetPasswordRoute(t *testing.T) {
 				"email": %q
 			}`, newPass, email),
 		})
-		h.AssertResponseNotOk(t, badLoginReq)
+		_, _ = h.AssertResponseNotOk(t, badLoginReq)
 	})
 
 	t.Run("Reset the password by using the correct token", func(t *testing.T) {
@@ -489,7 +489,7 @@ func TestResetPasswordRoute(t *testing.T) {
 				"email": %q
 			}`, pass, email),
 		})
-		h.AssertResponseNotOk(t, badLoginReq)
+		_, _ = h.AssertResponseNotOk(t, badLoginReq)
 	})
 
 	t.Run("Should not be able to reset the password twice", func(t *testing.T) {
@@ -516,7 +516,7 @@ func TestResetPasswordRoute(t *testing.T) {
 				"password": %q
 			}`, token, yetAnotherNewPass),
 		})
-		h.AssertResponseNotOkWithCode(t, secondResetPassReq, http.StatusForbidden)
+		_, _ = h.AssertResponseNotOkWithCode(t, secondResetPassReq, http.StatusForbidden)
 
 	})
 }
@@ -540,7 +540,7 @@ func TestPutUserRoute(t *testing.T) {
 				"email": "bad-email.coming.through"
 			}`,
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("update email, first name and last name", func(t *testing.T) {
@@ -615,7 +615,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 			Path:   "/auth/2fa",
 			Method: "POST",
 		})
-		h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("enable 2FA", func(t *testing.T) {
@@ -644,7 +644,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 				}`,
 			})
 
-			h.AssertResponseNotOkWithCode(t, req, http.StatusForbidden)
+			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusForbidden)
 		})
 
 		t.Run("confirm 2FA", func(t *testing.T) {
@@ -680,7 +680,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 				}`, code),
 				})
 
-				h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+				_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 			})
 
 			t.Run("should need TOTP code for login", func(t *testing.T) {
@@ -692,7 +692,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 						"password": %q
 					}`, email, password),
 				})
-				h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+				_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 			})
 
 			t.Run("should be able to login with TOTP code", func(t *testing.T) {
@@ -721,7 +721,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 						"code": "123456"
 					}`,
 				})
-				h.AssertResponseNotOkWithCode(t, req, http.StatusForbidden)
+				_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusForbidden)
 			})
 
 			t.Run("delete 2FA credentials", func(t *testing.T) {
@@ -764,7 +764,7 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 							"code": %q
 						}`, code),
 					})
-					h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+					_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 				})
 			})
 
@@ -801,10 +801,9 @@ func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, d
 			forceNewAddress,
 			description),
 	})
-	res := h.AssertResponseOk(t, req)
 
 	var trans transactions.Transaction
-	h.AssertResponseOKWithStruct(t, res.Body, &trans)
+	h.AssertResponseOKWithStruct(t, req, &trans)
 
 	return trans.ID
 }
@@ -847,9 +846,8 @@ func TestGetTransactionByID(t *testing.T) {
 			Method:      "GET",
 		})
 
-		res := h.AssertResponseOk(t, req)
 		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, res.Body, &trans)
+		h.AssertResponseOKWithStruct(t, req, &trans)
 
 		if trans.ID != ids[0] {
 			testutil.FailMsgf(t, "id's not equal, expected %d got %d", ids[0], trans.ID)
@@ -864,14 +862,14 @@ func TestGetTransactionByID(t *testing.T) {
 			Method: "GET",
 		})
 
-		h.AssertResponseNotOkWithCode(t, req, 404)
+		_, _ = h.AssertResponseNotOkWithCode(t, req, 404)
 	})
 
 }
 
-func assertGetsRightAmount(t *testing.T, body *bytes.Buffer, expected int) {
+func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {
 	var trans []transactions.Transaction
-	h.AssertResponseOKWithStruct(t, body, &trans)
+	h.AssertResponseOKWithStruct(t, req, &trans)
 	if len(trans) != expected {
 		testutil.FailMsgf(t, "expected %d transactions, got %d", expected, len(trans))
 	}
@@ -890,9 +888,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get transactions with limit 10 should get 10", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -900,9 +897,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=10",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get transactions with limit 5 should get 5", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -910,9 +906,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=5",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 5)
+		assertGetsRightAmount(t, req, 5)
 	})
 	t.Run("get transactions with limit 0 should get all", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -920,9 +915,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=0",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get /transactions with offset 10 should get 0", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -930,9 +924,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?offset=10",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 0)
+		assertGetsRightAmount(t, req, 0)
 	})
 
 	t.Run("get /transactions with offset 0 should get 10", func(t *testing.T) {
@@ -941,9 +934,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?offset=0",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 10)
+		assertGetsRightAmount(t, req, 10)
 	})
 
 	t.Run("get /transactions with offset 5 should get 5", func(t *testing.T) {
@@ -952,9 +944,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?offset=5",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 5)
+		assertGetsRightAmount(t, req, 5)
 	})
 	t.Run("get /transactions with offset 5 and limit 3 should get 3", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -962,9 +953,8 @@ func TestGetAllTransactions(t *testing.T) {
 			Path:        "/transactions?limit=3&offset=5",
 			Method:      "GET",
 		})
-		res := h.AssertResponseOk(t, req)
 
-		assertGetsRightAmount(t, res.Body, 3)
+		assertGetsRightAmount(t, req, 3)
 	})
 }
 
@@ -986,12 +976,11 @@ func TestNewDeposit(t *testing.T) {
 				description),
 		})
 
-		res := h.AssertResponseOk(t, req)
 		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, res.Body, &trans)
+		h.AssertResponseOKWithStruct(t, req, &trans)
 
 		if trans.Description != description {
-			testutil.FailMsgf(t, "descriptions not equal, expected %s got %s", description, trans.Description)
+			testutil.FailMsgf(t, "descriptions not equal, expected %q got %q", description, trans.Description)
 		}
 	})
 }
@@ -1028,7 +1017,7 @@ func TestCreateInvoice(t *testing.T) {
 				}`, amountSat),
 			})
 
-		otherH.AssertResponseNotOk(t, req)
+		_, _ = otherH.AssertResponseNotOk(t, req)
 	})
 
 	t.Run("Not create an invoice with too large amount", func(t *testing.T) {
@@ -1046,7 +1035,7 @@ func TestCreateInvoice(t *testing.T) {
 				}`, amountSat),
 			})
 
-		otherH.AssertResponseNotOk(t, req)
+		_, _ = otherH.AssertResponseNotOk(t, req)
 	})
 
 	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
@@ -1062,7 +1051,7 @@ func TestCreateInvoice(t *testing.T) {
 				}`,
 			})
 
-		otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("Not create an invoice with an invalid callback URL", func(t *testing.T) {
@@ -1076,7 +1065,7 @@ func TestCreateInvoice(t *testing.T) {
 				"callbackUrl": "bad-url"
 			}`,
 		})
-		otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("create an invoice with a valid callback URL", func(t *testing.T) {
@@ -1175,4 +1164,62 @@ func TestRestServer_CreateApiKey(t *testing.T) {
 			testutil.AssertNotEqual(t, json["userId"], nil)
 		})
 	})
+}
+
+func TestRestServer_GetAllPayments(t *testing.T) {
+	t.Parallel()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
+	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+	accessToken := h.AuthenticaticateUser(t, users.CreateUserArgs{
+		Email:    user.Email,
+		Password: pass,
+	})
+
+	t.Run("fail with bad query parameters", func(t *testing.T) {
+		t.Run("string argument", func(t *testing.T) {
+			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        fmt.Sprintf("/payments?limit=foobar&offset=0"),
+				Method:      "GET",
+			})
+
+			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		})
+		t.Run("negative argument", func(t *testing.T) {
+			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        fmt.Sprintf("/payments?offset=-1"),
+				Method:      "GET",
+			})
+
+			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		})
+	})
+
+	t.Run("succeed with query parameters", func(t *testing.T) {
+		opts := payments.NewPaymentOpts{
+			UserID:    user.ID,
+			AmountSat: 123,
+		}
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = payments.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		const numPayments = 6
+
+		const limit = 3
+		const offset = 2
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        fmt.Sprintf("/payments?limit=%d&offset=%d", limit, offset),
+			Method:      "GET",
+		})
+
+		res := h.AssertResponseOkWithJsonList(t, req)
+		testutil.AssertMsgf(t, len(res) == numPayments-limit, "Unexpected number of payments: %d", len(res))
+
+	})
+
 }

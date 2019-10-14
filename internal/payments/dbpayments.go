@@ -12,12 +12,14 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
+	"gitlab.com/arcanecrypto/teslacoil/testutil"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -248,14 +250,6 @@ func CreateInvoiceWithMemo(lncli ln.AddLookupInvoiceClient, amountSat int64,
 	if err != nil {
 		err = errors.Wrap(err, "could not add invoice to lnd")
 		log.Error(err)
-		return lnrpc.Invoice{}, err
-	}
-
-	// Sanity check the invoice we just created
-	if invoice.Value != amountSat {
-		err = fmt.Errorf(
-			"could not insert invoice, created invoice amount (%d) not equal request.Amount (%d)",
-			invoice.Value, amountSat)
 		return lnrpc.Invoice{}, err
 	}
 
@@ -708,4 +702,14 @@ func (p Payment) Equal(other Payment) (bool, string) {
 	}
 
 	return true, ""
+}
+
+func CreateNewPaymentOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
+	opts NewPaymentOpts) Payment {
+	payment, err := NewPayment(db, ln, opts)
+	if err != nil {
+		testutil.FatalMsg(t,
+			errors.Wrap(err, "wasn't able to create new payment"))
+	}
+	return payment
 }

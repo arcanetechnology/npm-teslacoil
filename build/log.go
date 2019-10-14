@@ -65,7 +65,6 @@ func GinLoggingMiddleWare(logger loggerEntryWithFields, level logrus.Level) gin.
 		path := c.Request.URL.Path
 
 		withFields := logger.WithFields(logrus.Fields{
-			"status":     c.Writer.Status(),
 			"method":     c.Request.Method,
 			"path":       path,
 			"ip":         c.ClientIP(),
@@ -85,6 +84,28 @@ func GinLoggingMiddleWare(logger loggerEntryWithFields, level logrus.Level) gin.
 
 		// pass the request on to the next handler
 		c.Next()
+
+		// set status after error have been handled
+		withFields = withFields.WithField("status", c.Writer.Status())
+
+		// public errors are errors that shouldn't be shown to the end user,
+		// but might be of relevance for logging purposes
+		privateErrors := c.Errors.ByType(gin.ErrorTypePrivate)
+		if len(privateErrors) > 0 {
+			withFields = withFields.WithField("privateErrors", privateErrors)
+		}
+
+		// public errors are errors that can be shown to the end user
+		publicErrors := c.Errors.ByType(gin.ErrorTypePublic)
+		if len(publicErrors) > 0 {
+			withFields = withFields.WithField("publicErrors", publicErrors)
+		}
+
+		// binding errors are errors produced during request validation
+		bindingErrors := c.Errors.ByType(gin.ErrorTypeBind)
+		if len(bindingErrors) > 0 {
+			withFields = withFields.WithField("bindingErrors", bindingErrors)
+		}
 
 		end := time.Now()
 		latency := end.Sub(start)

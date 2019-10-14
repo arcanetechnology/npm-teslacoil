@@ -5,16 +5,19 @@ import (
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 
 	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-
+	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -139,44 +142,89 @@ func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	return res
 }
 
-// TODO Assert that if failure, contains reasonably shaped JSON
-func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
+// Word that starts with ERR_ and only contains A-Z, _ or digits
+var uppercaseAndUnderScoreRegex = regexp.MustCompile("^ERR_([A-Z]|_|[0-9])+$")
+
+func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "could not read body"))
+	}
+	var parsed httptypes.StandardErrorResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "could not parse body into StandardResponse"))
+	}
+	testutil.AssertMsgf(t, parsed.ErrorField.Message != "", "Error message was empty! JSON: %s", body)
+	testutil.AssertMsgf(t, parsed.ErrorField.Code != "", "Error code was empty! JSON: %s", body)
+	testutil.AssertMsgf(t, uppercaseAndUnderScoreRegex.MatchString(parsed.ErrorField.Code), "Code didn't match regex! Code: %s", parsed.ErrorField.Code)
+
+	testutil.AssertMsg(t, !stderrors.Is(parsed, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
+
+	testutil.AssertMsg(t, parsed.ErrorField.Fields != nil, "Fields was nil! Expected at least empty list")
+	for _, field := range parsed.ErrorField.Fields {
+		testutil.AssertMsgf(t, field.Code != apierr.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
+	}
+	return response, parsed
+}
+
+// Asserts that the given request fails, and that it conforms to our
+// expected error format.
+func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Request) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
 	t.Helper()
 	response := httptest.NewRecorder()
 	harness.server.ServeHTTP(response, request)
 	if response.Code < 300 {
-		testutil.FatalMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
+		testutil.FailMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
 	}
-	return response
+
+	return assertErrorIsOk(t, response)
+
 }
 
 // AssertResponseNotOkWithCode checks that the given request results in the
 // given HTTP status code. It returns the response to the request.
-func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) *httptest.ResponseRecorder {
+func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
 	testutil.AssertMsgf(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
 	t.Helper()
 
-	response := harness.AssertResponseNotOk(t, request)
+	response, error := harness.AssertResponseNotOk(t, request)
 	testutil.AssertMsgf(t, response.Code == code,
 		"Expected code (%d) does not match with found code (%d)", code, response.Code)
-	return response
+	return response, error
+}
+
+func (harness *TestHarness) AssertResponseOkWithBody(t *testing.T, request *http.Request) bytes.Buffer {
+	t.Helper()
+	response := harness.AssertResponseOk(t, request)
+
+	testutil.AssertMsg(t, response.Body.Len() != 0, "Body was empty!")
+
+	return *response.Body
 }
 
 // First performs `assertResponseOk`, then asserts that the body of the response
 // can be parsed as JSON, and then returns the parsed JSON
 func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http.Request) map[string]interface{} {
-
 	t.Helper()
-	response := harness.AssertResponseOk(t, request)
 	var destination map[string]interface{}
-
-	if err := json.Unmarshal(response.Body.Bytes(), &destination); err != nil {
-		stringBody := response.Body.String()
-		testutil.FatalMsgf(t, "%+v. Body: %s ",
-			err, stringBody)
-
+	harness.AssertResponseOKWithStruct(t, request, &destination)
+	if err, ok := destination["error"]; ok {
+		testutil.FailMsgf(t, `JSON body had field named "error": %v`, err)
 	}
 	return destination
+}
+
+// First performs `assertResponseOk`, then asserts that the body of the response
+// can be parsed as a JSON list, and then returns the parsed JSON list
+func (harness *TestHarness) AssertResponseOkWithJsonList(t *testing.T, request *http.Request) []map[string]interface{} {
+	t.Helper()
+
+	var destination []map[string]interface{}
+	harness.AssertResponseOKWithStruct(t, request, &destination)
+
+	return destination
+
 }
 
 func extractMethodAndPath(req *http.Request) string {
@@ -185,7 +233,6 @@ func extractMethodAndPath(req *http.Request) string {
 
 // Performs the given request against the API. Asserts that the
 // response completed successfully. Returns the response from the API
-// TODO Assert that if failure, contains reasonably shaped JSON
 func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -205,8 +252,9 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	harness.server.ServeHTTP(response, request)
 
 	if response.Code >= 300 {
-		testutil.FatalMsgf(t, "Got failure code (%d) on path %s: %s",
+		testutil.FailMsgf(t, "Got failure code (%d) on path %s: %s",
 			response.Code, extractMethodAndPath(request), response.Body.String())
+		_, _ = assertErrorIsOk(t, response)
 	}
 
 	return response
@@ -215,21 +263,17 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 // AssertResponseOKWithStruct attempts to unmarshal the body into the
 // struct passed as an argument. third argument MUST be a pointer to a
 // struct
-func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, body *bytes.Buffer, s interface{}) {
+func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, request *http.Request, s interface{}) {
 	t.Helper()
 
-	err := json.Unmarshal(body.Bytes(), s)
-	if err != nil {
-		t.Fatalf("could not unmarshal body into %+v", s)
+	response := harness.AssertResponseOkWithBody(t, request)
+
+	if err := json.Unmarshal(response.Bytes(), s); err != nil {
+		testutil.FailMsg(t, errors.Wrap(err, "could not unmarshal JSON"))
 	}
 }
 
-// Creates and and authenticates a user with the given email and password.
-// We either log in (and return an access token), or create an API key (and
-// return that). They should be equivalent (until scopes are implemented, so
-// this should not matter and might uncover some edge cases.
-func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
-	_ = harness.CreateUser(t, args)
+func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) string {
 
 	loginUserReq := GetRequest(t, RequestArgs{
 		Path:   "/login",
@@ -289,5 +333,15 @@ func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.C
 		// won't reach this
 		panic("unreachable")
 	}
+}
+
+// Creates and and authenticates a user with the given email and password.
+// We either log in (and return an access token), or create an API key (and
+// return that). They should be equivalent (until scopes are implemented, so
+// this should not matter and might uncover some edge cases.
+func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
+	_ = harness.CreateUser(t, args)
+
+	return harness.AuthenticaticateUser(t, args)
 
 }
