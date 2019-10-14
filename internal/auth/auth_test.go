@@ -19,9 +19,11 @@ import (
 )
 
 var (
-	dbConfig     = testutil.GetDatabaseConfig("auth")
-	testDB       *db.DB
-	wrongPrivKey *rsa.PrivateKey
+	dbConfig = testutil.GetDatabaseConfig("auth")
+	testDB   *db.DB
+
+	wrongJwtPrivKey   *rsa.PrivateKey
+	correctJwtPrivKey *rsa.PrivateKey
 )
 
 func TestMain(m *testing.M) {
@@ -29,10 +31,17 @@ func TestMain(m *testing.M) {
 	reader := rand.Reader
 
 	var err error
-	wrongPrivKey, err = rsa.GenerateKey(reader, 5093)
+	wrongJwtPrivKey, err = rsa.GenerateKey(reader, 5093)
 	if err != nil {
-		panic("could not generate bad private key")
+		panic(err)
 	}
+
+	correctJwtPrivKey, err = rsa.GenerateKey(reader, 5093)
+	if err != nil {
+		panic(err)
+	}
+
+	SetJwtPrivateKey(correctJwtPrivKey)
 
 	testDB = testutil.InitDatabase(dbConfig)
 	gofakeit.Seed(0)
@@ -70,7 +79,7 @@ func TestParseBearerJwt(t *testing.T) {
 		args := createJwtArgs{
 			email:      email,
 			id:         id,
-			privateKey: wrongPrivKey,
+			privateKey: wrongJwtPrivKey,
 		}
 		token, err := createJwt(args)
 		if err != nil {
@@ -86,7 +95,7 @@ func TestParseBearerJwt(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		_, _, err = parseBearerJwtWithKey(token, &wrongPrivKey.PublicKey)
+		_, _, err = parseBearerJwtWithKey(token, &wrongJwtPrivKey.PublicKey)
 		testutil.AssertEqual(t, err, rsa.ErrVerification)
 	})
 }
@@ -122,7 +131,7 @@ func TestGetMiddleware(t *testing.T) {
 		args := createJwtArgs{
 			email:      user.Email,
 			id:         user.ID,
-			privateKey: wrongPrivKey,
+			privateKey: wrongJwtPrivKey,
 		}
 		token, err := createJwt(args)
 		if err != nil {
@@ -149,7 +158,7 @@ func TestGetMiddleware(t *testing.T) {
 		token, err := createJwt(createJwtArgs{
 			email:      user.Email,
 			id:         user.ID,
-			privateKey: privateKey,
+			privateKey: correctJwtPrivKey,
 			now: func() time.Time {
 				return time.Now().Add(-24 * time.Hour)
 			},
@@ -169,7 +178,7 @@ func TestGetMiddleware(t *testing.T) {
 		token, err := createJwt(createJwtArgs{
 			email:      user.Email,
 			id:         user.ID,
-			privateKey: privateKey,
+			privateKey: correctJwtPrivKey,
 			now: func() time.Time {
 				return time.Now().Add(24 * time.Hour)
 			},

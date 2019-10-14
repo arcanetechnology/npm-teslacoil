@@ -6,13 +6,13 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
+	pkgerrors "github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
@@ -21,58 +21,55 @@ import (
 
 var (
 	log = build.Log
-
-	// tokenSigningKey is the key we use to sign and verify our JWTs
-	privateKey               *rsa.PrivateKey
-	publicKey                *rsa.PublicKey
-	ErrPrivateKeyIsNotInArgs = errors.New("private key not present in args")
 )
 
-func init() {
-	privateKey, publicKey = loadPrivateKey("/home/bo/gocode/src/gitlab.com/arcanecrypto/teslacoil/key.pem", "")
-}
+var (
+	ErrPrivateKeyIsNotInArgs = errors.New("private key not present in args")
+	ErrInvalidKeyType        = errors.New("key is not a RSA key")
+	ErrJwtKeyHasNotBeenSet   = errors.New("JWT public key is nil! You need to call SetJwtPrivateKey before using this package")
+)
 
-// loadPrivateKey loads the RSA private key from `rsaPrivKeyPath` with password `rsaPrivKeyPassword`
-// if the RSA private key does not have a password, pass the empty string ""
-// Because this is necessary for the application to run, the function will panic should anything go wrong
-func loadPrivateKey(rsaPrivKeyPath, rsaPrivKeyPassword string) (*rsa.PrivateKey, *rsa.PublicKey) {
+// keys used to sign JWTs
+var (
+	jwtPrivateKey *rsa.PrivateKey
+	jwtPublicKey  *rsa.PublicKey
+)
 
-	priv, err := ioutil.ReadFile(rsaPrivKeyPath)
-	if err != nil {
-		log.Error(err)
-		panic("No RSA private key found")
+// SetJwtPrivateKey takes in a PEM encoded RSA private key, and set the JWT signing
+// key used in this package to it. Password may be empty.
+func SetRawJwtPrivateKey(key, password []byte) (err error) {
+
+	privPem, _ := pem.Decode(key)
+	if privPem == nil {
+		return errors.New("could not decode PEM key")
 	}
-
-	privPem, _ := pem.Decode(priv)
 	if privPem.Type != "RSA PRIVATE KEY" {
-		panic("key is of wrong type, not a RSA key")
+		return ErrInvalidKeyType
 	}
 
 	var privPemBytes []byte
-	if rsaPrivKeyPassword == "" {
+	if len(password) == 0 {
 		privPemBytes = privPem.Bytes
 	} else {
-		privPemBytes, err = x509.DecryptPEMBlock(privPem, []byte(rsaPrivKeyPassword))
+		privPemBytes, err = x509.DecryptPEMBlock(privPem, password)
 		if err != nil {
-			log.Error(err)
-			panic("unable to decode pem block, wrong password?")
+			return pkgerrors.Wrap(err, "unable to decode PEM block")
 		}
 	}
 
-	var parsedKey interface{}
-	if parsedKey, err = x509.ParsePKCS1PrivateKey(privPemBytes); err != nil {
-		if parsedKey, err = x509.ParsePKCS8PrivateKey(privPemBytes); err != nil {
-			log.Error(err)
-			panic("unable to parse RSA private key")
-		}
+	privateKey, err := x509.ParsePKCS1PrivateKey(privPemBytes)
+	if err != nil {
+		return err
 	}
 
-	privateKey, ok := parsedKey.(*rsa.PrivateKey)
-	if !ok {
-		panic("unable to parse convert interface to rsa.PrivateKey")
-	}
+	SetJwtPrivateKey(privateKey)
+	return nil
+}
 
-	return privateKey, &privateKey.PublicKey
+// SetJwtPrivateKey takes in a RSA private key, and set the JWT signing
+// key used in this package to it.
+func SetJwtPrivateKey(key *rsa.PrivateKey) {
+	jwtPrivateKey, jwtPublicKey = key, &key.PublicKey
 }
 
 const (
@@ -240,7 +237,10 @@ func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.T
 // it is signed by us. It returns the token and the extracted claims.
 // If anything goes wrong, an error with a descriptive reason is returned.
 func ParseBearerJwt(tokenString string) (*jwt.Token, *JWTClaims, error) {
-	return parseBearerJwtWithKey(tokenString, publicKey)
+	if jwtPublicKey == nil {
+		log.Panic(ErrJwtKeyHasNotBeenSet)
+	}
+	return parseBearerJwtWithKey(tokenString, jwtPublicKey)
 }
 
 type createJwtArgs struct {
@@ -289,10 +289,14 @@ func createJwt(args createJwtArgs) (string, error) {
 // claim, a specific expiration time, and signed with our secret key.
 // It returns the string representation of the token.
 func CreateJwt(email string, id int) (string, error) {
+	if jwtPrivateKey == nil {
+		log.Panic(ErrJwtKeyHasNotBeenSet)
+	}
+
 	return createJwt(createJwtArgs{
 		email:      email,
 		id:         id,
-		privateKey: privateKey,
+		privateKey: jwtPrivateKey,
 		now:        time.Now,
 	})
 }

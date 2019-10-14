@@ -2,6 +2,8 @@ package httptestutil
 
 import (
 	"bytes"
+	cryptorand "crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,6 +11,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -28,6 +33,13 @@ type TestHarness struct {
 }
 
 func NewTestHarness(server Server) TestHarness {
+	randomKey, err := rsa.GenerateKey(cryptorand.Reader, 4096)
+	if err != nil {
+		panic(errors.Wrap(err, "could not generate RSA key"))
+	}
+
+	auth.SetJwtPrivateKey(randomKey)
+
 	return TestHarness{server: server}
 }
 
