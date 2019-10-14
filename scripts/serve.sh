@@ -40,4 +40,5 @@ exe ./lpp-dev \
 	--network $BITCOIN_NETWORK \
 	--zmqpubrawblock ${BITCOIND_IP}:${ZMQPUBRAWBLOCK_PORT} \
 	--zmqpubrawtx ${BITCOIND_IP}:${ZMQPUBRAWTX_PORT} \
-	serve
+	serve \
+    --rsa-jwt-key contrib/sample-private-pkcs1-rsa.pem
