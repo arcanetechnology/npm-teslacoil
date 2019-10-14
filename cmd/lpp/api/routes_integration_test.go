@@ -129,9 +129,7 @@ func TestPayInvoice(t *testing.T) {
 			Email:    gofakeit.Email(),
 			Password: password,
 		})
-		if ok := h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 16000000); !ok {
-			testutil.FatalMsg(t, "could not GiveUserBalance")
-		}
+		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 16000000)
 		// it takes time to propagate the confirmed balance to the lnd nodes,
 		// therefore we sleep for 500 milliseconds
 		time.Sleep(500 * time.Millisecond)
@@ -147,7 +145,6 @@ func TestPayInvoice(t *testing.T) {
 				testutil.FatalMsgf(t, "could not create invoice: %v", err)
 			}
 
-			description := gofakeit.HipsterSentence(5)
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
@@ -155,19 +152,16 @@ func TestPayInvoice(t *testing.T) {
 					Method:      "POST",
 					Body: fmt.Sprintf(`{
 					"paymentRequest": %q,
-					"description": %q
-				}`, paymentRequest.PaymentRequest, description),
+					"description": ""
+				}`, paymentRequest.PaymentRequest),
 				})
 
-			res := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertMsg(t, res["description"] != nil, "Description was empty")
-
+			_ = h.AssertResponseOkWithJson(t, req)
 		})
 
 		t.Run("invalid payment request is not OK", func(t *testing.T) {
 			testutil.DescribeTest(t)
 
-			description := gofakeit.HipsterSentence(5)
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
@@ -175,8 +169,8 @@ func TestPayInvoice(t *testing.T) {
 					Method:      "POST",
 					Body: fmt.Sprintf(`{
 					"paymentRequest": %q,
-					"description": %q
-				}`, "a bad payment request", description),
+					"description": ""
+				}`, "a bad payment request"),
 				})
 
 			_, _ = h.AssertResponseNotOk(t, req)

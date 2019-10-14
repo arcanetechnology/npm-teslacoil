@@ -366,7 +366,7 @@ func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.C
 }
 
 func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient,
-	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int) bool {
+	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int) {
 
 	getDepositAddr := GetAuthRequest(t, AuthRequestArgs{
 		AccessToken: accessToken,
@@ -382,8 +382,7 @@ func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningC
 
 	maybeNilAddress, ok := jsonRes["address"]
 	if !ok {
-		testutil.FailMsg(t, "address does not exist on jsonRes")
-		return false
+		testutil.FatalMsg(t, "address does not exist on jsonRes")
 	}
 
 	var address string
@@ -391,8 +390,7 @@ func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningC
 	case string:
 		address = untypedAddress
 	default:
-		testutil.FailMsgf(t, "expected address to be string, but is %v", reflect.TypeOf(untypedAddress))
-		return false
+		testutil.FatalMsgf(t, "expected address to be string, but is %v", reflect.TypeOf(untypedAddress))
 	}
 
 	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
@@ -407,8 +405,5 @@ func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningC
 	_, err = bitcoin.Btcctl().Generate(7)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not generate coins: %v", err)
-		return false
 	}
-
-	return true
 }

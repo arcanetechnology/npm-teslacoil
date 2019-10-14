@@ -24,7 +24,11 @@ var log = build.Log
 // 2 -> less than 10^6 seconds
 // 3 -> less than 10^8 seconds
 // 4 -> more than 10^8 seconds
-const RequiredValidationScore = 3
+const (
+	RequiredValidationScore = 3
+	password                = "password"
+	paymentrequest          = "paymentrequest"
+)
 
 // IsValidPassword checks if a password is strong enough.
 func IsValidPassword(
@@ -75,11 +79,11 @@ func RegisterAllValidators(engine *validator.Validate, chainCfg chaincfg.Params)
 		Function validator.Func
 	}
 	validators := []Validator{{
-		Name:     "password",
+		Name:     password,
 		Function: IsValidPassword,
 	},
 		{
-			Name:     "payreq",
+			Name:     paymentrequest,
 			Function: IsValidPaymentRequest(chainCfg),
 		},
 	}

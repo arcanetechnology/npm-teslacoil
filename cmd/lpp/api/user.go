@@ -61,8 +61,8 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
-		var request UpdateUserRequest
-		if c.BindJSON(&request) != nil {
+		var req UpdateUserRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
@@ -73,14 +73,14 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 		}
 
 		opts := users.UpdateOptions{}
-		if request.Email != nil {
-			opts.NewEmail = request.Email
+		if req.Email != nil {
+			opts.NewEmail = req.Email
 		}
-		if request.FirstName != nil {
-			opts.NewFirstName = request.FirstName
+		if req.FirstName != nil {
+			opts.NewFirstName = req.FirstName
 		}
-		if request.LastName != nil {
-			opts.NewLastName = request.LastName
+		if req.LastName != nil {
+			opts.NewLastName = req.LastName
 		}
 		updated, err := user.Update(r.db, opts)
 		if err != nil {
@@ -144,18 +144,18 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		var request CreateUserRequest
-		if c.BindJSON(&request) != nil {
+		var req CreateUserRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
 		// because the email column in users table has the unique tag, we don't
 		// double check the email is unique
 		u, err := users.Create(r.db, users.CreateUserArgs{
-			Email:     request.Email,
-			Password:  request.Password,
-			FirstName: request.FirstName,
-			LastName:  request.LastName,
+			Email:     req.Email,
+			Password:  req.Password,
+			FirstName: req.FirstName,
+			LastName:  req.LastName,
 		})
 		if err != nil {
 			log.WithError(err).Error("Could not create user ")
@@ -197,12 +197,12 @@ func (r *RestServer) Login() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		var request LoginRequest
-		if c.BindJSON(&request) != nil {
+		var req LoginRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
-		user, err := users.GetByCredentials(r.db, request.Email, request.Password)
+		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
 		if err != nil {
 			switch {
 			case stderr.Is(err, bcrypt.ErrMismatchedHashAndPassword):
@@ -217,19 +217,19 @@ func (r *RestServer) Login() gin.HandlerFunc {
 
 		// user has 2FA enabled
 		if user.TotpSecret != nil {
-			if request.TotpCode == "" {
+			if req.TotpCode == "" {
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrMissingTotpCode)
 				return
 			}
 
-			if !totp.Validate(request.TotpCode, *user.TotpSecret) {
+			if !totp.Validate(req.TotpCode, *user.TotpSecret) {
 				log.Error("User provided invalid TOTP code")
 				apierr.Public(c, http.StatusForbidden, apierr.ErrBadTotpCode)
 				return
 			}
 		}
 
-		tokenString, err := auth.CreateJwt(request.Email, user.ID)
+		tokenString, err := auth.CreateJwt(req.Email, user.ID)
 		if err != nil {
 			_ = c.Error(err)
 			c.Abort()
@@ -435,14 +435,16 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		var request SendPasswordResetEmailRequest
-		if c.BindJSON(&request) != nil {
+
+		var req SendPasswordResetEmailRequest
+		if c.BindJSON(&req) != nil {
+
 			return
 		}
 
 		// TODO: If the user doesn't exist, respond with 200 but don't send an
 		// TODO: email. We don't want to leak what emails our users have.
-		user, err := users.GetByEmail(r.db, request.Email)
+		user, err := users.GetByEmail(r.db, req.Email)
 		if err != nil {
 			_ = c.Error(err)
 			return
@@ -497,12 +499,13 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		var request ResetPasswordRequest
-		if c.BindJSON(&request) != nil {
+
+		var req ResetPasswordRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
-		login, err := users.VerifyPasswordResetToken(r.db, request.Token)
+		login, err := users.VerifyPasswordResetToken(r.db, req.Token)
 		if err != nil {
 			switch {
 			case err == passwordreset.ErrMalformedToken:
@@ -523,7 +526,7 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 			return
 		}
 
-		if _, err := user.ResetPassword(r.db, request.Password); err != nil {
+		if _, err := user.ResetPassword(r.db, req.Password); err != nil {
 			_ = c.Error(err)
 			return
 		}
@@ -548,8 +551,8 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		var request ChangePasswordRequest
-		if c.BindJSON(&request) != nil {
+		var req ChangePasswordRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
@@ -560,12 +563,12 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(request.OldPassword)); err != nil {
+		if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(req.OldPassword)); err != nil {
 			apierr.Public(c, http.StatusForbidden, apierr.ErrIncorrectPassword)
 			return
 		}
 
-		if _, err := user.ResetPassword(r.db, request.NewPassword); err != nil {
+		if _, err := user.ResetPassword(r.db, req.NewPassword); err != nil {
 			log.WithError(err).Errorf("Couldn't update user password")
 			_ = c.Error(err)
 			return
