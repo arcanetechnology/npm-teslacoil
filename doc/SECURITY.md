@@ -9,3 +9,13 @@ discovered in them (and how to mitigate)
 - [`jwt-go`](https://godoc.org/github.com/dgrijalva/jwt-go) - Golang implementation of JSON Web Tokens (JWT)
 - [`passwordreset`](https://godoc.org/github.com/dchest/passwordreset) - Small and nice package for generating one-time tokens for resetting passwords. 
 - [`otp`](https://github.com/pquerna/otp) - Package for interacting with 2FA codes
+
+## Keys used throughout the application
+
+### JWT signing key
+
+RSA PKCS#1 key. Generate: 
+
+```bash
+$ openssl genrsa -f4 -out private-pkcs1-rsa.pem 4096
+```

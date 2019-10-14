@@ -2,6 +2,8 @@ package auth
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,7 +11,6 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -20,10 +21,28 @@ import (
 var (
 	dbConfig = testutil.GetDatabaseConfig("auth")
 	testDB   *db.DB
+
+	wrongJwtPrivKey   *rsa.PrivateKey
+	correctJwtPrivKey *rsa.PrivateKey
 )
 
 func TestMain(m *testing.M) {
 	gofakeit.Seed(0)
+	reader := rand.Reader
+
+	var err error
+	wrongJwtPrivKey, err = rsa.GenerateKey(reader, 5093)
+	if err != nil {
+		panic(err)
+	}
+
+	correctJwtPrivKey, err = rsa.GenerateKey(reader, 5093)
+	if err != nil {
+		panic(err)
+	}
+
+	SetJwtPrivateKey(correctJwtPrivKey)
+
 	testDB = testutil.InitDatabase(dbConfig)
 	gofakeit.Seed(0)
 	os.Exit(m.Run())
@@ -58,16 +77,16 @@ func TestParseBearerJwt(t *testing.T) {
 
 	t.Run("creating a JWT with a bad key should not parse", func(t *testing.T) {
 		args := createJwtArgs{
-			email: email,
-			id:    id,
-			key:   []byte("bad key"),
+			email:      email,
+			id:         id,
+			privateKey: wrongJwtPrivKey,
 		}
 		token, err := createJwt(args)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
 		_, _, err = ParseBearerJwt(token)
-		testutil.AssertEqual(t, err, jwt.ErrSignatureInvalid)
+		testutil.AssertEqual(t, err, rsa.ErrVerification)
 	})
 
 	t.Run("Parsing a JWT with a bad key should not work", func(t *testing.T) {
@@ -76,8 +95,8 @@ func TestParseBearerJwt(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		_, _, err = parseBearerJwtWithKey(token, []byte("another bad key"))
-		testutil.AssertEqual(t, err, jwt.ErrSignatureInvalid)
+		_, _, err = parseBearerJwtWithKey(token, &wrongJwtPrivKey.PublicKey)
+		testutil.AssertEqual(t, err, rsa.ErrVerification)
 	})
 }
 
@@ -110,9 +129,9 @@ func TestGetMiddleware(t *testing.T) {
 
 	t.Run("not authenticate with JWT from bad key", func(t *testing.T) {
 		args := createJwtArgs{
-			email: user.Email,
-			id:    user.ID,
-			key:   []byte("this is badd"),
+			email:      user.Email,
+			id:         user.ID,
+			privateKey: wrongJwtPrivKey,
 		}
 		token, err := createJwt(args)
 		if err != nil {
@@ -137,8 +156,9 @@ func TestGetMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		token, err := createJwt(createJwtArgs{
-			email: user.Email,
-			id:    user.ID,
+			email:      user.Email,
+			id:         user.ID,
+			privateKey: correctJwtPrivKey,
 			now: func() time.Time {
 				return time.Now().Add(-24 * time.Hour)
 			},
@@ -156,8 +176,9 @@ func TestGetMiddleware(t *testing.T) {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		token, err := createJwt(createJwtArgs{
-			email: user.Email,
-			id:    user.ID,
+			email:      user.Email,
+			id:         user.ID,
+			privateKey: correctJwtPrivKey,
 			now: func() time.Time {
 				return time.Now().Add(24 * time.Hour)
 			},

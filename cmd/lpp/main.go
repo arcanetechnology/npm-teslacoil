@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -21,6 +22,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
@@ -155,6 +157,25 @@ var (
 		Name:  "serve",
 		Usage: "Starts the lightning payment processing api",
 		Before: func(c *cli.Context) error {
+			jwtPrivateKeyPath := c.String("rsa-jwt-key")
+			if jwtPrivateKeyPath == "" {
+				return errors.New("no RSA JWT key given")
+			}
+
+			jwtPrivateKeyBytes, err := ioutil.ReadFile(jwtPrivateKeyPath)
+			if err != nil {
+				return pkgerrors.Wrap(err, "could not read RSA JWT key")
+			}
+
+			jwtPrivateKeyPass := c.GlobalString("rsa-jwt-key-pass")
+			if jwtPrivateKeyPass == "" {
+				log.Warn("No RSA JWT key password given")
+			}
+
+			if err := auth.SetRawJwtPrivateKey(jwtPrivateKeyBytes, []byte(jwtPrivateKeyPass)); err != nil {
+				return err
+			}
+			log.Info("Set JWT signing key")
 
 			bitcoindConfig = bitcoind.Config{
 				ZmqPubRawTx:    c.GlobalString("zmqpubrawtx"),
@@ -254,6 +275,18 @@ var (
 				Name:  "port",
 				Value: "5000",
 				Usage: "Port number to listen on",
+			},
+
+			// keys, security
+			cli.StringFlag{
+				Name:   "rsa-jwt-key",
+				EnvVar: "TESLACOIL_RSA_JWT_KEY",
+				Usage:  "File path to PEM encoded RSA private key used for signing JWTs",
+			},
+			cli.StringFlag{
+				Name:   "rsa-jwt-key-pass",
+				EnvVar: "TESLACOIL_RSA_JWT_KEY_PASS",
+				Usage:  "The password used to decrypt the RSA private key used for signing JWTs",
 			},
 		},
 	}
