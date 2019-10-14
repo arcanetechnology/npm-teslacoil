@@ -274,7 +274,7 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 
 	t.Run("should be able to save txid and vout", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		transaction := CreateTransactionOrFail(t, testDB, user.ID)
+		transaction := CreateTransactionOrFail(t, user.ID)
 
 		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
 		if err != nil {
@@ -326,7 +326,7 @@ func TestTransaction_MarkAsConfirmed(t *testing.T) {
 
 	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		transaction := CreateTransactionOrFail(t, testDB, user.ID)
+		transaction := CreateTransactionOrFail(t, user.ID)
 
 		err := transaction.MarkAsConfirmed(testDB)
 		if err != nil {
@@ -505,33 +505,6 @@ func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
 	if !ok {
 		t.Fatalf("transactions not equal: %s", diff)
 	}
-}
-
-func CreateUserWithBalanceOrFail(t *testing.T, balance int64) users.User {
-	u := userstestutil.CreateUserOrFail(t, testDB)
-
-	tx := testDB.MustBegin()
-	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
-		UserID:    u.ID,
-		AmountSat: balance,
-	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"[%s] could not increase balance by %d for user %d: %+v", t.Name(),
-			balance, u.ID, err)
-	}
-	err = tx.Commit()
-	if err != nil {
-		testutil.FatalMsg(t, "could not commit tx")
-	}
-
-	if user.Balance != balance {
-		testutil.FatalMsgf(t, "wrong balance, expected [%d], got [%d]", balance,
-			user.Balance)
-	}
-
-	return user
-
 }
 
 func CreateTransactionOrFail(t *testing.T, userID int) Transaction {

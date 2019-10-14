@@ -120,11 +120,9 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		// authenticate the user by extracting the id from the jwt-token
 		var request PayInvoiceRequest
 		userID, ok := validateJSONRequest(c, &request)
 		if !ok {
-			c.JSONP(http.StatusBadRequest, badRequestResponse)
 			return
 		}
 
@@ -133,7 +131,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, userID,
 			request.PaymentRequest, request.Description)
 		if err != nil {
-			log.Error("payinvoicewithdescriptionerr: ", err)
+			log.WithError(err).Error("payinvoicewithdescriptionerr")
 			_ = c.Error(err)
 			return
 		}

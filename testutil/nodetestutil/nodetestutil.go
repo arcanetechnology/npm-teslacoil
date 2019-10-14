@@ -144,7 +144,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return err == nil
 	}
 
-	err = asyncutil.Await(15, time.Second, retry1)
+	err = asyncutil.Await(5, 100*time.Millisecond, retry1)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not connect nodes %v", err)
 	}
@@ -170,7 +170,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return true
 	}
 
-	err = asyncutil.Await(15, time.Second, retry2)
+	err = asyncutil.Await(5, 100*time.Millisecond, retry2)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not open channel %v", err)
 	}
@@ -202,7 +202,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return true
 	}
 
-	err = asyncutil.Await(20, 100*time.Millisecond, retry)
+	err = asyncutil.Await(5, 100*time.Millisecond, retry)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not send payment %v", err)
 	}
@@ -270,124 +270,11 @@ func RunWithBitcoind(t *testing.T, giveInitialBalance bool, test func(bitcoin bi
 // that can be performed during test teardown.
 func StartLndOrFail(t *testing.T, bitcoindConfig bitcoind.Config,
 	lndConfig ln.LightningConfig) lnrpc.LightningClient {
-	if lndConfig.RPCServer == "" {
-		testutil.FatalMsg(t, "lndConfig.RPCServer needs to be set, was empty")
-	}
-	if lndConfig.LndDir == "" {
-		testutil.FatalMsg(t, "lndConfig.LndDir needs to be set, was empty")
-	}
-	if lndConfig.Network.Name != chaincfg.RegressionNetParams.Name {
-		testutil.FatalMsg(t, "lndConfig.Network was not regtest! Support for this is not implemented")
-	}
 
-	if lndConfig.MacaroonPath == "" {
-		lndConfig.MacaroonPath = filepath.Join(
-			lndConfig.LndDir, ln.DefaultRelativeMacaroonPath(lndConfig.Network),
-		)
-	}
-	if lndConfig.TLSCertPath == "" {
-		lndConfig.TLSCertPath = filepath.Join(lndConfig.LndDir, "tls.cert")
-	}
-	if lndConfig.TLSKeyPath == "" {
-		lndConfig.TLSKeyPath = filepath.Join(lndConfig.LndDir, "tls.key")
-	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
-	args := []string{
-		"--noseedbackup",
-		"--bitcoin.active",
-		"--bitcoin.regtest",
-		"--bitcoin.node=bitcoind",
-		"--datadir=" + filepath.Join(lndConfig.LndDir, "data"),
-		"--logdir=" + filepath.Join(lndConfig.LndDir, "logs"),
-		"--configfile=" + filepath.Join(lndConfig.LndDir, "lnd.conf"),
-		"--tlscertpath=" + lndConfig.TLSCertPath,
-		"--tlskeypath=" + lndConfig.TLSKeyPath,
-		"--adminmacaroonpath=" + lndConfig.MacaroonPath,
-		"--rpclisten=" + lndConfig.RPCServer,
-		fmt.Sprintf("--listen=%d", lndConfig.P2pPort),
-		fmt.Sprintf("--restlisten=%d", testutil.GetPortOrFail(t)),
-		"--bitcoind.rpcuser=" + bitcoindConfig.User,
-		"--bitcoind.rpcpass=" + bitcoindConfig.Password,
-		fmt.Sprintf("--bitcoind.rpchost=localhost:%d", +bitcoindConfig.RpcPort),
-		"--bitcoind.zmqpubrawtx=" + bitcoindConfig.ZmqPubRawTx,
-		"--bitcoind.zmqpubrawblock=" + bitcoindConfig.ZmqPubRawBlock,
-		"--debuglevel=trace",
-	}
-
-	cmd := exec.Command("lnd", args...)
-
-	// pass LND output to test output, logged with a label
-	cmd.Stderr = testutil.LogWriter{Label: "LND", Level: logrus.ErrorLevel}
-	cmd.Stdout = testutil.LogWriter{Label: "LND", Level: logrus.DebugLevel}
-
-	log.Debugf("Executing command: %s", strings.Join(cmd.Args, " "))
-	if err := cmd.Start(); err != nil {
-		testutil.FatalMsgf(t, "Could not start lnd: %v", err)
-	}
-	pid := cmd.Process.Pid
-	log.Debugf("Started lnd with pid %d", pid)
-
-	// await LND startup
-	isReady := func() error {
-		certFile := filepath.Join(lndConfig.LndDir, "tls.cert")
-		if _, err := os.Stat(certFile); err != nil {
-			return err
-		}
-
-		if _, err := os.Stat(lndConfig.MacaroonPath); err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, isReady); err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "lnd cert and macaroon file was not created"))
-	}
-	log.Debugf("lnd cert file and macaroon file exists")
-
-	var lnd lnrpc.LightningClient
-	var err error
-	getLnd := func() error {
-		lnd, err = ln.NewLNDClient(lndConfig)
-		return err
-	}
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, getLnd); err != nil {
-		testutil.FatalMsgf(t, "Could not get lnd with config %v after trying %d times: %s ",
-			lndConfig, retryAttempts, err)
-	}
-
-	cleanup := nodeCleaner{}
-	cleanup.clean = func() error {
-		cleanup.hasBeenCleaned = true
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-			return errors.Wrap(err, "couldn't kill lnd process")
-		}
-		negativeGetInfo := func() error {
-			_, err := lnd.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
-			if err == nil {
-				return errors.New("was able to getinfo from client")
-			}
-			return nil
-		}
-
-		// await lnd shutdown
-		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
-			return err
-		}
-		log.Debug("Stopped lnd process")
-
-		if err := os.RemoveAll(lndConfig.LndDir); err != nil {
-			return errors.Wrapf(err, "could not delete lnd tmp directory %s", lndConfig.LndDir)
-		}
-		log.Debugf("Deleted lnd tmp directory %s", lndConfig.LndDir)
-
-		return nil
-	}
-	// pointer so we can mutate the object
-	RegisterCleaner(&cleanup)
-
-	return lnd
+	return StartLndOrFailAsync(t, bitcoindConfig, lndConfig, &wg)
 }
 
 // The function returns the created client, and register a cleanup action

@@ -278,7 +278,7 @@ func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, request *ht
 	}
 }
 
-func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) string {
+func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) (string, int) {
 
 	loginUserReq := GetRequest(t, RequestArgs{
 		Path:   "/login",
@@ -358,14 +358,15 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 // We either log in (and return an access token), or create an API key (and
 // return that). They should be equivalent (until scopes are implemented, so
 // this should not matter and might uncover some edge cases.
-func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
+func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) (string, int) {
 	_ = harness.CreateUser(t, args)
 
 	return harness.AuthenticaticateUser(t, args)
 
 }
 
-func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind, accessToken string) bool {
+func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient,
+	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int) bool {
 
 	getDepositAddr := GetAuthRequest(t, AuthRequestArgs{
 		AccessToken: accessToken,
@@ -396,7 +397,7 @@ func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningC
 
 	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
 		Addr:   address,
-		Amount: 50000000,
+		Amount: int64(amount),
 	})
 	if err != nil {
 		testutil.FatalMsgf(t, "could not send coins to %s: %v", address, err)

@@ -3,7 +3,6 @@
 package validation
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -49,11 +48,9 @@ func IsValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
 		stringVal := field.String()
 
 		// if tag is payreq, check that the value is decodable
-		decoded, err := zpay32.Decode(stringVal, &chainCfg)
-		if err != nil {
+		if _, err := zpay32.Decode(stringVal, &chainCfg); err != nil {
 			return false
 		}
-		fmt.Printf("decoded successfully %+v", decoded)
 
 		return true
 	}

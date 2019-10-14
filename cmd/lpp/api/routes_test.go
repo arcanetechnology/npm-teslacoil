@@ -1170,7 +1170,7 @@ func TestRestServer_GetAllPayments(t *testing.T) {
 	t.Parallel()
 	pass := gofakeit.Password(true, true, true, true, true, 32)
 	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
-	accessToken := h.AuthenticaticateUser(t, users.CreateUserArgs{
+	accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
 		Email:    user.Email,
 		Password: pass,
 	})

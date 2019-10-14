@@ -282,7 +282,7 @@ func TestPayInvoice(t *testing.T) {
 		_, err := PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
 		if err != nil {
-			panic(err)
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
 		balance := user.Balance
@@ -328,7 +328,7 @@ func TestPayInvoice(t *testing.T) {
 		got, err := PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
 		if err != nil {
-			panic(err)
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
 		expectedPayment.SettledAt = got.SettledAt
@@ -362,7 +362,7 @@ func TestPayInvoice(t *testing.T) {
 		got, err := PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
 		if err != nil {
-			panic(err)
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
 		expectedPayment.SettledAt = got.SettledAt
@@ -370,7 +370,10 @@ func TestPayInvoice(t *testing.T) {
 
 		assertPaymentsAreEqual(t, *got, expectedPayment)
 
-		updatedInvoice, _ := GetByID(testDB, got.ID, user.ID)
+		updatedInvoice, err := GetByID(testDB, got.ID, user.ID)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not getbyid: %v", err)
+		}
 
 		if updatedInvoice.SettledAt == nil {
 			testutil.FailMsgf(t, "expected settledAt to be defined, but was <nil>")
@@ -385,135 +388,6 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	// Arrange
 	u := userstestutil.CreateUserOrFail(t, testDB)
 
-	var amount1 int64 = 50000
-	var amount2 int64 = 20000
-
-	_ = []struct {
-		triggerInvoice lnrpc.Invoice
-		memo           string
-		amountSat      int64
-
-		want Payment
-	}{
-		{
-			lnrpc.Invoice{
-				PaymentRequest: "SomePayRequest1",
-				RHash:          SampleHash[:],
-				RPreimage:      SamplePreimage,
-				Settled:        true,
-				Value:          amount1,
-			},
-			firstMemo,
-			amount1,
-
-			Payment{
-				UserID:         u.ID,
-				AmountSat:      amount1,
-				AmountMSat:     amount1 * 1000,
-				HashedPreimage: SampleHashHex,
-				Preimage:       &SamplePreimageHex,
-				Memo:           &firstMemo,
-				Status:         "SUCCEEDED",
-				Direction:      "INBOUND",
-			},
-		},
-		{
-			lnrpc.Invoice{
-				PaymentRequest: "SomePayRequest2",
-				RHash:          SampleHash[:],
-				RPreimage:      SamplePreimage,
-				Settled:        true,
-				Value:          amount2,
-			},
-			secondMemo,
-			amount2,
-
-			Payment{
-				UserID:         u.ID,
-				AmountSat:      amount2,
-				AmountMSat:     amount2 * 1000,
-				HashedPreimage: SampleHashHex,
-				Preimage:       &SamplePreimageHex,
-				Memo:           &secondMemo,
-				Status:         "SUCCEEDED",
-				Direction:      "INBOUND",
-			},
-		},
-		{
-			lnrpc.Invoice{
-				PaymentRequest: "SomePayRequest3",
-				RHash:          SampleHash[:],
-				RPreimage:      SamplePreimage,
-				Settled:        false,
-				Value:          amount1,
-			},
-			firstMemo,
-			amount1,
-
-			Payment{
-				UserID:         u.ID,
-				AmountSat:      amount1,
-				AmountMSat:     amount1 * 1000,
-				HashedPreimage: SampleHashHex,
-				Preimage:       &SamplePreimageHex,
-				Memo:           &firstMemo,
-				Status:         "OPEN",
-				Direction:      "INBOUND",
-			},
-		},
-	}
-
-<<<<<<< HEAD
-	for _, test := range testCases {
-		t.Run(fmt.Sprintf("when updating invoice with amount %d where balance should be %d after exectuion",
-			test.amountSat, test.want.User.Balance),
-			func(t *testing.T) {
-
-				// Arrange
-				lnMock := lntestutil.LightningMockClient{
-					InvoiceResponse: test.triggerInvoice,
-				}
-				_ = CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
-					UserID:    u.ID,
-					AmountSat: test.amountSat,
-					Memo:      test.memo,
-				})
-
-				// Act
-				payment, err := UpdateInvoiceStatus(test.triggerInvoice, testDB,
-					testutil.GetMockHttpPoster())
-				if err != nil {
-					testutil.FatalMsgf(t,
-						"should be able to UpdateInvoiceStatus. Error:  %+v\n",
-						err)
-				}
-
-				// Assert
-				got := payment.Payment
-				want := test.want
-
-				assertPaymentsAreEqual(t, got, want.Payment)
-
-				if payment.User.ID != want.User.ID {
-					testutil.FailMsgf(t,
-						"ID should be equal to expected ID. Expected \"%d\" got \"%d\"",
-						want.User.ID,
-						payment.User.ID,
-					)
-				}
-
-				if payment.User.Balance != want.User.Balance {
-					testutil.FailMsgf(t,
-						"balance should be equal to expected Balance. Expected \"%d\" got \"%d\"",
-						want.User.Balance,
-						payment.User.Balance,
-					)
-				}
-			})
-	}
-
-=======
->>>>>>> c417adf... add MarkInvoiceAsFailed method
 	t.Run("callback URL should be called", func(t *testing.T) {
 		t.Parallel()
 		testutil.DescribeTest(t)

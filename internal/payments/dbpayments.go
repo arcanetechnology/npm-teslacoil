@@ -325,16 +325,14 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 }
 
 // MarkInvoiceAsPaid marks the given payment request as paid at the given date
-func MarkInvoiceAsPaid(d *db.DB, paymentRequest string, paidAt time.Time) error {
+func MarkInvoiceAsPaid(db *db.DB, paymentRequest string, paidAt time.Time) error {
 	updateOffchainTxQuery := `UPDATE offchaintx 
 		SET settled_at = $1, status = $2
 		WHERE payment_request = $3`
 
-	tx := d.MustBegin()
-
 	log.Infof("marking %s as paid", paymentRequest)
 
-	result, err := tx.Exec(updateOffchainTxQuery, paidAt, SUCCEEDED, paymentRequest)
+	result, err := db.Exec(updateOffchainTxQuery, paidAt, SUCCEEDED, paymentRequest)
 	if err != nil {
 		log.Errorf("Couldn't mark invoice as paid: %+v", err)
 		return err
@@ -342,33 +340,24 @@ func MarkInvoiceAsPaid(d *db.DB, paymentRequest string, paidAt time.Time) error 
 	rows, _ := result.RowsAffected()
 	log.Infof("Marking an invoice as paid resulted in %d updated rows", rows)
 
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-
 	return nil
-
 }
 
 // MarkInvoiceAsPaid marks the given payment request as paid at the given date
-func MarkInvoiceAsFailed(d *db.DB, paymentRequest string) error {
+func MarkInvoiceAsFailed(db *db.DB, paymentRequest string) error {
 	updateOffchainTxQuery := `UPDATE offchaintx 
 		SET status = $1
 		WHERE payment_request = $2`
 
-	tx := d.MustBegin()
+	log.Infof("marking %s as failed", paymentRequest)
 
-	result, err := tx.Exec(updateOffchainTxQuery, FAILED, paymentRequest)
+	result, err := db.Exec(updateOffchainTxQuery, FAILED, paymentRequest)
 	if err != nil {
 		log.Errorf("Couldn't mark invoice as failed: %+v", err)
 		return err
 	}
 	rows, _ := result.RowsAffected()
 	log.Tracef("Marking an invoice as paid resulted in %d updated rows", rows)
-
-	if err = tx.Commit(); err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -388,7 +377,6 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
 	if err != nil {
-		log.Error(err)
 		return nil, err
 	}
 
@@ -396,9 +384,9 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return nil, Err0AmountInvoiceNotSupported
 	}
 
-	// decrease users balance
 	tx := db.MustBegin()
 
+	// decrease users balance
 	user, err := users.DecreaseBalance(tx, users.ChangeBalance{
 		UserID:    userID,
 		AmountSat: payreq.NumSatoshis,
@@ -408,7 +396,6 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		log.WithError(err).Errorf("could not decrease user %d balance by %d", userID, payreq.NumSatoshis)
 		return nil, ErrUserBalanceTooLow
 	}
-	log.Infof("decreased users balance, new balance is %d", user.Balance)
 
 	// insert pay_req into DB
 	payment := Payment{
@@ -428,11 +415,8 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	if err != nil {
 		log.Error(err)
 		_ = tx.Rollback()
-		return nil, errors.Wrapf(
-			err, "insert(db, %+v)", payment)
+		return nil, errors.Wrapf(err, "payinvoicewithdescription")
 	}
-
-	log.Info("inserted payment")
 
 	// attempt to pay invoice
 	paymentResponse, err := lncli.SendPaymentSync(
@@ -441,22 +425,21 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		})
 	if err != nil {
 		_ = tx.Rollback()
-		log.Error(err)
 		return nil, err
 	}
 
-	log.Infof("sent payment %+v", paymentResponse)
+	log.WithField("paymentResponse", paymentResponse.String()).Info("sent payment")
 
 	// if payment failed, mark it as failed and rollback
 	if paymentResponse.PaymentError != "" {
-		err = tx.Rollback()
-		if err != nil {
+
+		if err = tx.Rollback(); err != nil {
 			return nil, errors.Wrap(err, "could not rollback DB")
 		}
-		err = MarkInvoiceAsFailed(db, paymentRequest)
-		if err != nil {
+		if err = MarkInvoiceAsFailed(db, paymentRequest); err != nil {
 			return nil, err
 		}
+
 		return nil, errors.New(paymentResponse.PaymentError)
 	}
 
@@ -471,10 +454,10 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	if err != nil {
 		// we never want to be in this situation. we now have an
 		// OPEN invoice in the db, but the use has decreased the balance
-		panic("could not mark invoice as paid, although it was paid")
+		log.Panicf("could not mark invoice %s as paid, although it was paid", paymentRequest)
 	}
 
-	log.Infof("updated payment %+v", payment)
+	log.WithField("payment", payment.String()).Info("updated payment")
 
 	// to always return the latest state of the payment, we retreive it from the DB
 	payment, err = GetByID(db, payment.ID, user.ID)
@@ -482,7 +465,7 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return nil, ErrCouldNotGetByID
 	}
 
-	log.Infof("got by ID %+v", payment)
+	log.WithField("payment", payment.String()).Trace("state in db after being paid")
 
 	return &payment, nil
 }

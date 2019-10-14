@@ -166,8 +166,8 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 
 	client, err := rpcclient.New(conf.ToConnConfig(), notificationHandler)
 	if err != nil {
-		return nil, fmt.Errorf("could not create new bitcoind rpcclient,"+
-			"is bitcoind running?: %+v", err)
+		return nil, errors.Wrap(err, "could not create new bitcoind rpcclient,"+
+			"is bitcoind running?")
 	}
 
 	// Establish two different ZMQ connections to bitcoind to retrieve block
@@ -177,7 +177,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 	zmqBlockConn, err := gozmq.Subscribe(
 		conf.ZmqPubRawBlock, []string{"rawblock"}, zmqPollInterval)
 	if err != nil {
-		return nil, fmt.Errorf("gozmq.Subscribe rawblock: %+v", err)
+		return nil, errors.Wrap(err, "gozmq.Subscribe rawblock")
 	}
 
 	zmqTxConn, err := gozmq.Subscribe(
@@ -187,7 +187,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 		if closeErr != nil {
 			log.Errorf("could not close zmqBlockConn: %+v", closeErr)
 		}
-		return nil, fmt.Errorf("gozmq.Subscribe rawtx: %+v", err)
+		return nil, errors.Wrap(err, "gozmq.Subscribe rawtx")
 	}
 
 	zmqRawTxCh := make(chan *wire.MsgTx)

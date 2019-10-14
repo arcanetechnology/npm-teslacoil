@@ -129,7 +129,7 @@ func TestPayInvoice(t *testing.T) {
 			Email:    gofakeit.Email(),
 			Password: password,
 		})
-		if ok := h.GiveUserBalance(t, lnd1, bitcoind, accessToken); !ok {
+		if ok := h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 16000000); !ok {
 			testutil.FatalMsg(t, "could not GiveUserBalance")
 		}
 		// it takes time to propagate the confirmed balance to the lnd nodes,
@@ -179,7 +179,7 @@ func TestPayInvoice(t *testing.T) {
 				}`, "a bad payment request", description),
 				})
 
-			_ = h.AssertResponseNotOk(t, req)
+			_, _ = h.AssertResponseNotOk(t, req)
 		})
 
 		t.Run("can set description", func(t *testing.T) {
@@ -240,7 +240,7 @@ func TestPayInvoice(t *testing.T) {
 				}`, paymentRequest.PaymentRequest, description),
 				})
 
-			_ = h.AssertResponseNotOk(t, req)
+			_, _ = h.AssertResponseNotOk(t, req)
 
 			user, err = users.GetByID(testDB, userID)
 			if err != nil {
