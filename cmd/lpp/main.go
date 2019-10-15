@@ -349,9 +349,14 @@ var (
 					}
 					defer func() { err = database.Close() }()
 
-					err = database.MigrationStatus(
+					status, err := database.MigrationStatus(
 						path.Join("file://", db.MigrationsPath))
-					return err
+					if err != nil {
+						return err
+					}
+
+					fmt.Print(status)
+					return nil
 				},
 			}, {
 				Name:    "newmigration",
