@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -76,6 +77,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 		Memo        string `json:"memo" binding:"max=256"`
 		Description string `json:"description"`
 		CallbackURL string `json:"callbackUrl" binding:"omitempty,url"`
+		OrderId     string `json:"orderId" binding:"max=256"`
 	}
 
 	return func(c *gin.Context) {
@@ -98,10 +100,15 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 				Memo:        req.Memo,
 				Description: req.Description,
 				CallbackURL: req.CallbackURL,
+				OrderId:     req.OrderId,
 			})
 
 		if err != nil {
 			log.WithError(err).Error("Could not add new payment")
+			if errors.Is(err, payments.ErrCustomerOrderIdAlreadyUsed) {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrCustomerOrderIdAlreadyUsed)
+				return
+			}
 			_ = c.Error(err)
 			return
 		}

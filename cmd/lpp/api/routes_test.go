@@ -1038,6 +1038,60 @@ func TestCreateInvoice(t *testing.T) {
 		_, _ = otherH.AssertResponseNotOk(t, req)
 	})
 
+	t.Run("Not create an invoice with a very long customer order id", func(t *testing.T) {
+		t.Parallel()
+		longId := gofakeit.Sentence(1000)
+
+		req := httptestutil.GetAuthRequest(t,
+			httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d,
+					"orderId": %q
+				}`, 1337, longId),
+			})
+
+		_, _ = otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+
+	})
+
+	t.Run("Create an invoice with a customer order id", func(t *testing.T) {
+		t.Parallel()
+		const orderId = "this-is-my-order-id"
+
+		req := httptestutil.GetAuthRequest(t,
+			httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/create",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"amountSat": %d,
+					"orderId": %q
+				}`, 1337, orderId),
+			})
+
+		res := otherH.AssertResponseOkWithJson(t, req)
+		testutil.AssertEqual(t, res["customerOrderId"], orderId)
+
+		t.Run("not create an invoice with the same order ID twice", func(t *testing.T) {
+			req := httptestutil.GetAuthRequest(t,
+				httptestutil.AuthRequestArgs{
+					AccessToken: accessToken,
+					Path:        "/invoices/create",
+					Method:      "POST",
+					Body: fmt.Sprintf(`{
+					"amountSat": %d,
+					"orderId": %q
+				}`, 1337, orderId),
+				})
+
+			_, _ = otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+
+		})
+	})
+
 	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
 		testutil.DescribeTest(t)
 

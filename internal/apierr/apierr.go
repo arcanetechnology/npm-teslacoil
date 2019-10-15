@@ -17,6 +17,7 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gopkg.in/go-playground/validator.v8"
 )
 
@@ -133,6 +134,11 @@ var (
 	ErrTransactionNotFound = apiError{
 		err:  errors.New("transaction not found"),
 		code: "ERR_TRANSACTION_NOT_FOUND",
+	}
+
+	ErrCustomerOrderIdAlreadyUsed = apiError{
+		err:  payments.ErrCustomerOrderIdAlreadyUsed,
+		code: "ERR_CUSTOMER_ORDER_ID_ALREADY_USED",
 	}
 )
 
@@ -293,6 +299,9 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 					// see comment above on capitalization of fields
 					decapitalize(validationErr.Param))
 				code = "eqfield"
+			case "max":
+				message = fmt.Sprintf("%q cannot be longer than %s characters", field, validationErr.Param)
+				code = "max"
 			default:
 				log.WithField("tag", validationErr.Tag).Warn("Encountered unknown validation field")
 				message = fmt.Sprintf("%s is invalid", field)

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	liberrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
@@ -144,13 +146,8 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 	// the payment variable and insert them into the query
 	rows, err := tx.NamedQuery(createOffchainTXQuery, p)
 	if err != nil {
-		log.Error(err)
-		return Payment{}, errors.Wrapf(
-			err,
-			"insert->tx.NamedQuery(%s, %+v)",
-			createOffchainTXQuery,
-			p,
-		)
+		log.WithError(err).Error("Could not insert payment")
+		return Payment{}, err
 	}
 	defer rows.Close()
 
@@ -280,6 +277,10 @@ type NewPaymentOpts struct {
 	OrderId     string
 }
 
+var (
+	ErrCustomerOrderIdAlreadyUsed = errors.New("customer order ID is already used")
+)
+
 // NewPayment creates a new payment by first creating an invoice
 // using lnd, then saving info returned from lnd to a new payment
 func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) (Payment, error) {
@@ -289,7 +290,7 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
 	if err != nil {
-		log.Error(err)
+		log.WithError(err).Error("Could not create invoice")
 		return Payment{}, err
 	}
 
@@ -318,9 +319,14 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 
 	p, err = insert(tx, p)
 	if err != nil {
-		log.WithError(err).Error("Could not insert payment")
 		_ = tx.Rollback()
-		return Payment{}, err
+		var pqErr *pq.Error
+		switch {
+		case liberrors.As(err, &pqErr) && pqErr.Constraint == "unique_order_id_and_user_id":
+			return Payment{}, ErrCustomerOrderIdAlreadyUsed
+		default:
+			return Payment{}, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
