@@ -342,7 +342,7 @@ func TestPayInvoice(t *testing.T) {
 		got, err := PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
 		if err != nil {
-			panic(err)
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
 		expectedPayment.SettledAt = got.SettledAt

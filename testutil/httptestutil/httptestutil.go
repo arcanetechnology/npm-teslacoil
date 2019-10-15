@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"regexp"
 	"testing"
 
@@ -349,8 +348,7 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 		return untypedKey, id
 	default:
 		fail(apiKeyJson, apiKeyPath, extractMethodAndPath(apiKeyRequest))
-		// won't reach this
-		panic("unreachable")
+		panic("wont reach this")
 	}
 }
 
@@ -378,27 +376,19 @@ func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningC
 		}`, false),
 	})
 
-	jsonRes := harness.AssertResponseOkWithJson(t, getDepositAddr)
-
-	maybeNilAddress, ok := jsonRes["address"]
-	if !ok {
-		testutil.FatalMsg(t, "address does not exist on jsonRes")
+	type res struct {
+		Address string `json:"address"`
 	}
+	var r res
 
-	var address string
-	switch untypedAddress := maybeNilAddress.(type) {
-	case string:
-		address = untypedAddress
-	default:
-		testutil.FatalMsgf(t, "expected address to be string, but is %v", reflect.TypeOf(untypedAddress))
-	}
+	harness.AssertResponseOKWithStruct(t, getDepositAddr, &r)
 
 	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
-		Addr:   address,
+		Addr:   r.Address,
 		Amount: int64(amount),
 	})
 	if err != nil {
-		testutil.FatalMsgf(t, "could not send coins to %s: %v", address, err)
+		testutil.FatalMsgf(t, "could not send coins to %s: %v", r.Address, err)
 	}
 
 	// confirm it

@@ -15,8 +15,7 @@ deploy-mainnet: install
 
 start-db:
 	if [ -z `docker-compose ps -q db` ]; then docker-compose up -d db && sleep 3; fi
-	if [ -z `netstat | grep 5432` ]; then pg_ctl -D /usr/local/var/postgres start; fi
-
+	if [ `uname` = "Darwin" ] && [ -z `netstat | grep 5432` ]; then pg_ctl -D /usr/local/var/postgres start; fi
 
 start-regtest-alice: 
 	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 

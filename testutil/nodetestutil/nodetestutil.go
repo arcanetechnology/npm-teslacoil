@@ -144,7 +144,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return err == nil
 	}
 
-	err = asyncutil.Await(5, 100*time.Millisecond, retry1)
+	err = asyncutil.Await(7, 100*time.Millisecond, retry1)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not connect nodes %v", err)
 	}
@@ -170,7 +170,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return true
 	}
 
-	err = asyncutil.Await(5, 100*time.Millisecond, retry2)
+	err = asyncutil.Await(7, 100*time.Millisecond, retry2)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not open channel %v", err)
 	}
@@ -202,7 +202,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return true
 	}
 
-	err = asyncutil.Await(5, 100*time.Millisecond, retry)
+	err = asyncutil.Await(7, 100*time.Millisecond, retry)
 	if err != nil {
 		testutil.FatalMsgf(t, "could not send payment %v", err)
 	}

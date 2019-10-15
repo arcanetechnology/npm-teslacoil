@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 
@@ -129,10 +128,10 @@ func TestPayInvoice(t *testing.T) {
 			Email:    gofakeit.Email(),
 			Password: password,
 		})
-		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 16000000)
+		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 50000000)
 		// it takes time to propagate the confirmed balance to the lnd nodes,
 		// therefore we sleep for 500 milliseconds
-		time.Sleep(500 * time.Millisecond)
+		//time.Sleep(500 * time.Millisecond)
 
 		t.Run("can send payment", func(t *testing.T) {
 			testutil.DescribeTest(t)
@@ -209,7 +208,7 @@ func TestPayInvoice(t *testing.T) {
 
 			user, err := users.GetByID(testDB, userID)
 			if err != nil {
-				panic(err)
+				testutil.FatalMsgf(t, "could not getbyid: %v", err)
 			}
 			balance := user.Balance
 
@@ -238,7 +237,7 @@ func TestPayInvoice(t *testing.T) {
 
 			user, err = users.GetByID(testDB, userID)
 			if err != nil {
-				panic(err)
+				testutil.FatalMsgf(t, "could not getbyid: %v", err)
 			}
 
 			if user.Balance != balance {
