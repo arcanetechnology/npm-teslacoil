@@ -95,14 +95,14 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 			return
 		}
 
-		var request transactions.WithdrawOnChainArgs
-		if c.BindJSON(&request) != nil {
+		var req transactions.WithdrawOnChainArgs
+		if c.BindJSON(&req) != nil {
 			return
 		}
 		// add the userID to send coins from
-		request.UserID = userID
+		req.UserID = userID
 
-		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, request)
+		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, req)
 		if err != nil {
 			log.WithError(err).Errorf("Cannot withdraw onchain")
 			_ = c.Error(err)

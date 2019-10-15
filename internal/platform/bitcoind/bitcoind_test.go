@@ -33,7 +33,7 @@ func TestMain(m *testing.M) {
 func TestTxListener(t *testing.T) {
 	testutil.DescribeTest(t)
 
-	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
 
@@ -87,7 +87,7 @@ func TestBlockListener(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
-	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
 

@@ -132,9 +132,7 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			duration := time.Duration(nanos)
 			paidAt := inv.CreatedAt.Add(duration)
 
-			err := payments.MarkInvoiceAsPaid(db, user.ID,
-				inv.PaymentRequest,
-				paidAt)
+			err := payments.MarkInvoiceAsPaid(db, inv.PaymentRequest, paidAt)
 
 			if err != nil {
 				log.Debugf("Could not mark invoice as paid: %s", err)

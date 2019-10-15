@@ -2,6 +2,7 @@ package httptestutil
 
 import (
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -14,10 +15,13 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -273,7 +277,7 @@ func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, request *ht
 	}
 }
 
-func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) string {
+func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) (string, int) {
 
 	loginUserReq := GetRequest(t, RequestArgs{
 		Path:   "/login",
@@ -292,7 +296,7 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 	jsonRes := harness.AssertResponseOkWithJson(t, loginUserReq)
 
 	tokenPath := "accessToken"
-	maybeNilToken, ok := jsonRes[tokenPath]
+	maybeNilToken, ok := jsonRes["accessToken"]
 	if !ok {
 		fail(jsonRes, tokenPath, extractMethodAndPath(loginUserReq))
 	}
@@ -305,12 +309,26 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 		fail(jsonRes, tokenPath, extractMethodAndPath(loginUserReq))
 	}
 
+	userID, ok := jsonRes["userId"]
+	if !ok {
+		fail(jsonRes, "userId", extractMethodAndPath(loginUserReq))
+	}
+
+	var idFloat float64
+	switch untypedId := userID.(type) {
+	case float64:
+		idFloat = untypedId
+	default:
+		fail(jsonRes, "userId", extractMethodAndPath(loginUserReq))
+	}
+	id := int(idFloat)
+
 	// we want to alternate between authenticating users with an API key or
 	// a JWT. We flip a coin here, and if the coin flip succeeds we create an
 	// API key and return that.
 	coinFlip := rand.Float32()
 	if coinFlip < 0.5 {
-		return token
+		return token, id
 	}
 
 	apiKeyRequest := GetAuthRequest(t, AuthRequestArgs{
@@ -327,11 +345,10 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 
 	switch untypedKey := maybeNilKey.(type) {
 	case string:
-		return untypedKey
+		return untypedKey, id
 	default:
 		fail(apiKeyJson, apiKeyPath, extractMethodAndPath(apiKeyRequest))
-		// won't reach this
-		panic("unreachable")
+		panic("wont reach this")
 	}
 }
 
@@ -339,9 +356,44 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 // We either log in (and return an access token), or create an API key (and
 // return that). They should be equivalent (until scopes are implemented, so
 // this should not matter and might uncover some edge cases.
-func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) string {
+func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.CreateUserArgs) (string, int) {
 	_ = harness.CreateUser(t, args)
 
 	return harness.AuthenticaticateUser(t, args)
 
+}
+
+func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient,
+	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int) {
+
+	getDepositAddr := GetAuthRequest(t, AuthRequestArgs{
+		AccessToken: accessToken,
+		Path:        "/deposit",
+		Method:      "POST",
+		Body: fmt.Sprintf(`{
+			"forceNewAddress": %t,
+			"description": ""
+		}`, false),
+	})
+
+	type res struct {
+		Address string `json:"address"`
+	}
+	var r res
+
+	harness.AssertResponseOKWithStruct(t, getDepositAddr, &r)
+
+	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
+		Addr:   r.Address,
+		Amount: int64(amount),
+	})
+	if err != nil {
+		testutil.FatalMsgf(t, "could not send coins to %s: %v", r.Address, err)
+	}
+
+	// confirm it
+	_, err = bitcoin.Btcctl().Generate(7)
+	if err != nil {
+		testutil.FatalMsgf(t, "could not generate coins: %v", err)
+	}
 }

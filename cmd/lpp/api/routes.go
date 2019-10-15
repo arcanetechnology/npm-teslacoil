@@ -72,6 +72,7 @@ func getCorsConfig() cors.Config {
 // applying CORS configuration.
 func getGinEngine(config Config) *gin.Engine {
 	engine := gin.New()
+
 	log.Debug("Applying gin.Recovery middleware")
 	engine.Use(gin.Recovery())
 
@@ -139,7 +140,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
 			binding.Validator.Engine(),
 		)
 	}
-	validators := validation.RegisterAllValidators(engine)
+	validators := validation.RegisterAllValidators(engine, config.Network)
 	log.Infof("Registered custom validators: %s", validators)
 
 	log.Info("Checking bitcoind connection")

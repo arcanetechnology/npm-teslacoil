@@ -18,6 +18,7 @@ services:
       - postgres:/var/lib/postgresql
     environment:
       - DATABASE_USER
+      - POSTGRES_PASSWORD
     ports:
       # expose default Postgres port as 5434 on host
       - 5434:5432
@@ -44,12 +45,12 @@ services:
     build:
       context: docker/lnd
       args:
-        # we want UID and GID to be the same as the current user
+        # we want uid and gid to be the same as the current user
         # this is so permissions work out nicely when reading macaroon
         # files. By default Docker containers run as root, which
         # prevents us from reading the files we need
-        UID: $UID
-        GID: $GID
+        uid: $uid
+        gid: $gid
         LND_VERSION: '0.8.0-beta-rc2'
     environment:
       - RPCUSER

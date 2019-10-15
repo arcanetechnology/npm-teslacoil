@@ -79,27 +79,25 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+
 		userID, ok := getUserIdOrReject(c)
+
 		if !ok {
 			return
 		}
 
-		var request CreateInvoiceRequest
-		if c.BindJSON(&request) != nil {
+		var req CreateInvoiceRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
-
-		log.Debugf("received new request for CreateInvoice for user_id %d: %+v",
-			userID,
-			request)
 
 		t, err := payments.NewPayment(
 			r.db, r.lncli, payments.NewPaymentOpts{
 				UserID:      userID,
-				AmountSat:   request.AmountSat,
-				Memo:        request.Memo,
-				Description: request.Description,
-				CallbackURL: request.CallbackURL,
+				AmountSat:   req.AmountSat,
+				Memo:        req.Memo,
+				Description: req.Description,
+				CallbackURL: req.CallbackURL,
 			})
 
 		if err != nil {
@@ -122,29 +120,29 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	// PayInvoiceRequest is the required and optional fields for initiating a
 	// withdrawal.
 	type PayInvoiceRequest struct {
-		PaymentRequest string `json:"paymentRequest" binding:"required"`
+		PaymentRequest string `json:"paymentRequest" binding:"required,paymentrequest"`
 		Description    string `json:"description"`
 	}
 
 	return func(c *gin.Context) {
-		// authenticate the user by extracting the id from the jwt-token
+
 		userID, ok := getUserIdOrReject(c)
+
 		if !ok {
 			return
 		}
 
-		var request PayInvoiceRequest
-		if c.BindJSON(&request) != nil {
+		var req PayInvoiceRequest
+		if c.BindJSON(&req) != nil {
 			return
 		}
-		log.Debugf("received new request for PayInvoice for userID %d: %+v",
-			userID, request)
 
 		// Pays an invoice from claims.UserID's balance. This is secure because
 		// the UserID is extracted from the JWT
 		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, userID,
-			request.PaymentRequest, request.Description)
+			req.PaymentRequest, req.Description)
 		if err != nil {
+			log.WithError(err).Error("payinvoicewithdescriptionerr")
 			_ = c.Error(err)
 			return
 		}

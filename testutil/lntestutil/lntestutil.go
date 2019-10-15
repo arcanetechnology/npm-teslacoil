@@ -99,6 +99,7 @@ func GetLightingConfig(t *testing.T) ln.LightningConfig {
 		LndDir:    tempDir,
 		Network:   chaincfg.RegressionNetParams,
 		RPCServer: fmt.Sprintf("localhost:%d", port),
+		RPCPort:   port,
 		P2pPort:   testutil.GetPortOrFail(t),
 	}
 }

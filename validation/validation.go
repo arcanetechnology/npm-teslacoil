@@ -5,6 +5,9 @@ package validation
 import (
 	"reflect"
 
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/lightningnetwork/lnd/zpay32"
+
 	"github.com/nbutton23/zxcvbn-go"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -21,7 +24,11 @@ var log = build.Log
 // 2 -> less than 10^6 seconds
 // 3 -> less than 10^8 seconds
 // 4 -> more than 10^8 seconds
-const RequiredValidationScore = 3
+const (
+	RequiredValidationScore = 3
+	password                = "password"
+	paymentrequest          = "paymentrequest"
+)
 
 // IsValidPassword checks if a password is strong enough.
 func IsValidPassword(
@@ -37,6 +44,22 @@ func IsValidPassword(
 	return strength.Score >= RequiredValidationScore
 }
 
+// IsValidPaymentRequest checks if a payment request is valid per the configured network
+func IsValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
+	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
+		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
+
+		stringVal := field.String()
+
+		// if tag is payreq, check that the value is decodable
+		if _, err := zpay32.Decode(stringVal, &chainCfg); err != nil {
+			return false
+		}
+
+		return true
+	}
+}
+
 // RegisterValidator registers a validator in our validation engine with the
 // given name.
 func RegisterValidator(engine *validator.Validate, name string, function validator.Func) error {
@@ -50,15 +73,20 @@ func RegisterValidator(engine *validator.Validate, name string, function validat
 // RegisterAllValidators registers all known validators to the Validator engine,
 // quitting if this results in an error. This function should typically be
 // called at startup.
-func RegisterAllValidators(engine *validator.Validate) []string {
+func RegisterAllValidators(engine *validator.Validate, chainCfg chaincfg.Params) []string {
 	type Validator struct {
 		Name     string
 		Function validator.Func
 	}
 	validators := []Validator{{
-		Name:     "password",
+		Name:     password,
 		Function: IsValidPassword,
-	}}
+	},
+		{
+			Name:     paymentrequest,
+			Function: IsValidPaymentRequest(chainCfg),
+		},
+	}
 	names := make([]string, len(validators))
 	for i, elem := range validators {
 		names[i] = elem.Name

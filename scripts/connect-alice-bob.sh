@@ -14,15 +14,12 @@ ALICE_ADDR=`./alice newaddress p2wkh | jq --raw-output .address`
 BOB_ADDR=`./bob newaddress p2wkh | jq --raw-output .address`
 
 # give Alice some balance
-./bitcoin-cli generatetoaddress 101 $ALICE_ADDR
+./bitcoin-cli generatetoaddress 3 $ALICE_ADDR
 
-# give Bob some balance
-./bitcoin-cli generatetoaddress 101 $BOB_ADDR
-
-sleep 4
+sleep 5
 
 # open channel from alice to bob with money on both sides
-./alice openchannel --node_key $BOB_PUBKEY --connect $BOB_IP --local_amt 1000000 --push_amt 500000
+./alice openchannel --node_key $BOB_PUBKEY --connect $BOB_IP --local_amt 16000000 --push_amt 10000000
 
 # confirm channel
 ./bitcoin-cli generatetoaddress 6 $ALICE_ADDR

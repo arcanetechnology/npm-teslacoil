@@ -244,10 +244,11 @@ func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 }
 
 // DecreaseBalance decreases the balance of user id x by y satoshis
+// A constraint on the DB prevents us from decreasing further than 0 satoshis
 func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	if cb.AmountSat <= 0 {
 		return User{},
-			fmt.Errorf("amount cant be less than or equal to 0")
+			errors.New("amount cant be less than or equal to 0")
 	}
 
 	updateBalanceQuery := `UPDATE users
@@ -256,16 +257,15 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 
 	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
 	if err != nil {
-		return User{}, errors.Wrap(
-			err,
-			"DecreaseBalance(): could not construct user update",
-		)
+		return User{}, errors.WithMessagef(err, "decrease by %d for user %d", cb.AmountSat, cb.UserID)
 	}
 
 	user, err := scanUser(rows)
 	if err != nil {
-		return User{}, err
+		return User{}, errors.WithMessage(err, "decreasebalance")
 	}
+	log.Infof("decreased users balance by %d, new balance is %d", cb.AmountSat, user.Balance)
+
 	return user, nil
 
 }

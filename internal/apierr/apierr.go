@@ -267,6 +267,9 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 			case "password":
 				message = fmt.Sprintf("%q field does not contain a valid password", field)
 				code = "password"
+			case "paymentrequest":
+				message = fmt.Sprintf("%q is not a valid payment request", field)
+				code = "paymentrequest"
 			case "email":
 				message = fmt.Sprintf("%q field does not contain a valid email", field)
 				code = "email"

@@ -3,16 +3,19 @@ package payments
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/brianvoe/gofakeit"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/pkg/errors"
+	pkgErrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -23,7 +26,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 var (
@@ -247,159 +249,136 @@ func TestGetByID(t *testing.T) {
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 	// Setup the database
-	u, err := users.Create(testDB,
-		users.CreateUserArgs{
-			Email:    "test_userPayInvoice@example.com",
-			Password: "password",
-		})
-	if err != nil {
-		log.Error("User result was empty")
-		t.Fatalf("%+v\n", err)
+	user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
+
+	am := gofakeit.Number(1, ln.MaxAmountMsatPerInvoice)
+	amount := int64(am)
+	// Create Mock LND client with preconfigured invoice response
+	mockLNcli := lntestutil.LightningMockClient{
+		InvoiceResponse: lnrpc.Invoice{},
+		SendPaymentSyncResponse: lnrpc.SendResponse{
+			PaymentPreimage: SamplePreimage,
+			PaymentHash:     SampleHash[:],
+		},
+		// define what lncli.DecodePayReq returns
+		DecodePayReqResponse: lnrpc.PayReq{
+			PaymentHash: SampleHashHex,
+			NumSatoshis: amount,
+		},
+	}
+	paymentRequest := "SomePaymentRequest1"
+	expectedPayment := Payment{
+		UserID:         user.ID,
+		AmountSat:      amount,
+		AmountMSat:     amount * 1000,
+		Preimage:       &SamplePreimageHex,
+		HashedPreimage: SampleHashHex,
+		Direction:      OUTBOUND,
+		Status:         SUCCEEDED,
 	}
 
-	tx := testDB.MustBegin()
-	_, err = users.IncreaseBalance(tx, users.ChangeBalance{
-		UserID:    u.ID,
-		AmountSat: 5000,
+	t.Run("paying invoice decreases balance of user", func(t *testing.T) {
+
+		_, err := PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
+		}
+
+		balance := user.Balance
+		user, _ = users.GetByID(testDB, user.ID)
+
+		if user.Balance != balance-amount {
+			testutil.FatalMsgf(t, "expected balance to be [%d], but was [%d]", balance-amount, user.Balance)
+		}
+
 	})
-	if err != nil {
-		t.Fatalf("\t%s\tshould be able to PayInvoice. Error: %+v%s\n", fail, err, reset)
-	}
+	t.Run("paying invoice greater than balance fails with 'violates check constraint user_balance_check'", func(t *testing.T) {
+		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
+			PaymentHash: SampleHashHex,
+			NumSatoshis: ln.MaxAmountMsatPerInvoice * 6,
+		}
 
-	err = tx.Commit()
-	if err != nil {
-		t.Fatalf(
-			"\t%s\tshould be able to PayInvoice. Error:  %+v\n%s",
-			fail, err, reset)
-	}
+		_, err := PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
+		if !errors.Is(err, ErrUserBalanceTooLow) {
+			testutil.FailMsgf(t, "should not pay invoice greater than users balance")
+		}
 
-	var amount1 int64 = 5000
-	var amount2 int64 = 2000
-	testCases := []struct {
-		paymentRequest string
+	})
+	t.Run("paying invoice with 0 amount fails with Err0AmountInvoiceNotSupported", func(t *testing.T) {
+		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
+			PaymentHash: SampleHashHex,
+			NumSatoshis: 0,
+		}
 
-		decodePayReq lnrpc.PayReq
-		want         UserPaymentResponse
-	}{
-		{
-			paymentRequest: "SomePaymentRequest1",
+		_, err := PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
+		if !errors.Is(err, Err0AmountInvoiceNotSupported) {
+			testutil.FailMsgf(t, "expected Err0AmountInvoiceNotSupported but got error %v", err)
+		}
 
-			decodePayReq: lnrpc.PayReq{
-				PaymentHash: SampleHashHex,
-				NumSatoshis: amount1,
-			},
-			want: UserPaymentResponse{
-				Payment: Payment{
-					UserID:         u.ID,
-					AmountSat:      amount1,
-					AmountMSat:     amount1 * 1000,
-					Preimage:       &SamplePreimageHex,
-					HashedPreimage: SampleHashHex,
-					Status:         Status("SUCCEEDED"),
-					Direction:      Direction("OUTBOUND"),
-				},
-				User: users.User{
-					ID:      u.ID,
-					Balance: 0,
-				},
-			},
-		},
-		{
-			paymentRequest: "SomePaymentRequest2",
+	})
+	t.Run("successfully paying invoice marks invoice as paid", func(t *testing.T) {
+		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
+			PaymentHash: SampleHashHex,
+			NumSatoshis: amount,
+		}
 
-			decodePayReq: lnrpc.PayReq{
-				PaymentHash: SampleHashHex,
-				NumSatoshis: amount2,
-			},
-			want: UserPaymentResponse{
-				Payment: Payment{
-					UserID:         u.ID,
-					AmountSat:      amount2,
-					AmountMSat:     amount2 * 1000,
-					Preimage:       &SamplePreimageHex,
-					HashedPreimage: SampleHashHex,
-					Status:         Status("SUCCEEDED"),
-					Direction:      Direction("OUTBOUND"),
-				},
-				User: users.User{},
-			},
-		},
-	}
-
-	t.Log("testing paying invoice")
-	for i, test := range testCases {
-		t.Logf("\ttest: %d\twhen paying invoice %s for user %d",
-			i, test.want.Payment.PaymentRequest, test.want.User.ID)
-		user, err := users.GetByID(testDB, u.ID)
+		got, err := PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
 		if err != nil {
-			t.Fatalf(
-				"\t%s\tshould be able to GetByID. Error:  %+v\n%s",
-				fail, err, reset)
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
-		// Create Mock LND client with preconfigured invoice response
-		mockLNcli := lntestutil.LightningMockClient{
-			InvoiceResponse: lnrpc.Invoice{},
-			SendPaymentSyncResponse: lnrpc.SendResponse{
-				PaymentPreimage: SamplePreimage,
-				PaymentHash:     SampleHash[:],
-			},
-			DecodePayReqResponse: test.decodePayReq,
-			// We need to define what DecodePayReq returns
-		}
-		payment, err := PayInvoice(
-			testDB, &mockLNcli, u.ID, test.paymentRequest)
-		if user.Balance < test.want.Payment.AmountSat {
-			if payment.Payment.Status == SUCCEEDED || payment.Payment.Preimage != nil || payment.Payment.SettledAt != nil {
-				testutil.FatalMsg(t, "should not pay invoice when the users balance is too low")
-			}
-			testutil.Succeed(t,
-				"should not pay invoice when the users balance is too low")
+		expectedPayment.SettledAt = got.SettledAt
+		expectedPayment.Status = SUCCEEDED
 
-			if !strings.Contains(
-				err.Error(),
-				`new row for relation "users" violates check constraint "users_balance_check"`) {
-				testutil.FatalMsgf(t,
-					"should fail when paying invoice greater than balance. Error: %+v",
-					err)
-			}
-			testutil.Succeed(t,
-				"should fail when paying invoice greater than balance")
-			return
-		}
+		assertPaymentsAreEqual(t, *got, expectedPayment)
+	})
+	t.Run("successfully paying invoice marks invoice settledAt date", func(t *testing.T) {
+		paymentRequest := "SomePaymentRequest1"
+
+		got, err := PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
 		if err != nil {
-			testutil.FatalMsgf(t,
-				"should be able to PayInvoice. Error:  %+v",
-				err)
-		}
-		testutil.Succeed(t, "should be able to PayInvoice")
-
-		got := payment
-		want := test.want
-
-		assertPaymentsAreEqual(t, got.Payment, want.Payment)
-
-		if got.User.ID != want.User.ID {
-			t.Logf("\t%s\tID should be equal to expected ID. Expected \"%d\" got \"%d\"%s",
-				fail,
-				want.User.ID,
-				payment.User.ID,
-				reset,
-			)
-			t.Fail()
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
-		if got.User.Balance != want.User.Balance {
-			t.Logf("\t%s\tBalance should be equal to expected Balance. Expected \"%d\" got \"%d\"%s",
-				fail,
-				want.User.Balance,
-				payment.User.Balance,
-				reset,
-			)
-			t.Fail()
-		}
-	}
+		expectedPayment.SettledAt = got.SettledAt
+		expectedPayment.Status = SUCCEEDED
 
+		assertPaymentsAreEqual(t, *got, expectedPayment)
+
+		updatedInvoice, _ := GetByID(testDB, got.ID, user.ID)
+
+		if updatedInvoice.SettledAt == nil {
+			testutil.FailMsgf(t, "expected settledAt to be defined, but was <nil>")
+		}
+	})
+	t.Run("successfully paying invoice marks invoice settledAt date", func(t *testing.T) {
+		paymentRequest := "SomePaymentRequest1"
+
+		got, err := PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
+		}
+
+		expectedPayment.SettledAt = got.SettledAt
+		expectedPayment.Status = SUCCEEDED
+
+		assertPaymentsAreEqual(t, *got, expectedPayment)
+
+		updatedInvoice, err := GetByID(testDB, got.ID, user.ID)
+		if err != nil {
+			testutil.FatalMsgf(t, "could not getbyid: %v", err)
+		}
+
+		if updatedInvoice.SettledAt == nil {
+			testutil.FailMsgf(t, "expected settledAt to be defined, but was <nil>")
+		}
+	})
 }
 
 // TODO: Add cases where the triggerInvoice .settled is false
@@ -409,147 +388,6 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	// Arrange
 	u := userstestutil.CreateUserOrFail(t, testDB)
 
-	var amount1 int64 = 50000
-	var amount2 int64 = 20000
-
-	testCases := []struct {
-		triggerInvoice lnrpc.Invoice
-		memo           string
-		amountSat      int64
-
-		want UserPaymentResponse
-	}{
-		{
-			lnrpc.Invoice{
-				PaymentRequest: "SomePayRequest1",
-				RHash:          SampleHash[:],
-				RPreimage:      SamplePreimage,
-				Settled:        true,
-				Value:          int64(amount1),
-			},
-			firstMemo,
-			amount1,
-
-			UserPaymentResponse{
-				Payment: Payment{
-					UserID:         u.ID,
-					AmountSat:      amount1,
-					AmountMSat:     amount1 * 1000,
-					HashedPreimage: SampleHashHex,
-					Preimage:       &SamplePreimageHex,
-					Memo:           &firstMemo,
-					Status:         Status("SUCCEEDED"),
-					Direction:      Direction("INBOUND"),
-				},
-				User: users.User{
-					ID:      u.ID,
-					Balance: amount1,
-				},
-			},
-		},
-		{
-			lnrpc.Invoice{
-				PaymentRequest: "SomePayRequest2",
-				RHash:          SampleHash[:],
-				RPreimage:      SamplePreimage,
-				Settled:        true,
-				Value:          int64(amount2),
-			},
-			secondMemo,
-			amount2,
-
-			UserPaymentResponse{
-				Payment: Payment{
-					UserID:         u.ID,
-					AmountSat:      amount2,
-					AmountMSat:     amount2 * 1000,
-					HashedPreimage: SampleHashHex,
-					Preimage:       &SamplePreimageHex,
-					Memo:           &secondMemo,
-					Status:         Status("SUCCEEDED"),
-					Direction:      Direction("INBOUND"),
-				},
-				User: users.User{
-					ID:      u.ID,
-					Balance: 70000,
-				},
-			},
-		},
-		{
-			lnrpc.Invoice{
-				PaymentRequest: "SomePayRequest3",
-				RHash:          SampleHash[:],
-				RPreimage:      SamplePreimage,
-				Settled:        false,
-				Value:          int64(amount1),
-			},
-			firstMemo,
-			amount1,
-
-			UserPaymentResponse{
-				Payment: Payment{
-					UserID:         u.ID,
-					AmountSat:      amount1,
-					AmountMSat:     amount1 * 1000,
-					HashedPreimage: SampleHashHex,
-					Preimage:       &SamplePreimageHex,
-					Memo:           &firstMemo,
-					Status:         Status("OPEN"),
-					Direction:      Direction("INBOUND"),
-				},
-				User: users.User{},
-			},
-		},
-	}
-
-	for _, test := range testCases {
-		t.Run(fmt.Sprintf("when updating invoice with amount %d where balance should be %d after exectuion",
-			test.amountSat, test.want.User.Balance),
-			func(t *testing.T) {
-
-				// Arrange
-				lnMock := lntestutil.LightningMockClient{
-					InvoiceResponse: test.triggerInvoice,
-				}
-				_ = CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
-					UserID:    u.ID,
-					AmountSat: test.amountSat,
-					Memo:      test.memo,
-				})
-
-				// Act
-				payment, err := UpdateInvoiceStatus(test.triggerInvoice, testDB,
-					testutil.GetMockHttpPoster())
-				if err != nil {
-					testutil.FatalMsgf(t,
-						"should be able to UpdateInvoiceStatus. Error:  %+v\n",
-						err)
-				}
-
-				// Assert
-				got := payment.Payment
-				want := test.want
-
-				assertPaymentsAreEqual(t, got, want.Payment)
-
-				if payment.User.ID != want.User.ID {
-					testutil.FailMsgf(t,
-						"ID should be equal to expected ID. Expected \"%d\" got \"%d\"",
-						want.User.ID,
-						payment.User.ID,
-					)
-				}
-
-				if payment.User.Balance != want.User.Balance {
-					testutil.FailMsgf(t,
-						"balance should be equal to expected Balance. Expected \"%d\" got \"%d\"",
-						want.User.Balance,
-						payment.User.Balance,
-					)
-				}
-			})
-	}
-
 	t.Run("callback URL should be called", func(t *testing.T) {
 		t.Parallel()
 		testutil.DescribeTest(t)
@@ -558,7 +396,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		// current user. this is because the callback body is hashed with the
 		// users API key
 		if _, _, err := apikeys.New(testDB, u); err != nil {
-			testutil.FatalMsg(t, errors.Wrap(err, "Could not make API key"))
+			testutil.FatalMsg(t, pkgErrors.Wrap(err, "Could not make API key"))
 		}
 
 		lnMock := lntestutil.GetRandomLightningMockClient()
@@ -669,7 +507,7 @@ func TestGetAllOffset(t *testing.T) {
 				AmountSat: invoice.AmountSat,
 				Memo:      invoice.Memo,
 			}); err != nil {
-			testutil.FatalMsg(t, errors.Wrap(err, "could not create invoice"))
+			testutil.FatalMsg(t, pkgErrors.Wrap(err, "could not create invoice"))
 		}
 	}
 

@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"testing"
 	"time"
 
-	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -27,9 +25,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
 var log = build.Log
@@ -281,7 +277,7 @@ func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
 	description string, vout *int, txid *string, amountSat int64) (Transaction, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		// This type means lnd will force-create a new address
-		Type: lnrpc.AddressType_UNUSED_WITNESS_PUBKEY_HASH,
+		Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
 	})
 	if err != nil {
 		return Transaction{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")
@@ -584,27 +580,4 @@ func (t Transaction) Equal(t2 Transaction) (bool, string) {
 	}
 
 	return true, ""
-}
-
-func CreateTransactionOrFail(t *testing.T, db *db.DB, userID int) Transaction {
-	tx := db.MustBegin()
-
-	txs := Transaction{
-		UserID:      userID,
-		AmountSat:   int64(gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)),
-		Address:     "foo",
-		Description: "bar",
-		Direction:   payments.Direction("INBOUND"),
-		Confirmed:   false,
-	}
-
-	transaction, err := insertTransaction(tx, txs)
-
-	if err != nil {
-		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
-			err)
-	}
-	_ = tx.Commit()
-
-	return transaction
 }
