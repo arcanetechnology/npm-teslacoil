@@ -3,32 +3,56 @@ package build
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
 // Log is the logger for the whole application
 var Log = logrus.New()
 
-func init() {
-	Log.SetLevel(logrus.TraceLevel)
-	formatter := logrus.TextFormatter{
+func getFormatter() *logrus.TextFormatter {
+	return &logrus.TextFormatter{
 		ForceColors:   true,
 		FullTimestamp: true,
 		// This uses an absolutely ridicoulous format:
 		// https://stackoverflow.com/a/20234207/10359642
 		TimestampFormat: "15:04:05",
 	}
-	Log.SetFormatter(&formatter)
+}
+
+func init() {
+	Log.SetLevel(logrus.TraceLevel)
+	Log.SetFormatter(getFormatter())
 }
 
 // SetLogLevel sets the log level for the whole application
 func SetLogLevel(logLevel logrus.Level) {
 	Log.SetLevel(logLevel)
+}
+
+// DisableColors forces logrus to log without colors
+func DisableColors() {
+	formatter := getFormatter()
+	formatter.DisableColors = true
+	Log.SetFormatter(formatter)
+}
+
+// SetLogFile sets logrus to write to the given file
+func SetLogFile(file string) error {
+	logFile, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return errors.Wrap(err, "could not open logfile")
+	}
+	writer := io.MultiWriter(os.Stdout, logFile)
+	Log.SetOutput(writer)
+	return nil
 }
 
 // ToLogLevel takes in a string and converts it to a Logrus log level
