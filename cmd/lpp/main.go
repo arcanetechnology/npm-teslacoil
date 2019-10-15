@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"time"
@@ -487,12 +488,25 @@ func main() {
 	app.EnableBashCompletion = true
 	// have log levels be set for all commands/subcommands
 	app.Before = func(c *cli.Context) error {
-		level, err := build.ToLogLevel(c.GlobalString("loglevel"))
+		if c.GlobalBool("logging.disablecolors") {
+			build.DisableColors()
+		}
+
+		level, err := build.ToLogLevel(c.GlobalString("logging.level"))
 		if err != nil {
 			return err
 		}
 		build.SetLogLevel(level)
 		log.Info("Setting log level to " + level.String())
+
+		logToFile := c.GlobalBool("logging.writetofile")
+		if logToFile {
+			logFile := c.GlobalString("logging.file")
+			if err := build.SetLogFile(logFile); err != nil {
+				return nil
+			}
+			log.Info("Logging to file")
+		}
 
 		networkString := c.GlobalString("network")
 		switch networkString {
@@ -564,10 +578,31 @@ func main() {
 			Value: ln.DefaultRpcServer,
 			Usage: "host:port of ln daemon",
 		},
+
+		// logging
 		cli.StringFlag{
-			Name:  "loglevel",
+			Name:  "logging.level",
 			Value: logrus.InfoLevel.String(),
 			Usage: "Logging level for all subsystems {trace, debug, info, warn, error, fatal, panic}",
+		},
+		cli.BoolFlag{
+			Name:  "logging.writetofile",
+			Usage: "If set, logs are written to file",
+		},
+		cli.StringFlag{
+			Name: "logging.file",
+			Value: func() string {
+				dir, err := os.Getwd()
+				if err != nil {
+					panic(err)
+				}
+				return filepath.Join(dir, "logs", "teslacoil.log")
+			}(),
+			Usage: "If logging.writetofile is set, logs are written to this file",
+		},
+		cli.BoolFlag{
+			Name:  "logging.disablecolors",
+			Usage: "If set, logs are without colors",
 		},
 	}
 
