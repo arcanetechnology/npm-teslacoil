@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -105,10 +104,6 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 
 		if err != nil {
 			log.WithError(err).Error("Could not add new payment")
-			if errors.Is(err, payments.ErrCustomerOrderIdAlreadyUsed) {
-				apierr.Public(c, http.StatusBadRequest, apierr.ErrCustomerOrderIdAlreadyUsed)
-				return
-			}
 			_ = c.Error(err)
 			return
 		}

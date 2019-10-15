@@ -1075,7 +1075,7 @@ func TestCreateInvoice(t *testing.T) {
 		res := otherH.AssertResponseOkWithJson(t, req)
 		testutil.AssertEqual(t, res["customerOrderId"], orderId)
 
-		t.Run("not create an invoice with the same order ID twice", func(t *testing.T) {
+		t.Run("create an invoice with the same order ID twice", func(t *testing.T) {
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
@@ -1087,7 +1087,7 @@ func TestCreateInvoice(t *testing.T) {
 				}`, 1337, orderId),
 				})
 
-			_, _ = otherH.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+			otherH.AssertResponseOk(t, req)
 
 		})
 	})

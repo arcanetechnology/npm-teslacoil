@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	liberrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
@@ -277,10 +275,6 @@ type NewPaymentOpts struct {
 	OrderId     string
 }
 
-var (
-	ErrCustomerOrderIdAlreadyUsed = errors.New("customer order ID is already used")
-)
-
 // NewPayment creates a new payment by first creating an invoice
 // using lnd, then saving info returned from lnd to a new payment
 func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) (Payment, error) {
@@ -320,13 +314,7 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 	p, err = insert(tx, p)
 	if err != nil {
 		_ = tx.Rollback()
-		var pqErr *pq.Error
-		switch {
-		case liberrors.As(err, &pqErr) && pqErr.Constraint == "unique_order_id_and_user_id":
-			return Payment{}, ErrCustomerOrderIdAlreadyUsed
-		default:
-			return Payment{}, err
-		}
+		return Payment{}, err
 	}
 
 	if err := tx.Commit(); err != nil {

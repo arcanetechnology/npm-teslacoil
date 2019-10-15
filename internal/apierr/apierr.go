@@ -17,7 +17,6 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gopkg.in/go-playground/validator.v8"
 )
 
@@ -134,11 +133,6 @@ var (
 	ErrTransactionNotFound = apiError{
 		err:  errors.New("transaction not found"),
 		code: "ERR_TRANSACTION_NOT_FOUND",
-	}
-
-	ErrCustomerOrderIdAlreadyUsed = apiError{
-		err:  payments.ErrCustomerOrderIdAlreadyUsed,
-		code: "ERR_CUSTOMER_ORDER_ID_ALREADY_USED",
 	}
 )
 
