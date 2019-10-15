@@ -33,11 +33,6 @@ var (
 	testDB         *db.DB
 )
 
-const (
-	fail  = "\u001b[31m\u2717"
-	reset = "\u001b[0m"
-)
-
 var (
 	SamplePreimage = func() []byte {
 		encoded, _ := hex.DecodeString(SamplePreimageHex)
@@ -71,13 +66,17 @@ func TestNewPayment(t *testing.T) {
 	t.Parallel()
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
-	amount1 := rand.Int63n(4294967)
-	amount2 := rand.Int63n(4294967)
+	amount1 := rand.Int63n(ln.MaxAmountSatPerInvoice)
+	amount2 := rand.Int63n(ln.MaxAmountSatPerInvoice)
+	amount3 := rand.Int63n(ln.MaxAmountSatPerInvoice)
+
+	customerOrderId := "this is an order id"
 
 	tests := []struct {
 		memo        string
 		description string
 		amountSat   int64
+		orderId     string
 
 		lndInvoice lnrpc.Invoice
 		want       Payment
@@ -128,6 +127,31 @@ func TestNewPayment(t *testing.T) {
 				Direction:      Direction("INBOUND"),
 			},
 		},
+		{
+			memo:        firstMemo,
+			description: description,
+			amountSat:   amount3,
+			orderId:     customerOrderId,
+
+			lndInvoice: lnrpc.Invoice{
+				Value:          amount3,
+				PaymentRequest: "SomePayRequest",
+				RHash:          SampleHash[:],
+				RPreimage:      SamplePreimage,
+				Settled:        false,
+			},
+			want: Payment{
+				UserID:          user.ID,
+				AmountSat:       amount3,
+				AmountMSat:      amount3 * 1000,
+				Memo:            &firstMemo,
+				HashedPreimage:  SampleHashHex,
+				Description:     &description,
+				Status:          Status("OPEN"),
+				Direction:       Direction("INBOUND"),
+				CustomerOrderId: &customerOrderId,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -144,6 +168,7 @@ func TestNewPayment(t *testing.T) {
 				AmountSat:   tt.amountSat,
 				Memo:        tt.memo,
 				Description: tt.description,
+				OrderId:     tt.orderId,
 			})
 			if err != nil {
 				testutil.FatalMsgf(t, "should be able to CreateInvoice %+v", err)
@@ -333,6 +358,7 @@ func TestPayInvoice(t *testing.T) {
 
 		expectedPayment.SettledAt = got.SettledAt
 		expectedPayment.Status = SUCCEEDED
+		expectedPayment.Preimage = got.Preimage
 
 		assertPaymentsAreEqual(t, *got, expectedPayment)
 	})
@@ -646,8 +672,7 @@ func TestGetAllLimit(t *testing.T) {
 
 		invoices, err := GetAll(testDB, user.ID, test.limit, 0)
 		if err != nil {
-			t.Fatalf("\t%s\tshould be able to GetAll. Error: %+v%s",
-				fail, err, reset)
+			testutil.FatalMsg(t, err)
 		}
 		numberOfInvoices := len(invoices)
 
@@ -765,70 +790,36 @@ func TestWithAdditionalFields(t *testing.T) {
 
 func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 	t.Helper()
-	if got.UserID != want.UserID {
-		t.Logf("\t%s\tUserID should be equal to expected UserID. Expected \"%d\" got \"%d\"%s",
-			fail, want.UserID, got.UserID, reset)
-		t.Fail()
+	testutil.AssertEqual(t, got.UserID, want.UserID, "userID")
+	testutil.AssertEqual(t, got.AmountSat, want.AmountSat, "amountSat")
+	testutil.AssertEqual(t, got.AmountMSat, want.AmountMSat, "amountMSat")
+
+	testutil.AssertMsg(t, (got.Preimage == nil) == (want.Preimage == nil), "Preimage was nil and not nil")
+	if got.Preimage != nil {
+		testutil.AssertEqual(t, *got.Preimage, *want.Preimage)
+	}
+	testutil.AssertEqual(t, got.HashedPreimage, want.HashedPreimage, "hashedPreimage")
+
+	testutil.AssertMsg(t, (got.Memo == nil) == (want.Memo == nil), "Memo was nil and not nil")
+	if got.Memo != nil {
+		testutil.AssertEqual(t, *got.Memo, *want.Memo)
 	}
 
-	if got.AmountSat != want.AmountSat {
-		t.Logf("\t%s\tAmountSat should be equal to expected AmountSat. Expected \"%d\" got \"%d\"%s",
-			fail, want.AmountSat, got.AmountSat, reset)
-		t.Fail()
+	testutil.AssertMsg(t, (got.Description == nil) == (want.Description == nil), "Description was nil and not nil")
+	if got.Description != nil {
+		testutil.AssertEqual(t, *got.Description, *want.Description)
 	}
 
-	if got.AmountMSat != want.AmountMSat {
-		t.Logf("\t%s\tAmountMSat should be equal to expected AmountMSat. Expected \"%d\" got \"%d\"%s",
-			fail, want.AmountMSat, got.AmountMSat, reset)
-		t.Fail()
+	testutil.AssertEqual(t, got.Status, want.Status, "status")
+	testutil.AssertEqual(t, got.Direction, want.Direction, "direction")
+
+	testutil.AssertMsg(t, (got.CallbackURL == nil) == (want.CallbackURL == nil), "CallbackURL was nil and not nil")
+	if got.CallbackURL != nil {
+		testutil.AssertEqual(t, *got.CallbackURL, *want.CallbackURL)
 	}
 
-	if got.Preimage != nil && want.Preimage != nil && *got.Preimage != *want.Preimage {
-		t.Logf("\t%s\tPreimage should be equal to expected Preimage. Expected \"%v\" got \"%v\"%s",
-			fail, want.Preimage, got.Preimage, reset)
-		t.Fail()
-	}
-
-	if got.HashedPreimage != want.HashedPreimage {
-		t.Logf("\t%s\tHashedPreimage should be equal to expected HashedPreimage. Expected \"%s\" got \"%s\"%s",
-			fail, want.HashedPreimage, got.HashedPreimage, reset)
-		t.Fail()
-	}
-
-	if (got.Memo != nil && want.Memo == nil) ||
-		(got.Memo == nil && want.Memo != nil) {
-		testutil.FatalMsgf(t, "Memos arent equal. Expected: %v, got: %v",
-			*got.Memo, want.Memo)
-	}
-
-	if got.Memo != nil && want.Memo != nil && *got.Memo != *want.Memo {
-		testutil.FatalMsgf(t, "Memo should be equal to expected Memo. Expected \"%s\" got \"%s\"",
-			*want.Memo, *got.Memo)
-	}
-
-	if (got.Description != nil && want.Description == nil) ||
-		(got.Description == nil && want.Description != nil) {
-		testutil.FatalMsgf(t, "Descriptions arent equal. Expected: %v, got: %v",
-			got.Description, want.Description)
-	}
-
-	if got.Description != nil && want.Description != nil && *got.Description != *want.Description {
-		testutil.FatalMsgf(t, "Descriptions should be equal to expected Memo. Expected \"%s\" got \"%s\"",
-			*want.Description, *got.Description)
-	}
-
-	if got.Status != want.Status {
-		t.Logf("\t%s\tStatus should be equal to expected Status. Expected \"%s\" got \"%s\"%s",
-			fail, want.Status, got.Status, reset)
-		t.Fail()
-	}
-
-	if got.Direction != want.Direction {
-		t.Logf("\t%s\tDirection should be equal to expected Direction. Expected \"%s\" got \"%s\"%s",
-			fail, want.Direction, got.Direction, reset)
-		t.Fail()
-	}
-	if !t.Failed() {
-		testutil.Succeed(t, "all values should be equal to expected values")
+	testutil.AssertMsg(t, (got.CustomerOrderId == nil) == (want.CustomerOrderId == nil), "CustomerOrderId was nil and not nil")
+	if got.CustomerOrderId != nil {
+		testutil.AssertEqual(t, *got.CustomerOrderId, *want.CustomerOrderId)
 	}
 }
