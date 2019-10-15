@@ -3,6 +3,9 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
+
+	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
@@ -83,10 +86,16 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 // If the withdrawal is successful, it responds with the txid
 func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 	type WithdrawResponse struct {
-		Txid        *string `json:"txid"`
-		Address     string  `json:"address"`
-		AmountSat   int64   `json:"amountSat"`
-		Description string  `json:"description"`
+		ID          int                `json:"id"`
+		Address     string             `json:"address"`
+		Txid        *string            `json:"txid"`
+		Vout        *int               `json:"vout"`
+		Direction   payments.Direction `json:"direction"`
+		AmountSat   int64              `json:"amountSat"`
+		Description string             `json:"description"`
+		Confirmed   bool               `json:"confirmed"`
+
+		ConfirmedAt *time.Time `json:"confirmedAt"`
 	}
 
 	return func(c *gin.Context) {
@@ -110,10 +119,16 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		}
 
 		c.JSONP(http.StatusOK, WithdrawResponse{
-			Txid:        transaction.Txid,
+			ID:          transaction.ID,
 			Address:     transaction.Address,
+			Txid:        transaction.Txid,
+			Vout:        transaction.Vout,
+			Direction:   transaction.Direction,
 			AmountSat:   transaction.AmountSat,
 			Description: transaction.Description,
+			Confirmed:   transaction.Confirmed,
+
+			ConfirmedAt: transaction.ConfirmedAt,
 		})
 	}
 
