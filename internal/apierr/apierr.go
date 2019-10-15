@@ -293,6 +293,9 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 					// see comment above on capitalization of fields
 					decapitalize(validationErr.Param))
 				code = "eqfield"
+			case "max":
+				message = fmt.Sprintf("%q cannot be longer than %s characters", field, validationErr.Param)
+				code = "max"
 			default:
 				log.WithField("tag", validationErr.Tag).Warn("Encountered unknown validation field")
 				message = fmt.Sprintf("%s is invalid", field)

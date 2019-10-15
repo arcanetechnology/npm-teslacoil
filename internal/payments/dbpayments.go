@@ -67,6 +67,10 @@ type Payment struct {
 	UpdatedAt time.Time  `db:"updated_at" json:"-"`
 	DeletedAt *time.Time `db:"deleted_at" json:"-"`
 
+	// CustomerOrderId is an optional field where the user can specify an
+	// order ID of their choosing.
+	CustomerOrderId *string `db:"customer_order_id" json:"customerOrderId"`
+
 	// ExpiresAt is the time at which the payment request expires.
 	// NOT a db property
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -127,25 +131,21 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 
 	createOffchainTXQuery := `INSERT INTO 
 	offchaintx (user_id, payment_request, preimage, hashed_preimage, memo,
-		callback_url, description, expiry, direction, status, amount_sat,amount_msat)
+		callback_url, description, expiry, direction, status, amount_sat,amount_msat,
+	            customer_order_id)
 	VALUES (:user_id, :payment_request, :preimage, :hashed_preimage, 
 		    :memo, :callback_url, :description, :expiry, :direction, :status, 
-	        :amount_sat, :amount_msat)
+	        :amount_sat, :amount_msat, :customer_order_id)
 	RETURNING id, user_id, payment_request, preimage, hashed_preimage,
 			  memo, description, expiry, direction, status, amount_sat, amount_msat,
-			  callback_url, created_at, updated_at`
+			  callback_url, created_at, updated_at, customer_order_id`
 
 	// Using the above query, NamedQuery() will extract VALUES from
 	// the payment variable and insert them into the query
 	rows, err := tx.NamedQuery(createOffchainTXQuery, p)
 	if err != nil {
-		log.Error(err)
-		return Payment{}, errors.Wrapf(
-			err,
-			"insert->tx.NamedQuery(%s, %+v)",
-			createOffchainTXQuery,
-			p,
-		)
+		log.WithError(err).Error("Could not insert payment")
+		return Payment{}, err
 	}
 	defer rows.Close()
 
@@ -168,6 +168,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 			&payment.CallbackURL,
 			&payment.CreatedAt,
 			&payment.UpdatedAt,
+			&payment.CustomerOrderId,
 		); err != nil {
 			log.Error(err)
 			return payment, errors.Wrapf(err,
@@ -271,6 +272,7 @@ type NewPaymentOpts struct {
 	Memo        string
 	Description string
 	CallbackURL string
+	OrderId     string
 }
 
 // NewPayment creates a new payment by first creating an invoice
@@ -282,7 +284,7 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
 	if err != nil {
-		log.Error(err)
+		log.WithError(err).Error("Could not create invoice")
 		return Payment{}, err
 	}
 
@@ -305,18 +307,18 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 	if opts.CallbackURL != "" {
 		p.CallbackURL = &opts.CallbackURL
 	}
+	if opts.OrderId != "" {
+		p.CustomerOrderId = &opts.OrderId
+	}
 
 	p, err = insert(tx, p)
 	if err != nil {
-		log.Errorf("Could not insert payment: %s", err)
 		_ = tx.Rollback()
 		return Payment{}, err
 	}
 
-	log.Debugf("NewPayment: %v", p)
-
 	if err := tx.Commit(); err != nil {
-		log.Errorf("Could not commit payment TX: %s", err)
+		log.WithError(err).Error("Could not commit payment TX")
 		_ = tx.Rollback()
 		return Payment{}, err
 	}
