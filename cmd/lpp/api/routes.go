@@ -55,7 +55,7 @@ type RestServer struct {
 
 func getCorsConfig() cors.Config {
 	return cors.Config{
-		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000"},
+		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000", "https://testnet.teslacoil.io"},
 		AllowMethods: []string{
 			http.MethodPut, http.MethodGet,
 			http.MethodPost, http.MethodPatch,
