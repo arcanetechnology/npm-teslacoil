@@ -32,6 +32,7 @@ func (a apiError) Error() string {
 	return pkgerrors.Wrap(a.err, a.code).Error()
 }
 
+// Is provides functionality for comparing errors
 func (a apiError) Is(err error) bool {
 	if stdErr, ok := err.(httptypes.StandardErrorResponse); ok {
 		return stdErr.ErrorField.Code == a.code
@@ -40,15 +41,15 @@ func (a apiError) Is(err error) bool {
 }
 
 var (
-	// ErrInvalidJson means we got sent invalid JSON
-	ErrInvalidJson = apiError{
+	// errInvalidJson means we got sent invalid JSON
+	errInvalidJson = apiError{
 		err:  errors.New("invalid JSON"),
 		code: "ERR_INVALID_JSON",
 	}
 
 	// ErrUnknownError means we don't know exactly what went wrong
 	ErrUnknownError = apiError{
-		err:  errors.New("unknown error"),
+		err:  errors.New("something went wrong"),
 		code: "ERR_UNKNOWN_ERROR",
 	}
 
@@ -64,72 +65,88 @@ var (
 		code: "ERR_MISSING_AUTH_HEADER",
 	}
 
+	//ErrIncorrectPassword means we were given an invalid password
 	ErrIncorrectPassword = apiError{
 		err:  errors.New("incorrect password"),
 		code: "ERR_INCORRECT_PASSWORD",
 	}
 
+	//Err2faNotEnabled means the user hasn't enabled 2FA
 	Err2faNotEnabled = apiError{
 		err:  errors.New("2FA is not enabled"),
 		code: "ERR_2FA_NOT_ENABLED",
 	}
+
+	//Err2faAlreadyEnabled means the user already has enabled 2FA
 	Err2faAlreadyEnabled = apiError{
 		err:  errors.New("2FA is already enabled"),
 		code: "ERR_2FA_ALREADY_ENABLED",
 	}
 
-	// The given TOTP code was not on a valid format
+	// ErrInvalidTotpCode means the given TOTP code was not on a valid format
 	ErrInvalidTotpCode = apiError{
 		err:  errors.New("invalid TOTP code format"),
 		code: "ERR_INVALID_TOTP_CODE",
 	}
+	//ErrBadRequest means we got a malformed request
 	ErrBadRequest = apiError{
 		err:  errors.New("bad request"),
 		code: "ERR_BAD_REQUEST",
 	}
+	//ErrMalformedApiKey means we received a malformed API key
 	ErrMalformedApiKey = apiError{
 		err:  errors.New("malformed API key"),
 		code: "ERR_MALFORMED_API_KEY",
 	}
+	//ErrApiKeyNotFound means the given API key was not found
 	ErrApiKeyNotFound = apiError{
 		err:  errors.New("API key not found"),
 		code: "ERR_API_KEY_NOT_FOUND",
 	}
+	//ErrMalformedJwt means the given JWT was malformed
 	ErrMalformedJwt = apiError{
 		err:  errors.New("malformed JWT"),
 		code: "ERR_MALFORMED_JWT",
 	}
+	//ErrInvalidJwtSignature means the JWT signature was invalid
 	ErrInvalidJwtSignature = apiError{
 		err:  errors.New("invalid JWT signature"),
 		code: "ERR_INVALID_JWT_SIGNATURE",
 	}
+	//ErrExpiredJwt means we were given an expired JWT
 	ErrExpiredJwt = apiError{
 		err:  errors.New("expired JWT"),
 		code: "ERR_EXPIRED_JWT",
 	}
+	//ErrJwtNotValidYet means the given JWT has a start time set in the future
 	ErrJwtNotValidYet = apiError{
 		err:  errors.New("JWT is not valid yet"),
 		code: "ERR_JWT_NOT_VALID_YET",
 	}
+	//ErrMissingTotpCode means no TOTP code was given where one was required
 	ErrMissingTotpCode = apiError{
 		err:  errors.New("missing TOTP code"),
 		code: "ERR_MISSING_TOTP_CODE",
 	}
 
-	// The given TOTP code did not match up with the expected one
+	// ErrBadTotpCode means the given TOTP code did not match up with the expected one
 	ErrBadTotpCode = apiError{
 		err:  errors.New("bad TOTP code"),
 		code: "ERR_BAD_TOTP_CODE",
 	}
 
-	ErrRequestValidationFailed = apiError{
+	// errRequestValidationFailed means the user gave us an invalid request, either
+	// in JSON, URL or query format
+	errRequestValidationFailed = apiError{
 		err:  errors.New("request validation failed"),
 		code: "ERR_REQUEST_VALIDATION_FAILED",
 	}
+	//ErrInvoiceNotFound means the requested invoice was not found
 	ErrInvoiceNotFound = apiError{
 		err:  errors.New("invoice not found"),
 		code: "ERR_INVOICE_NOT_FOUND",
 	}
+	//ErrTransactionNotFound means the requested transaction was not found
 	ErrTransactionNotFound = apiError{
 		err:  errors.New("transaction not found"),
 		code: "ERR_TRANSACTION_NOT_FOUND",
@@ -150,7 +167,22 @@ func decapitalize(str string) string {
 		decapitalized = decapitalized + string(c)
 	}
 	return decapitalized
+}
 
+// capitalize makes the first element of a string uppercase
+func capitalize(str string) string {
+	if str == "" {
+		return ""
+	}
+	var capitalized string
+	for index, c := range str {
+		if index == 0 {
+			capitalized = string(unicode.ToUpper(c))
+			continue
+		}
+		capitalized = capitalized + string(c)
+	}
+	return capitalized
 }
 
 // GetMiddleware returns a Gin middleware that handles errors
@@ -182,8 +214,8 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		for _, err := range c.Errors {
 			var syntaxErr *json.SyntaxError
 			if errors.Is(err.Err, io.EOF) || errors.As(err.Err, &syntaxErr) {
-				response.ErrorField.Code = ErrInvalidJson.code
-				response.ErrorField.Message = ErrInvalidJson.err.Error()
+				response.ErrorField.Code = errInvalidJson.code
+				response.ErrorField.Message = errInvalidJson.err.Error()
 				c.JSON(httpCode, response)
 				return
 			}
@@ -204,16 +236,20 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 			}
 		}
 
+		// ensure all responses have a code
 		if response.ErrorField.Code == "" {
 			if len(fieldErrors) > 0 {
-				response.ErrorField.Code = ErrRequestValidationFailed.code
-				response.ErrorField.Message = ErrRequestValidationFailed.err.Error()
+				// if we have any field errors, request validation failed
+				response.ErrorField.Code = errRequestValidationFailed.code
+				response.ErrorField.Message = errRequestValidationFailed.err.Error()
 			} else {
+				// this is bad, but should be picked up by tests
 				response.ErrorField.Code = ErrUnknownError.code
 				response.ErrorField.Message = ErrUnknownError.err.Error()
 			}
 		}
 
+		response.ErrorField.Message = capitalize(response.ErrorField.Message)
 		c.JSON(httpCode, response)
 	}
 }
@@ -226,11 +262,14 @@ func Public(c *gin.Context, code int, err apiError) {
 	_ = cErr.SetType(gin.ErrorTypePublic)
 }
 
+// UnknownValidationTag is the tag we apply when encountering a validation tag
+// we don't know how to handle
 const UnknownValidationTag = "unknown"
 
 func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.FieldError {
 	// initialize to empty list instead of pointer, to make sure the empty list
 	// is returned instead of nil
+	//noinspection GoPreferNilSlice
 	fieldErrors := []httptypes.FieldError{}
 	for _, err := range c.Errors.ByType(gin.ErrorTypeBind) {
 		// not all errors encountered in validation is a nice validator.ValidationErrors type

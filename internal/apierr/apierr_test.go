@@ -84,7 +84,7 @@ func TestJsonValidation(t *testing.T) {
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 0)
 			testutil.AssertMsg(t, err.ErrorField.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.ErrorField.Code, ErrInvalidJson.code)
+			testutil.AssertEqual(t, err.ErrorField.Code, errInvalidJson.code)
 		})
 		t.Run("Invalid JSON", func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -94,7 +94,7 @@ func TestJsonValidation(t *testing.T) {
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 0)
 			testutil.AssertMsg(t, err.ErrorField.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.ErrorField.Code, ErrInvalidJson.code)
+			testutil.AssertEqual(t, err.ErrorField.Code, errInvalidJson.code)
 		})
 
 		t.Run("no parameters", func(t *testing.T) {
@@ -253,5 +253,5 @@ func TestPublicError(t *testing.T) {
 	testutil.AssertEqual(t, w.Code, http.StatusInternalServerError)
 
 	err := assertErrorResponseOk(t, w, 0)
-	testutil.AssertEqual(t, err, publicError)
+	testutil.AssertEqual(t, err.ErrorField.Code, publicError.code)
 }
