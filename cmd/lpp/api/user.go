@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	stderr "errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
@@ -159,6 +161,11 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 		})
 		if err != nil {
 			log.WithError(err).Error("Could not create user ")
+			var pqErr *pq.Error
+			if stderr.As(err, &pqErr) && pqErr.Constraint == "users_email_key" {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrUserAlreadyExists)
+				return
+			}
 			_ = c.Error(err)
 			return
 		}
@@ -205,8 +212,12 @@ func (r *RestServer) Login() gin.HandlerFunc {
 		user, err := users.GetByCredentials(r.db, req.Email, req.Password)
 		if err != nil {
 			switch {
+			// we don't want to leak information about existing users, so
+			// we respond with the same response for both errors
 			case stderr.Is(err, bcrypt.ErrMismatchedHashAndPassword):
-				apierr.Public(c, http.StatusForbidden, apierr.ErrIncorrectPassword)
+				apierr.Public(c, http.StatusUnauthorized, apierr.ErrNoSuchUser)
+			case stderr.Is(err, sql.ErrNoRows):
+				apierr.Public(c, http.StatusUnauthorized, apierr.ErrNoSuchUser)
 			default:
 				log.WithError(err).Error("Couldn't get by credentials")
 				_ = c.Error(err)

@@ -19,6 +19,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
@@ -170,28 +171,69 @@ func TestCreateUser(t *testing.T) {
 
 func TestPostUsersRoute(t *testing.T) {
 	testutil.DescribeTest(t)
+	t.Parallel()
 
-	email := gofakeit.Email()
-	pass := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
-		Email:    email,
-		Password: pass,
-	})
-
-	req := httptestutil.GetAuthRequest(t,
-		httptestutil.AuthRequestArgs{
-			AccessToken: accessToken,
-			Path:        "/user", Method: "GET",
+	t.Run("create a user", func(t *testing.T) {
+		t.Parallel()
+		email := gofakeit.Email()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/users",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"email": %q,
+				"password": %q
+			}`, email, pass),
 		})
 
-	jsonRes := h.AssertResponseOkWithJson(t, req)
-	testutil.AssertEqual(t, jsonRes["firstName"], nil)
-	testutil.AssertEqual(t, jsonRes["lastName"], nil)
-	testutil.AssertEqual(t, jsonRes["email"], email)
+		jsonRes := h.AssertResponseOkWithJson(t, req)
+		testutil.AssertEqual(t, jsonRes["firstName"], nil)
+		testutil.AssertEqual(t, jsonRes["lastName"], nil)
+		testutil.AssertEqual(t, jsonRes["email"], email)
+		testutil.AssertEqual(t, jsonRes["balance"], 0)
+
+		t.Run("not create the same user twice", func(t *testing.T) {
+			otherReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+				Path:   "/users",
+				Method: "POST",
+				Body: fmt.Sprintf(`{
+				"email": %q,
+				"password": %q
+			}`, email, pass),
+			})
+			_, err := h.AssertResponseNotOk(t, otherReq)
+			testutil.AssertEqual(t, apierr.ErrUserAlreadyExists, err)
+		})
+	})
+
+	t.Run("not create a user with no pass", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/users",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"email": %q
+			}`, gofakeit.Email()),
+		})
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("not create a user with no email", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/users",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+				"password": %q
+			}`, gofakeit.Password(true, true, true, true, true, 32)),
+		})
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
 }
 
 func TestPostLoginRoute(t *testing.T) {
 	testutil.DescribeTest(t)
+	t.Parallel()
 
 	email := gofakeit.Email()
 	password := gofakeit.Password(true, true, true, true, true, 32)
@@ -206,6 +248,7 @@ func TestPostLoginRoute(t *testing.T) {
 	})
 
 	t.Run("fail to login with invalid email", func(t *testing.T) {
+		t.Parallel()
 		badEmail := "foobar"
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/login",
@@ -219,6 +262,7 @@ func TestPostLoginRoute(t *testing.T) {
 	})
 
 	t.Run("login with proper email", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/login",
 			Method: "POST",
@@ -232,6 +276,34 @@ func TestPostLoginRoute(t *testing.T) {
 		testutil.AssertEqual(t, res["lastName"], second)
 		testutil.AssertEqual(t, res["email"], email)
 		testutil.AssertEqual(t, res["balance"], 0.0)
+	})
+
+	t.Run("fail to login with invalid credentials", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, email, gofakeit.Password(true, true, true, true, true, 32)),
+		})
+		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
+		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
+	})
+
+	t.Run("fail to login with non-existant credentials", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/login",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q,
+			"password": %q
+		}`, gofakeit.Email(), gofakeit.Password(true, true, true, true, true, 32)),
+		})
+		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
+		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
 	})
 }
 
