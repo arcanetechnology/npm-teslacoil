@@ -1,6 +1,8 @@
 package httptypes
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type StandardError struct {
 	Message string       `json:"message"`
@@ -15,6 +17,13 @@ type StandardErrorResponse struct {
 
 func (s StandardErrorResponse) Error() string {
 	return fmt.Errorf("%s: %s", s.ErrorField.Code, s.ErrorField.Message).Error()
+}
+
+func (s StandardErrorResponse) Is(err error) bool {
+	if stdErr, ok := err.(StandardErrorResponse); ok {
+		return stdErr.ErrorField.Code == s.ErrorField.Code
+	}
+	return s.Error() == err.Error()
 }
 
 // FieldError is the type for a request field validation error message.

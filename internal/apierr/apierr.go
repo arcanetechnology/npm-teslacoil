@@ -37,10 +37,24 @@ func (a apiError) Is(err error) bool {
 	if stdErr, ok := err.(httptypes.StandardErrorResponse); ok {
 		return stdErr.ErrorField.Code == a.code
 	}
+	if aErr, ok := err.(apiError); ok {
+		return a.code == aErr.code
+	}
 	return a.err.Error() == err.Error()
 }
 
 var (
+	// ErrUserAlreadyExists means the user already exists
+	ErrUserAlreadyExists = apiError{
+		err:  errors.New("user already exists"),
+		code: "ERR_USER_ALREADY_EXISTS",
+	}
+	// ErrNoSuchUser means no user with the given email and password exists
+	ErrNoSuchUser = apiError{
+		err:  errors.New("no user with the given email and password exists"),
+		code: "ERR_NO_SUCH_USER",
+	}
+
 	// errInvalidJson means we got sent invalid JSON
 	errInvalidJson = apiError{
 		err:  errors.New("invalid JSON"),

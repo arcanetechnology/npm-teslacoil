@@ -51,6 +51,11 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}, msgs ..
 	firstErr, firstErrOk := expected.(error)
 	secondErr, secondErrOk := actual.(error)
 	if firstErrOk && secondErrOk {
+		if x, ok := firstErr.(interface{ Is(error) bool }); ok {
+			AssertMsgf(t, x.Is(secondErr),
+				"Expected (%s) and actual (%s) are not equal", firstErr, secondErr)
+			return
+		}
 		AssertEqual(t, firstErr.Error(), secondErr.Error(), msgs...)
 		return
 	}

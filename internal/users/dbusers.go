@@ -121,8 +121,7 @@ func GetByCredentials(d *db.DB, email string, password string) (
 		selectFromUsersTable, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		return User{}, errors.Wrapf(
-			err, "GetByCredentials(db, %s, **password_not_logged**)", email)
+		return User{}, err
 	}
 
 	err := bcrypt.CompareHashAndPassword(
@@ -341,9 +340,7 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
-		return User{}, errors.Wrapf(
-			err, "users.Create(db, %s, %s)",
-			user.Email, string(user.HashedPassword))
+		return User{}, err
 	}
 
 	userResp, err := scanUser(rows)
@@ -547,23 +544,24 @@ func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
 }
 
 func (u User) String() string {
-	str := fmt.Sprintf("ID: %d\n", u.ID)
-	str += fmt.Sprintf("Email: %s\n", u.Email)
-	str += fmt.Sprintf("Balance: %d\n", u.Balance)
-	if u.Firstname != nil {
-		str += fmt.Sprintf("Firstname: %s\n", *u.Firstname)
-	} else {
-		str += fmt.Sprintln("Firstname: <nil>")
+	elems := []string{
+		fmt.Sprintf("ID: %d", u.ID),
+		fmt.Sprintf("Email: %s", u.Email),
+		fmt.Sprintf("Balance: %d", u.Balance),
+		fmt.Sprintf("CreatedAt: %s", u.CreatedAt),
 	}
-	if u.Lastname != nil {
-		str += fmt.Sprintf("Lastname: %s\n", *u.Lastname)
-	} else {
-		str += fmt.Sprintln("Firstname: <nil>")
-	}
-	str += fmt.Sprintf("HashedPassword: %v\n", u.HashedPassword)
-	str += fmt.Sprintf("CreatedAt: %v\n", u.CreatedAt)
-	str += fmt.Sprintf("UpdatedAt: %v\n", u.UpdatedAt)
-	str += fmt.Sprintf("DeletedAt: %v\n", u.DeletedAt)
 
-	return str
+	if u.Firstname != nil {
+		elems = append(elems, fmt.Sprintf("Firstname: %s", *u.Firstname))
+	} else {
+		elems = append(elems, "Firstname: <nil>")
+	}
+
+	if u.Lastname != nil {
+		elems = append(elems, fmt.Sprintf("Lastname: %s", *u.Lastname))
+	} else {
+		elems = append(elems, "Lastname: <nil>")
+	}
+
+	return strings.Join(elems, ", ")
 }
