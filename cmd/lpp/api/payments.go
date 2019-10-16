@@ -1,10 +1,14 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
 )
@@ -127,9 +131,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-
 		userID, ok := getUserIdOrReject(c)
-
 		if !ok {
 			return
 		}
@@ -144,7 +146,40 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 		t, err := payments.PayInvoiceWithDescription(r.db, r.lncli, userID,
 			req.PaymentRequest, req.Description)
 		if err != nil {
-			log.WithError(err).Error("payinvoicewithdescriptionerr")
+			// investigate details around failure
+			go func() {
+				origErr := err
+				decoded, err := r.lncli.DecodePayReq(context.Background(), &lnrpc.PayReqString{
+					PayReq: req.PaymentRequest,
+				})
+				if err != nil {
+					log.WithError(err).Error("Could not decode payment request")
+					return
+				}
+
+				channels, err := r.lncli.ListChannels(context.Background(), &lnrpc.ListChannelsRequest{
+					ActiveOnly: true,
+				})
+				if err != nil {
+					log.WithError(err).Error("Could not list active channels")
+					return
+				}
+
+				balance, err := r.lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
+				if err != nil {
+					log.WithError(err).Error("Could not get channel balance")
+				}
+
+				log.WithFields(logrus.Fields{
+					"destination":    decoded.Destination,
+					"amountSat":      decoded.NumSatoshis,
+					"activeChannels": len(channels.Channels),
+					"channelBalance": balance.Balance,
+					"routeHints":     decoded.RouteHints,
+				}).WithError(origErr).Error("Could not pay invoice")
+				fmt.Println(2 + 2)
+
+			}()
 			_ = c.Error(err)
 			return
 		}
