@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
@@ -42,5 +43,33 @@ func TestStartLndOrFail(t *testing.T) {
 	if err != nil {
 		testutil.FatalMsgf(t, "Could not start and communiate with lnd: %v", err)
 	}
+}
 
+func TestRunWithBitcoindAndLndPair(t *testing.T) {
+	var test testing.T
+
+	prevNodeLen := len(nodeCleaners)
+	RunWithBitcoindAndLndPair(&test, func(lnd1 lnrpc.LightningClient,
+		lnd2 lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind) {
+		request, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
+			Value: 1337,
+		})
+		if err != nil {
+			t.Error(err)
+			test.Fail()
+			return
+		}
+
+		if _, err := lnd1.SendPaymentSync(context.Background(), &lnrpc.SendRequest{
+			PaymentRequest: request.PaymentRequest,
+		}); err != nil {
+			t.Error(err)
+			test.Fail()
+			return
+		}
+	})
+	testutil.AssertMsg(t, !test.Failed(), "Test was failed")
+
+	// two LND nodes and one bitcoind
+	testutil.AssertEqual(t, prevNodeLen+3, len(nodeCleaners))
 }

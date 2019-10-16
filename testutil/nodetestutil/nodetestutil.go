@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -91,6 +92,18 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 	bitcoindConf := bitcoindtestutil.GetBitcoindConfig(t)
 	bitcoin := StartBitcoindOrFail(t, bitcoindConf)
 
+	// we do this in a go routine, as generatetoaddress is completely sync and takes a while
+	// make sure bitcoind is funded, so we can give some money to LND later
+	go func() {
+		addr, err := bitcoin.Btcctl().GetNewAddress("")
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		if _, err := bitcoind.GenerateToAddress(bitcoin, 101, addr); err != nil {
+			testutil.FatalMsg(t, errors.Wrap(err, "could not generate to address"))
+		}
+	}()
+
 	var wg sync.WaitGroup
 	// wait for two lnd nodes
 	wg.Add(2)
@@ -118,12 +131,9 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 	})
 	if err != nil {
 		testutil.FatalMsg(t, "could not get new address from lnd")
+		return
 	}
-	address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
-	_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
-	if err != nil {
-		testutil.FatalMsg(t, "could not generate to address")
-	}
+	lnd1Address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
 
 	// get info to open channels with the node
 	lnd2Info, err := lnd2.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
@@ -131,8 +141,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		testutil.FatalMsgf(t, "could not get node info from lnd2: %v", err)
 	}
 
-	retry1 := func() bool {
-
+	connect := func() error {
 		lnAddress := lnrpc.LightningAddress{
 			Pubkey: lnd2Info.IdentityPubkey,
 			Host:   fmt.Sprintf("127.0.0.1:%d", lndConf2.P2pPort),
@@ -140,71 +149,55 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		_, err := lnd1.ConnectPeer(context.Background(), &lnrpc.ConnectPeerRequest{
 			Addr: &lnAddress,
 		})
+		return err
 
-		return err == nil
 	}
 
-	err = asyncutil.Await(7, 100*time.Millisecond, retry1)
-	if err != nil {
+	if err = asyncutil.RetryNoBackoff(10, 300*time.Millisecond, connect); err != nil {
 		testutil.FatalMsgf(t, "could not connect nodes %v", err)
 	}
 
-	_, err = lnd1.ListPeers(context.Background(), &lnrpc.ListPeersRequest{})
-	if err != nil {
-		testutil.FatalMsgf(t, "could not list peers: %+v", err)
+	// we send to lnd1 so they can fund a channel
+	if _, err := bitcoin.Btcctl().SendToAddress(lnd1Address, btcutil.Amount(10)*btcutil.SatoshiPerBitcoin); err != nil {
+		testutil.FailMsg(t, errors.Wrap(err, "could not confirm channel"))
+	}
+	// now confirm the TX
+	if _, err := bitcoindtestutil.GenerateToSelf(1, bitcoin); err != nil {
+		testutil.FatalMsg(t, err)
 	}
 
-	retry2 := func() bool {
+	isSyncedToChain := func() error {
+		info, err := lnd1.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+		if err != nil {
+			return err
+		}
+		if !info.SyncedToChain {
+			return errors.New("not synced to chain")
+		}
+		return nil
 
+	}
+	if err := asyncutil.RetryNoBackoff(10, time.Millisecond*200, isSyncedToChain); err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	openchannel := func() error {
 		_, err = lnd1.OpenChannelSync(context.Background(), &lnrpc.OpenChannelRequest{
 			NodePubkeyString:   lnd2Info.IdentityPubkey,
-			LocalFundingAmount: 10000000, // 10 000 000
-			PushSat:            5000000,  // 5 000 000
+			LocalFundingAmount: ln.MaxAmountSatPerChannel,
+			PushSat:            ln.MaxAmountSatPerChannel / 2,
 			SpendUnconfirmed:   true,
 		})
-		if err != nil {
-			t.Logf("could not open channel: %v", err)
-			return false
-		}
-
-		return true
+		return err
 	}
 
-	err = asyncutil.Await(7, 100*time.Millisecond, retry2)
-	if err != nil {
+	if err := asyncutil.RetryNoBackoff(30, 100*time.Millisecond, openchannel); err != nil {
 		testutil.FatalMsgf(t, "could not open channel %v", err)
 	}
 
-	// retry paying an invoice from lnd1 to lnd2
-	invoice, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
-		Value: 5000,
-	})
-	if err != nil {
-		testutil.FailMsgf(t, "could not add invoice: %v", err)
-	}
-
-	// we retry confirming the channel and sending a payment
-	retry := func() bool {
-
-		// we generate to address to be able to spend the funds
-		_, err = bitcoind.GenerateToAddress(bitcoin, 10, address)
-		if err != nil {
-			return false
-		}
-		// attempt to pay the invoice
-		payment, err := lnd1.SendPaymentSync(context.Background(), &lnrpc.SendRequest{
-			PaymentRequest: invoice.PaymentRequest,
-		})
-		if err != nil || payment.PaymentError != "" {
-			return false
-		}
-
-		return true
-	}
-
-	err = asyncutil.Await(7, 100*time.Millisecond, retry)
-	if err != nil {
-		testutil.FatalMsgf(t, "could not send payment %v", err)
+	// we generate to address to be able to confirm the channel we created
+	if _, err := bitcoind.GenerateToAddress(bitcoin, 6, lnd1Address); err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "could not confirm channel"))
 	}
 
 	test(lnd1, lnd2, bitcoin)
@@ -234,6 +227,7 @@ func RunWithBitcoindAndLnd(t *testing.T, giveInitialBalance bool, test func(lnd 
 		})
 		if err != nil {
 			testutil.FatalMsg(t, "could not get new address from lnd")
+			return
 		}
 
 		address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
@@ -266,7 +260,7 @@ func RunWithBitcoind(t *testing.T, giveInitialBalance bool, test func(bitcoin bi
 	})
 }
 
-// The function returns the created client, and register a cleanup action
+// StartLndOrFail returns the created client, and register a cleanup action
 // that can be performed during test teardown.
 func StartLndOrFail(t *testing.T, bitcoindConfig bitcoind.Config,
 	lndConfig ln.LightningConfig) lnrpc.LightningClient {
@@ -277,7 +271,7 @@ func StartLndOrFail(t *testing.T, bitcoindConfig bitcoind.Config,
 	return StartLndOrFailAsync(t, bitcoindConfig, lndConfig, &wg)
 }
 
-// The function returns the created client, and register a cleanup action
+// startLndOrFailAsync returns the created client, and register a cleanup action
 // that can be performed during test teardown.
 func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	lndConfig ln.LightningConfig, wg *sync.WaitGroup) lnrpc.LightningClient {
@@ -341,23 +335,27 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	log.Debugf("Started lnd with pid %d", pid)
 
 	// await LND startup
+	certFile := filepath.Join(lndConfig.LndDir, "tls.cert")
+	// by looking at logs it appears we connect immediately after this file is created
+	backupFile := filepath.Join(lndConfig.LndDir, "data", "chain", "bitcoin", lndConfig.Network.Name, "channel.backup")
 	isReady := func() error {
-		certFile := filepath.Join(lndConfig.LndDir, "tls.cert")
 		if _, err := os.Stat(certFile); err != nil {
 			return err
 		}
-
 		if _, err := os.Stat(lndConfig.MacaroonPath); err != nil {
+			return err
+		}
+		if _, err := os.Stat(backupFile); err != nil {
+			log.WithError(err).Error("Didn't find backup file")
 			return err
 		}
 
 		return nil
 	}
 
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, isReady); err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "lnd cert and macaroon file was not created"))
+	if err := asyncutil.RetryNoBackoff(20, time.Millisecond*100, isReady); err != nil {
+		testutil.FatalMsg(t, errors.Wrap(err, "cert, macaroon  and channel.backup files was not created"))
 	}
-	log.Debugf("lnd cert file and macaroon file exists")
 
 	var lnd lnrpc.LightningClient
 	var err error
@@ -365,9 +363,8 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		lnd, err = ln.NewLNDClient(lndConfig)
 		return err
 	}
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, getLnd); err != nil {
-		testutil.FatalMsgf(t, "Could not get lnd with config %v after trying %d times: %s ",
-			lndConfig, retryAttempts, err)
+	if err := asyncutil.RetryNoBackoff(retryAttempts, retrySleepDuration, getLnd); err != nil {
+		testutil.FatalMsgf(t, "could not get lnd with config: %s: %v", lndConfig, err)
 	}
 
 	cleanup := nodeCleaner{}
@@ -448,7 +445,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		_, err := os.Stat(pidFile)
 		return err
 	}
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, readPidFile); err != nil {
+	if err := asyncutil.RetryNoBackoff(retryAttempts, retrySleepDuration, readPidFile); err != nil {
 		testutil.FatalMsgf(t, "Could not read bitcoind pid file")
 	}
 

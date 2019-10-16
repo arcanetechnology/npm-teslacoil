@@ -241,10 +241,13 @@ func (l LightningConfig) String() string {
 }
 
 const (
-	// MaxAmountSatPerInvoice is the maximum amount of satoshis an invoice
-	// can be for
+	// MaxAmountMsatPerChannel is the maximum amount of millisatoshis a channel can be for
+	MaxAmountMsatPerChannel = MaxAmountSatPerChannel * 1000
+	// MaxAmountSatPerChannel is the maximum amount of satoshis a channel can be for
+	// https://github.com/lightningnetwork/lnd/blob/b9816259cb520fc169cb2cd829edf07f1eb11e1b/fundingmanager.go#L64
+	MaxAmountSatPerChannel = (1 << 24) - 1
+	// MaxAmountMsatPerInvoice is the maximum amount of millisatoshis an invoice can be for
 	MaxAmountMsatPerInvoice = 4294967295
-	// MaxAmountMsatPerInvoice is the maximum amount of milli satoshis an invoice
-	// can be for
+	// MaxAmountSatPerInvoice is the maximum amount of satoshis an invoice can be for
 	MaxAmountSatPerInvoice = MaxAmountMsatPerInvoice / 1000
 )
