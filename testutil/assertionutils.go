@@ -37,6 +37,44 @@ func isNilValue(i interface{}) bool {
 	return reflect.ValueOf(i).IsZero()
 }
 
+func toIntValue(i interface{}) (int64, bool) {
+	switch t := i.(type) {
+	case int:
+		return int64(t), true
+	case int8:
+		return int64(t), true
+	case int16:
+		return int64(t), true
+	case int32:
+		return int64(t), true
+	case int64:
+		return t, true
+	default:
+		return 0, false
+	}
+}
+
+func toNumberValue(i interface{}) (float64, bool) {
+	switch t := i.(type) {
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case int32:
+		return float64(t), true
+	case int16:
+		return float64(t), true
+	case int8:
+		return float64(t), true
+	case float32:
+		return float64(t), true
+	case float64:
+		return t, true
+	default:
+		return 0, false
+	}
+}
+
 // AssertEqual asserts that the given expected and actual values are equal
 // Does not work with structs, use AssertStructEquals if you want to compare
 // structs
@@ -45,6 +83,24 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}, msgs ..
 
 	if len(msgs) == 0 {
 		msgs = []string{""}
+	}
+
+	if firstInt, firstOk := toIntValue(expected); firstOk {
+		if secondInt, secondOk := toIntValue(actual); secondOk {
+			if firstInt != secondInt {
+				FailMsgf(t, "Expected (%d) and actual (%d) are not equal", expected, actual)
+			}
+			return
+		}
+	}
+
+	if firstFloat, firstOk := toNumberValue(expected); firstOk {
+		if secondFloat, secondOk := toNumberValue(actual); secondOk {
+			if firstFloat != secondFloat {
+				FailMsgf(t, "Expected (%f) and actual (%f) are not equal", firstFloat, secondFloat)
+			}
+			return
+		}
 	}
 
 	// we special case errors, to check if their error messages are the same

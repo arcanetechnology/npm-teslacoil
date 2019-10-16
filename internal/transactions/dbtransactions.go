@@ -43,7 +43,7 @@ type Transaction struct {
 	Vout        *int               `db:"vout" json:"vout"`
 	Direction   payments.Direction `db:"direction" json:"direction"`
 	AmountSat   int64              `db:"amount_sat" json:"amountSat"`
-	Description string             `db:"description" json:"description"`
+	Description *string            `db:"description" json:"description"`
 	Confirmed   bool               `db:"confirmed" json:"confirmed"`
 
 	ConfirmedAt *time.Time `db:"confirmed_at" json:"confirmedAt"`
@@ -61,7 +61,18 @@ func insertTransaction(tx *sqlx.Tx, t Transaction) (Transaction, error) {
 		return Transaction{}, pkgErrors.New("txid and vout must either both be defined, or neither be defined")
 	}
 
-	log.Infof("inserting transaction %+v", t)
+	tLogger := log.WithFields(logrus.Fields{
+		"userId":    t.UserID,
+		"address":   t.Address,
+		"amountSat": t.AmountSat,
+	})
+	if t.Txid != nil {
+		tLogger = tLogger.WithFields(logrus.Fields{
+			"txid": *t.Txid,
+			"vout": *t.Vout,
+		})
+	}
+	tLogger.Info("inserting transaction")
 
 	createTransactionQuery := `
 	INSERT INTO transactions (user_id, address, txid, vout, direction, amount_sat,  description, confirmed)
@@ -184,6 +195,9 @@ type WithdrawOnChainArgs struct {
 	Description string `json:"description"`
 }
 
+// ErrBalanceTooLowForWithdrawal means the user tried to withdraw too much money
+var ErrBalanceTooLowForWithdrawal = errors.New("cannot withdraw, balance is too low")
+
 // WithdrawOnChain attempts to send amountSat coins to an address
 // using our function SendOnChain
 // If the user does not have enough balance, the transaction is aborted
@@ -203,10 +217,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 	}
 
 	if user.Balance < args.AmountSat {
-		return nil, pkgErrors.New(fmt.Sprintf(
-			"cannot withdraw, balance is %d, trying to withdraw %d",
-			user.Balance,
-			args.AmountSat))
+		return nil, ErrBalanceTooLowForWithdrawal
 	}
 
 	tx := db.MustBegin()
@@ -239,15 +250,20 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		log.WithError(err).Error("could not find output")
 	}
 
-	transaction, err := insertTransaction(tx, Transaction{
-		UserID:      user.ID,
-		Address:     args.Address,
-		AmountSat:   args.AmountSat,
-		Description: args.Description,
-		Txid:        &txid,
-		Vout:        &vout,
-		Direction:   payments.OUTBOUND,
-	})
+	txToInsert := Transaction{
+		UserID:    user.ID,
+		Address:   args.Address,
+		AmountSat: args.AmountSat,
+		Txid:      &txid,
+		Vout:      &vout,
+		Direction: payments.OUTBOUND,
+	}
+
+	if args.Description != "" {
+		txToInsert.Description = &args.Description
+	}
+
+	transaction, err := insertTransaction(tx, txToInsert)
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
 			log.Error("txErr: ", txErr)
@@ -270,7 +286,7 @@ func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
 	return NewDepositWithFields(d, lncli, userID, description, nil, nil, 0)
 }
 
-// NewDeposit retrieves a new address from lnd, and saves the address
+// NewDepositWithFields retrieves a new address from lnd, and saves the address
 // in a new 'UNCONFIRMED', 'INBOUND' transaction together with the UserID
 // Returns the same transaction as insertTransaction(), in full
 func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
@@ -284,15 +300,19 @@ func NewDepositWithFields(d *db.DB, lncli lnrpc.LightningClient, userID int,
 	}
 
 	tx := d.MustBegin()
-	transaction, err := insertTransaction(tx, Transaction{
-		UserID:      userID,
-		Address:     address.Address,
-		Direction:   payments.INBOUND,
-		Description: description,
-		Txid:        txid,
-		Vout:        vout,
-		AmountSat:   amountSat,
-	})
+	txToInsert := Transaction{
+		UserID:    userID,
+		Address:   address.Address,
+		Direction: payments.INBOUND,
+		Txid:      txid,
+		Vout:      vout,
+		AmountSat: amountSat,
+	}
+	if description != "" {
+		txToInsert.Description = &description
+	}
+
+	transaction, err := insertTransaction(tx, txToInsert)
 	if err != nil {
 		return Transaction{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
 	}

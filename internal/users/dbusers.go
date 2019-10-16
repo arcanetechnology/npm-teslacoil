@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -105,7 +106,7 @@ func GetByEmail(d *db.DB, email string) (User, error) {
 		selectFromUsersTable, UsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
-		return User{}, errors.Wrapf(err, "GetByEmail(db, %s)", email)
+		return User{}, err
 	}
 
 	return userResult, nil
@@ -263,7 +264,11 @@ func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
 	if err != nil {
 		return User{}, errors.WithMessage(err, "decreasebalance")
 	}
-	log.Infof("decreased users balance by %d, new balance is %d", cb.AmountSat, user.Balance)
+	log.WithFields(logrus.Fields{
+		"userId":     user.ID,
+		"newBalance": user.Balance,
+		"amount":     cb.AmountSat,
+	}).Info("Decreased users balance")
 
 	return user, nil
 

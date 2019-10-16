@@ -17,6 +17,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
@@ -441,22 +442,26 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 // user typically won't be able to sign in if this is something they are
 // requesting.
 func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
-	type SendPasswordResetEmailRequest struct {
+	type request struct {
 		Email string `json:"email" binding:"required,email"`
 	}
 
 	return func(c *gin.Context) {
 
-		var req SendPasswordResetEmailRequest
+		var req request
 		if c.BindJSON(&req) != nil {
-
 			return
 		}
 
-		// TODO: If the user doesn't exist, respond with 200 but don't send an
-		// TODO: email. We don't want to leak what emails our users have.
+		// If the user doesn't exist, respond with 200 but don't send an
+		// email. We don't want to leak what emails our users have.
 		user, err := users.GetByEmail(r.db, req.Email)
 		if err != nil {
+			log.WithError(err).Error("Could not find recipient user")
+			if stderr.Is(err, sql.ErrNoRows) {
+				c.Status(http.StatusOK)
+				return
+			}
 			_ = c.Error(err)
 			return
 		}
@@ -488,30 +493,49 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 		htmlText := fmt.Sprintf(
 			`<p>You have requested a password reset. Go to <a href="%s">%s</a> to complete this process.</p>`,
 			resetPasswordUrl, resetPasswordUrl)
-		message := mail.NewSingleEmail(from, subject, to, "", htmlText)
-		log.Infof("Sending password reset email: %+v", message)
+		plainTextContent := fmt.Sprintf(
+			`You have requested a password reset. Go to %s to complete this process.`,
+			resetPasswordUrl)
+
+		message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlText)
+		log.WithFields(logrus.Fields{
+			"recipient": to.Address,
+		}).Info("Sending password reset email")
 
 		response, err := r.EmailSender.Send(message)
 		if err != nil {
-			log.WithError(err).Errorf("Could not send email to %s", to.Address)
+			log.WithError(err).WithField("recipient", to.Address).Error("Could not send email")
 			_ = c.Error(err)
 			return
 		}
-		log.Infof("Sent email successfully. Response: %+v", response)
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			log.WithFields(logrus.Fields{
+				"recipient": to.Address,
+				"status":    response.StatusCode,
+				"body":      response.Body,
+			}).Error("Got error status when sending email")
+			_ = c.Error(fmt.Errorf("could not send email: %v", response.Body))
+			return
+		}
 
-		c.JSONP(http.StatusOK, gin.H{"message": fmt.Sprintf("Sent password reset email to %s", user.Email)})
+		log.WithFields(logrus.Fields{
+			"recipient": to.Address,
+			"status":    response.StatusCode,
+		}).Info("Sent password reset email successfully")
+
+		c.Status(http.StatusOK)
 	}
 }
 
 func (r *RestServer) ResetPassword() gin.HandlerFunc {
-	type ResetPasswordRequest struct {
+	type request struct {
 		Password string `json:"password" binding:"required,password"`
 		Token    string `json:"token" binding:"required"`
 	}
 
 	return func(c *gin.Context) {
 
-		var req ResetPasswordRequest
+		var req request
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -522,22 +546,27 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 			case err == passwordreset.ErrMalformedToken:
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrMalformedJwt)
 				return
-
 			case err == passwordreset.ErrExpiredToken:
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrExpiredJwt)
 				return
 			case err == passwordreset.ErrWrongSignature:
 				apierr.Public(c, http.StatusForbidden, apierr.ErrInvalidJwtSignature)
 				return
+			default:
+				log.WithError(err).Error("Could not verify password reset token")
+				_ = c.Error(err)
+				return
 			}
 		}
 		user, err := users.GetByEmail(r.db, login)
 		if err != nil {
+			log.WithError(err).WithField("email", login).Error("Could not find user when resetting password")
 			_ = c.Error(err)
 			return
 		}
 
 		if _, err := user.ResetPassword(r.db, req.Password); err != nil {
+			log.WithError(err).WithField("email", user.Email).Error("Could not reset password")
 			_ = c.Error(err)
 			return
 		}
