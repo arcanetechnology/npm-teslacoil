@@ -653,6 +653,8 @@ func TestPutUserRoute(t *testing.T) {
 }
 
 func TestSendPasswordResetEmail(t *testing.T) {
+	t.Parallel()
+
 	email := gofakeit.Email()
 	h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    email,
@@ -669,6 +671,20 @@ func TestSendPasswordResetEmail(t *testing.T) {
 	h.AssertResponseOk(t, req)
 	testutil.AssertMsg(t, mockSendGridClient.GetSentEmails() > 0,
 		"Sendgrid client didn't send any emails!")
+
+	// requesting a password reset email to a non existant user should
+	// return 200 but not actually send an email
+	emailsBeforeOtherReq := mockSendGridClient.GetSentEmails()
+	otherReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+		Path:   "/auth/reset_password",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"email": %q
+		}`, gofakeit.Email()),
+	})
+	h.AssertResponseOk(t, otherReq)
+	testutil.AssertEqual(t, mockSendGridClient.GetSentEmails(), emailsBeforeOtherReq)
+
 }
 
 func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
