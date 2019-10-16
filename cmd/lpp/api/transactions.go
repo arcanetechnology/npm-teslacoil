@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -83,7 +84,7 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 
 // WithdrawOnChain is a request handler used for withdrawing funds
 // to an on-chain address
-// If the withdrawal is successful, it responds with the txid
+// TODO: verify dust limits
 func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 	type WithdrawResponse struct {
 		ID          int                `json:"id"`
@@ -92,7 +93,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 		Vout        *int               `json:"vout"`
 		Direction   payments.Direction `json:"direction"`
 		AmountSat   int64              `json:"amountSat"`
-		Description string             `json:"description"`
+		Description *string            `json:"description"`
 		Confirmed   bool               `json:"confirmed"`
 
 		ConfirmedAt *time.Time `json:"confirmedAt"`
@@ -113,6 +114,10 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 
 		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, req)
 		if err != nil {
+			if errors.Is(err, transactions.ErrBalanceTooLowForWithdrawal) {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrBalanceTooLowForWithdrawal)
+				return
+			}
 			log.WithError(err).Errorf("Cannot withdraw onchain")
 			_ = c.Error(err)
 			return
@@ -137,17 +142,20 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 // NewDeposit is a request handler used for creating a new deposit
 // If successful, response with an address, and the saved description
 func (r *RestServer) NewDeposit() gin.HandlerFunc {
-	type NewDepositRequest struct {
+	type request struct {
 		// Whether to discard the old address and force create a new one
 		ForceNewAddress bool `json:"forceNewAddress"`
 		// A personal description for the transaction
 		Description string `json:"description"`
 	}
 
-	type NewDepositResponse struct {
-		ID          int    `json:"id"`
-		Address     string `json:"address"`
-		Description string `json:"description"`
+	type response struct {
+		ID          int                `json:"id"`
+		Address     string             `json:"address"`
+		Direction   payments.Direction `json:"direction"`
+		Description *string            `json:"description"`
+		Confirmed   bool               `json:"confirmed"`
+		CreatedAt   time.Time          `json:"createdAt"`
 	}
 
 	return func(c *gin.Context) {
@@ -156,7 +164,7 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 			return
 		}
 
-		var req NewDepositRequest
+		var req request
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -168,11 +176,14 @@ func (r *RestServer) NewDeposit() gin.HandlerFunc {
 			_ = c.Error(err)
 			return
 		}
-
-		c.JSONP(http.StatusOK, NewDepositResponse{
+		res := response{
 			ID:          transaction.ID,
 			Address:     transaction.Address,
+			Direction:   payments.INBOUND,
 			Description: transaction.Description,
-		})
+			Confirmed:   false,
+			CreatedAt:   transaction.CreatedAt,
+		}
+		c.JSONP(http.StatusOK, res)
 	}
 }

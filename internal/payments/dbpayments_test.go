@@ -276,8 +276,7 @@ func TestPayInvoice(t *testing.T) {
 	// Setup the database
 	user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
 
-	am := gofakeit.Number(1, ln.MaxAmountMsatPerInvoice)
-	amount := int64(am)
+	amount := int64(gofakeit.Number(1, ln.MaxAmountMsatPerInvoice))
 	// Create Mock LND client with preconfigured invoice response
 	mockLNcli := lntestutil.LightningMockClient{
 		InvoiceResponse: lnrpc.Invoice{},
@@ -310,14 +309,14 @@ func TestPayInvoice(t *testing.T) {
 			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
-		balance := user.Balance
-		user, _ = users.GetByID(testDB, user.ID)
-
-		if user.Balance != balance-amount {
-			testutil.FatalMsgf(t, "expected balance to be [%d], but was [%d]", balance-amount, user.Balance)
+		updatedUser, err := users.GetByID(testDB, user.ID)
+		if err != nil {
+			testutil.FatalMsg(t, err)
 		}
 
+		testutil.AssertEqual(t, updatedUser.Balance, user.Balance-amount)
 	})
+
 	t.Run("paying invoice greater than balance fails with 'violates check constraint user_balance_check'", func(t *testing.T) {
 		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
 			PaymentHash: SampleHashHex,

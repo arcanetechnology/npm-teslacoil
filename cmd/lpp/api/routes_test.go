@@ -1031,29 +1031,46 @@ func TestGetAllTransactions(t *testing.T) {
 }
 
 func TestNewDeposit(t *testing.T) {
+	t.Parallel()
 	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
 
-	description := "fooDescription"
 	t.Run("can create new deposit with description", func(t *testing.T) {
+		description := "fooDescription"
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/deposit",
 			Method:      "POST",
 			Body: fmt.Sprintf(
-				`{ "forceNewAddress": %t, "description": "%s" }`,
+				`{ "forceNewAddress": %t, "description": %q }`,
 				true,
 				description),
 		})
 
 		var trans transactions.Transaction
 		h.AssertResponseOKWithStruct(t, req, &trans)
+		testutil.AssertNotEqual(t, trans.Description, nil)
+		testutil.AssertEqual(t, *trans.Description, description)
+	})
 
-		if trans.Description != description {
-			testutil.FailMsgf(t, "descriptions not equal, expected %q got %q", description, trans.Description)
-		}
+	t.Run("can create new deposit without description", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/deposit",
+			Method:      "POST",
+			Body: fmt.Sprintf(
+				`{"forceNewAddress":%t}`,
+				true),
+		})
+
+		var trans transactions.Transaction
+		h.AssertResponseOKWithStruct(t, req, &trans)
+		testutil.AssertEqual(t, trans.Description, nil)
+
 	})
 }
 
@@ -1347,5 +1364,68 @@ func TestRestServer_GetAllPayments(t *testing.T) {
 		testutil.AssertMsgf(t, len(res) == numPayments-limit, "Unexpected number of payments: %d", len(res))
 
 	})
+}
 
+func TestRestServer_WithdrawOnChain(t *testing.T) {
+	t.Parallel()
+	const balanceSats = 10000
+
+	t.Run("regular withdrawal", func(t *testing.T) {
+		t.Parallel()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+		userstestutil.IncreaseBalanceOrFail(t, testDB, user, balanceSats)
+		const withdrawAmount = 1234
+
+		accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
+			Email:    user.Email,
+			Password: pass,
+		})
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/withdraw",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+			"amountSat": %d,
+			"address": %q
+		}`, withdrawAmount, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
+		})
+
+		h.AssertResponseOk(t, req)
+
+		balanceReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/user",
+			Method:      "GET",
+		})
+
+		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
+		testutil.AssertEqual(t, balanceRes["balance"], balanceSats-withdrawAmount)
+	})
+
+	t.Run("fail to withdraw too much", func(t *testing.T) {
+		t.Parallel()
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+		userstestutil.IncreaseBalanceOrFail(t, testDB, user, balanceSats)
+		accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
+			Email:    user.Email,
+			Password: pass,
+		})
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/withdraw",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+			"amountSat": %d,
+			"address": %q
+		}`, balanceSats+1, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
+		})
+
+		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		testutil.AssertEqual(t, apierr.ErrBalanceTooLowForWithdrawal, err)
+
+	})
 }

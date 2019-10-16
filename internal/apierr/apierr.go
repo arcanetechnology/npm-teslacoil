@@ -17,6 +17,7 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 	"gopkg.in/go-playground/validator.v8"
 )
 
@@ -53,6 +54,13 @@ var (
 	ErrNoSuchUser = apiError{
 		err:  errors.New("no user with the given email and password exists"),
 		code: "ERR_NO_SUCH_USER",
+	}
+
+	// ErrBalanceTooLowForWithdrawal means the user tried to withdraw more than
+	// they had available
+	ErrBalanceTooLowForWithdrawal = apiError{
+		err:  transactions.ErrBalanceTooLowForWithdrawal,
+		code: "ERR_BALANCE_TOO_LOW_FOR_WITHDRAWAL",
 	}
 
 	// errInvalidJson means we got sent invalid JSON

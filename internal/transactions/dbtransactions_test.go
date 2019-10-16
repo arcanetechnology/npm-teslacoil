@@ -58,6 +58,7 @@ func TestGetTransactionByID(t *testing.T) {
 
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
+	foo := "foo"
 	testCases := []struct {
 		email          string
 		password       string
@@ -71,7 +72,7 @@ func TestGetTransactionByID(t *testing.T) {
 				UserID:      user.ID,
 				AmountSat:   amount1,
 				Address:     "bar",
-				Description: "foo",
+				Description: &foo,
 				Direction:   payments.Direction("INBOUND"),
 				Confirmed:   false,
 			},
@@ -84,7 +85,7 @@ func TestGetTransactionByID(t *testing.T) {
 				UserID:      user.ID,
 				AmountSat:   amount2,
 				Address:     "bar",
-				Description: "foo",
+				Description: &foo,
 				Direction:   payments.Direction("INBOUND"),
 				Confirmed:   false,
 			},
@@ -510,11 +511,12 @@ func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
 func CreateTransactionOrFail(t *testing.T, userID int) Transaction {
 	tx := testDB.MustBegin()
 
+	bar := "bar"
 	txs := Transaction{
 		UserID:      userID,
 		AmountSat:   int64(gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)),
 		Address:     "foo",
-		Description: "bar",
+		Description: &bar,
 		Direction:   payments.Direction("INBOUND"),
 		Confirmed:   false,
 	}

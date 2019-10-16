@@ -85,6 +85,9 @@ func GetLightningMockClient() LightningMockClient {
 			NumSatoshis: int64(1823472358),
 			Description: "HelloPayment",
 		},
+		SendCoinsResponse: lnrpc.SendCoinsResponse{
+			Txid: "0c10119609137327c72fe605452375c40727871bd18dad18db16da649e9bdcc1",
+		},
 	}
 }
 
