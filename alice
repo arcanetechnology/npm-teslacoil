@@ -3,4 +3,6 @@ if [[ $* != *--network* ]]; then
    BITCOIN_NETWORK="regtest"
 fi
 
-lncli --lnddir=docker/.alice --network $BITCOIN_NETWORK $@
+exe() { echo "\$ $@" ; "$@" ; }
+
+exe lncli --lnddir=docker/.alice --network $BITCOIN_NETWORK "$@"
