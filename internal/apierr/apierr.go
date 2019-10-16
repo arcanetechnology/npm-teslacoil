@@ -248,6 +248,23 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 			continue
 		}
 
+		// if we pass an int to a JSON field expecting a string (or something similar),
+		// we end up with this kind of error, not a validator.ValidationErrors
+		if jsonError, ok := err.Err.(*json.UnmarshalTypeError); ok {
+			log.WithError(jsonError).WithFields(logrus.Fields{
+				"field":  jsonError.Field,
+				"value":  jsonError.Value,
+				"type":   jsonError.Type,
+				"struct": jsonError.Struct,
+			}).Debug("Handling JSON error")
+			fieldErrors = append(fieldErrors, httptypes.FieldError{
+				Field:   jsonError.Field,
+				Message: fmt.Sprintf("%q requires a %s, got a %s", jsonError.Field, jsonError.Type, jsonError.Value),
+				Code:    "invalid-type",
+			})
+			continue
+		}
+
 		validationErrors, ok := err.Err.(validator.ValidationErrors)
 		if !ok {
 			continue
