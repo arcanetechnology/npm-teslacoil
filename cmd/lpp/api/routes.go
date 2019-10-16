@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -162,8 +163,8 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
 	// Start a goroutine for getting notified of newly added/settled invoices.
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
-	// Start a goroutine for handling the newly added/settled invoices.
 
+	// Start a goroutine for handling the newly added/settled invoices.
 	go payments.InvoiceStatusListener(invoiceUpdatesCh, db, callbacks)
 
 	r := RestServer{
@@ -230,17 +231,24 @@ func (r *RestServer) RegisterAdminRoutes() {
 			return
 		}
 
+		migrationStatus, err := r.db.MigrationStatus(path.Join("file://", db.MigrationsPath))
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"network":               chainInfo.Chain,
-			"bestBlockHash":         chainInfo.BestBlockHash,
-			"blockCount":            chainInfo.Blocks,
-			"lnPeers":               lndInfo.NumPeers,
-			"bitcoindBalanceSats":   bitcoindBalance.ToUnit(btcutil.AmountSatoshi),
-			"lndWalletBalanceSats":  lndWalletBalance.TotalBalance,
-			"lndChannelBalanceSats": lndChannelBalance.Balance,
-			"activeChannels":        lndInfo.NumActiveChannels,
-			"pendingChannels":       lndInfo.NumPendingChannels,
-			"inactiveChannels":      lndInfo.NumInactiveChannels,
+			"network":                 chainInfo.Chain,
+			"bestBlockHash":           chainInfo.BestBlockHash,
+			"blockCount":              chainInfo.Blocks,
+			"lnPeers":                 lndInfo.NumPeers,
+			"bitcoindBalanceSats":     bitcoindBalance.ToUnit(btcutil.AmountSatoshi),
+			"lndWalletBalanceSats":    lndWalletBalance.TotalBalance,
+			"lndChannelBalanceSats":   lndChannelBalance.Balance,
+			"activeChannels":          lndInfo.NumActiveChannels,
+			"pendingChannels":         lndInfo.NumPendingChannels,
+			"inactiveChannels":        lndInfo.NumInactiveChannels,
+			"databaseMigrationStatus": migrationStatus,
 		})
 
 	}

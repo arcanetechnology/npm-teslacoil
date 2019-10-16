@@ -17,12 +17,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-// MigrationStatus prints the migrations verison number
-func (d *DB) MigrationStatus(migrationsPath string) error {
+// MigrationStatus returns the migrations verison number and dirtyness
+func (d *DB) MigrationStatus(migrationsPath string) (string, error) {
 
 	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
-		return err
+		return "", err
 	}
 	m, err := migrate.NewWithDatabaseInstance(
 		migrationsPath,
@@ -31,16 +31,15 @@ func (d *DB) MigrationStatus(migrationsPath string) error {
 	)
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Migrate all the way up ...
 	version, dirty, err := m.Version()
 	if err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("Migration version: %d. Is dirty: %t\n", version, dirty)
-	return nil
+	return fmt.Sprintf("Migration version: %d. Is dirty: %t", version, dirty), nil
 }
 
 // MigrateUp Migrates everything up
