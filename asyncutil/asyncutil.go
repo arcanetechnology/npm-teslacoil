@@ -34,6 +34,31 @@ func innerRetry(attempts int, sleep time.Duration, fn func() error) error {
 	return nil
 }
 
+// RetryNoBackoff retries the given function until it doesn't fail. It keeps
+// the amount of time between attempts constant.
+// Cribbed from https://upgear.io/blog/simple-golang-retry-function/
+func RetryNoBackoff(attempts int, sleep time.Duration, fn func() error) error {
+	start := time.Now()
+	if err := innerRetryNoBackoff(attempts, sleep, fn); err != nil {
+		end := time.Now()
+		return pkgerrors.Wrapf(err,
+			"failed after %d attempts and %s total duration",
+			attempts, end.Sub(start))
+	}
+	return nil
+}
+
+func innerRetryNoBackoff(attempts int, sleep time.Duration, fn func() error) error {
+	if err := fn(); err != nil {
+		if attempts > 1 {
+			time.Sleep(sleep)
+			return innerRetry(attempts-1, sleep, fn)
+		}
+		return err
+	}
+	return nil
+}
+
 // Await attempts the given condition the specified amount of times, doubling
 // the amount of time between each attempt. If the condition doesn't succeed,
 // it returns an error saying how many times we tried and how much time it

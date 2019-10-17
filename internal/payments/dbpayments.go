@@ -430,7 +430,11 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return nil, err
 	}
 
-	log.WithField("paymentResponse", paymentResponse.String()).Info("sent payment")
+	log.WithFields(logrus.Fields{
+		"paymentError": paymentResponse.PaymentError,
+		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
+		"paymentRoute": paymentResponse.PaymentRoute,
+	}).Info("Tried sending payment")
 
 	// if payment failed, mark it as failed and rollback
 	if paymentResponse.PaymentError != "" {

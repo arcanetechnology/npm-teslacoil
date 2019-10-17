@@ -5,6 +5,7 @@ package api_test
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
@@ -159,25 +160,20 @@ func TestPayInvoice(t *testing.T) {
 		})
 
 		t.Run("invalid payment request is not OK", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
 					Path:        "/invoices/pay",
 					Method:      "POST",
 					Body: fmt.Sprintf(`{
-					"paymentRequest": %q,
-					"description": ""
+					"paymentRequest": %q
 				}`, "a bad payment request"),
 				})
 
-			_, _ = h.AssertResponseNotOk(t, req)
+			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 		})
 
 		t.Run("can set description", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 			paymentRequest, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
 				Value: int64(amountSat),
