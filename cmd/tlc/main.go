@@ -329,8 +329,7 @@ var (
 					if err != nil {
 						return err
 					}
-					err = database.MigrateDown(
-						path.Join("file://", db.MigrationsPath), steps)
+					err = database.MigrateDown(steps)
 
 					return err
 				},
@@ -346,8 +345,7 @@ var (
 					}
 					defer func() { err = database.Close() }()
 
-					err = database.MigrateUp(
-						path.Join("file://", db.MigrationsPath))
+					err = database.MigrateUp()
 
 					return
 				},
@@ -362,8 +360,7 @@ var (
 					}
 					defer func() { err = database.Close() }()
 
-					status, err := database.MigrationStatus(
-						path.Join("file://", db.MigrationsPath))
+					status, err := database.MigrationStatus()
 					if err != nil {
 						return err
 					}
@@ -376,6 +373,11 @@ var (
 				Aliases: []string{"nm"},
 				Usage:   "newmigration `NAME`, creates new migration file",
 				Action: func(c *cli.Context) error {
+					database, err := db.Open(databaseConfig)
+					if err != nil {
+						return err
+					}
+					defer func() { err = database.Close() }()
 
 					migrationText := c.Args().First() // get the filename
 					if migrationText == "" {
@@ -384,7 +386,7 @@ var (
 						return errors.New("you must provide a file name for the migration")
 					}
 
-					return db.CreateMigration(db.MigrationsPath, migrationText)
+					return database.CreateMigration(migrationText)
 				},
 			}, {
 				Name:    "drop",
@@ -412,8 +414,7 @@ var (
 							return nil
 						}
 					}
-					err = database.Drop(
-						path.Join("file://", db.MigrationsPath))
+					err = database.Drop()
 					if err != nil {
 						log.WithError(err).Error("Could not drop DB")
 						return err
