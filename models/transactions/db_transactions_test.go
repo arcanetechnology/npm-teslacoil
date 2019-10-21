@@ -9,22 +9,23 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
+	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/db"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -96,15 +97,11 @@ func TestGetTransactionByID(t *testing.T) {
 		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountSat),
 			func(t *testing.T) {
 
-				tx := testDB.MustBegin()
-
-				transaction, err := insertTransaction(tx, test.expectedResult)
-
+				transaction, err := insertTransaction(testDB, test.expectedResult)
 				if err != nil {
 					testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
 						err)
 				}
-				_ = tx.Commit()
 
 				// Act
 				transaction, err = GetTransactionByID(testDB, transaction.ID, test.expectedResult.UserID)
@@ -269,7 +266,7 @@ func TestWithdrawOnChain(t *testing.T) {
 	})
 }
 
-func TestTransaction_SaveTxToDeposit(t *testing.T) {
+func TestTransaction_saveTxToTransaction(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
@@ -282,9 +279,9 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 			testutil.FatalMsgf(t, "should be able to create hash: %+v", err)
 		}
 
-		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
+		err = transaction.saveTxToTransaction(testDB, *hash, 0, 0)
 		if err != nil {
-			testutil.FatalMsgf(t, "SaveTxToDeposit(): %+v", err)
+			testutil.FatalMsgf(t, "SaveTxToTransaction(): %+v", err)
 		}
 
 		transaction, err = GetTransactionByID(testDB, transaction.ID, transaction.UserID)
@@ -314,14 +311,14 @@ func TestTransaction_SaveTxToDeposit(t *testing.T) {
 			testutil.FatalMsgf(t, "should be able to create hash: %+v", hash)
 		}
 
-		err = transaction.SaveTxToDeposit(testDB, *hash, 0, 0)
+		err = transaction.saveTxToTransaction(testDB, *hash, 0, 0)
 		if err != nil && !errors.Is(err, ErrTxHasTxid) {
 			testutil.FatalMsgf(t, "error should contain be of type `ErrTxHasTxid`")
 		}
 	})
 }
 
-func TestTransaction_MarkAsConfirmed(t *testing.T) {
+func TestTransaction_markAsConfirmed(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
 
@@ -329,7 +326,7 @@ func TestTransaction_MarkAsConfirmed(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
 		transaction := CreateTransactionOrFail(t, user.ID)
 
-		err := transaction.MarkAsConfirmed(testDB)
+		err := transaction.markAsConfirmed(testDB)
 		if err != nil {
 			testutil.FatalMsgf(t, "could not mark as confirmed: %+v", err)
 		}
@@ -509,7 +506,6 @@ func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
 }
 
 func CreateTransactionOrFail(t *testing.T, userID int) Transaction {
-	tx := testDB.MustBegin()
 
 	bar := "bar"
 	txs := Transaction{
@@ -521,13 +517,12 @@ func CreateTransactionOrFail(t *testing.T, userID int) Transaction {
 		Confirmed:   false,
 	}
 
-	transaction, err := insertTransaction(tx, txs)
+	transaction, err := insertTransaction(testDB, txs)
 
 	if err != nil {
 		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
 			err)
 	}
-	_ = tx.Commit()
 
 	return transaction
 }

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 

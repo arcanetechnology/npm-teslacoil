@@ -22,13 +22,13 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
 )
 
 const (

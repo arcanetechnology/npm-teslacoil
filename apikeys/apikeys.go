@@ -6,11 +6,12 @@ import (
 	origerrors "errors"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"github.com/pkg/errors"
 
 	uuid "github.com/satori/go.uuid"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 // Key is the database representation of our API keys

@@ -1,11 +1,9 @@
-package dbutil
-
-import "gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+package db
 
 // GetEverythingFromTable dumps all rows from the given table into raw strings.
 // Each element in the returned value is a row, and each column within that row
 // is a element of a list.
-func GetEverythingFromTable(db *db.DB, table string) ([][]string, error) {
+func GetEverythingFromTable(db *DB, table string) ([][]string, error) {
 	selectRows, err := db.Query(`SELECT * FROM ` + table)
 	if err != nil {
 		return [][]string{}, err

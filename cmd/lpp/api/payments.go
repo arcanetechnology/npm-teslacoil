@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 )
 
 // GetAllPayments finds all payments for the given user. Takes two URL

@@ -15,15 +15,17 @@ import (
 	"regexp"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/db"
+
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 

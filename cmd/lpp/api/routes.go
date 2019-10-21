@@ -7,11 +7,17 @@ import (
 	"path"
 	"strings"
 
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
+	"gitlab.com/arcanecrypto/teslacoil/models/payments"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/email"
-	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -19,15 +25,10 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/validation"
 	"gopkg.in/go-playground/validator.v8"
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
 )
 
 // Config is the configuration for our API. Currently it just sets the
@@ -319,25 +320,4 @@ func (r *RestServer) RegisterTransactionRoutes() {
 	transaction.GET("/transaction/:id", r.GetTransactionByID())
 	transaction.POST("/withdraw", r.WithdrawOnChain())
 	transaction.POST("/deposit", r.NewDeposit())
-}
-
-// getUserIdOrReject retrieves the user ID associated with this request. This
-// user ID should be set by the authentication middleware. This means that this
-// method can safely be called by all endpoints that use the authentication
-// middleware.
-func getUserIdOrReject(c *gin.Context) (int, bool) {
-	id, exists := c.Get(auth.UserIdVariable)
-	if !exists {
-		msg := "User ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable."
-		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
-		return -1, false
-	}
-	idInt, ok := id.(int)
-	if !ok {
-		msg := "User ID was not an int! This means our authentication middleware did something bad."
-		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
-		return -1, false
-	}
-
-	return idInt, true
 }

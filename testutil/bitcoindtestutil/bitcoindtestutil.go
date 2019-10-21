@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcutil"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 

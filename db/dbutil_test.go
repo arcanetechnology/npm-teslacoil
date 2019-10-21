@@ -1,10 +1,12 @@
-package dbutil
+package db_test
 
 import (
 	"fmt"
 	"os"
 	"reflect"
 	"testing"
+
+	"gitlab.com/arcanecrypto/teslacoil/db"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -35,7 +37,7 @@ func TestGetEverythingFromTable(t *testing.T) {
 		testutil.FatalMsgf(t, "Could not create table: %+v", err)
 	}
 
-	rows, err := GetEverythingFromTable(testDB, "test_table")
+	rows, err := db.GetEverythingFromTable(testDB, "test_table")
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -51,7 +53,7 @@ func TestGetEverythingFromTable(t *testing.T) {
 		testutil.FatalMsgf(t, "Could not insert row: %+v", err)
 	}
 
-	rows, err = GetEverythingFromTable(testDB, "test_table")
+	rows, err = db.GetEverythingFromTable(testDB, "test_table")
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -62,7 +64,7 @@ func TestGetEverythingFromTable(t *testing.T) {
 	if _, err := testDB.Exec(insertQuery(1)); err != nil {
 		testutil.FatalMsgf(t, "Could not insert row: %+v", err)
 	}
-	rows, err = GetEverythingFromTable(testDB, "test_table")
+	rows, err = db.GetEverythingFromTable(testDB, "test_table")
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}

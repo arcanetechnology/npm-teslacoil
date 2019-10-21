@@ -8,16 +8,17 @@ import (
 	"image/png"
 	"net/http"
 
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/apikeys"
 	"golang.org/x/crypto/bcrypt"
 )
 

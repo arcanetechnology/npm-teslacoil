@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 

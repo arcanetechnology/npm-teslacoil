@@ -12,8 +12,8 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/gin-gonic/gin"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )

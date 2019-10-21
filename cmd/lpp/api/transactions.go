@@ -6,10 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
-
-	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/models/payments"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/gin-gonic/gin"
 )

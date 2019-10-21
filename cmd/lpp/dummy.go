@@ -8,9 +8,9 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/teslacoil/internal/payments"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/models/payments"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
 
 // FillWithDummyData populates the database with dummy data

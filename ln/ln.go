@@ -62,6 +62,7 @@ func configDefaultLndDir() string {
 	return btcutil.AppDataDir("lnd", false)
 }
 
+// DefaultRelativeMacaroonPath extracts the macaroon path using a specific network
 func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 	name := network.Name
 	if name == "testnet3" {
@@ -69,10 +70,6 @@ func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 	}
 	return filepath.Join("data", "chain",
 		"bitcoin", name, "admin.macaroon")
-}
-
-func DefaultMacaroonPath(params chaincfg.Params) string {
-	return filepath.Join(DefaultLndDir, DefaultRelativeMacaroonPath(params))
 }
 
 const (
@@ -241,13 +238,13 @@ func (l LightningConfig) String() string {
 }
 
 const (
-	// MaxAmountMsatPerChannel is the maximum amount of millisatoshis a channel can be for
-	MaxAmountMsatPerChannel = MaxAmountSatPerChannel * 1000
 	// MaxAmountSatPerChannel is the maximum amount of satoshis a channel can be for
 	// https://github.com/lightningnetwork/lnd/blob/b9816259cb520fc169cb2cd829edf07f1eb11e1b/fundingmanager.go#L64
 	MaxAmountSatPerChannel = (1 << 24) - 1
-	// MaxAmountMsatPerInvoice is the maximum amount of millisatoshis an invoice can be for
-	MaxAmountMsatPerInvoice = 4294967295
+	// MaxAmountMsatPerChannel is the maximum amount of millisatoshis a channel can be for
+	MaxAmountMsatPerChannel = MaxAmountSatPerChannel * 1000
 	// MaxAmountSatPerInvoice is the maximum amount of satoshis an invoice can be for
 	MaxAmountSatPerInvoice = MaxAmountMsatPerInvoice / 1000
+	// MaxAmountMsatPerInvoice is the maximum amount of millisatoshis an invoice can be for
+	MaxAmountMsatPerInvoice = 4294967295
 )

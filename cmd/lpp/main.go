@@ -14,22 +14,24 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/urfave/cli"
+
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/email"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
+	"gitlab.com/arcanecrypto/teslacoil/util"
+	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgerrors "github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
-	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/teslacoil/email"
-	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
-	"gitlab.com/arcanecrypto/teslacoil/util"
-	"gopkg.in/urfave/cli.v1"
 )
 
 var (
