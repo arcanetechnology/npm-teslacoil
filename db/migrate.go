@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -15,7 +16,6 @@ import (
 	// Necessary for migratiing
 	_ "github.com/golang-migrate/migrate/v4/source/github"
 	"github.com/iancoleman/strcase"
-	"github.com/pkg/errors"
 )
 
 type migrationStatus struct {
@@ -40,10 +40,16 @@ func (d *DB) MigrationStatus() (migrationStatus, error) {
 		return migrationStatus{}, err
 	}
 
-	// Migrate all the way up ...
 	version, dirty, err := m.Version()
 	if err != nil {
-		return migrationStatus{}, err
+		// ErrNilVersion indicates no migrations have been applied at all
+		if errors.Is(err, migrate.ErrNilVersion) {
+			return migrationStatus{
+				Dirty:   true,
+				Version: 0,
+			}, nil
+		}
+		return migrationStatus{}, fmt.Errorf("could not get migration version: %w", err)
 	}
 	return migrationStatus{
 		Dirty:   dirty,
@@ -105,7 +111,7 @@ func (d *DB) MigrateDown(steps int) error {
 
 func newMigrationFile(filePath string) error {
 	if _, err := os.Create(filePath); err != nil {
-		return errors.Wrap(err, "Could not create new file")
+		return fmt.Errorf("could not create new file: %w", err)
 	}
 	return nil
 }

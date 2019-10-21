@@ -16,7 +16,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/grpc"
@@ -60,13 +59,6 @@ type LightningConfig struct {
 	P2pPort int
 }
 
-func configDefaultLndDir() string {
-	if len(os.Getenv("LND_DIR")) != 0 {
-		return os.Getenv("LND_DIR")
-	}
-	return btcutil.AppDataDir("lnd", false)
-}
-
 // DefaultRelativeMacaroonPath extracts the macaroon path using a specific network
 func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 	name := network.Name
@@ -80,11 +72,6 @@ func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 const (
 	DefaultRpcServer = "localhost:" + DefaultRpcPort
 	DefaultRpcPort   = "10009"
-)
-
-var (
-	// DefaultLndDir is the default location of .lnd
-	DefaultLndDir = configDefaultLndDir()
 )
 
 // NewLNDClient opens a new connection to LND and returns the client

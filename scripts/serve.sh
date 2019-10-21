@@ -19,11 +19,6 @@ if [[ -z "$RPCPASS" ]]; then
     export RPCPASS=devpass
 fi
 
-if [[ -z "$LND_DIR" ]]; then
-    export LND_DIR=docker/.alice
-fi
-
-
 
 #function to display and execute commands
 exe() { echo "\$ $@" ; "$@" ; }
@@ -33,12 +28,20 @@ exe docker-compose up -d
 
 BITCOIND_IP=`docker inspect --format '{{json .NetworkSettings}}' bitcoind | jq .Networks.teslacoil_default.IPAddress --raw-output`
 exe ./tlc-dev \
-    --lnddir $LND_DIR \
+	--network $BITCOIN_NETWORK \
+	--logging.level debug \
+	serve \
+	--db.user tlc \
+	--db.password password \
+	--db.port 5434 \
+	--db.migrateup \
+	--dummy.gen-data \
+	--dummy.force \
+	--dummy.only-once \
     --bitcoind.rpcuser $RPCUSER \
     --bitcoind.rpcpassword $RPCPASS \
     --bitcoind.rpchost $BITCOIND_IP \
-	--network $BITCOIN_NETWORK \
-	--zmqpubrawblock ${BITCOIND_IP}:${ZMQPUBRAWBLOCK_PORT} \
-	--zmqpubrawtx ${BITCOIND_IP}:${ZMQPUBRAWTX_PORT} \
-	serve \
+	--bitcoind.zmqpubrawblock $ZMQPUBRAWBLOCK_PORT \
+	--bitcoind.zmqpubrawtx $ZMQPUBRAWTX_PORT \
+    --lnd.dir docker/.alice \
     --rsa-jwt-key contrib/sample-private-pkcs1-rsa.pem

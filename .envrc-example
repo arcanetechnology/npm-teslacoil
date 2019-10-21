@@ -1,11 +1,5 @@
-# Postgres database
 export DATABASE_USER="tlc"
 export DATABASE_PASSWORD="password"
-export DATABASE_NAME="tlc"
-export DATABASE_PORT=5434
-
-# LND/Bitcoin Core
-export LND_DIR=docker/.alice
 
 export BITCOIN_NETWORK=regtest
 export ZMQPUBRAWBLOCK_PORT=24123
