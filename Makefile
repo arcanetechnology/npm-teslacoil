@@ -72,3 +72,6 @@ nuke_postgres:
 	docker-compose rm --force --stop -v db
 	docker volume rm teslacoil_postgres
 	docker-compose up --detach
+
+backup_db:
+	pg_dump teslacoil > /home/admin/teslacoil-backups/$(shell date --iso=date).backup
