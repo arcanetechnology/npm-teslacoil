@@ -9,6 +9,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/email"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/transactions"
 
@@ -17,8 +18,6 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"github.com/sendgrid/rest"
-	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/validation"
@@ -40,10 +39,6 @@ type Config struct {
 	Network chaincfg.Params
 }
 
-type EmailSender interface {
-	Send(email *mail.SGMailV3) (*rest.Response, error)
-}
-
 // RestServer is the rest server for our app. It includes a Router,
 // a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
@@ -51,7 +46,7 @@ type RestServer struct {
 	db          *db.DB
 	lncli       lnrpc.LightningClient
 	bitcoind    bitcoind.TeslacoilBitcoind
-	EmailSender EmailSender
+	EmailSender email.Sender
 }
 
 func getCorsConfig() cors.Config {
@@ -123,7 +118,7 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 }
 
 //NewApp creates a new app
-func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender EmailSender,
+func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	bitcoin bitcoind.TeslacoilBitcoind, callbacks payments.HttpPoster,
 	config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
@@ -289,7 +284,8 @@ func (r *RestServer) RegisterUserRoutes() {
 
 	// verifying an email doesn't require authentication beyond the
 	// verification token
-	r.Router.POST("/user/verify_email", r.VerifyEmail())
+	r.Router.PUT("/user/verify_email", r.VerifyEmail())
+	r.Router.POST("/user/verify_email", r.SendEmailVerificationEmail())
 
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read

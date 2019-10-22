@@ -5,18 +5,14 @@ import (
 	"database/sql"
 	"encoding/base64"
 	stderr "errors"
-	"fmt"
 	"image/png"
 	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
-	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
@@ -495,62 +491,17 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 			return
 		}
 
-		from := mail.NewEmail("Teslacoil", "noreply@teslacoil.io")
-		subject := "Password reset"
-		var recipientName string
-		var names []string
-		if user.Firstname != nil {
-			names = append(names, *user.Firstname)
-		}
-		if user.Lastname != nil {
-			names = append(names, *user.Lastname)
-		}
-		if len(names) == 0 {
-			recipientName = user.Email
-		} else {
-			recipientName = strings.Join(names, " ")
-		}
-
-		to := mail.NewEmail(recipientName, user.Email)
 		resetToken, err := users.GetPasswordResetToken(r.db, user.Email)
 		if err != nil {
 			_ = c.Error(err)
 			return
 		}
 
-		resetPasswordUrl := fmt.Sprintf("https://teslacoil.io/reset-password?token=%s", url.QueryEscape(resetToken))
-		htmlText := fmt.Sprintf(
-			`<p>You have requested a password reset. Go to <a href="%s">%s</a> to complete this process.</p>`,
-			resetPasswordUrl, resetPasswordUrl)
-		plainTextContent := fmt.Sprintf(
-			`You have requested a password reset. Go to %s to complete this process.`,
-			resetPasswordUrl)
-
-		message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlText)
-		log.WithFields(logrus.Fields{
-			"recipient": to.Address,
-		}).Info("Sending password reset email")
-
-		response, err := r.EmailSender.Send(message)
-		if err != nil {
-			log.WithError(err).WithField("recipient", to.Address).Error("Could not send email")
+		if err := r.EmailSender.SendPasswordReset(user, resetToken); err != nil {
+			log.WithError(err).Error("Could not send email")
 			_ = c.Error(err)
 			return
 		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			log.WithFields(logrus.Fields{
-				"recipient": to.Address,
-				"status":    response.StatusCode,
-				"body":      response.Body,
-			}).Error("Got error status when sending email")
-			_ = c.Error(fmt.Errorf("could not send email: %v", response.Body))
-			return
-		}
-
-		log.WithFields(logrus.Fields{
-			"recipient": to.Address,
-			"status":    response.StatusCode,
-		}).Info("Sent password reset email successfully")
 
 		c.Status(http.StatusOK)
 	}
