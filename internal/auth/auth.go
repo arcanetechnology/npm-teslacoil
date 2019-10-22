@@ -18,6 +18,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 var (
@@ -102,11 +103,31 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 			return
 		}
 		var userID int
+		var err error
 		if strings.HasPrefix(header, "Bearer ") {
-			userID = authenticateJWT(c)
+			userID, err = authenticateJWT(c)
 		} else {
-			userID = authenticateApiKey(database, c)
+			userID, err = authenticateApiKey(database, c)
 		}
+
+		if err != nil {
+			return
+		}
+
+		// check that email is verified
+		user, err := users.GetByID(database, userID)
+		if err != nil {
+			log.WithError(err).WithField("userId", userID).Error("Couldn't find user")
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+
+		if !user.HasVerifiedEmail {
+			log.WithField("userId", userID).Error("User has not verified email")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user hasn't verified email"})
+			return
+		}
+
 		c.Set(UserIdVariable, userID)
 
 	}
@@ -114,28 +135,30 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 
 // authenticateApiKey tries to extract a valid API key from the authorization
 // header. If that doesn't succeed, it rejects the request. It returns the
-// user ID of the authenticated user.
-func authenticateApiKey(database *db.DB, c *gin.Context) int {
+// user ID of the authenticated user. If an error is returned, the request is
+// responded to, and no further action is required.
+func authenticateApiKey(database *db.DB, c *gin.Context) (int, error) {
 	uuidString := c.GetHeader(Header)
 	parsedUuid, err := uuid.FromString(uuidString)
 	if err != nil {
 		log.WithError(err).Error("Bad authorization header for API key")
 		apierr.Public(c, http.StatusBadRequest, apierr.ErrMalformedApiKey)
-		return 0
+		return 0, err
 	}
 	key, err := apikeys.Get(database, parsedUuid)
 	if err != nil {
 		log.WithError(err).WithField("key", parsedUuid).Error("Couldn't get API key")
 		apierr.Public(c, http.StatusUnauthorized, apierr.ErrApiKeyNotFound)
-		return 0
+		return 0, err
 	}
-	return key.UserID
+	return key.UserID, nil
 }
 
 // authenticateJWT tries to extract and verify a JWT from the authorization
 // header. If that doesn't succeed, it rejects the request. It returns the
-// user ID of the authenticated user.
-func authenticateJWT(c *gin.Context) int {
+// user ID of the authenticated user. If an error is returned, the request
+// is responded to, and no further action is needed.
+func authenticateJWT(c *gin.Context) (int, error) {
 	// Here we extract the token from the header
 	tokenString := c.GetHeader(Header)
 
@@ -146,27 +169,27 @@ func authenticateJWT(c *gin.Context) int {
 			switch validationError.Errors {
 			case jwt.ValidationErrorMalformed:
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrMalformedJwt)
-				return 0
+				return 0, err
 			case jwt.ValidationErrorSignatureInvalid:
 				apierr.Public(c, http.StatusUnauthorized, apierr.ErrInvalidJwtSignature)
-				return 0
+				return 0, err
 			case jwt.ValidationErrorExpired:
 				apierr.Public(c, http.StatusUnauthorized, apierr.ErrExpiredJwt)
-				return 0
+				return 0, err
 			case jwt.ValidationErrorIssuedAt:
 				apierr.Public(c, http.StatusUnauthorized, apierr.ErrJwtNotValidYet)
-				return 0
+				return 0, err
 			}
 		}
 
 		log.WithError(err).Info("Got unexpected error when parsing JWT")
 		_ = c.Error(err)
 		c.Abort()
-		return 0
+		return 0, err
 	}
 
 	log.WithField("jwt", tokenString).Trace("JWT is valid")
-	return claims.UserID
+	return claims.UserID, nil
 }
 
 func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.Token, *JWTClaims, error) {

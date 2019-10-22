@@ -22,6 +22,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
 	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -36,18 +37,18 @@ type Server interface {
 // At the moment this only includes HTTP serving, but in the future this
 // is likely to expand.
 type TestHarness struct {
-	server Server
+	server   Server
+	database *db.DB
 }
 
-func NewTestHarness(server Server) TestHarness {
+func NewTestHarness(server Server, database *db.DB) TestHarness {
 	randomKey, err := rsa.GenerateKey(cryptorand.Reader, 4096)
 	if err != nil {
 		panic(errors.Wrap(err, "could not generate RSA key"))
 	}
 
 	auth.SetJwtPrivateKey(randomKey)
-
-	return TestHarness{server: server}
+	return TestHarness{server: server, database: database}
 }
 
 // Checks if the given string is valid JSON
@@ -57,7 +58,9 @@ func isJSONString(s string) bool {
 	return err == nil
 }
 
-func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+func (harness *TestHarness) CreateUserNoVerifyEmail(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	t.Helper()
+
 	if args.Password == "" {
 		testutil.FatalMsg(t, "You forgot to set the password!")
 	}
@@ -92,6 +95,36 @@ func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) 
 	})
 
 	return harness.AssertResponseOkWithJson(t, createUserRequest)
+}
+
+func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+	t.Helper()
+
+	createUserResponse := harness.CreateUserNoVerifyEmail(t, args)
+
+	token, err := users.GetEmailVerificationToken(harness.database, args.Email)
+	if err != nil {
+		testutil.FatalMsgf(t, "Was not able to get email verification token: %v", err)
+	}
+
+	verifyEmailRequest := GetRequest(t, RequestArgs{
+		Path:   "/user/verify_email",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+			"token": %q
+		}`, token),
+	})
+
+	harness.AssertResponseOk(t, verifyEmailRequest)
+
+	verified, err := users.GetByEmail(harness.database, args.Email)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	testutil.AssertMsg(t, verified.HasVerifiedEmail, "User hasn't verified email!")
+
+	return createUserResponse
 }
 
 type AuthRequestArgs struct {

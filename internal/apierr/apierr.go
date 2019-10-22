@@ -45,6 +45,12 @@ func (a apiError) Is(err error) bool {
 }
 
 var (
+	// ErrEmailNotVerified means the user has signed up bot not verified their email
+	ErrEmailNotVerified = apiError{
+		err:  errors.New("email is not verified"),
+		code: "ERR_EMAIL_NOT_VERIFIED",
+	}
+
 	// ErrUserAlreadyExists means the user already exists
 	ErrUserAlreadyExists = apiError{
 		err:  errors.New("user already exists"),

@@ -284,8 +284,12 @@ func (r *RestServer) RegisterApiKeyRoutes() {
 
 // RegisterUserRoutes registers all user routes on the router
 func (r *RestServer) RegisterUserRoutes() {
-	// Creating a user doesn't require a JWT
+	// Creating a user doesn't require authentication
 	r.Router.POST("/users", r.CreateUser())
+
+	// verifying an email doesn't require authentication beyond the
+	// verification token
+	r.Router.POST("/user/verify_email", r.VerifyEmail())
 
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read

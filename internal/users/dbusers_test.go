@@ -275,9 +275,7 @@ func TestCanCreateUser(t *testing.T) {
 		},
 	}
 
-	for i, tt := range tests {
-		t.Logf("\ttest %d\twhen creating user with email %s", i, tt.email)
-
+	for _, tt := range tests {
 		user, err := Create(testDB,
 			CreateUserArgs{
 				Email:    tt.email,
@@ -289,6 +287,7 @@ func TestCanCreateUser(t *testing.T) {
 
 		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
 		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
+		testutil.AssertMsg(t, !user.HasVerifiedEmail, "Newly created users shouldn't have verified emails!")
 	}
 }
 
@@ -684,20 +683,117 @@ func TestIncreaseBalance(t *testing.T) {
 	}
 }
 
-// The following two functions are copy paste replicated here as well as in
+func TestGetEmailVerificationToken(t *testing.T) {
+	t.Parallel()
+	user := CreateUserOrFail(t)
+	t.Run("get token for existing user", func(t *testing.T) {
+		_, err := GetEmailVerificationToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+	})
+	t.Run("don't get token for non existant user", func(t *testing.T) {
+		_, err := GetEmailVerificationToken(testDB, gofakeit.Email())
+		if err == nil {
+			testutil.FatalMsg(t, "Got token for non existant user!")
+		}
+	})
+}
+
+func TestVerifyEmailVerificationToken(t *testing.T) {
+	t.Parallel()
+	user := CreateUserOrFail(t)
+	t.Run("verify valid token", func(t *testing.T) {
+		token, err := GetEmailVerificationToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+
+		login, err := verifyEmailVerificationToken(token)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertEqual(t, user.Email, login)
+	})
+
+	t.Run("creating a token for a different user should yield a different login", func(t *testing.T) {
+		otherUser := CreateUserOrFail(t)
+		token, err := GetEmailVerificationToken(testDB, otherUser.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+
+		login, err := verifyEmailVerificationToken(token)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertNotEqual(t, user.Email, login)
+	})
+
+	t.Run("fail to verify token created with bad key", func(t *testing.T) {
+		token, err := getEmailVerificationTokenWithKey(testDB, user.Email, []byte("bad key"))
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+
+		if _, err := verifyEmailVerificationToken(token); err == nil {
+			testutil.FatalMsg(t, "Was able to verify token created with bad key!")
+		}
+	})
+}
+
+func TestVerifyEmail(t *testing.T) {
+	t.Parallel()
+	t.Run("verify email", func(t *testing.T) {
+		t.Parallel()
+
+		user := CreateUserOrFailNoEmailVerify(t)
+		testutil.AssertMsg(t, !user.HasVerifiedEmail, "User was created with verified email!")
+
+		token, err := GetEmailVerificationToken(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		verified, err := VerifyEmail(testDB, token)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+
+		testutil.AssertMsg(t, verified.HasVerifiedEmail, "Email didn't get marked as verified!")
+	})
+
+	t.Run("don't verify email with bad key", func(t *testing.T) {
+		t.Parallel()
+
+		user := CreateUserOrFailNoEmailVerify(t)
+		testutil.AssertMsg(t, !user.HasVerifiedEmail, "User was created with verified email!")
+
+		token, err := getEmailVerificationTokenWithKey(testDB, user.Email, []byte("badddddd key"))
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		if _, err = VerifyEmail(testDB, token); err == nil {
+			testutil.FatalMsgf(t, "Was able to verify email with bad key!")
+		}
+
+		sameUser, err := GetByEmail(testDB, user.Email)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertMsg(t, !sameUser.HasVerifiedEmail, "Users email got marked as verified")
+
+	})
+}
+
+// The following functions are copy paste replicated here as well as in
 // the userstestutil package. This is to avoid a cyclical dependency (which
 // is a compiler failure)
 
-// CreateUserOrFail creates a user with a random email and password
-func CreateUserOrFail(t *testing.T) User {
+// CreateUserOrFailNoEmailVerify creates a user with a random email and password
+func CreateUserOrFailNoEmailVerify(t *testing.T) User {
 	passwordLen := gofakeit.Number(8, 32)
 	password := gofakeit.Password(true, true, true, true, true, passwordLen)
-	return CreateUserOrFailWithPassword(t, password)
-}
 
-// CreateUserOrFailWithPassword creates a user with a random email and the
-// given password
-func CreateUserOrFailWithPassword(t *testing.T, password string) User {
 	u, err := Create(testDB, CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: password,
@@ -708,4 +804,20 @@ func CreateUserOrFailWithPassword(t *testing.T, password string) User {
 			t.Name(), err)
 	}
 	return u
+}
+
+// CreateUserOrFail creates a user and verifies their email
+func CreateUserOrFail(t *testing.T) User {
+	user := CreateUserOrFailNoEmailVerify(t)
+	token, err := GetEmailVerificationToken(testDB, user.Email)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	verified, err := VerifyEmail(testDB, token)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	return verified
 }

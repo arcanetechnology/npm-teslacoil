@@ -48,7 +48,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		h := httptestutil.NewTestHarness(app.Router)
+		h := httptestutil.NewTestHarness(app.Router, testDB)
 
 		testutil.DescribeTest(t)
 
@@ -122,7 +122,7 @@ func TestPayInvoice(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		h := httptestutil.NewTestHarness(app.Router)
+		h := httptestutil.NewTestHarness(app.Router, testDB)
 
 		password := gofakeit.Password(true, true, true, true, true, 32)
 		accessToken, userID := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{

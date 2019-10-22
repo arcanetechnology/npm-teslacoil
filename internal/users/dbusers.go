@@ -1,6 +1,7 @@
 package users
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strings"
 	"time"
@@ -17,8 +18,11 @@ import (
 
 // User is a database table
 type User struct {
-	ID    int    `db:"id"`
-	Email string `db:"email"`
+	ID int `db:"id"`
+
+	Email            string `db:"email"`
+	HasVerifiedEmail bool   `db:"has_verified_email"`
+
 	// Balance is the balance of the user, expressed in sats
 	Balance        int64   `db:"balance"`
 	Firstname      *string `db:"first_name"`
@@ -46,14 +50,17 @@ const (
 	UsersTable = "users"
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
-	returningFromUsersTable = "RETURNING id, email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
+	returningFromUsersTable = "RETURNING id, email, has_verified_email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// selectFromUsersTable is a SQL snippet that selects all the rows needed to
 	// get a full fledged user struct
-	selectFromUsersTable = "SELECT id, email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
+	selectFromUsersTable = "SELECT id, email, has_verified_email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// PasswordResetTokenDuration is how long our password reset tokens are valid
 	PasswordResetTokenDuration = 1 * time.Hour
+
+	// EmailVerificationTokenDuration is how long our email verification tokens are valid
+	EmailVerificationTokenDuration = 1 * time.Hour
 
 	//TotpIssuer is the name we issue 2FA TOTP tokens under
 	TotpIssuer = "Teslacoil"
@@ -63,6 +70,9 @@ const (
 var (
 	// Secret key used for resetting passwords.
 	passwordResetSecretKey = []byte("assume we have a long randomly generated secret key here")
+
+	// Secret key used for verifying emails
+	emailVerificationSecretKey = []byte("assume we have a different long and also random secret key here")
 )
 
 var (
@@ -131,9 +141,72 @@ func GetByCredentials(d *db.DB, email string, password string) (
 		return User{}, err
 	}
 
-	log.Tracef("%s received user %v", uQuery, userResult)
-
 	return userResult, nil
+}
+
+// getEmailVerificationTokenWithKey creates a token that can be used to verify
+// the given email. This function is exposed for testing purposes, all other
+// callers should use the exposed method which use a predefined key.
+func getEmailVerificationTokenWithKey(d *db.DB, email string, key []byte) (string, error) {
+	user, err := GetByEmail(d, email)
+	if err != nil {
+		return "", err
+	}
+
+	hashedEmail := sha256.Sum256([]byte(user.Email))
+
+	// we use the passwordreset package here because resetting a password
+	// and verifying an email is fundamentally the same operation: we need to
+	// give the user a secret they can use at a later point in time, and that
+	// token needs to depend on both input from the user (their email) as well
+	// as something secret to us. A difference between this usage and when we're
+	// resetting a password is that password reset tokens are single use, as they
+	// depend on both the users email and password (which makes the token invalid
+	// after the password has been changed). The tokens created here could be
+	// used multiple times, but there doesn't seem to be any harm in this.
+	token := passwordreset.NewToken(
+		email, EmailVerificationTokenDuration,
+		hashedEmail[:], key)
+	return token, nil
+}
+
+// GetEmailVerificationToken creates a token that can be used to verify the given
+// email.
+func GetEmailVerificationToken(d *db.DB, email string) (string, error) {
+	return getEmailVerificationTokenWithKey(d, email, emailVerificationSecretKey)
+}
+
+// verifyEmailVerificationToken verifies that the given token matches the signing
+// key used to create tokens.
+func verifyEmailVerificationToken(token string) (string, error) {
+	getEmailHash := func(email string) ([]byte, error) {
+		hash := sha256.Sum256([]byte(email))
+		return hash[:], nil
+	}
+
+	// see comment in getEmailVerificationTokenWithKey for explanation on why
+	// we use the passwordreset package.
+	return passwordreset.VerifyToken(
+		token,
+		getEmailHash,
+		emailVerificationSecretKey)
+}
+
+// VerifyEmail checks the given token, and if valid sets the users email as verified
+func VerifyEmail(d *db.DB, token string) (User, error) {
+	email, err := verifyEmailVerificationToken(token)
+	if err != nil {
+		return User{}, err
+	}
+
+	query := `UPDATE users SET has_verified_email = true WHERE email = $1 ` + returningFromUsersTable
+	rows, err := d.Query(query, email)
+	if err != nil {
+		return User{}, err
+	}
+
+	return scanUser(rows)
+
 }
 
 // GetPasswordResetToken creates a valid password reset token for the user
@@ -293,6 +366,7 @@ func scanUser(rows dbScanner) (User, error) {
 		if err := rows.Scan(
 			&user.ID,
 			&user.Email,
+			&user.HasVerifiedEmail,
 			&user.Balance,
 			&user.HashedPassword,
 			&user.TotpSecret,
@@ -549,24 +623,24 @@ func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
 }
 
 func (u User) String() string {
-	elems := []string{
+	fragments := []string{
 		fmt.Sprintf("ID: %d", u.ID),
 		fmt.Sprintf("Email: %s", u.Email),
+		fmt.Sprintf("HasVerifiedEmail: %t", u.HasVerifiedEmail),
 		fmt.Sprintf("Balance: %d", u.Balance),
-		fmt.Sprintf("CreatedAt: %s", u.CreatedAt),
 	}
 
 	if u.Firstname != nil {
-		elems = append(elems, fmt.Sprintf("Firstname: %s", *u.Firstname))
+		fragments = append(fragments, fmt.Sprintf(" Firstname: %s", *u.Firstname))
 	} else {
-		elems = append(elems, "Firstname: <nil>")
+		fragments = append(fragments, "Firstname: <nil>")
 	}
 
 	if u.Lastname != nil {
-		elems = append(elems, fmt.Sprintf("Lastname: %s", *u.Lastname))
+		fragments = append(fragments, fmt.Sprintf("Lastname: %s", *u.Lastname))
 	} else {
-		elems = append(elems, "Lastname: <nil>")
+		fragments = append(fragments, "Lastname: <nil>")
 	}
 
-	return strings.Join(elems, ", ")
+	return strings.Join(fragments, ", ")
 }
