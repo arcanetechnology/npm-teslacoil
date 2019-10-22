@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -40,7 +41,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 	nodetestutil.RunWithLnd(t, false, func(lnd lnrpc.LightningClient) {
 		app, err := api.NewApp(testDB,
 			lnd,
-			testutil.GetMockSendGridClient(),
+			mock.GetMockSendGridClient(),
 			bitcoind.TeslacoilBitcoindMockClient{},
 			testutil.GetMockHttpPoster(),
 			conf)
@@ -114,7 +115,7 @@ func TestPayInvoice(t *testing.T) {
 	nodetestutil.RunWithBitcoindAndLndPair(t, func(lnd1 lnrpc.LightningClient, lnd2 lnrpc.LightningClient, bitcoind bitcoind.TeslacoilBitcoind) {
 		app, err := api.NewApp(testDB,
 			lnd1,
-			testutil.GetMockSendGridClient(),
+			mock.GetMockSendGridClient(),
 			bitcoind,
 			testutil.GetMockHttpPoster(),
 			conf)
