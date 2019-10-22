@@ -7,9 +7,10 @@ import (
 	"path"
 	"strings"
 
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/payments"

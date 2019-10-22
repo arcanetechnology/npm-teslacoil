@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -19,7 +20,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"

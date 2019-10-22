@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
+	"gitlab.com/arcanecrypto/teslacoil/async"
 
 	"github.com/brianvoe/gofakeit"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
@@ -453,7 +453,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		// emails are sent in go-routine, so can't assume they're sent fast
 		// enough for test to pick up
-		if err := asyncutil.Await(8,
+		if err := async.Await(8,
 			time.Millisecond*20, checkPostSent); err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -488,7 +488,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		// emails are sent in go-routing, so can't assume they're sent fast
 		// enough for test to pick up
-		if err := asyncutil.Await(4,
+		if err := async.Await(4,
 			time.Millisecond*20, checkPostSent); err == nil {
 			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled payment")
 		}

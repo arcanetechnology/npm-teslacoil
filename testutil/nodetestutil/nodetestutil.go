@@ -22,13 +22,13 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
-	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
 )
 
 const (
@@ -153,7 +153,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 
 	}
 
-	if err = asyncutil.RetryNoBackoff(10, 300*time.Millisecond, connect); err != nil {
+	if err = async.RetryNoBackoff(10, 300*time.Millisecond, connect); err != nil {
 		testutil.FatalMsgf(t, "could not connect nodes %v", err)
 	}
 
@@ -177,7 +177,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return nil
 
 	}
-	if err := asyncutil.RetryNoBackoff(10, time.Millisecond*200, isSyncedToChain); err != nil {
+	if err := async.RetryNoBackoff(10, time.Millisecond*200, isSyncedToChain); err != nil {
 		testutil.FatalMsg(t, err)
 	}
 
@@ -191,7 +191,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return err
 	}
 
-	if err := asyncutil.RetryNoBackoff(30, 100*time.Millisecond, openchannel); err != nil {
+	if err := async.RetryNoBackoff(30, 100*time.Millisecond, openchannel); err != nil {
 		testutil.FatalMsgf(t, "could not open channel %v", err)
 	}
 
@@ -353,7 +353,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		return nil
 	}
 
-	if err := asyncutil.RetryNoBackoff(20, time.Millisecond*100, isReady); err != nil {
+	if err := async.RetryNoBackoff(20, time.Millisecond*100, isReady); err != nil {
 		testutil.FatalMsg(t, errors.Wrap(err, "cert, macaroon  and channel.backup files was not created"))
 	}
 
@@ -363,7 +363,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		lnd, err = ln.NewLNDClient(lndConfig)
 		return err
 	}
-	if err := asyncutil.RetryNoBackoff(retryAttempts, retrySleepDuration, getLnd); err != nil {
+	if err := async.RetryNoBackoff(retryAttempts, retrySleepDuration, getLnd); err != nil {
 		testutil.FatalMsgf(t, "could not get lnd with config: %s: %v", lndConfig, err)
 	}
 
@@ -382,7 +382,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		}
 
 		// await lnd shutdown
-		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
+		if err := async.Retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
 			return err
 		}
 		log.Debug("Stopped lnd process")
@@ -445,7 +445,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		_, err := os.Stat(pidFile)
 		return err
 	}
-	if err := asyncutil.RetryNoBackoff(retryAttempts, retrySleepDuration, readPidFile); err != nil {
+	if err := async.RetryNoBackoff(retryAttempts, retrySleepDuration, readPidFile); err != nil {
 		testutil.FatalMsgf(t, "Could not read bitcoind pid file")
 	}
 
@@ -465,7 +465,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 	client := bitcoindtestutil.GetBitcoindClientOrFail(t, conf)
 
 	// await bitcoind startup
-	if err := asyncutil.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
+	if err := async.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
 		testutil.FatalMsgf(t, "Could not communicate with bitcoind")
 	}
 
@@ -485,7 +485,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		}
 
 		// await bitcoind shutdown
-		if err := asyncutil.Retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
+		if err := async.Retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
 			return fmt.Errorf("could communicate with stopped bitcoind")
 		}
 

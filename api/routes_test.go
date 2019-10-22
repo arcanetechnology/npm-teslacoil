@@ -11,14 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+
+	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
-	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -1414,7 +1415,7 @@ func TestCreateInvoice(t *testing.T) {
 
 				// emails are sent in a go-routine, so can't assume they're sent fast
 				// enough for test to pick up
-				if err := asyncutil.Await(8,
+				if err := async.Await(8,
 					time.Millisecond*20, checkPostSent); err != nil {
 					testutil.FatalMsg(t, err)
 				}

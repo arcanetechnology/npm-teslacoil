@@ -1,5 +1,5 @@
 // Package asyncutil provides functionality for interacting with async operations
-package asyncutil
+package async
 
 import (
 	"errors"

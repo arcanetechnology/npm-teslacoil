@@ -9,9 +9,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
+
 	"github.com/gin-gonic/gin"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 

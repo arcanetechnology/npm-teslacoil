@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
+	"gitlab.com/arcanecrypto/teslacoil/async"
 
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 
@@ -75,7 +75,7 @@ func TestTxListener(t *testing.T) {
 			return true
 		}
 
-		err = asyncutil.Await(8, 100*time.Millisecond, check)
+		err = async.Await(8, 100*time.Millisecond, check)
 		if err != nil {
 			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", 1+1+blocksGenerated, eventsReceived)
 		}
@@ -118,7 +118,7 @@ func TestBlockListener(t *testing.T) {
 			return true
 		}
 
-		err = asyncutil.Await(15, 100*time.Millisecond, check)
+		err = async.Await(15, 100*time.Millisecond, check)
 		if err != nil {
 			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
 		}

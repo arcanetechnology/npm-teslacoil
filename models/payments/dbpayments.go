@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
+	"gitlab.com/arcanecrypto/teslacoil/async"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/sirupsen/logrus"
@@ -674,7 +674,7 @@ func postCallback(database *db.DB, payment Payment, sender HttpPoster) error {
 				response = res
 				return err
 			}
-			err := asyncutil.Retry(5, time.Millisecond*1000, retry)
+			err := async.Retry(5, time.Millisecond*1000, retry)
 			if err != nil {
 				logger.WithError(err).Error("Error when POSTing callback")
 			} else {

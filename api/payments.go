@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 )
 

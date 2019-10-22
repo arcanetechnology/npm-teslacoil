@@ -17,14 +17,14 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/db"
 
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )

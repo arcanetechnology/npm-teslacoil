@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/dgrijalva/jwt-go"

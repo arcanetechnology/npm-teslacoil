@@ -1,4 +1,4 @@
-package main
+package teslacoil
 
 import (
 	"context"
@@ -16,22 +16,21 @@ import (
 
 	"github.com/urfave/cli"
 
-	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
-	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/email"
-	"gitlab.com/arcanecrypto/teslacoil/ln"
-	"gitlab.com/arcanecrypto/teslacoil/util"
-	"gitlab.com/arcanecrypto/teslacoil/util/asyncutil"
-
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgerrors "github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/api"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/email"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
+	"gitlab.com/arcanecrypto/teslacoil/util"
 )
 
 var (
@@ -105,7 +104,7 @@ func awaitBitcoind(btc *bitcoind.Conn) error {
 		_, err := btc.Btcctl().GetBlockChainInfo()
 		return err == nil
 	}
-	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach bitcoind")
+	return async.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach bitcoind")
 }
 
 // awaitLnd tries to get a RPC response from lnd, returning an error
@@ -115,7 +114,7 @@ func awaitLnd(lncli lnrpc.LightningClient) error {
 		_, err := lncli.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
 		return err == nil
 	}
-	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach lnd")
+	return async.Await(rpcAwaitAttempts, rpcAwaitDuration, retry, "couldn't reach lnd")
 }
 
 // awaitLndMacaroonFile waits for the creation of the macaroon file in the given
@@ -130,7 +129,7 @@ func awaitLndMacaroonFile(config ln.LightningConfig) error {
 		_, err := os.Stat(macaroon)
 		return err == nil
 	}
-	return asyncutil.Await(rpcAwaitAttempts, rpcAwaitDuration,
+	return async.Await(rpcAwaitAttempts, rpcAwaitDuration,
 		retry, fmt.Sprintf("couldn't read macaroon file %q", macaroon))
 }
 

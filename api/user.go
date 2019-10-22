@@ -8,8 +8,9 @@ import (
 	"image/png"
 	"net/http"
 
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/dchest/passwordreset"
@@ -663,12 +664,12 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 	}
 }
 
-type CreateApiKeyResponse struct {
-	Key    uuid.UUID `json:"key"`
-	UserID int       `json:"userId"`
-}
-
 func (r *RestServer) CreateApiKey() gin.HandlerFunc {
+	type createApiKeyResponse struct {
+		Key    uuid.UUID `json:"key"`
+		UserID int       `json:"userId"`
+	}
+
 	return func(c *gin.Context) {
 		userID, ok := getUserIdOrReject(c)
 		if !ok {
@@ -689,7 +690,7 @@ func (r *RestServer) CreateApiKey() gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusCreated, CreateApiKeyResponse{
+		c.JSON(http.StatusCreated, createApiKeyResponse{
 			Key:    rawKey,
 			UserID: key.UserID,
 		})

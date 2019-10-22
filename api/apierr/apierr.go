@@ -13,10 +13,11 @@ import (
 	"strconv"
 	"unicode"
 
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
+
 	"github.com/gin-gonic/gin"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gopkg.in/go-playground/validator.v8"
 )

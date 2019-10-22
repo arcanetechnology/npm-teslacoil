@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 )
 
 // getUserIdOrReject retrieves the user ID associated with this request. This
