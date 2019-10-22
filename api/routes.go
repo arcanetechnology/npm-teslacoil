@@ -174,7 +174,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 
 	// We register /login separately to require jwt-tokens on every other endpoint
 	// than /login
-	r.Router.POST("/login", r.Login())
+	r.Router.POST("/login", r.login())
 	// Ping handler
 	r.Router.GET("/ping", func(c *gin.Context) {
 		c.String(200, "pong")
@@ -184,19 +184,19 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 		apierr.Public(c, http.StatusNotFound, apierr.ErrRouteNotFound)
 	})
 
-	r.RegisterApiKeyRoutes()
-	r.RegisterAdminRoutes()
-	r.RegisterAuthRoutes()
-	r.RegisterUserRoutes()
-	r.RegisterPaymentRoutes()
-	r.RegisterTransactionRoutes()
+	r.registerApiKeyRoutes()
+	r.registerAdminRoutes()
+	r.registerAuthRoutes()
+	r.registerUserRoutes()
+	r.registerPaymentRoutes()
+	r.registerTransactionRoutes()
 
 	return r, nil
 }
 
 // RegisterAdminRoutes registers routes related to administration of Teslacoil
 // TODO: secure these routes with access control
-func (r *RestServer) RegisterAdminRoutes() {
+func (r *RestServer) registerAdminRoutes() {
 	getInfo := func(c *gin.Context) {
 		chainInfo, err := r.bitcoind.Btcctl().GetBlockChainInfo()
 		if err != nil {
@@ -254,28 +254,28 @@ func (r *RestServer) RegisterAdminRoutes() {
 }
 
 // RegisterAuthRoutes registers all auth routes
-func (r *RestServer) RegisterAuthRoutes() {
+func (r *RestServer) registerAuthRoutes() {
 	authGroup := r.Router.Group("auth")
 
 	// Does not need auth token to reset password
-	authGroup.PUT("reset_password", r.ResetPassword())
-	authGroup.POST("reset_password", r.SendPasswordResetEmail())
+	authGroup.PUT("reset_password", r.resetPassword())
+	authGroup.POST("reset_password", r.sendPasswordResetEmail())
 
 	authGroup.Use(auth.GetMiddleware(r.db))
 
 	// 2FA methods
-	authGroup.POST("2fa", r.Enable2fa())
-	authGroup.PUT("2fa", r.Confirm2fa())
-	authGroup.DELETE("2fa", r.Delete2fa())
+	authGroup.POST("2fa", r.enable2fa())
+	authGroup.PUT("2fa", r.confirm2fa())
+	authGroup.DELETE("2fa", r.delete2fa())
 
-	authGroup.GET("refresh_token", r.RefreshToken())
-	authGroup.PUT("change_password", r.ChangePassword())
+	authGroup.GET("refresh_token", r.refreshToken())
+	authGroup.PUT("change_password", r.changePassword())
 }
 
-func (r *RestServer) RegisterApiKeyRoutes() {
+func (r *RestServer) registerApiKeyRoutes() {
 	keys := r.Router.Group("")
 	keys.Use(auth.GetMiddleware(r.db))
-	keys.POST("apikey", r.CreateApiKey())
+	keys.POST("apikey", r.createApiKey())
 
 }
 
@@ -293,32 +293,32 @@ func (r *RestServer) RegisterUserRoutes() {
 	// /login route. The group path is empty because it is easier to read
 	users := r.Router.Group("")
 	users.Use(auth.GetMiddleware(r.db))
-	users.GET("/users", r.GetAllUsers())
-	users.GET("/user", r.GetUser())
-	users.PUT("/user", r.UpdateUser())
+	users.GET("/users", r.getAllUsers())
+	users.GET("/user", r.getUser())
+	users.PUT("/user", r.updateUser())
 }
 
 // RegisterPaymentRoutes registers all payment routes on the router.
 // Payment is defined as a lightning transaction, so all things lightning
 // can be found in payment packages
-func (r *RestServer) RegisterPaymentRoutes() {
+func (r *RestServer) registerPaymentRoutes() {
 	payment := r.Router.Group("")
 	payment.Use(auth.GetMiddleware(r.db))
 
-	payment.GET("payments", r.GetAllPayments())
-	payment.GET("payment/:id", r.GetPaymentByID())
-	payment.POST("/invoices/create", r.CreateInvoice())
-	payment.POST("/invoices/pay", r.PayInvoice())
+	payment.GET("payments", r.getAllPayments())
+	payment.GET("payment/:id", r.getPaymentByID())
+	payment.POST("/invoices/create", r.createInvoice())
+	payment.POST("/invoices/pay", r.payInvoice())
 }
 
 // RegisterTransactionRoutes registers all transaction routes on the router.
 // A transaction is defined as an on-chain transaction
-func (r *RestServer) RegisterTransactionRoutes() {
+func (r *RestServer) registerTransactionRoutes() {
 	transaction := r.Router.Group("")
 	transaction.Use(auth.GetMiddleware(r.db))
 
-	transaction.GET("/transactions", r.GetAllTransactions())
-	transaction.GET("/transaction/:id", r.GetTransactionByID())
-	transaction.POST("/withdraw", r.WithdrawOnChain())
-	transaction.POST("/deposit", r.NewDeposit())
+	transaction.GET("/transactions", r.getAllTransactions())
+	transaction.GET("/transaction/:id", r.getTransactionByID())
+	transaction.POST("/withdraw", r.withdrawOnChain())
+	transaction.POST("/deposit", r.newDeposit())
 }

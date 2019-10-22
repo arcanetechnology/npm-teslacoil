@@ -14,10 +14,10 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 )
 
-// GetAllPayments finds all payments for the given user. Takes two URL
+// getAllPayments finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
-func (r *RestServer) GetAllPayments() gin.HandlerFunc {
-	type Params struct {
+func (r *RestServer) getAllPayments() gin.HandlerFunc {
+	type params struct {
 		Limit  int `form:"limit" binding:"gte=0"`
 		Offset int `form:"offset" binding:"gte=0"`
 	}
@@ -27,12 +27,12 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 			return
 		}
 
-		var params Params
-		if c.BindQuery(&params) != nil {
+		var param params
+		if c.BindQuery(&param) != nil {
 			return
 		}
 
-		t, err := payments.GetAll(r.db, userID, params.Limit, params.Offset)
+		t, err := payments.GetAll(r.db, userID, param.Limit, param.Offset)
 		if err != nil {
 			log.WithError(err).Errorf("Couldn't get payments")
 			_ = c.Error(err)
@@ -43,9 +43,9 @@ func (r *RestServer) GetAllPayments() gin.HandlerFunc {
 	}
 }
 
-// GetPaymentByID is a GET request that returns users that match the one
+// getPaymentByID is a GET request that returns users that match the one
 // specified in the body
-func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
+func (r *RestServer) getPaymentByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := getUserIdOrReject(c)
 		if !ok {
@@ -73,10 +73,10 @@ func (r *RestServer) GetPaymentByID() gin.HandlerFunc {
 	}
 }
 
-// CreateInvoice creates a new invoice
-func (r *RestServer) CreateInvoice() gin.HandlerFunc {
-	// CreateInvoiceRequest is a deposit
-	type CreateInvoiceRequest struct {
+// createInvoice creates a new invoice
+func (r *RestServer) createInvoice() gin.HandlerFunc {
+	// createInvoiceRequest is a deposit
+	type createInvoiceRequest struct {
 		AmountSat   int64  `json:"amountSat" binding:"required,gt=0,lte=4294967"`
 		Memo        string `json:"memo" binding:"max=256"`
 		Description string `json:"description"`
@@ -92,7 +92,7 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 			return
 		}
 
-		var req CreateInvoiceRequest
+		var req createInvoiceRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -122,11 +122,11 @@ func (r *RestServer) CreateInvoice() gin.HandlerFunc {
 	}
 }
 
-// PayInvoice pays a valid invoice on behalf of a user
-func (r *RestServer) PayInvoice() gin.HandlerFunc {
+// payInvoice pays a valid invoice on behalf of a user
+func (r *RestServer) payInvoice() gin.HandlerFunc {
 	// PayInvoiceRequest is the required and optional fields for initiating a
 	// withdrawal.
-	type PayInvoiceRequest struct {
+	type payInvoiceRequest struct {
 		PaymentRequest string `json:"paymentRequest" binding:"required,paymentrequest"`
 		Description    string `json:"description"`
 	}
@@ -137,7 +137,7 @@ func (r *RestServer) PayInvoice() gin.HandlerFunc {
 			return
 		}
 
-		var req PayInvoiceRequest
+		var req payInvoiceRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}

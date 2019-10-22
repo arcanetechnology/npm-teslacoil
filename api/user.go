@@ -19,12 +19,12 @@ import (
 	"github.com/pquerna/otp/totp"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/apikeys"
+	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // UserResponse is the type returned by the api to the front-end
-type UserResponse struct {
+type userResponse struct {
 	ID        int     `json:"id"`
 	Email     string  `json:"email"`
 	Balance   int64   `json:"balance"`
@@ -32,25 +32,25 @@ type UserResponse struct {
 	Lastname  *string `json:"lastName"`
 }
 
-// GetAllUsers is a GET request that returns all the users in the database
+// getAllUsers is a GET request that returns all the users in the database
 // TODO: Restrict this to only the admin user
-func (r *RestServer) GetAllUsers() gin.HandlerFunc {
+func (r *RestServer) getAllUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userResponse, err := users.GetAll(r.db)
+		allUsers, err := users.GetAll(r.db)
 		if err != nil {
 			log.WithError(err).Error("Couldn't get all users")
 			_ = c.Error(err)
 			return
 		}
-		c.JSONP(200, userResponse)
+		c.JSONP(200, allUsers)
 	}
 }
 
-// UpdateUser takes in a JSON body with three optional fields (email, firstname,
+// updateUser takes in a JSON body with three optional fields (email, firstname,
 // lastname), and updates the user in the header JWT accordingly
-func (r *RestServer) UpdateUser() gin.HandlerFunc {
+func (r *RestServer) updateUser() gin.HandlerFunc {
 
-	type UpdateUserRequest struct {
+	type updateUserRequest struct {
 		Email     *string `json:"email" binding:"email"`
 		FirstName *string `json:"firstName"`
 		LastName  *string `json:"lastName"`
@@ -62,7 +62,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
-		var req UpdateUserRequest
+		var req updateUserRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -90,7 +90,7 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 			return
 		}
 
-		response := UserResponse{
+		response := userResponse{
 			ID:        updated.ID,
 			Email:     updated.Email,
 			Balance:   updated.Balance,
@@ -190,7 +190,7 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 			return
 		}
 
-		res := UserResponse{
+		res := userResponse{
 			ID:        user.ID,
 			Email:     user.Email,
 			Balance:   user.Balance,
@@ -270,17 +270,17 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 	}
 }
 
-//Login logs in
-func (r *RestServer) Login() gin.HandlerFunc {
-	// LoginRequest is the expected type to find a user in the DB
-	type LoginRequest struct {
+// login logs in
+func (r *RestServer) login() gin.HandlerFunc {
+	// loginRequest is the expected type to find a user in the DB
+	type loginRequest struct {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`
 		TotpCode string `json:"totp"`
 	}
 
-	// LoginResponse includes a jwt-token and the e-mail identifying the user
-	type LoginResponse struct {
+	// loginResponse includes a jwt-token and the e-mail identifying the user
+	type loginResponse struct {
 		AccessToken string  `json:"accessToken"`
 		Email       string  `json:"email"`
 		UserID      int     `json:"userId"`
@@ -291,7 +291,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		var req LoginRequest
+		var req loginRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -340,7 +340,7 @@ func (r *RestServer) Login() gin.HandlerFunc {
 			return
 		}
 
-		res := LoginResponse{
+		res := loginResponse{
 			UserID:      user.ID,
 			Email:       user.Email,
 			AccessToken: tokenString,
@@ -353,12 +353,12 @@ func (r *RestServer) Login() gin.HandlerFunc {
 	}
 }
 
-// Enable2fa takes in the user ID specified in the JWT, and enables 2FA for
+// enable2fa takes in the user ID specified in the JWT, and enables 2FA for
 // this user. The endpoint responds with a secret code that the user should
 // use with their 2FA. They then need to confirm their 2FA setup by hitting
 // a new endpoint.
-func (r *RestServer) Enable2fa() gin.HandlerFunc {
-	type Enable2faResponse struct {
+func (r *RestServer) enable2fa() gin.HandlerFunc {
+	type enable2faResponse struct {
 		TotpSecret string `json:"totpSecret"`
 		Base64QR   string `json:"base64QrCode"`
 	}
@@ -398,7 +398,7 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 
 		base64Image := base64.StdEncoding.EncodeToString(imgBuf.Bytes())
 
-		response := Enable2faResponse{
+		response := enable2faResponse{
 			TotpSecret: key.Secret(),
 			Base64QR:   base64Image,
 		}
@@ -407,11 +407,11 @@ func (r *RestServer) Enable2fa() gin.HandlerFunc {
 	}
 }
 
-// Confirm2fa takes in a 2FA (TOTP) code and the user ID found in the JWT. It
+// confirm2fa takes in a 2FA (TOTP) code and the user ID found in the JWT. It
 // then checks the given 2FA code against the expected value for that user. If
 // everything matches up, it marks the 2FA status of that user as confirmed.
-func (r *RestServer) Confirm2fa() gin.HandlerFunc {
-	type Confirm2faRequest struct {
+func (r *RestServer) confirm2fa() gin.HandlerFunc {
+	type confirm2faRequest struct {
 		Code string `json:"code" binding:"required"`
 	}
 	return func(c *gin.Context) {
@@ -420,7 +420,7 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 			return
 		}
 
-		var req Confirm2faRequest
+		var req confirm2faRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -452,8 +452,8 @@ func (r *RestServer) Confirm2fa() gin.HandlerFunc {
 	}
 }
 
-func (r *RestServer) Delete2fa() gin.HandlerFunc {
-	type Delete2faRequest struct {
+func (r *RestServer) delete2fa() gin.HandlerFunc {
+	type delete2faRequest struct {
 		Code string `json:"code" binding:"required"`
 	}
 	return func(c *gin.Context) {
@@ -462,7 +462,7 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 			return
 		}
 
-		var req Delete2faRequest
+		var req delete2faRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -493,10 +493,10 @@ func (r *RestServer) Delete2fa() gin.HandlerFunc {
 	}
 }
 
-// RefreshToken refreshes a jwt-token
-func (r *RestServer) RefreshToken() gin.HandlerFunc {
-	// RefreshTokenResponse is the response from /auth/refresh
-	type RefreshTokenResponse struct {
+// refreshToken refreshes a jwt-token
+func (r *RestServer) refreshToken() gin.HandlerFunc {
+	// refreshTokenResponse is the response from /auth/refresh
+	type refreshTokenResponse struct {
 		AccessToken string `json:"accessToken"`
 	}
 
@@ -521,7 +521,7 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 			return
 		}
 
-		res := &RefreshTokenResponse{
+		res := &refreshTokenResponse{
 			AccessToken: tokenString,
 		}
 
@@ -529,11 +529,11 @@ func (r *RestServer) RefreshToken() gin.HandlerFunc {
 	}
 }
 
-// SendPasswordResetEmail takes in an email, and sends a password reset
+// sendPasswordResetEmail takes in an email, and sends a password reset
 // token to that destination. It is not an authenticated endpoint, as the
 // user typically won't be able to sign in if this is something they are
 // requesting.
-func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
+func (r *RestServer) sendPasswordResetEmail() gin.HandlerFunc {
 	type request struct {
 		Email string `json:"email" binding:"required,email"`
 	}
@@ -573,7 +573,7 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 	}
 }
 
-func (r *RestServer) ResetPassword() gin.HandlerFunc {
+func (r *RestServer) resetPassword() gin.HandlerFunc {
 	type request struct {
 		Password string `json:"password" binding:"required,password"`
 		Token    string `json:"token" binding:"required"`
@@ -621,8 +621,8 @@ func (r *RestServer) ResetPassword() gin.HandlerFunc {
 	}
 }
 
-func (r *RestServer) ChangePassword() gin.HandlerFunc {
-	type ChangePasswordRequest struct {
+func (r *RestServer) changePassword() gin.HandlerFunc {
+	type changePasswordRequest struct {
 		// we don't give this a "password" tag, as there's no point in validating
 		// the users existing password
 		OldPassword string `json:"oldPassword" binding:"required"`
@@ -637,7 +637,7 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 			return
 		}
 
-		var req ChangePasswordRequest
+		var req changePasswordRequest
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -664,7 +664,7 @@ func (r *RestServer) ChangePassword() gin.HandlerFunc {
 	}
 }
 
-func (r *RestServer) CreateApiKey() gin.HandlerFunc {
+func (r *RestServer) createApiKey() gin.HandlerFunc {
 	type createApiKeyResponse struct {
 		Key    uuid.UUID `json:"key"`
 		UserID int       `json:"userId"`

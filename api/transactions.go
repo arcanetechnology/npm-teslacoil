@@ -14,9 +14,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetAllTransactions finds all payments for the given user. Takes two URL
+// getAllTransactions finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
-func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
+func (r *RestServer) getAllTransactions() gin.HandlerFunc {
 	type Params struct {
 		Limit  int `form:"limit" binding:"gte=0"`
 		Offset int `form:"offset" binding:"gte=0"`
@@ -54,9 +54,9 @@ func (r *RestServer) GetAllTransactions() gin.HandlerFunc {
 	}
 }
 
-// GetTransactionByID is a GET request that returns users that match the one
+// getTransactionByID is a GET request that returns users that match the one
 // specified in the body
-func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
+func (r *RestServer) getTransactionByID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := getUserIdOrReject(c)
 		if !ok {
@@ -82,11 +82,11 @@ func (r *RestServer) GetTransactionByID() gin.HandlerFunc {
 	}
 }
 
-// WithdrawOnChain is a request handler used for withdrawing funds
+// withdrawOnChain is a request handler used for withdrawing funds
 // to an on-chain address
 // TODO: verify dust limits
-func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
-	type WithdrawResponse struct {
+func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
+	type withdrawResponse struct {
 		ID          int                `json:"id"`
 		Address     string             `json:"address"`
 		Txid        *string            `json:"txid"`
@@ -123,7 +123,7 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, WithdrawResponse{
+		c.JSONP(http.StatusOK, withdrawResponse{
 			ID:          transaction.ID,
 			Address:     transaction.Address,
 			Txid:        transaction.Txid,
@@ -139,9 +139,9 @@ func (r *RestServer) WithdrawOnChain() gin.HandlerFunc {
 
 }
 
-// NewDeposit is a request handler used for creating a new deposit
+// newDeposit is a request handler used for creating a new deposit
 // If successful, response with an address, and the saved description
-func (r *RestServer) NewDeposit() gin.HandlerFunc {
+func (r *RestServer) newDeposit() gin.HandlerFunc {
 	type request struct {
 		// Whether to discard the old address and force create a new one
 		ForceNewAddress bool `json:"forceNewAddress"`
