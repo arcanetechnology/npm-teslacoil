@@ -103,6 +103,53 @@ func (r *RestServer) UpdateUser() gin.HandlerFunc {
 	}
 }
 
+func (r *RestServer) SendEmailVerificationEmail() gin.HandlerFunc {
+	type request struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+
+	return func(c *gin.Context) {
+		var req request
+		if c.BindJSON(&req) != nil {
+			return
+		}
+		log.WithField("email", req.Email).Info("Got request to send email verification email")
+
+		user, err := users.GetByEmail(r.db, req.Email)
+		if err != nil {
+			// we don't want to leak information about users, so we reply with 200
+			// if the user doesn't exist
+			if stderr.Is(err, sql.ErrNoRows) {
+				c.Status(http.StatusOK)
+				return
+			}
+			log.WithError(err).Error("Could not get user by email")
+			_ = c.Error(err)
+			return
+		}
+
+		// respond with 200 here to not leak information about our users
+		if user.HasVerifiedEmail {
+			log.WithField("userId", user.ID).Debug("User already has verified email, not sending out new email")
+			c.Status(http.StatusOK)
+			return
+		}
+
+		token, err := users.GetEmailVerificationToken(r.db, req.Email)
+		if err != nil {
+			log.WithError(err).Error("Could not email verification token")
+			_ = c.Error(err)
+			return
+		}
+		if err := r.EmailSender.SendEmailVerification(user, token); err != nil {
+			_ = c.Error(err)
+			return
+		}
+
+		c.Status(http.StatusOK)
+	}
+}
+
 func (r *RestServer) VerifyEmail() gin.HandlerFunc {
 	type Request struct {
 		Token string `json:"token" binding:"required"`
@@ -154,19 +201,22 @@ func (r *RestServer) GetUser() gin.HandlerFunc {
 	}
 }
 
-// CreateUser is a POST request and inserts all the users in the body into the database
 func (r *RestServer) CreateUser() gin.HandlerFunc {
-	// CreateUserRequest is the expected type to create a new user
-	type CreateUserRequest struct {
+	type request struct {
 		Email     string  `json:"email" binding:"required,email"`
 		Password  string  `json:"password" binding:"required,password"`
 		FirstName *string `json:"firstName"`
 		LastName  *string `json:"lastName"`
 	}
 
+	type response struct {
+		ID    int    `json:"id"`
+		Email string `json:"email"`
+	}
+
 	return func(c *gin.Context) {
 
-		var req CreateUserRequest
+		var req request
 		if c.BindJSON(&req) != nil {
 			return
 		}
@@ -190,14 +240,29 @@ func (r *RestServer) CreateUser() gin.HandlerFunc {
 			return
 		}
 
-		res := UserResponse{
-			ID:        u.ID,
-			Email:     u.Email,
-			Balance:   u.Balance,
-			Firstname: u.Firstname,
-			Lastname:  u.Lastname,
+		res := response{
+			ID:    u.ID,
+			Email: u.Email,
 		}
 		log.Info("successfully created user: ", res)
+
+		// spawn email verification in new goroutine
+		go func() {
+			log.WithFields(logrus.Fields{
+				"userId": u.ID,
+				"email":  u.Email,
+			}).Info("Sending email verification email")
+			emailToken, err := users.GetEmailVerificationToken(r.db, u.Email)
+			if err != nil {
+				log.WithError(err).Error("Could not get email verification token")
+				return
+			}
+
+			if err := r.EmailSender.SendEmailVerification(u, emailToken); err != nil {
+				log.WithError(err).Error("Could not send email verification email")
+				return
+			}
+		}()
 
 		c.JSONP(200, res)
 	}
@@ -472,7 +537,6 @@ func (r *RestServer) SendPasswordResetEmail() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-
 		var req request
 		if c.BindJSON(&req) != nil {
 			return

@@ -30,6 +30,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
@@ -44,7 +45,7 @@ var (
 
 	h httptestutil.TestHarness
 
-	mockSendGridClient                             = testutil.GetMockSendGridClient()
+	mockSendGridClient                             = mock.GetMockSendGridClient()
 	mockLightningClient lnrpc.LightningClient      = lntestutil.GetLightningMockClient()
 	mockBitcoindClient  bitcoind.TeslacoilBitcoind = bitcoind.GetBitcoinMockClient()
 	mockHttpPoster                                 = testutil.GetMockHttpPoster()
@@ -152,7 +153,6 @@ func TestCreateUser(t *testing.T) {
 		pass := gofakeit.Password(true, true, true, true, true, 32)
 		firstName := gofakeit.FirstName()
 		lastName := gofakeit.LastName()
-		testutil.DescribeTest(t)
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path: "/users", Method: "POST",
 			Body: fmt.Sprintf(`{
@@ -164,8 +164,10 @@ func TestCreateUser(t *testing.T) {
 		})
 		jsonRes := h.AssertResponseOkWithJson(t, req)
 		testutil.AssertEqual(t, jsonRes["email"], email)
-		testutil.AssertEqual(t, jsonRes["firstName"], firstName)
-		testutil.AssertEqual(t, jsonRes["lastName"], lastName)
+
+		user := h.VerifyEmail(t, email)
+		testutil.AssertEqual(t, *user.Firstname, firstName)
+		testutil.AssertEqual(t, *user.Lastname, lastName)
 	})
 }
 
@@ -173,6 +175,19 @@ func TestPostUsersRoute(t *testing.T) {
 	testutil.DescribeTest(t)
 	t.Parallel()
 
+	// we need a new email sender here to record the amount of emails
+	// sent correctly
+	postUserEmailClient := mock.GetMockSendGridClient()
+	app, err := NewApp(testDB, mockLightningClient,
+		postUserEmailClient, mockBitcoindClient,
+		mockHttpPoster, conf)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	harness := httptestutil.NewTestHarness(app.Router, testDB)
+
+	preCreationEmails := postUserEmailClient.GetEmailVerificationMails()
 	t.Run("create a user", func(t *testing.T) {
 		t.Parallel()
 		email := gofakeit.Email()
@@ -185,8 +200,19 @@ func TestPostUsersRoute(t *testing.T) {
 				"password": %q
 			}`, email, pass),
 		})
+		jsonRes := harness.AssertResponseOkWithJson(t, req)
 
-		jsonRes := h.AssertResponseOkWithJson(t, req)
+		var postCreation int
+		// emails are sent in a go routine
+		if err := asyncutil.RetryNoBackoff(10, time.Millisecond*10, func() error {
+			postCreation = postUserEmailClient.GetEmailVerificationMails()
+			if preCreationEmails+1 != postCreation {
+				return fmt.Errorf("emails sent before creating user (%d) does not match ut with emails sent after creating user (%d)", preCreationEmails, postCreation)
+			}
+			return nil
+		}); err != nil {
+			testutil.FatalMsg(t, err)
+		}
 		testutil.AssertEqual(t, jsonRes["firstName"], nil)
 		testutil.AssertEqual(t, jsonRes["lastName"], nil)
 		testutil.AssertEqual(t, jsonRes["email"], email)
@@ -201,8 +227,9 @@ func TestPostUsersRoute(t *testing.T) {
 				"password": %q
 			}`, email, pass),
 			})
-			_, err := h.AssertResponseNotOk(t, otherReq)
+			_, err := harness.AssertResponseNotOk(t, otherReq)
 			testutil.AssertEqual(t, apierr.ErrUserAlreadyExists, err)
+			testutil.AssertEqual(t, postCreation, postUserEmailClient.GetEmailVerificationMails())
 		})
 	})
 
@@ -215,7 +242,7 @@ func TestPostUsersRoute(t *testing.T) {
 				"email": %q
 			}`, gofakeit.Email()),
 		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = harness.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 
 	t.Run("not create a user with no email", func(t *testing.T) {
@@ -227,7 +254,7 @@ func TestPostUsersRoute(t *testing.T) {
 				"password": %q
 			}`, gofakeit.Password(true, true, true, true, true, 32)),
 		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		_, _ = harness.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 	})
 }
 
@@ -290,6 +317,7 @@ func TestPostLoginRoute(t *testing.T) {
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
 		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
 	})
+
 	t.Run("fail to login with non-existant credentials", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
@@ -677,12 +705,12 @@ func TestSendPasswordResetEmail(t *testing.T) {
 		}`, email),
 	})
 	h.AssertResponseOk(t, req)
-	testutil.AssertMsg(t, mockSendGridClient.GetSentEmails() > 0,
+	testutil.AssertMsg(t, mockSendGridClient.GetPasswordResetMails() > 0,
 		"Sendgrid client didn't send any emails!")
 
 	// requesting a password reset email to a non existant user should
 	// return 200 but not actually send an email
-	emailsBeforeOtherReq := mockSendGridClient.GetSentEmails()
+	emailsBeforeOtherReq := mockSendGridClient.GetPasswordResetMails()
 	otherReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 		Path:   "/auth/reset_password",
 		Method: "POST",
@@ -691,7 +719,107 @@ func TestSendPasswordResetEmail(t *testing.T) {
 		}`, gofakeit.Email()),
 	})
 	h.AssertResponseOk(t, otherReq)
-	testutil.AssertEqual(t, mockSendGridClient.GetSentEmails(), emailsBeforeOtherReq)
+	testutil.AssertEqual(t, mockSendGridClient.GetPasswordResetMails(), emailsBeforeOtherReq)
+
+}
+
+func TestRestServer_SendEmailVerificationEmail(t *testing.T) {
+	t.Parallel()
+
+	// we need a new email sender here to record the amount of emails
+	// sent correctly
+	emailClient := mock.GetMockSendGridClient()
+	app, err := NewApp(testDB, mockLightningClient,
+		emailClient, mockBitcoindClient,
+		mockHttpPoster, conf)
+	if err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	harness := httptestutil.NewTestHarness(app.Router, testDB)
+
+	t.Run("reject a bad email request", func(t *testing.T) {
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/user/verify_email",
+			Method: "POST",
+			Body: `{
+			"email": "foobar"
+			}`,
+		})
+		_, err := harness.AssertResponseNotOk(t, req)
+		testutil.AssertEqual(t, apierr.ErrRequestValidationFailed, err)
+	})
+
+	// we don't want to leak information about users, so we respond with 200
+	t.Run("respond with 200 for a non-existant user", func(t *testing.T) {
+		email := gofakeit.Email()
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/user/verify_email",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q
+			}`, email),
+		})
+
+		harness.AssertResponseOk(t, req)
+
+	})
+
+	t.Run("Send out a password verification email for an existing user", func(t *testing.T) {
+		email := gofakeit.Email()
+		password := gofakeit.Password(true, true, true, true, true, 32)
+		_ = h.CreateUserNoVerifyEmail(t, users.CreateUserArgs{
+			Email:    email,
+			Password: password,
+		})
+
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/user/verify_email",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q
+			}`, email),
+		})
+		emailsPreReq := emailClient.GetEmailVerificationMails()
+		harness.AssertResponseOk(t, req)
+		if err := asyncutil.RetryNoBackoff(5, time.Millisecond*10, func() error {
+			postReq := emailClient.GetEmailVerificationMails()
+			if emailsPreReq+1 != postReq {
+				return fmt.Errorf("mismatch between emails pre equest (%d) and post request (%d", emailsPreReq, postReq)
+			}
+			return nil
+		}); err != nil {
+			testutil.FatalMsg(t, err)
+		}
+	})
+
+	t.Run("not send out an email for already verified users", func(t *testing.T) {
+		email := gofakeit.Email()
+		password := gofakeit.Password(true, true, true, true, true, 32)
+		_ = h.CreateUser(t, users.CreateUserArgs{
+			Email:    email,
+			Password: password,
+		})
+
+		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+			Path:   "/user/verify_email",
+			Method: "POST",
+			Body: fmt.Sprintf(`{
+			"email": %q
+			}`, email),
+		})
+		emailsPreReq := emailClient.GetEmailVerificationMails()
+		harness.AssertResponseOk(t, req)
+		if err := asyncutil.RetryNoBackoff(5, time.Millisecond*10, func() error {
+			postReq := emailClient.GetEmailVerificationMails()
+			if emailsPreReq+1 != postReq {
+				return fmt.Errorf("mismatch between emails pre equest (%d) and post request (%d", emailsPreReq, postReq)
+			}
+			return nil
+		}); err == nil {
+			testutil.FatalMsg(t, "Sent out emails for already verified user!")
+		}
+	})
 
 }
 
@@ -1237,7 +1365,6 @@ func TestCreateInvoice(t *testing.T) {
 
 	t.Run("create an invoice with a valid callback URL", func(t *testing.T) {
 		t.Parallel()
-		mockInvoice, _ := ln.AddInvoice(randomMockClient, lnrpc.Invoice{})
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/invoices/create",
@@ -1245,9 +1372,15 @@ func TestCreateInvoice(t *testing.T) {
 			Body: fmt.Sprintf(`{
 				"amountSat": %d,
 				"callbackUrl": "https://example.com"
-			}`, mockInvoice.Value),
+			}`, 1339),
 		})
 		invoicesJson := otherH.AssertResponseOkWithJson(t, req)
+		invoice, ok := invoicesJson["paymentRequest"].(string)
+		lnRpcInvoice := lnrpc.Invoice{PaymentRequest: invoice}
+		mockInvoice, _ := ln.AddInvoice(randomMockClient, lnRpcInvoice)
+		if !ok {
+			testutil.FatalMsgf(t, "invoicesJson['paymentRequest'] was not a string! %+v", invoicesJson)
+		}
 		testutil.AssertMsg(t, invoicesJson["callbackUrl"] != nil, "callback URL was nil!")
 
 		t.Run("receive a POST to the given URL when paying the invoice",
@@ -1274,7 +1407,8 @@ func TestCreateInvoice(t *testing.T) {
 				}
 
 				checkPostSent := func() bool {
-					return mockHttpPoster.GetSentPostRequests() == 1
+					reqs := mockHttpPoster.GetSentPostRequests()
+					return reqs == 1
 				}
 
 				// emails are sent in a go-routine, so can't assume they're sent fast

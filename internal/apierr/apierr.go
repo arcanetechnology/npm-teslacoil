@@ -163,9 +163,9 @@ var (
 		code: "ERR_BAD_TOTP_CODE",
 	}
 
-	// errRequestValidationFailed means the user gave us an invalid request, either
+	// ErrRequestValidationFailed means the user gave us an invalid request, either
 	// in JSON, URL or query format
-	errRequestValidationFailed = apiError{
+	ErrRequestValidationFailed = apiError{
 		err:  errors.New("request validation failed"),
 		code: "ERR_REQUEST_VALIDATION_FAILED",
 	}
@@ -268,8 +268,8 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		if response.ErrorField.Code == "" {
 			if len(fieldErrors) > 0 {
 				// if we have any field errors, request validation failed
-				response.ErrorField.Code = errRequestValidationFailed.code
-				response.ErrorField.Message = errRequestValidationFailed.err.Error()
+				response.ErrorField.Code = ErrRequestValidationFailed.code
+				response.ErrorField.Message = ErrRequestValidationFailed.err.Error()
 			} else {
 				// this is bad, but should be picked up by tests
 				response.ErrorField.Code = ErrUnknownError.code
