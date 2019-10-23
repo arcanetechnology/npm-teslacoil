@@ -5,7 +5,7 @@ LPP := $(shell git describe --exact-match HEAD 2>/dev/null && echo lpp || echo l
 BINARIES := lpp lpp-dev
 
 build-lpp:
-	go build -o ${LPP} ./cmd/lpp
+	go build -o ${LPP} ./main.go
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
