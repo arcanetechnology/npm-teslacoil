@@ -15,14 +15,15 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgerrors "github.com/pkg/errors"
-	"github.com/sendgrid/sendgrid-go"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/asyncutil"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/lpp/api"
+	"gitlab.com/arcanecrypto/teslacoil/email"
 	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
@@ -243,7 +244,18 @@ var (
 			}
 			log.Info("lnd is properly started")
 
-			sendGridClient := sendgrid.NewSendClient(SendgridApiKey)
+			var baseUrl string
+			isRelease := os.Getenv(gin.EnvGinMode) == gin.ReleaseMode
+			switch {
+			case network.Name == chaincfg.MainNetParams.Name && isRelease:
+				baseUrl = "https://teslacoil.io"
+			case network.Name == chaincfg.TestNet3Params.Name && isRelease:
+				baseUrl = "https://testnet.teslacoil.io"
+			default:
+				// not in relase mode, assume we're running locally
+				baseUrl = "http://127.0.0.1:3000"
+			}
+			sendGridClient := email.NewSendGridSender(baseUrl, SendgridApiKey)
 
 			config := api.Config{
 				LogLevel: build.Log.Level,

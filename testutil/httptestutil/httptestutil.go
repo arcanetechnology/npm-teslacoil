@@ -97,19 +97,16 @@ func (harness *TestHarness) CreateUserNoVerifyEmail(t *testing.T, args users.Cre
 	return harness.AssertResponseOkWithJson(t, createUserRequest)
 }
 
-func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
+func (harness *TestHarness) VerifyEmail(t *testing.T, email string) users.User {
 	t.Helper()
-
-	createUserResponse := harness.CreateUserNoVerifyEmail(t, args)
-
-	token, err := users.GetEmailVerificationToken(harness.database, args.Email)
+	token, err := users.GetEmailVerificationToken(harness.database, email)
 	if err != nil {
 		testutil.FatalMsgf(t, "Was not able to get email verification token: %v", err)
 	}
 
 	verifyEmailRequest := GetRequest(t, RequestArgs{
 		Path:   "/user/verify_email",
-		Method: "POST",
+		Method: "PUT",
 		Body: fmt.Sprintf(`{
 			"token": %q
 		}`, token),
@@ -117,14 +114,26 @@ func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) 
 
 	harness.AssertResponseOk(t, verifyEmailRequest)
 
-	verified, err := users.GetByEmail(harness.database, args.Email)
+	verified, err := users.GetByEmail(harness.database, email)
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
 
 	testutil.AssertMsg(t, verified.HasVerifiedEmail, "User hasn't verified email!")
+	return verified
+}
 
-	return createUserResponse
+func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) users.User {
+	t.Helper()
+
+	createUserResponse := harness.CreateUserNoVerifyEmail(t, args)
+	email, ok := createUserResponse["email"].(string)
+	if !ok {
+		testutil.FailMsgf(t, "didn't get email back when creating user! Response: %v", createUserResponse)
+	}
+
+	return harness.VerifyEmail(t, email)
+
 }
 
 type AuthRequestArgs struct {
