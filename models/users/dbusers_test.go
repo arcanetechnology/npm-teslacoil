@@ -282,10 +282,26 @@ func TestCanCreateUser(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
-		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
-		testutil.AssertMsg(t, !user.HasVerifiedEmail, "Newly created users shouldn't have verified emails!")
-	}
+		testutil.AssertEqual(t, user.Email, email)
+		testutil.AssertEqual(t, *user.Firstname, first)
+		testutil.AssertEqual(t, *user.Lastname, last)
+	})
+
+	t.Run("inserting user ID 0 should not result in that user ID being used", func(t *testing.T) {
+		user := User{
+			ID:             0,
+			Email:          gofakeit.Email(),
+			Firstname:      nil,
+			Lastname:       nil,
+			HashedPassword: []byte("this is a hashed password"),
+		}
+		inserted, err := insertUser(testDB.MustBegin(), user)
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
+		testutil.AssertNotEqual(t, inserted.ID, user.ID)
+
+	})
 }
 
 func TestCanGetUserByEmail(t *testing.T) {

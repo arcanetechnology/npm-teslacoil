@@ -80,12 +80,10 @@ var (
 	ErrInvalidTotpCode   = errors.New("invalid TOTP code")
 )
 
-// GetAll is a GET request that returns all the users in the database
-// TODO: This endpoint should be restricted to the admin
+// GetAll reads all users from the database
 func GetAll(d *db.DB) ([]User, error) {
-	// Equivalent to SELECT * from users;
 	queryResult := []User{}
-	err := d.Select(&queryResult, fmt.Sprintf("SELECT * FROM %s", UsersTable))
+	err := d.Select(&queryResult, "SELECT * FROM users")
 	if err != nil {
 		return queryResult, err
 	}
@@ -97,8 +95,8 @@ func GetAll(d *db.DB) ([]User, error) {
 // in the body
 func GetByID(d *db.DB, id int) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`%s FROM %s WHERE id=$1 LIMIT 1`,
-		selectFromUsersTable, UsersTable)
+	uQuery := fmt.Sprintf(`%s FROM users WHERE id=$1 LIMIT 1`,
+		selectFromUsersTable)
 
 	if err := d.Get(&userResult, uQuery, id); err != nil {
 		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
@@ -111,8 +109,8 @@ func GetByID(d *db.DB, id int) (User, error) {
 // in the body
 func GetByEmail(d *db.DB, email string) (User, error) {
 	userResult := User{}
-	uQuery := fmt.Sprintf(`%s FROM %s WHERE email=$1 LIMIT 1`,
-		selectFromUsersTable, UsersTable)
+	uQuery := fmt.Sprintf(`%s FROM users WHERE email=$1 LIMIT 1`,
+		selectFromUsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
 		return User{}, err
@@ -127,8 +125,8 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	User, error) {
 
 	userResult := User{}
-	uQuery := fmt.Sprintf(`%s FROM %s WHERE email=$1 LIMIT 1`,
-		selectFromUsersTable, UsersTable)
+	uQuery := fmt.Sprintf(`%s FROM users WHERE email=$1 LIMIT 1`,
+		selectFromUsersTable)
 
 	if err := d.Get(&userResult, uQuery, email); err != nil {
 		return User{}, err
@@ -363,7 +361,7 @@ func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	return userResp, nil
 }
 
-// UpdateUserOptions represents the different actions `UpdateUser` can perform.
+// UpdateOptions represents the different actions `UpdateUser` can perform.
 type UpdateOptions struct {
 	// If set to nil, does nothing. If set to the empty string, deletes
 	// firstName
