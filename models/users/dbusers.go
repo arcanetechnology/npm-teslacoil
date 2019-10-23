@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -50,11 +49,11 @@ const (
 	UsersTable = "users"
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
-	returningFromUsersTable = "RETURNING id, email, has_verified_email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
+	returningFromUsersTable = "RETURNING id, email, has_verified_email, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// selectFromUsersTable is a SQL snippet that selects all the rows needed to
 	// get a full fledged user struct
-	selectFromUsersTable = "SELECT id, email, has_verified_email, balance, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
+	selectFromUsersTable = "SELECT id, email, has_verified_email, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// PasswordResetTokenDuration is how long our password reset tokens are valid
 	PasswordResetTokenDuration = 1 * time.Hour
@@ -285,68 +284,6 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 	return userResp, nil
 }
 
-// IncreaseBalance increases the balance of user id x by y satoshis
-// This is using a struct as a parameter because it is a critical operation
-// and placing the arguments in the wrong order leads to increasing the wrong
-// users balance
-func IncreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
-	if cb.AmountSat <= 0 {
-		return User{}, fmt.Errorf("amount cant be less than or equal to 0")
-	}
-
-	updateBalanceQuery := `UPDATE users
-		SET balance = balance + $1
-		WHERE id = $2 ` + returningFromUsersTable
-
-	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
-	if err != nil {
-		return User{}, errors.Wrapf(
-			err,
-			"IncreaseBalance() -> tx.Query(%s, %d, %d) could not construct user update",
-			updateBalanceQuery,
-			cb.AmountSat,
-			cb.UserID)
-	}
-
-	user, err := scanUser(rows)
-	if err != nil {
-		return User{}, err
-	}
-
-	return user, nil
-}
-
-// DecreaseBalance decreases the balance of user id x by y satoshis
-// A constraint on the DB prevents us from decreasing further than 0 satoshis
-func DecreaseBalance(tx *sqlx.Tx, cb ChangeBalance) (User, error) {
-	if cb.AmountSat <= 0 {
-		return User{},
-			errors.New("amount cant be less than or equal to 0")
-	}
-
-	updateBalanceQuery := `UPDATE users
-		SET balance = balance - $1  
-		WHERE id = $2 ` + returningFromUsersTable
-
-	rows, err := tx.Query(updateBalanceQuery, cb.AmountSat, cb.UserID)
-	if err != nil {
-		return User{}, errors.WithMessagef(err, "decrease by %d for user %d", cb.AmountSat, cb.UserID)
-	}
-
-	user, err := scanUser(rows)
-	if err != nil {
-		return User{}, errors.WithMessage(err, "decreasebalance")
-	}
-	log.WithFields(logrus.Fields{
-		"userId":     user.ID,
-		"newBalance": user.Balance,
-		"amount":     cb.AmountSat,
-	}).Info("Decreased users balance")
-
-	return user, nil
-
-}
-
 type dbScanner interface {
 	Next() bool
 	Scan(dest ...interface{}) error
@@ -367,7 +304,6 @@ func scanUser(rows dbScanner) (User, error) {
 			&user.ID,
 			&user.Email,
 			&user.HasVerifiedEmail,
-			&user.Balance,
 			&user.HashedPassword,
 			&user.TotpSecret,
 			&user.ConfirmedTotpSecret,
@@ -412,19 +348,17 @@ func hashAndSalt(pwd string) ([]byte, error) {
 
 func insertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
-		(email, balance, hashed_password, totp_secret, confirmed_totp_secret, first_name, last_name)
-		VALUES (:email, 0, :hashed_password, :totp_secret, false, :first_name, :last_name) ` + returningFromUsersTable
-
-	log.Debugf("Executing query for creating user (%s): %s", user, userCreateQuery)
+		(email, hashed_password, totp_secret, confirmed_totp_secret, first_name, last_name)
+		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, :last_name) ` + returningFromUsersTable
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
-		return User{}, err
+		return User{}, fmt.Errorf("could not insert user: %w", err)
 	}
 
 	userResp, err := scanUser(rows)
 	if err != nil {
-		return User{}, errors.Wrap(err, fmt.Sprintf("insertUser(tx, %v) failed", user))
+		return User{}, fmt.Errorf("could not scan user: %w", err)
 	}
 	return userResp, nil
 }
@@ -627,7 +561,7 @@ func (u User) String() string {
 		fmt.Sprintf("ID: %d", u.ID),
 		fmt.Sprintf("Email: %s", u.Email),
 		fmt.Sprintf("HasVerifiedEmail: %t", u.HasVerifiedEmail),
-		fmt.Sprintf("Balance: %d", u.Balance),
+		fmt.Sprintf("CreatedAt: %s", u.CreatedAt),
 	}
 
 	if u.Firstname != nil {

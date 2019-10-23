@@ -71,7 +71,6 @@ func TestUpdateUserEmail(t *testing.T) {
 
 func TestUpdateUserFirstName(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	user := CreateUserOrFail(t)
 
@@ -259,27 +258,25 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 
 func TestCanCreateUser(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
-	email := testutil.GetTestEmail(t)
-	tests := []struct {
-		email          string
-		expectedResult User
-	}{
-		{
-			email,
-			User{
-				Email:   email,
-				Balance: 0,
-			},
-		},
-	}
+	t.Run("create user with just email", func(t *testing.T) {
+		email := gofakeit.Email()
+		user, err := Create(testDB,
+			CreateUserArgs{
+				Email:    email,
+				Password: "password",
+			})
+		if err != nil {
+			testutil.FatalMsg(t, err)
+		}
 
 	for _, tt := range tests {
 		user, err := Create(testDB,
 			CreateUserArgs{
-				Email:    tt.email,
-				Password: "password",
+				Email:     email,
+				FirstName: &first,
+				LastName:  &last,
+				Password:  "password",
 			})
 		if err != nil {
 			testutil.FatalMsg(t, err)
@@ -306,8 +303,7 @@ func TestCanGetUserByEmail(t *testing.T) {
 				HashedPassword: []byte("SomePassword"),
 			},
 			User{
-				Email:   email,
-				Balance: 0,
+				Email: email,
 			},
 		},
 	}
@@ -329,7 +325,6 @@ func TestCanGetUserByEmail(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
-		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -347,8 +342,7 @@ func TestCanGetUserByCredentials(t *testing.T) {
 			email,
 			"password",
 			User{
-				Email:   email,
-				Balance: 0,
+				Email: email,
 			},
 		},
 	}
@@ -367,7 +361,6 @@ func TestCanGetUserByCredentials(t *testing.T) {
 		}
 
 		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
-		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
 	}
 }
 
@@ -386,8 +379,7 @@ func TestCanGetUserByID(t *testing.T) {
 				HashedPassword: []byte("SomePassword"),
 			},
 			User{
-				Email:   email,
-				Balance: 0,
+				Email: email,
 			},
 		},
 	}
@@ -412,274 +404,6 @@ func TestCanGetUserByID(t *testing.T) {
 		}
 
 		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
-		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
-	}
-}
-
-func TestNotDecreaseBalanceNegativeSats(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	// Arrange
-	user := CreateUserOrFail(t)
-
-	// Give initial balance of 100 000
-	tx := testDB.MustBegin()
-	user, err := IncreaseBalance(tx, ChangeBalance{
-		UserID:    user.ID,
-		AmountSat: 100000,
-	})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	test := struct {
-		dec ChangeBalance
-
-		expectedResult User
-	}{
-		// This should fail because it is illegal to increase balance by a negative amount
-		ChangeBalance{
-			AmountSat: -30000,
-			UserID:    user.ID,
-		},
-
-		User{
-			ID: user.ID,
-		},
-	}
-
-	decreased, err := DecreaseBalance(tx, test.dec)
-	if err != nil && !strings.Contains(err.Error(), "less than or equal to 0") {
-		testutil.FatalMsgf(
-			t,
-			"Decreasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v",
-			decreased,
-			err,
-		)
-	}
-}
-
-func TestNotDecreaseBalanceBelowZero(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	// Arrange
-	user := CreateUserOrFail(t)
-
-	// Give initial balance of 100 000
-	tx := testDB.MustBegin()
-	user, err := IncreaseBalance(tx, ChangeBalance{
-		UserID:    user.ID,
-		AmountSat: 100000,
-	})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	test := struct {
-		change ChangeBalance
-		user   User
-	}{
-		ChangeBalance{
-			AmountSat: user.Balance + 1,
-			UserID:    user.ID,
-		},
-
-		User{
-			ID: user.ID,
-		},
-	}
-
-	user, err = DecreaseBalance(tx, test.change)
-	if err == nil {
-		testutil.FatalMsgf(t,
-			"Decreasing balance greater than balance should result in error. Expected user <nil> got \"%v\". Expected error != <nil>, got %v",
-			user,
-			err,
-		)
-	}
-}
-
-func TestDecreaseBalance(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	// Arrange
-	u := CreateUserOrFail(t)
-
-	// Give initial balance of 100 000
-	tx := testDB.MustBegin()
-	u, err := IncreaseBalance(tx, ChangeBalance{
-		UserID:    u.ID,
-		AmountSat: 100000,
-	})
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	tests := []struct {
-		dec ChangeBalance
-
-		expectedResult User
-	}{
-		{
-			ChangeBalance{
-				AmountSat: 20000,
-				UserID:    u.ID,
-			},
-
-			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 80000,
-			},
-		},
-		{
-			ChangeBalance{
-				AmountSat: 20000,
-				UserID:    u.ID,
-			},
-
-			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 60000,
-			},
-		},
-		{
-			ChangeBalance{
-				AmountSat: 60000,
-				UserID:    u.ID,
-			},
-
-			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 0,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		_, err := GetByID(testDB, tt.expectedResult.ID)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
-		tx := testDB.MustBegin()
-		u, err = DecreaseBalance(tx, tt.dec)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
-		err = tx.Commit()
-		if err != nil {
-			testutil.FailMsgf(t,
-				"Could not commit balance decrease: %v", err)
-		}
-
-		testutil.AssertEqual(t, u.ID, tt.expectedResult.ID)
-		testutil.AssertEqual(t, u.Email, tt.expectedResult.Email)
-		testutil.AssertEqual(t, u.Balance, tt.expectedResult.Balance)
-	}
-}
-
-func TestNotIncreaseBalanceNegativeSats(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	// Arrange
-	u := CreateUserOrFail(t)
-
-	tx := testDB.MustBegin()
-	user, err := IncreaseBalance(tx, ChangeBalance{UserID: u.ID, AmountSat: -300})
-	if err != nil && !strings.Contains(err.Error(), "less than or equal to 0") {
-		testutil.FatalMsgf(
-			t,
-			"Increasing balance by a negative amount should result in error. Expected user <nil> got \"%v\". Expected error \"amount cant be less than or equal to 0\", got %v",
-			user,
-			err,
-		)
-	}
-}
-
-func TestIncreaseBalance(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	// Arrange
-	u := CreateUserOrFail(t)
-
-	tests := []struct {
-		userID    int   `db:"user_id"`
-		amountSat int64 `db:"amount_sat"`
-
-		expectedResult User
-	}{
-		{
-			u.ID,
-			20000,
-
-			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 20000,
-			},
-		},
-		{
-			u.ID,
-			20000,
-
-			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 40000,
-			},
-		},
-		{
-			u.ID,
-			60000,
-
-			User{
-				ID:      u.ID,
-				Email:   u.Email,
-				Balance: 100000,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tx := testDB.MustBegin()
-
-		user, err := IncreaseBalance(tx, ChangeBalance{UserID: tt.userID, AmountSat: tt.amountSat})
-
-		if err != nil {
-			testutil.FailMsgf(
-				t,
-				"should be able to IncreaseBalance. Error:  %+v",
-				err)
-		}
-
-		err = tx.Commit()
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not commit: %v", err)
-		}
-
-		testutil.AssertEqual(t, user.ID, tt.expectedResult.ID)
-		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
-		testutil.AssertEqual(t, user.Balance, tt.expectedResult.Balance)
-
 	}
 }
 
