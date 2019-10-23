@@ -7,16 +7,10 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/models/users"
-
-	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -25,7 +19,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 )
 
 var log = build.Log
@@ -36,55 +29,72 @@ var (
 	ErrBalanceTooLowForWithdrawal = errors.New("cannot withdraw, balance is too low")
 )
 
-// Transaction is the db and json type for an on-chain transaction
-type Transaction struct {
-	ID          int                `db:"id" json:"id"`
-	UserID      int                `db:"user_id" json:"userId"`
-	Address     string             `db:"address" json:"address"`
-	Txid        *string            `db:"txid" json:"txid"`
-	Vout        *int               `db:"vout" json:"vout"`
-	Direction   payments.Direction `db:"direction" json:"direction"`
-	AmountSat   int64              `db:"amount_sat" json:"amountSat"`
-	Description *string            `db:"description" json:"description"`
-	Confirmed   bool               `db:"confirmed" json:"confirmed"`
+// Direction is the direction of a transaction, seen from the users perspective
+type Direction string
 
-	ConfirmedAt *time.Time `db:"confirmed_at" json:"confirmedAt"`
-	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
-	UpdatedAt   time.Time  `db:"updated_at" json:"-"`
-	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
+// Status is the status of a lightning payment
+type Status string
+
+const (
+	INBOUND  Direction = "INBOUND"
+	OUTBOUND Direction = "OUTBOUND"
+
+	SUCCEEDED Status = "SUCCEEDED"
+	FAILED    Status = "FAILED"
+	OPEN      Status = "OPEN"
+)
+
+// TODO verify invariants?
+func insertOnchain(db *db.DB, onchain Onchain) (Onchain, error) {
+	converted := onchain.ToTransaction()
+	tx, err := insertTransaction(db, converted)
+	if err != nil {
+		return Onchain{}, err
+	}
+	insertedOnchain, err := tx.ToOnchain()
+	if err != nil {
+		return Onchain{}, fmt.Errorf("could not convert inserted TX to onchain TX: %w", err)
+	}
+	// update the sats field
+	insertedOnchain.AmountSat = tx.AmountMSat / 1000
+	return insertedOnchain, nil
+}
+
+// TODO verify invariants?
+func insertOffChain(db *db.DB, offchain Offchain) (Offchain, error) {
+	tx, err := insertTransaction(db, offchain.ToTransaction())
+	if err != nil {
+		return Offchain{}, err
+	}
+	insertedOffchain, err := tx.ToOffChain()
+	if err != nil {
+		return Offchain{}, fmt.Errorf("could not convert inserted TX to offchain TX: %w", err)
+	}
+
+	// if preimage is NULL in DB, default is empty slice and not null
+	if tx.Preimage != nil && len(*tx.Preimage) == 0 {
+		insertedOffchain.Preimage = nil
+	}
+
+	return insertedOffchain, nil
+
 }
 
 func insertTransaction(db *db.DB, t Transaction) (Transaction, error) {
-	if t.AmountSat < 0 || t.UserID == 0 || t.Address == "" {
-		return Transaction{}, pkgErrors.New("invalid transaction, missing some fields")
-	}
-
-	if t.Txid == nil && t.Vout != nil || t.Txid != nil && t.Vout == nil {
-		return Transaction{}, pkgErrors.New("txid and vout must either both be defined, or neither be defined")
-	}
-
-	tLogger := log.WithFields(logrus.Fields{
-		"userId":    t.UserID,
-		"address":   t.Address,
-		"amountSat": t.AmountSat,
-	})
-	if t.Txid != nil {
-		tLogger = tLogger.WithFields(logrus.Fields{
-			"txid": *t.Txid,
-			"vout": *t.Vout,
-		})
-	}
-	tLogger.Info("inserting transaction")
-
 	createTransactionQuery := `
-	INSERT INTO transactions (user_id, address, txid, vout, direction, amount_sat,  description, confirmed)
-	VALUES (:user_id, :address, :txid, :vout, :direction, :amount_sat, :description, :confirmed)
-	RETURNING id, user_id, address, txid, vout, direction, amount_sat, description, confirmed, confirmed_at,
-			  created_at, updated_at, deleted_at`
+	INSERT INTO transactions (user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
+	                          confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
+	                          hashed_preimage, settled_at, memo, invoice_status)
+	VALUES (:user_id, :callback_url, :customer_order_id, :expiry, :direction, :amount_milli_sat, :description, 
+	        :confirmed_at_block, :confirmed_at, :address, :txid, :vout, :payment_request, :preimage, 
+	        :hashed_preimage, :settled_at, :memo, :invoice_status)
+	RETURNING id, user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
+	    confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
+	    hashed_preimage, settled_at, memo, invoice_status, created_at, updated_at, deleted_at`
 
 	rows, err := db.NamedQuery(createTransactionQuery, t)
 	if err != nil {
-		return Transaction{}, pkgErrors.Wrap(err, "could not insert transaction")
+		return Transaction{}, fmt.Errorf("could not insert transaction: %w", err)
 	}
 	defer func() {
 		err = rows.Close()
@@ -96,8 +106,8 @@ func insertTransaction(db *db.DB, t Transaction) (Transaction, error) {
 	var transaction Transaction
 	if rows.Next() {
 		if err = rows.StructScan(&transaction); err != nil {
-			log.WithError(err).Error("could not scan result into transaction variable: ")
-			return Transaction{}, pkgErrors.Wrap(err, "could not insert transaction")
+			log.WithError(err).Error("could not scan result into transaction struct")
+			return Transaction{}, fmt.Errorf("could not insert transaction: %w", err)
 		}
 	}
 
@@ -246,7 +256,7 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 //
 // NOTE: This must be run as a goroutine
 func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgBlock) {
-	const confirmationLimit = 3
+	/*const confirmationLimit = 3
 
 	for {
 		// we don't actually use the block contents for anything, because
@@ -304,83 +314,7 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 				}
 			}
 		}
-	}
-}
-
-// saveTxToTransaction saves a txid consisting of a txid, a vout and an amount to the
-// db transaction
-// If the transaction already has a txid, it returns an error
-func (t Transaction) saveTxToTransaction(db *db.DB, txHash chainhash.Hash, vout int,
-	amountSat int64) error {
-
-	if t.Txid != nil {
-		return ErrTxHasTxid
-	}
-
-	uQuery := `UPDATE transactions SET txid = $1, vout = $2, amount_sat = $3 WHERE id = $4`
-	dbTx := db.MustBegin()
-	results, err := dbTx.Exec(uQuery, txHash.String(), vout, amountSat, t.ID)
-	if err != nil {
-		_ = dbTx.Rollback()
-		return pkgErrors.Wrap(err, "could not update transaction")
-	}
-
-	rowsAffected, err := results.RowsAffected()
-	if err != nil {
-		_ = dbTx.Rollback()
-		return pkgErrors.Wrap(err, "could not retreive num rows affected")
-	}
-	if rowsAffected != 1 {
-		_ = dbTx.Rollback()
-		return pkgErrors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
-	}
-
-	if err = dbTx.Commit(); err != nil {
-		_ = dbTx.Rollback()
-		return pkgErrors.Wrap(err, "could not commit dbTx")
-	}
-
-	return nil
-}
-
-// markAsConfirmed updates the transaction stored in the db
-// with Confirmed = true and ConfirmedAt = Now(). After updating the transaction
-// it attempts to credit the user with the tx amount. Should anything fail, all
-// changes are rolled back
-func (t Transaction) markAsConfirmed(db *db.DB) error {
-
-	query := `UPDATE transactions
-		SET confirmed_at = $1, confirmed = true
-		WHERE id=$2`
-
-	dbtx := db.MustBegin()
-	rows, err := dbtx.Exec(query, time.Now(), t.ID)
-	if err != nil {
-		_ = dbtx.Rollback()
-		return pkgErrors.Wrapf(err, "query %q for transaction.ID %d failed",
-			query, t.ID)
-	}
-
-	rowsAffected, _ := rows.RowsAffected()
-	if rowsAffected != 1 {
-		_ = dbtx.Rollback()
-		return pkgErrors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
-	}
-
-	if _, err := users.IncreaseBalance(dbtx, users.ChangeBalance{
-		UserID:    t.UserID,
-		AmountSat: t.AmountSat,
-	}); err != nil {
-		_ = dbtx.Rollback()
-		return pkgErrors.Wrapf(err, "could not credit user")
-	}
-
-	if err = dbtx.Commit(); err != nil {
-		_ = dbtx.Rollback()
-		return pkgErrors.Wrap(err, "could not commit changes")
-	}
-
-	return nil
+	}*/
 }
 
 func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
@@ -425,81 +359,82 @@ type WithdrawOnChainArgs struct {
 // See WithdrawOnChainArgs for more information about the possible arguments
 func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind,
 	args WithdrawOnChainArgs) (*Transaction, error) {
-
-	user, err := users.GetByID(db, args.UserID)
-	if err != nil {
-		return nil, pkgErrors.Wrap(err, "withdrawonchain could not get user")
-	}
-
-	// We dont pass sendAll to lncli, as that would send the entire nodes
-	// balance to the address
-	if args.SendAll {
-		args.AmountSat = user.Balance
-	}
-
-	if user.Balance < args.AmountSat {
-		return nil, ErrBalanceTooLowForWithdrawal
-	}
-
-	tx := db.MustBegin()
-	user, err = users.DecreaseBalance(tx, users.ChangeBalance{
-		UserID:    user.ID,
-		AmountSat: args.AmountSat,
-	})
-	if err != nil {
-		if txErr := tx.Rollback(); txErr != nil {
-			log.Error("txErr: ", txErr)
+	/*
+		user, err := users.GetByID(db, args.UserID)
+		if err != nil {
+			return nil, pkgErrors.Wrap(err, "withdrawonchain could not get user")
 		}
-		return nil, pkgErrors.Wrap(err, "could not decrease balance")
-	}
 
-	txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
-		Addr:       args.Address,
-		Amount:     args.AmountSat,
-		TargetConf: int32(args.TargetConf),
-		SatPerByte: int64(args.SatPerByte),
-	})
-	if err != nil {
-		if txErr := tx.Rollback(); txErr != nil {
-			log.WithError(txErr).Error("could not rollback tx")
+		// We dont pass sendAll to lncli, as that would send the entire nodes
+		// balance to the address
+		if args.SendAll {
+			// args.AmountSat = user.Balance
 		}
-		return nil, pkgErrors.Wrap(err, "could not send on-chain")
-	}
 
-	vout, err := bitcoin.FindVout(txid, args.AmountSat)
-	if err != nil {
-		log.WithError(err).Error("could not find output")
-	}
+		// if user.Balance < args.AmountSat {
+		//	return nil, ErrBalanceTooLowForWithdrawal
+		// }
 
-	txToInsert := Transaction{
-		UserID:    user.ID,
-		Address:   args.Address,
-		AmountSat: args.AmountSat,
-		Txid:      &txid,
-		Vout:      &vout,
-		Direction: payments.OUTBOUND,
-	}
+		tx := db.MustBegin()
+			user, err = users.DecreaseBalance(tx, users.ChangeBalance{
+				UserID:    user.ID,
+				AmountSat: args.AmountSat,
+			})
+			if err != nil {
+				if txErr := tx.Rollback(); txErr != nil {
+					log.Error("txErr: ", txErr)
+				}
+				return nil, pkgErrors.Wrap(err, "could not decrease balance")
 
-	if args.Description != "" {
-		txToInsert.Description = &args.Description
-	}
-
-	transaction, err := insertTransaction(db, txToInsert)
-	if err != nil {
-		if txErr := tx.Rollback(); txErr != nil {
-			log.Error("txErr: ", txErr)
+		txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
+			Addr:       args.Address,
+			Amount:     args.AmountSat,
+			TargetConf: int32(args.TargetConf),
+			SatPerByte: int64(args.SatPerByte),
+		})
+		if err != nil {
+			if txErr := tx.Rollback(); txErr != nil {
+				log.WithError(txErr).Error("could not rollback tx")
+			}
+			return nil, pkgErrors.Wrap(err, "could not send on-chain")
 		}
-		return nil, pkgErrors.Wrap(err, "could not insert transaction")
-	}
 
-	err = tx.Commit()
-	if err != nil {
-		return nil, pkgErrors.Wrap(err, "could not commit transaction")
-	}
+		vout, err := bitcoin.FindVout(txid, args.AmountSat)
+		if err != nil {
+			log.WithError(err).Error("could not find output")
+		}
 
-	log.Debugf("transaction: %+v", transaction)
+		txToInsert := Transaction{
+			UserID:    user.ID,
+			Address:   args.Address,
+			AmountSat: args.AmountSat,
+			Txid:      &txid,
+			Vout:      &vout,
+			Direction: OUTBOUND,
+		}
 
-	return &transaction, nil
+		if args.Description != "" {
+			txToInsert.Description = &args.Description
+		}
+
+		transaction, err := insertTransaction(db, txToInsert)
+		if err != nil {
+			if txErr := tx.Rollback(); txErr != nil {
+				log.Error("txErr: ", txErr)
+			}
+			return nil, pkgErrors.Wrap(err, "could not insert transaction")
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			return nil, pkgErrors.Wrap(err, "could not commit transaction")
+		}
+
+		log.Debugf("transaction: %+v", transaction)
+
+		return &transaction, nil
+	*/
+	return &Transaction{}, nil
 }
 
 func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
@@ -512,36 +447,39 @@ func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
 // Returns the same transaction as insertTransaction(), in full
 func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
 	description string, vout *int, txid *string, amountSat int64) (Transaction, error) {
+	/*
 
-	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
-		// This type means lnd will force-create a new address
-		Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
-	})
+		address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
+			// This type means lnd will force-create a new address
+			Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
+		})
 
-	if err != nil {
-		return Transaction{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")
-	}
+		if err != nil {
+			return Transaction{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")
+		}
 
-	txToInsert := Transaction{
-		UserID:      userID,
-		Address:     address.Address,
-		Direction:   payments.INBOUND,
-		Description: &description,
-		Txid:        txid,
-		Vout:        vout,
-		AmountSat:   amountSat,
-	}
+		txToInsert := Transaction{
+			UserID:      userID,
+			Address:     address.Address,
+			Direction:   INBOUND,
+			Description: &description,
+			Txid:        txid,
+			Vout:        vout,
+			AmountSat:   amountSat,
+		}
 
-	if description != "" {
-		txToInsert.Description = &description
-	}
+		if description != "" {
+			txToInsert.Description = &description
+		}
 
-	transaction, err := insertTransaction(db, txToInsert)
-	if err != nil {
-		return Transaction{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
-	}
+		transaction, err := insertTransaction(db, txToInsert)
+		if err != nil {
+			return Transaction{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
+		}
 
-	return transaction, nil
+		return transaction, nil
+	*/
+	return Transaction{}, nil
 }
 
 // GetOrCreateDeposit attempts to retreive a deposit whose address has not yet received any coins

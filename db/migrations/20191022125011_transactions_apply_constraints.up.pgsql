@@ -6,7 +6,7 @@ ALTER TABLE transactions
     DROP CONSTRAINT txid_or_vout_cant_exist_alone,
     DROP CONSTRAINT transactions_amount_sat_check,
 
-    ADD CONSTRAINT transactions_amount_sat_must_be_greater_than_0 CHECK (amount_sat >= 0),
+    ADD CONSTRAINT transactions_amount_milli_sat_must_be_greater_than_0 CHECK (amount_milli_sat >= 0),
 
     ADD CONSTRAINT transactions_txid_and_vout_must_be_unique UNIQUE (txid, vout),
 
@@ -19,13 +19,13 @@ ALTER TABLE transactions
                      confirmed_at_block IS NOT NULL) -- if any of these fields are defined
                     AND
                     (memo IS NULL AND payment_request IS NULL AND preimage IS NULL AND
-                     hashed_preimage IS NULL AND invoice_settled_at IS NULL AND
+                     hashed_preimage IS NULL AND
                      invoice_status IS NULL)) -- all of these have to be null
             OR
             (
                     (memo IS NOT NULL OR payment_request IS NOT NULL OR preimage IS NOT NULL OR
                      hashed_preimage IS NOT NULL OR
-                     invoice_settled_at IS NULL AND invoice_status IS NULL) -- if any of these fields are defined
+                     invoice_status IS NULL) -- if any of these fields are defined
                     AND
                     (address IS NULL AND txid IS NULL AND vout IS NULL AND confirmed_at IS NULL AND
                      confirmed_at_block IS NULL) -- all of these have to be null

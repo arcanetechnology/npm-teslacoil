@@ -2,8 +2,8 @@
 INSERT INTO transactions
 (user_id,
  payment_request,
- amount_sat,
- invoice_settled_at,
+ amount_milli_sat,
+ settled_at,
  invoice_status,
  description,
  direction,
@@ -18,13 +18,13 @@ INSERT INTO transactions
  customer_order_id)
 SELECT user_id,
        payment_request,
-       amount_sat,
+       amount_msat,
        settled_at,
        status,
        description,
        direction,
-       preimage,
-       hashed_preimage,
+       decode(preimage, 'hex'),
+       decode(hashed_preimage, 'hex'),
        callback_url,
        created_at,
        updated_at,
@@ -36,3 +36,9 @@ FROM offchaintx;
 
 -- delete the old table
 DROP TABLE offchaintx;
+
+-- update all onchain TXs to use millisatoshis instead of satoshis
+UPDATE transactions SET amount_milli_sat = amount_sat * 1000 WHERE address != '';
+
+-- delete the old satoshis field
+ALTER TABLE transactions DROP COLUMN amount_sat;

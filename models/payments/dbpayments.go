@@ -29,48 +29,10 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
 
-// Direction is the direction of a lightning payment
-type Direction string
-
-// Status is the status of a lightning payment
-type Status string
-
-const (
-	INBOUND  Direction = "INBOUND"
-	OUTBOUND Direction = "OUTBOUND"
-
-	SUCCEEDED Status = "SUCCEEDED"
-	FAILED    Status = "FAILED"
-	OPEN      Status = "OPEN"
-
-	// OffchainTXTable is the tablename of offchaintx, as saved in the DB
-	OffchainTXTable = "offchaintx"
-)
-
 // Payment is a database table
 type Payment struct {
-	ID             int       `db:"id" json:"id"`
-	UserID         int       `db:"user_id" json:"userId"`
-	PaymentRequest string    `db:"payment_request" json:"paymentRequest"`
-	Preimage       *string   `db:"preimage" json:"preimage"`
-	HashedPreimage string    `db:"hashed_preimage" json:"hash"`
-	CallbackURL    *string   `db:"callback_url" json:"callbackUrl"`
-	Expiry         int64     `db:"expiry" json:"expiry"`
-	Status         Status    `db:"status" json:"status"`
-	Memo           *string   `db:"memo" json:"memo"`
-	Description    *string   `db:"description" json:"description"`
-	Direction      Direction `db:"direction" json:"direction"`
-	AmountSat      int64     `db:"amount_sat" json:"amountSat"`
-	AmountMSat     int64     `db:"amount_msat" json:"amountMSat"`
-	// If defined, it means the  invoice is settled
-	SettledAt *time.Time `db:"settled_at" json:"settledAt"`
-	CreatedAt time.Time  `db:"created_at" json:"createdAt"`
-	UpdatedAt time.Time  `db:"updated_at" json:"-"`
-	DeletedAt *time.Time `db:"deleted_at" json:"-"`
-
-	// CustomerOrderId is an optional field where the user can specify an
-	// order ID of their choosing.
-	CustomerOrderId *string `db:"customer_order_id" json:"customerOrderId"`
+	ID     int `db:"id" json:"id"`
+	UserID int `db:"user_id" json:"userId"`
 
 	// ExpiresAt is the time at which the payment request expires.
 	// NOT a db property
@@ -85,33 +47,6 @@ var (
 	ErrUserBalanceTooLow          = errors.New("user balance too low, cant decrease")
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
 )
-
-// PaymentResponse is a user payment response
-type PaymentResponse struct {
-	Payment Payment `json:"payment"`
-}
-
-// WithAdditionalFields adds useful fields for dealing with a payment
-func (p Payment) WithAdditionalFields() Payment {
-	p.ExpiresAt = p.GetExpiryDate()
-	p.Expired = p.IsExpired()
-
-	return p
-}
-
-// GetExpiryDAte adds the expiry(from lnd, in seconds) to CreatedAt
-func (p Payment) GetExpiryDate() time.Time {
-	return p.CreatedAt.Add(time.Second * time.Duration(p.Expiry))
-}
-
-// IsExpired calculates whether the invoice is expired or not
-func (p Payment) IsExpired() bool {
-	expiresAt := p.CreatedAt.Add(time.Second * time.Duration(p.Expiry))
-
-	// Return whether the expiry date is before the time now
-	// We get the UTC time because the db is in UTC time
-	return expiresAt.Before(time.Now().UTC())
-}
 
 // insert persists the supplied payment to the database.
 // Returns the payment, as returned from the database
