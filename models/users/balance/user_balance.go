@@ -13,16 +13,11 @@ const (
 )
 
 // Balance is a type we use to easily convert between different denominations of BTC(sats, millisats, Bitcoins)
-type Balance int
+type Balance uint
 
 // NewBalanceFromSats creates a Balance type from satoshis by multiplying sats with 1000
-func NewBalanceFromSats(sats int) Balance {
+func NewBalanceFromSats(sats int64) Balance {
 	return Balance(sats * milliSatsPerSat)
-}
-
-// NewBalance creates a new balance type by casting `millisats` into a Balance type
-func NewBalance(millisats int) Balance {
-	return Balance(millisats)
 }
 
 // MilliSats converts a Balance type to an int
@@ -43,17 +38,17 @@ func (b Balance) Bitcoins() float64 {
 // ForUser calculates the balance for a user ID
 func ForUser(db *db.DB, userID int) (Balance, error) {
 	type balanceResult struct {
-		BalanceMilliSat int `db:"balance"`
+		BalanceMilliSat uint64 `db:"balance"`
 	}
 	var result balanceResult
 
 	query := "SELECT COALESCE(sum(amount_milli_sat), 0) as balance from transactions WHERE (settled_at IS NOT NULL OR confirmed_at IS NOT NULL) AND user_id=$1;"
 
 	if err := db.Get(&result, query, userID); err != nil {
-		return -1, err
+		return 0, err
 	}
 
-	balance := NewBalance(result.BalanceMilliSat)
+	balance := Balance(result.BalanceMilliSat)
 
 	return balance, nil
 }
