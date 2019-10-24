@@ -270,21 +270,7 @@ func TestCanCreateUser(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-	for _, tt := range tests {
-		user, err := Create(testDB,
-			CreateUserArgs{
-				Email:     email,
-				FirstName: &first,
-				LastName:  &last,
-				Password:  "password",
-			})
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
 		testutil.AssertEqual(t, user.Email, email)
-		testutil.AssertEqual(t, *user.Firstname, first)
-		testutil.AssertEqual(t, *user.Lastname, last)
 	})
 
 	t.Run("inserting user ID 0 should not result in that user ID being used", func(t *testing.T) {
