@@ -11,36 +11,20 @@ import (
 	"io"
 	"net/http"
 	"reflect"
-	"testing"
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
-
 	"github.com/jmoiron/sqlx"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
+	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
-
-// Payment is a database table
-type Payment struct {
-	ID     int `db:"id" json:"id"`
-	UserID int `db:"user_id" json:"userId"`
-
-	// ExpiresAt is the time at which the payment request expires.
-	// NOT a db property
-	ExpiresAt time.Time `json:"expiresAt"`
-	// Expired is not stored in the DB, and can be added to a
-	// payment struct by using the function WithAdditionalFields()
-	Expired bool `json:"expired"`
-}
 
 var (
 	ErrCouldNotGetByID            = errors.New("could not get payment by ID")
@@ -50,9 +34,9 @@ var (
 
 // insert persists the supplied payment to the database.
 // Returns the payment, as returned from the database
-func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
+func insert(tx *sqlx.Tx, p Offchain) (Offchain, error) {
 	if p.Preimage != nil && p.HashedPreimage != "" {
-		return Payment{},
+		return Offchain{},
 			fmt.Errorf("insert(tx, %+v): cant supply both a preimage and a hashed preimage", p)
 	}
 	if p.Description != nil && *p.Description == "" {
@@ -62,7 +46,7 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 		p.Memo = nil
 	}
 	if p.AmountSat == 0 {
-		return Payment{}, Err0AmountInvoiceNotSupported
+		return Offchain{}, Err0AmountInvoiceNotSupported
 	}
 
 	createOffchainTXQuery := `INSERT INTO 
@@ -80,85 +64,39 @@ func insert(tx *sqlx.Tx, p Payment) (Payment, error) {
 	// the payment variable and insert them into the query
 	rows, err := tx.NamedQuery(createOffchainTXQuery, p)
 	if err != nil {
-		log.WithError(err).Error("Could not insert payment")
-		return Payment{}, err
+		log.WithError(err).Error("Could not insert lightning transaction")
+		return Offchain{}, err
 	}
 	defer rows.Close()
 
-	// Store the result of the query in the payment variable
-	var payment Payment
+	// Store the result of the query in the offchainTx transaction variable
+	var offchainTx Offchain
 	if rows.Next() {
 		if err = rows.Scan(
-			&payment.ID,
-			&payment.UserID,
-			&payment.PaymentRequest,
-			&payment.Preimage,
-			&payment.HashedPreimage,
-			&payment.Memo,
-			&payment.Description,
-			&payment.Expiry,
-			&payment.Direction,
-			&payment.Status,
-			&payment.AmountSat,
-			&payment.AmountMSat,
-			&payment.CallbackURL,
-			&payment.CreatedAt,
-			&payment.UpdatedAt,
-			&payment.CustomerOrderId,
+			&offchainTx.ID,
+			&offchainTx.UserID,
+			&offchainTx.OffchainRequest,
+			&offchainTx.Preimage,
+			&offchainTx.HashedPreimage,
+			&offchainTx.Memo,
+			&offchainTx.Description,
+			&offchainTx.Expiry,
+			&offchainTx.Direction,
+			&offchainTx.Status,
+			&offchainTx.AmountSat,
+			&offchainTx.AmountMSat,
+			&offchainTx.CallbackURL,
+			&offchainTx.CreatedAt,
+			&offchainTx.UpdatedAt,
+			&offchainTx.CustomerOrderId,
 		); err != nil {
 			log.Error(err)
-			return payment, errors.Wrapf(err,
-				"insert->rows.Next(), Problem row = %+v", payment)
+			return offchainTx, errors.Wrapf(err,
+				"insert->rows.Next(), Problem row = %+v", offchainTx)
 		}
 	}
 
-	return payment.WithAdditionalFields(), nil
-}
-
-// GetAll selects all payments for given userID from the DB.
-func GetAll(d *db.DB, userID int, limit int, offset int) (
-	[]Payment, error) {
-	// Using OFFSET is not ideal, but until we start seeing
-	// performance problems it's fine
-	tQuery := `SELECT *
-		FROM offchaintx
-		WHERE user_id=$1
-		ORDER BY created_at
-		LIMIT $2
-		OFFSET $3`
-
-	payments := []Payment{}
-	err := d.Select(&payments, tQuery, userID, limit, offset)
-	if err != nil {
-		log.Error(err)
-		return payments, err
-	}
-
-	for i, payment := range payments {
-		payments[i] = payment.WithAdditionalFields()
-	}
-
-	return payments, nil
-}
-
-// GetByID performs this query:
-// `SELECT * FROM offchaintx WHERE id=id AND user_id=userID`,
-// where id is the primary key of the table(autoincrementing)
-func GetByID(d *db.DB, id int, userID int) (Payment, error) {
-	if id < 0 || userID < 0 {
-		return Payment{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
-	}
-
-	tQuery := fmt.Sprintf(
-		"SELECT * FROM %s WHERE id=$1 AND user_id=$2 LIMIT 1", OffchainTXTable)
-
-	var payment Payment
-	if err := d.Get(&payment, tQuery, id, userID); err != nil {
-		log.Error(err)
-		return payment, errors.Wrap(err, "could not get payment")
-	}
-
-	return payment.WithAdditionalFields(), nil
+	return offchainTx.WithAdditionalFields(), nil
 }
 
 // CreateInvoice is used to Create an Invoice without a memo
@@ -200,9 +138,8 @@ func CreateInvoiceWithMemo(lncli ln.AddLookupInvoiceClient, amountSat int64,
 	return *invoice, nil
 }
 
-// NewPaymentArgs are the different options that dictates creation of a new
-// payment
-type NewPaymentOpts struct {
+// NewOffchainOpts are the different options that dictates creation of a new payment
+type NewOffchainOpts struct {
 	UserID      int
 	AmountSat   int64
 	Memo        string
@@ -211,9 +148,9 @@ type NewPaymentOpts struct {
 	OrderId     string
 }
 
-// NewPayment creates a new payment by first creating an invoice
+// NewOffchain creates a new payment by first creating an invoice
 // using lnd, then saving info returned from lnd to a new payment
-func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) (Payment, error) {
+func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (Offchain, error) {
 	tx := d.MustBegin()
 	// We do not store the preimage until the payment is settled, to avoid the
 	// user getting the preimage before the invoice is settled
@@ -221,18 +158,18 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
 	if err != nil {
 		log.WithError(err).Error("Could not create invoice")
-		return Payment{}, err
+		return Offchain{}, err
 	}
 
-	p := Payment{
-		UserID:         opts.UserID,
-		AmountSat:      invoice.Value,
-		AmountMSat:     invoice.Value * 1000,
-		Expiry:         invoice.Expiry,
-		PaymentRequest: invoice.PaymentRequest,
-		HashedPreimage: hex.EncodeToString(invoice.RHash),
-		Status:         OPEN,
-		Direction:      INBOUND,
+	p := Offchain{
+		UserID:          opts.UserID,
+		AmountSat:       invoice.Value,
+		AmountMSat:      invoice.Value * 1000,
+		Expiry:          invoice.Expiry,
+		OffchainRequest: invoice.OffchainRequest,
+		HashedPreimage:  hex.EncodeToString(invoice.RHash),
+		Status:          OPEN,
+		Direction:       INBOUND,
 	}
 	if opts.Memo != "" {
 		p.Memo = &opts.Memo
@@ -250,13 +187,13 @@ func NewPayment(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewPaymentOpts) 
 	p, err = insert(tx, p)
 	if err != nil {
 		_ = tx.Rollback()
-		return Payment{}, err
+		return Offchain{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.WithError(err).Error("Could not commit payment TX")
 		_ = tx.Rollback()
-		return Payment{}, err
+		return Offchain{}, err
 	}
 
 	return p, nil
@@ -281,7 +218,7 @@ func MarkInvoiceAsPaid(db *db.DB, paymentRequest string, paidAt time.Time) error
 	return nil
 }
 
-// MarkInvoiceAsPaid marks the given payment request as paid at the given date
+// MarkInvoiceAsFailed marks the given payment request as paid at the given date
 func MarkInvoiceAsFailed(db *db.DB, paymentRequest string) error {
 	updateOffchainTxQuery := `UPDATE offchaintx 
 		SET status = $1
@@ -302,15 +239,15 @@ func MarkInvoiceAsFailed(db *db.DB, paymentRequest string) error {
 
 // PayInvoice is used to Pay an invoice without a description
 func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
-	paymentRequest string) (*Payment, error) {
+	paymentRequest string) (*Offchain, error) {
 	return PayInvoiceWithDescription(d, lncli, userID, paymentRequest, "")
 }
 
 // PayInvoiceWithDescription first persists an outbound payment with the supplied invoice to
-// the database. Then attempts to pay the invoice using SendPaymentSync
+// the database. Then attempts to pay the invoice using SendOffchainSync
 // Should the payment fail, we rollback all changes made to the DB
 func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
-	paymentRequest string, description string) (*Payment, error) {
+	paymentRequest string, description string) (*Offchain, error) {
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
@@ -336,17 +273,17 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	}
 
 	// insert pay_req into DB
-	payment := Payment{
-		UserID:         userID,
-		PaymentRequest: paymentRequest,
-		HashedPreimage: payreq.PaymentHash,
-		Expiry:         payreq.Expiry,
-		Status:         OPEN,
-		Memo:           &payreq.Description,
-		Description:    &description,
-		Direction:      OUTBOUND,
-		AmountSat:      payreq.NumSatoshis,
-		AmountMSat:     payreq.NumSatoshis * 1000,
+	payment := Offchain{
+		UserID:          userID,
+		OffchainRequest: paymentRequest,
+		HashedPreimage:  payreq.OffchainHash,
+		Expiry:          payreq.Expiry,
+		Status:          OPEN,
+		Memo:            &payreq.Description,
+		Description:     &description,
+		Direction:       OUTBOUND,
+		AmountSat:       payreq.NumSatoshis,
+		AmountMSat:      payreq.NumSatoshis * 1000,
 	}
 
 	payment, err = insert(tx, payment)
@@ -357,9 +294,9 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	}
 
 	// attempt to pay invoice
-	paymentResponse, err := lncli.SendPaymentSync(
+	paymentResponse, err := lncli.SendOffchainSync(
 		context.Background(), &lnrpc.SendRequest{
-			PaymentRequest: paymentRequest,
+			OffchainRequest: paymentRequest,
 		})
 	if err != nil {
 		_ = tx.Rollback()
@@ -367,13 +304,13 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	}
 
 	log.WithFields(logrus.Fields{
-		"paymentError": paymentResponse.PaymentError,
-		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
-		"paymentRoute": paymentResponse.PaymentRoute,
+		"paymentError": paymentResponse.OffchainError,
+		"paymentHash":  hex.EncodeToString(paymentResponse.OffchainHash),
+		"paymentRoute": paymentResponse.OffchainRoute,
 	}).Info("Tried sending payment")
 
 	// if payment failed, mark it as failed and rollback
-	if paymentResponse.PaymentError != "" {
+	if paymentResponse.OffchainError != "" {
 
 		if err = tx.Rollback(); err != nil {
 			return nil, errors.Wrap(err, "could not rollback DB")
@@ -382,7 +319,7 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 			return nil, err
 		}
 
-		return nil, errors.New(paymentResponse.PaymentError)
+		return nil, errors.New(paymentResponse.OffchainError)
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -431,8 +368,8 @@ func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 			// TODO: Here we need to handle the errors from UpdateInvoiceStatus
 		} else {
 			log.WithFields(logrus.Fields{"hash": hash,
-				"id":      updated.Payment.ID,
-				"settled": updated.Payment.SettledAt != nil},
+				"id":      updated.Offchain.ID,
+				"settled": updated.Offchain.SettledAt != nil},
 			).Debug("Updated invoice status")
 		}
 	}
@@ -442,18 +379,18 @@ func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 // (newly added/settled invoices). If received payment was successful, updates
 // the payment stored in our db and increases the users balance
 func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPoster) (
-	*PaymentResponse, error) {
+	*OffchainResponse, error) {
 	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
 
 	// Define a custom response struct to include user details
-	var payment Payment
+	var payment Offchain
 	if err := database.Get(
 		&payment,
 		tQuery,
-		invoice.PaymentRequest); err != nil {
+		invoice.OffchainRequest); err != nil {
 		return nil, errors.Wrapf(err,
 			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
-			invoice.PaymentRequest,
+			invoice.OffchainRequest,
 		)
 	}
 
@@ -463,8 +400,8 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 	}).Debug("Updating invoice status of payment", payment.ID, invoice.Settled)
 
 	if !invoice.Settled {
-		return &PaymentResponse{
-			Payment: payment,
+		return &OffchainResponse{
+			Offchain: payment,
 		}, nil
 	}
 	now := time.Now()
@@ -496,7 +433,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 		if err = rows.Scan(
 			&payment.ID,
 			&payment.UserID,
-			&payment.PaymentRequest,
+			&payment.OffchainRequest,
 			&payment.Preimage,
 			&payment.HashedPreimage,
 			&payment.Memo,
@@ -545,16 +482,16 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 		log.WithField("id", payment.ID).Debug("Invoice did not have callback URL")
 	}
 
-	return &PaymentResponse{
-		Payment: payment,
+	return &OffchainResponse{
+		Offchain: payment,
 	}, nil
 }
 
 // CallbackBody is the shape of the body we send to a specified payment callback
 // URL
 type CallbackBody struct {
-	Payment Payment `json:"payment"`
-	Hash    []byte  `json:"hash"`
+	Offchain Offchain `json:"payment"`
+	Hash     []byte   `json:"hash"`
 }
 
 // TODO: document exact format of callback API. This Node.js snippet replicates
@@ -570,7 +507,7 @@ type CallbackBody struct {
 // .createHmac("sha256", hashedKey)
 // .update(payment.id.toString())
 // .digest("hex");
-func postCallback(database *db.DB, payment Payment, sender HttpPoster) error {
+func postCallback(database *db.DB, payment Offchain, sender HttpPoster) error {
 	if payment.CallbackURL == nil {
 		return errors.New("callback URL was nil")
 	}
@@ -588,8 +525,8 @@ func postCallback(database *db.DB, payment Payment, sender HttpPoster) error {
 	_, _ = hmac.Write([]byte(fmt.Sprintf("%d", payment.ID)))
 
 	body := CallbackBody{
-		Payment: payment,
-		Hash:    hmac.Sum(nil),
+		Offchain: payment,
+		Hash:     hmac.Sum(nil),
 	}
 
 	if paymentBytes, err := json.Marshal(body); err != nil {
@@ -624,11 +561,11 @@ type HttpPoster interface {
 	Post(url, contentType string, reader io.Reader) (*http.Response, error)
 }
 
-func (p Payment) String() string {
-	str := "\nPayment: {\n"
+func (p Offchain) String() string {
+	str := "\nOffchain: {\n"
 	str += fmt.Sprintf("\tID: %d\n", p.ID)
 	str += fmt.Sprintf("\tUserID: %d\n", p.UserID)
-	str += fmt.Sprintf("\tPaymentRequest: %s\n", p.PaymentRequest)
+	str += fmt.Sprintf("\tOffchainRequest: %s\n", p.OffchainRequest)
 	str += fmt.Sprintf("\tPreimage: %v\n", p.Preimage)
 	str += fmt.Sprintf("\tHashedPreimage: %s\n", p.HashedPreimage)
 	str += fmt.Sprintf("\tCallbackURL: %v\n", p.CallbackURL)
@@ -654,7 +591,7 @@ func (p Payment) String() string {
 	return str
 }
 
-func (p Payment) Equal(other Payment) (bool, string) {
+func (p Offchain) Equal(other Offchain) (bool, string) {
 	p.CreatedAt = other.CreatedAt
 	p.UpdatedAt = other.UpdatedAt
 	p.DeletedAt = other.DeletedAt
@@ -665,14 +602,4 @@ func (p Payment) Equal(other Payment) (bool, string) {
 	}
 
 	return true, ""
-}
-
-func CreateNewPaymentOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
-	opts NewPaymentOpts) Payment {
-	payment, err := NewPayment(db, ln, opts)
-	if err != nil {
-		testutil.FatalMsg(t,
-			errors.Wrap(err, "wasn't able to create new payment"))
-	}
-	return payment
 }

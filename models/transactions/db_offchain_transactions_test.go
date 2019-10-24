@@ -823,3 +823,14 @@ func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 		testutil.AssertEqual(t, *got.CustomerOrderId, *want.CustomerOrderId)
 	}
 }
+
+// CreateNewOffchainOrFail creates a new offchain or fail
+func CreateNewOffchainOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
+	opts NewOffchainOpts) Offchain {
+	payment, err := NewOffchain(db, ln, opts)
+	if err != nil {
+		testutil.FatalMsg(t,
+			pkgErrors.Wrap(err, "wasn't able to create new payment"))
+	}
+	return payment
+}
