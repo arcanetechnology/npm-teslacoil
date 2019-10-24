@@ -27,7 +27,6 @@ type User struct {
 	HasVerifiedEmail bool   `db:"has_verified_email"`
 
 	// Balance is the balance of the user, expressed in sats
-	Balance        int64   `db:"balance"`
 	Firstname      *string `db:"first_name"`
 	Lastname       *string `db:"last_name"`
 	HashedPassword []byte  `db:"hashed_password" json:"-"`
@@ -40,12 +39,6 @@ type User struct {
 	CreatedAt           time.Time  `db:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at"`
 	DeletedAt           *time.Time `db:"deleted_at"`
-}
-
-// ChangeBalance is the struct for changing a users balance
-type ChangeBalance struct {
-	UserID    int
-	AmountSat int64
 }
 
 const (

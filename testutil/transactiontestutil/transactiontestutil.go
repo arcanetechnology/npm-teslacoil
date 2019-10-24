@@ -4,7 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"math/rand"
+	"testing"
 	"time"
+
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/testutil"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcutil"
@@ -137,4 +141,21 @@ func GenOnchain(userID int) transactions.Onchain {
 		ConfirmedAt:      confirmedAt,
 		SettledAt:        settledAt,
 	}
+}
+
+func InsertFakeOnChainOrFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
+	tx, err := transactions.InsertOnchain(db, GenOnchain(userID))
+	if err != nil {
+		testutil.FatalMsg(t, "could not insert transaction")
+	}
+
+	return tx
+}
+func InsertFakeOffChainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
+	tx, err := transactions.InsertOffchain(db, GenOffchain(userID))
+	if err != nil {
+		testutil.FatalMsg(t, "could not insert transaction")
+	}
+
+	return tx
 }

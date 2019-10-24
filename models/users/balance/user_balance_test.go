@@ -36,18 +36,62 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func TestCalculateBalance(t *testing.T) {
+func TestForUser(t *testing.T) {
 	user := userstestutil.CreateUserOrFail(t, testDB)
+	var expectedBalance int64
 
-	transactiontestutil.GenOnchain(user.ID)
-	transactiontestutil.GenOnchain(user.ID)
-	transactiontestutil.GenOnchain(user.ID)
+	tx := transactiontestutil.InsertFakeOnChainOrFail(t, testDB, user.ID)
+	expectedBalance += tx.AmountSat
+	tx = transactiontestutil.InsertFakeOnChainOrFail(t, testDB, user.ID)
+	expectedBalance += tx.AmountSat
+	tx = transactiontestutil.InsertFakeOnChainOrFail(t, testDB, user.ID)
+	expectedBalance += tx.AmountSat
 
-	balance, err := CalculateBalance(testDB, user.ID)
+	balance, err := ForUser(testDB, user.ID)
 	if err != nil {
 		log.WithError(err).Error("could not calculate balance")
-		panic("could not calculate balance")
 	}
 
-	testutil.Succeedf(t, "balance is %d", balance)
+	if balance != NewBalanceFromSats(int(expectedBalance)) {
+		testutil.FailMsgf(t, "expected balance to be %q, was %q", expectedBalance, balance)
+	}
+}
+
+func TestBalanceConvertions(t *testing.T) {
+
+	t.Run("NewBalanceFromSats() converts to right amount", func(t *testing.T) {
+		expected := Balance(1000)
+		actual := NewBalanceFromSats(1)
+
+		if expected != actual {
+			testutil.FailMsgf(t, "expected %q got %q", expected, actual)
+		}
+	})
+
+	t.Run("MilliSats() converts to right amount", func(t *testing.T) {
+		expected := 1000
+		actual := Balance(1000).MilliSats()
+
+		if expected != actual {
+			testutil.FailMsgf(t, "expected %q got %q", expected, actual)
+		}
+	})
+
+	t.Run("Sats() converts to right amount", func(t *testing.T) {
+		expected := 1
+		actual := Balance(1000).Sats()
+
+		if expected != actual {
+			testutil.FailMsgf(t, "expected %q got %q", expected, actual)
+		}
+	})
+
+	t.Run("Bitcoins() converts to right amount", func(t *testing.T) {
+		expected := float64(1)
+		actual := Balance(100000000000).Bitcoins() // 1 whole bitcoin, 100 000 million milliSats
+
+		if expected != actual {
+			testutil.FailMsgf(t, "expected %f got %f", expected, actual)
+		}
+	})
 }

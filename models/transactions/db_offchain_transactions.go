@@ -115,7 +115,7 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 		tx.CustomerOrderId = &opts.OrderId
 	}
 
-	inserted, err := insertOffChain(d, tx)
+	inserted, err := InsertOffchain(d, tx)
 	if err != nil {
 		return Offchain{}, err
 	}
@@ -203,7 +203,7 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
 
-	payment, err = insertOffChain(db, payment)
+	payment, err = InsertOffchain(db, payment)
 	if err != nil {
 		log.WithError(err).Error("Could not insert offchain TX into DB")
 		return Offchain{}, fmt.Errorf("could not insert offchain TX into DB: %w", err)
