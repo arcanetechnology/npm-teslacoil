@@ -95,12 +95,12 @@ func GetAll(d *db.DB) ([]User, error) {
 
 // GetByID is a GET request that returns users that match the one specified
 // in the body
-func GetByID(d *db.DB, id int) (User, error) {
+func GetByID(db *db.DB, id int) (User, error) {
 	userResult := User{}
 	uQuery := fmt.Sprintf(`%s FROM users WHERE id=$1 LIMIT 1`,
 		selectFromUsersTable)
 
-	if err := d.Get(&userResult, uQuery, id); err != nil {
+	if err := db.Get(&userResult, uQuery, id); err != nil {
 		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
 	}
 
@@ -123,14 +123,14 @@ func GetByEmail(d *db.DB, email string) (User, error) {
 
 // GetByCredentials retrieves a user from the database using the email and
 // the salted/hashed password
-func GetByCredentials(d *db.DB, email string, password string) (
+func GetByCredentials(db *db.DB, email string, password string) (
 	User, error) {
 
 	userResult := User{}
 	uQuery := fmt.Sprintf(`%s FROM users WHERE email=$1 LIMIT 1`,
 		selectFromUsersTable)
 
-	if err := d.Get(&userResult, uQuery, email); err != nil {
+	if err := db.Get(&userResult, uQuery, email); err != nil {
 		return User{}, err
 	}
 
@@ -143,28 +143,11 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	return userResult, nil
 }
 
-// CalculateBalance calculates the balance for a given user
-func CalculateBalance(db *db.DB, userID int) (int, error) {
-	type balanceResult struct {
-		Balance int `db:"balance"`
-	}
-
-	var result balanceResult
-
-	query := "SELECT sum(amount_sat) as balance from transactions WHERE invoice_settled_at IS NOT NULL OR confirmed_at IS NOT NULL AND user_id=$1;"
-
-	if err := db.Get(&result, query, userID); err != nil {
-		return -1, err
-	}
-
-	return result.Balance, nil
-}
-
-// getEmailVerificationTokenWithKey creates a token that can be used to verify
+// GetEmailVerificationTokenWithKey creates a token that can be used to verify
 // the given email. This function is exposed for testing purposes, all other
 // callers should use the exposed method which use a predefined key.
-func getEmailVerificationTokenWithKey(d *db.DB, email string, key []byte) (string, error) {
-	user, err := GetByEmail(d, email)
+func GetEmailVerificationTokenWithKey(db *db.DB, email string, key []byte) (string, error) {
+	user, err := GetByEmail(db, email)
 	if err != nil {
 		return "", err
 	}
@@ -188,13 +171,13 @@ func getEmailVerificationTokenWithKey(d *db.DB, email string, key []byte) (strin
 
 // GetEmailVerificationToken creates a token that can be used to verify the given
 // email.
-func GetEmailVerificationToken(d *db.DB, email string) (string, error) {
-	return getEmailVerificationTokenWithKey(d, email, emailVerificationSecretKey)
+func GetEmailVerificationToken(db *db.DB, email string) (string, error) {
+	return GetEmailVerificationTokenWithKey(db, email, emailVerificationSecretKey)
 }
 
-// verifyEmailVerificationToken verifies that the given token matches the signing
+// VerifyEmailVerificationToken verifies that the given token matches the signing
 // key used to create tokens.
-func verifyEmailVerificationToken(token string) (string, error) {
+func VerifyEmailVerificationToken(token string) (string, error) {
 	getEmailHash := func(email string) ([]byte, error) {
 		hash := sha256.Sum256([]byte(email))
 		return hash[:], nil
@@ -209,14 +192,14 @@ func verifyEmailVerificationToken(token string) (string, error) {
 }
 
 // VerifyEmail checks the given token, and if valid sets the users email as verified
-func VerifyEmail(d *db.DB, token string) (User, error) {
-	email, err := verifyEmailVerificationToken(token)
+func VerifyEmail(db *db.DB, token string) (User, error) {
+	email, err := VerifyEmailVerificationToken(token)
 	if err != nil {
 		return User{}, err
 	}
 
 	query := `UPDATE users SET has_verified_email = true WHERE email = $1 ` + returningFromUsersTable
-	rows, err := d.Query(query, email)
+	rows, err := db.Query(query, email)
 	if err != nil {
 		return User{}, err
 	}
@@ -228,8 +211,8 @@ func VerifyEmail(d *db.DB, token string) (User, error) {
 // GetPasswordResetToken creates a valid password reset token for the user
 // corresponding to the given email, if such an user exists. This token
 // can later be used to send a reset password request to the API.
-func GetPasswordResetToken(d *db.DB, email string) (string, error) {
-	user, err := GetByEmail(d, email)
+func GetPasswordResetToken(db *db.DB, email string) (string, error) {
+	user, err := GetByEmail(db, email)
 	if err != nil {
 		return "", err
 	}
@@ -244,9 +227,9 @@ func GetPasswordResetToken(d *db.DB, email string) (string, error) {
 // password and email of the associated user, as well as our private signing
 // key. It returns the login (email) that's allowed to use this password
 // reset token.
-func VerifyPasswordResetToken(d *db.DB, token string) (string, error) {
+func VerifyPasswordResetToken(db *db.DB, token string) (string, error) {
 	getPasswordHash := func(email string) ([]byte, error) {
-		user, err := GetByEmail(d, email)
+		user, err := GetByEmail(db, email)
 		if err != nil {
 			return nil, err
 		}
@@ -280,7 +263,7 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 	}
 
 	tx := d.MustBegin()
-	userResp, err := insertUser(tx, user)
+	userResp, err := InsertUser(tx, user)
 	if err != nil {
 		txErr := tx.Rollback()
 		if txErr != nil {
@@ -363,7 +346,7 @@ func hashAndSalt(pwd string) ([]byte, error) {
 	return hash, nil
 }
 
-func insertUser(tx *sqlx.Tx, user User) (User, error) {
+func InsertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, hashed_password, totp_secret, confirmed_totp_secret, first_name, last_name)
 		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, :last_name) ` + returningFromUsersTable
