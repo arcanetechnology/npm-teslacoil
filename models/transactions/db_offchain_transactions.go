@@ -10,13 +10,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
-	"strings"
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -248,7 +245,7 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return Offchain{}, ErrCouldNotGetByID
 	}
 
-	foundOffchain, err := found.ToOffChain()
+	foundOffchain, err := found.ToOffchain()
 	if err != nil {
 		return Offchain{}, err
 	}
@@ -450,53 +447,4 @@ func postCallback(database *db.DB, payment Offchain, sender HttpPoster) error {
 
 type HttpPoster interface {
 	Post(url, contentType string, reader io.Reader) (*http.Response, error)
-}
-
-func (p Offchain) String() string {
-	fragments := []string{
-		"Offchain: {",
-		fmt.Sprintf("ID: %d", p.ID),
-		fmt.Sprintf("UserID: %d", p.UserID),
-		fmt.Sprintf("PaymentRequest: %s", p.PaymentRequest),
-		fmt.Sprintf("Preimage: %v", p.Preimage),
-		fmt.Sprintf("HashedPreimage: %s", p.HashedPreimage),
-		fmt.Sprintf("CallbackURL: %v", p.CallbackURL),
-		fmt.Sprintf("Status: %s", p.Status),
-	}
-
-	if p.Memo != nil {
-		fragments = append(fragments, fmt.Sprintf("Memo: %s", *p.Memo))
-	}
-	if p.Description != nil {
-		fragments = append(fragments, fmt.Sprintf("Description: %s", *p.Description))
-	}
-
-	fragments = append(fragments,
-		fmt.Sprintf("Expiry: %d", p.Expiry),
-		fmt.Sprintf("Direction: %s", p.Direction),
-		fmt.Sprintf("AmountSat: %d", p.AmountSat),
-		fmt.Sprintf("AmountMSat: %d", p.AmountMSat),
-		fmt.Sprintf("Expired: %v", p.Expired),
-		fmt.Sprintf("ExpiresAt: %v", p.ExpiresAt),
-		fmt.Sprintf("SettledAt: %v", p.SettledAt),
-		fmt.Sprintf("CreatedAt: %v", p.CreatedAt),
-		fmt.Sprintf("UpdatedAt: %v", p.UpdatedAt),
-		fmt.Sprintf("DeletedAt: %v", p.DeletedAt),
-		"}",
-	)
-
-	return strings.Join(fragments, ", ")
-}
-
-func (p Offchain) Equal(other Offchain) (bool, string) {
-	p.CreatedAt = other.CreatedAt
-	p.UpdatedAt = other.UpdatedAt
-	p.DeletedAt = other.DeletedAt
-	p.ID = other.ID
-
-	if !reflect.DeepEqual(p, other) {
-		return false, cmp.Diff(p, other)
-	}
-
-	return true, ""
 }

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 
 	"github.com/brianvoe/gofakeit"
@@ -389,49 +391,33 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 	})
 }
 
-func TestWithAdditionalFieldsShouldBeExpired(t *testing.T) {
+func TestOffchain_WithAdditionalFields(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
-
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
-	offchainTx := Offchain{
-		UserID:         user.ID,
-		HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-		Expiry:         1,
-		Direction:      Direction("INBOUND"),
-		Status:         Status("OPEN"),
-		AmountSat:      100,
-		AmountMSat:     100000,
-	}
+	t.Run("expiry field", func(t *testing.T) {
+		offchainTx := Offchain{
+			UserID:         user.ID,
+			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:         1,
+			Direction:      Direction("INBOUND"),
+			Status:         Status("OPEN"),
+			AmountSat:      100,
+			AmountMSat:     100000,
+		}
 
-	tx := testDB.MustBegin()
-	offchainTx, err := insertOffChain(tx, offchainTx)
-	if err != nil {
-		testutil.FailMsg(t, "could not insert offchainTx")
-	}
-	_ = tx.Commit()
+		offchainTx, err := InsertOffchain(testDB, offchainTx)
+		require.NoError(t, err)
 
-	// Sleep for expiry to check if expired property is set
-	// correctly. expired should be true
-	time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
+		// Sleep for expiry to check if expired property is set
+		// correctly. expired should be true
+		time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
 
-	// offchainTx = offchainTx.withAdditionalFields()
+		offchainTx = offchainTx.WithAdditionalFields()
 
-	if !offchainTx.Expired {
-		testutil.FailMsg(t, "offchainTx should be expired")
-	}
-
-	if offchainTx.ExpiresAt != offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)) {
-		testutil.FailMsg(t, "expiresAt should equal createdAt + expiry")
-	}
-}
-
-func TestWithAdditionalFields(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	user := userstestutil.CreateUserOrFail(t, testDB)
+		assert.True(t, offchainTx.Expired)
+		assert.Equal(t, offchainTx.ExpiresAt, offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
+	})
 
 	invoices := []Offchain{
 		Offchain{
@@ -457,17 +443,9 @@ func TestWithAdditionalFields(t *testing.T) {
 	for _, invoice := range invoices {
 		t.Run(fmt.Sprintf("payment with expiry %d should not be expired", invoice.Expiry),
 			func(t *testing.T) {
-
-				tx := testDB.MustBegin()
-				payment, err := insertOffChain(tx, invoice)
-				if err != nil {
-					testutil.FatalMsg(t, "could not insert payment")
-				}
-				_ = tx.Commit()
-
-				if payment.Expired {
-					testutil.FailMsg(t, "payment should not be expired")
-				}
+				payment, err := InsertOffchain(testDB, invoice)
+				require.NoError(t, err)
+				assert.False(t, payment.Expired)
 			})
 	}
 }
