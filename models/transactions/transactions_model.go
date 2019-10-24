@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	pkgErrors "github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
@@ -206,13 +205,15 @@ type Onchain struct {
 	Expired   bool      `db:"-"`
 	ExpiresAt time.Time `db:"-"`
 
-	Direction        Direction `json:"direction"`
-	AmountSat        int64     `json:"amountSat"`
-	Description      *string   `json:"description"`
-	ConfirmedAtBlock *int      `json:"confirmedAtBlock"`
-	Address          string    `json:"address"`
-	Txid             *string   `json:"txid"`
-	Vout             *int      `json:"vout"`
+	Direction Direction `json:"direction"`
+
+	// TODO make nullable
+	AmountSat        int64   `json:"amountSat"`
+	Description      *string `json:"description"`
+	ConfirmedAtBlock *int    `json:"confirmedAtBlock"`
+	Address          string  `json:"address"`
+	Txid             *string `json:"txid"`
+	Vout             *int    `json:"vout"`
 
 	// TODO doc
 	SettledAt   *time.Time `json:"settledAt"`
@@ -249,7 +250,72 @@ func (o Onchain) ToTransaction() Transaction {
 	}
 }
 
-func insertTransaction(db *db.DB, t Transaction) (Transaction, error) {
+// MarkAsConfirmed updates the transaction stored in the DB
+// with Confirmed = true and ConfirmedAt = Now().
+func (o Onchain) MarkAsConfirmed(db db.Inserter, height int) (Onchain, error) {
+
+	if o.Txid == nil {
+		return Onchain{}, errors.New("cannot mark a TX as confirmed when it hasn't received any money")
+	}
+
+	now := time.Now()
+	o.ConfirmedAt = &now
+	o.ConfirmedAtBlock = &height
+
+	query := `UPDATE transactions
+		SET confirmed_at = :confirmed_at, confirmed = :confirmed
+		WHERE id=:id`
+
+	rows, err := db.NamedQuery(query, &o)
+	if err != nil {
+		return Onchain{}, nil
+	}
+
+	var updated Onchain
+	if err := rows.StructScan(&updated); err != nil {
+		return Onchain{}, err
+	}
+
+	return updated, nil
+}
+
+// AddReceivedMoney saves a TX consisting of a TXID, a vout and an amount to the
+// DB transaction. If the Onchain transaction already has received money (i.e.
+// has a TXID) the method errors.
+func (o Onchain) AddReceivedMoney(db db.Inserter, txid chainhash.Hash, vout int,
+	amountSat int64) (Onchain, error) {
+
+	if o.Txid != nil {
+		return Onchain{}, ErrTxHasTxid
+	}
+	txidStr := txid.String()
+	o.Txid = &txidStr
+	o.Vout = &vout
+	o.AmountSat = amountSat
+
+	tx := o.ToTransaction()
+
+	rows, err := db.NamedQuery(
+		`UPDATE transactions SET txid = :txid, vout = :vout, amount_milli_sat = :amount_milli_sat WHERE id = :id`,
+		&tx)
+	if err != nil {
+		return Onchain{}, err
+	}
+
+	var inserted Transaction
+	if err := rows.StructScan(&inserted); err != nil {
+		return Onchain{}, err
+	}
+
+	insertedOnchain, err := inserted.ToOnchain()
+	if err != nil {
+		return Onchain{}, err
+	}
+
+	return insertedOnchain, nil
+}
+
+func insertTransaction(db db.Inserter, t Transaction) (Transaction, error) {
 	createTransactionQuery := `
 	INSERT INTO transactions (user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
 	                          confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
@@ -281,82 +347,4 @@ func insertTransaction(db *db.DB, t Transaction) (Transaction, error) {
 	}
 
 	return transaction, nil
-}
-
-// SaveTxToTransaction saves a txid consisting of a txid, a vout and an amount to the
-// db transaction
-// If the transaction already has a txid, it returns an error
-// TODO move this to onchain
-func (t Transaction) SaveTxToTransaction(db *db.DB, txHash chainhash.Hash, vout int,
-	amountSat int64) error {
-
-	if t.Txid != nil {
-		return ErrTxHasTxid
-	}
-
-	uQuery := `UPDATE transactions SET txid = $1, vout = $2, amount_sat = $3 WHERE id = $4`
-	dbTx := db.MustBegin()
-	results, err := dbTx.Exec(uQuery, txHash.String(), vout, amountSat, t.ID)
-	if err != nil {
-		_ = dbTx.Rollback()
-		return pkgErrors.Wrap(err, "could not update transaction")
-	}
-
-	rowsAffected, err := results.RowsAffected()
-	if err != nil {
-		_ = dbTx.Rollback()
-		return pkgErrors.Wrap(err, "could not retreive num rows affected")
-	}
-	if rowsAffected != 1 {
-		_ = dbTx.Rollback()
-		return pkgErrors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
-	}
-
-	if err = dbTx.Commit(); err != nil {
-		_ = dbTx.Rollback()
-		return pkgErrors.Wrap(err, "could not commit dbTx")
-	}
-
-	return nil
-}
-
-// MarkAsConfirmed updates the transaction stored in the db
-// with Confirmed = true and ConfirmedAt = Now(). After updating the transaction
-// it attempts to credit the user with the tx amount. Should anything fail, all
-// changes are rolled back
-// TODO move this to onchain
-func (t Transaction) MarkAsConfirmed(db *db.DB) error {
-
-	query := `UPDATE transactions
-		SET confirmed_at = $1, confirmed = true
-		WHERE id=$2`
-
-	dbtx := db.MustBegin()
-	rows, err := dbtx.Exec(query, time.Now(), t.ID)
-	if err != nil {
-		_ = dbtx.Rollback()
-		return pkgErrors.Wrapf(err, "query %q for transaction.ID %d failed",
-			query, t.ID)
-	}
-
-	rowsAffected, _ := rows.RowsAffected()
-	if rowsAffected != 1 {
-		_ = dbtx.Rollback()
-		return pkgErrors.Errorf("expected 1 row to be affected, however query updated %d rows", rowsAffected)
-	}
-
-	/*	if _, err := users.IncreaseBalance(dbtx, users.ChangeBalance{
-			UserID:    t.UserID,
-			AmountSat: t.AmountSat,
-		}); err != nil {
-			_ = dbtx.Rollback()
-			return pkgErrors.Wrapf(err, "could not credit user")
-		}
-
-		if err = dbtx.Commit(); err != nil {
-			_ = dbtx.Rollback()
-			return pkgErrors.Wrap(err, "could not commit changes")
-		}*/
-
-	return nil
 }

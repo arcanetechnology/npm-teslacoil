@@ -43,10 +43,17 @@ func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) user
 	return verified
 }
 
-// CreateUserWithBalanceOrFail creates a user with an initial balance
+/*// CreateUserWithBalanceOrFail creates a user with an initial balance
 func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, balance int) users.User {
-	// u := CreateUserOrFail(t, db)
+	u := CreateUserOrFail(t, db)
 
-	// return IncreaseBalanceOrFail(t, db, u, balance)
-	panic("not yet implemented balance increase")
+	if _, err := transactions.NewOffchain(db, nil, transactions.NewOffchainOpts{
+		UserID:    u.ID,
+		AmountSat: int64(balance),
+	}); err != nil {
+		testutil.FatalMsg(t, err)
+	}
+
+	return u
 }
+*/

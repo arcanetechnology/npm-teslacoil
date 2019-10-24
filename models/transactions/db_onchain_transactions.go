@@ -8,9 +8,13 @@ import (
 	"math"
 	"reflect"
 
+	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -45,7 +49,7 @@ const (
 )
 
 // TODO verify invariants?
-func insertOnchain(db *db.DB, onchain Onchain) (Onchain, error) {
+func insertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 	converted := onchain.ToTransaction()
 	tx, err := insertTransaction(db, converted)
 	if err != nil {
@@ -61,7 +65,7 @@ func insertOnchain(db *db.DB, onchain Onchain) (Onchain, error) {
 }
 
 // TODO verify invariants?
-func insertOffChain(db *db.DB, offchain Offchain) (Offchain, error) {
+func insertOffChain(db db.Inserter, offchain Offchain) (Offchain, error) {
 	tx, err := insertTransaction(db, offchain.ToTransaction())
 	if err != nil {
 		return Offchain{}, err
@@ -187,7 +191,7 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 			txHash := tx.TxHash()
 			for i, transaction := range result {
 
-				err = transaction.saveTxToTransaction(db, txHash, vout, amountSat)
+				// err = transaction.saveTxToTransaction(db, txHash, vout, amountSat)
 				switch {
 				case err == nil:
 					// if we get here, it means the txhash+vout was successfully
@@ -222,16 +226,22 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 //
 // NOTE: This must be run as a goroutine
 func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgBlock) {
-	/*const confirmationLimit = 3
+	const confirmationLimit = 3
 
 	for {
 		// we don't actually use the block contents for anything, because
 		// we query bitcoind directly for the status of every transaction
 		// TODO?: Check all the transactions to see whether they are
 		//  a deposit to us, but is not saved in our DB yet
-		<-ch
+		rawBlock := <-ch
+		hash := rawBlock.Header.BlockHash()
+		block, err := bitcoindRpc.GetBlockVerbose(&hash)
+		if err != nil {
+			log.WithError(err).Error("Could not query bitcoind for block")
+			continue
+		}
 
-		query := "SELECT * FROM transactions WHERE confirmed = false and txid NOTNULL"
+		query := "SELECT * FROM transactions WHERE  address != '' AND confirmed = false AND txid NOTNULL"
 		queryResult := []Transaction{}
 		if err := db.Select(&queryResult, query); err != nil {
 			if err != sql.ErrNoRows {
@@ -242,9 +252,14 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 		log.Tracef("found transactions: %+v", queryResult)
 
 		for _, transaction := range queryResult {
-			txHash, err := chainhash.NewHashFromStr(*transaction.Txid)
+			onchain, err := transaction.ToOnchain()
 			if err != nil {
-				log.WithError(err).Errorf("could not create chainhash from txid %q", *transaction.Txid)
+				log.WithError(err).Error("Transaction was not an onchain TX")
+				continue
+			}
+			txHash, err := chainhash.NewHashFromStr(*onchain.Txid)
+			if err != nil {
+				log.WithError(err).Errorf("could not create chainhash from txid %q", *onchain.Txid)
 				continue
 			}
 			rawTx, err := bitcoindRpc.GetRawTransactionVerbose(txHash)
@@ -254,33 +269,41 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 			}
 
 			if rawTx.Confirmations >= confirmationLimit {
-				log.Infof("tx %s:%d has %d confirmations", *transaction.Txid, *transaction.Vout, rawTx.Confirmations)
+				log.Infof("tx %s:%d has %d confirmations", *onchain.Txid, *onchain.Vout, rawTx.Confirmations)
 
-				if len(rawTx.Vout) < *transaction.Vout {
+				if len(rawTx.Vout) < *onchain.Vout {
 					// something really weird has happened, the transaction changed? we saved it wrong?
 					log.Panic("saved transaction outpoint is greater than the number of outputs, check the logic")
 				}
 
 				var output btcjson.Vout
 				for _, out := range rawTx.Vout {
-					if out.N == uint32(*transaction.Vout) {
+					if out.N == uint32(*onchain.Vout) {
 						output = out
 					}
 				}
 
-				if math.Round(btcutil.SatoshiPerBitcoin*output.Value) != float64(transaction.AmountSat) {
-					log.WithFields(logrus.Fields{"value": output.Value, "amount": transaction.AmountSat}).
+				if math.Round(btcutil.SatoshiPerBitcoin*output.Value) != float64(onchain.AmountSat) {
+					log.WithFields(logrus.Fields{"value": output.Value, "amount": onchain.AmountSat}).
 						Errorf("actual outputValue and expected amount not equal, check logic")
 					continue
 				}
 
-				err = transaction.markAsConfirmed(db)
-				if err != nil {
+				height := block.Height
+				confirmationHeight := height - int64(rawTx.Confirmations)
+				if onchain, err := onchain.MarkAsConfirmed(db, int(confirmationHeight)); err != nil {
 					log.WithError(err).Error("could not mark transaction as confirmed")
+				} else {
+					log.WithFields(logrus.Fields{
+						"txid":   onchain.Txid,
+						"vout":   onchain.Vout,
+						"userId": onchain.UserID,
+					}).Info("Marked transaction as confirmed")
 				}
+
 			}
 		}
-	}*/
+	}
 }
 
 func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
@@ -324,87 +347,60 @@ type WithdrawOnChainArgs struct {
 // If the user does not have enough balance, the transaction is aborted
 // See WithdrawOnChainArgs for more information about the possible arguments
 func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind,
-	args WithdrawOnChainArgs) (*Transaction, error) {
-	/*
-		user, err := users.GetByID(db, args.UserID)
-		if err != nil {
-			return nil, pkgErrors.Wrap(err, "withdrawonchain could not get user")
-		}
+	args WithdrawOnChainArgs) (Onchain, error) {
+	user, err := users.GetByID(db, args.UserID)
+	if err != nil {
+		return Onchain{}, err
+	}
 
-		// We dont pass sendAll to lncli, as that would send the entire nodes
-		// balance to the address
-		if args.SendAll {
-			// args.AmountSat = user.Balance
-		}
+	// TODO get user balance
 
-		// if user.Balance < args.AmountSat {
-		//	return nil, ErrBalanceTooLowForWithdrawal
-		// }
+	// We dont pass sendAll to lncli, as that would send the entire nodes
+	// balance to the address
+	if args.SendAll {
+		// args.AmountSat = user.Balance
+	}
 
-		tx := db.MustBegin()
-			user, err = users.DecreaseBalance(tx, users.ChangeBalance{
-				UserID:    user.ID,
-				AmountSat: args.AmountSat,
-			})
-			if err != nil {
-				if txErr := tx.Rollback(); txErr != nil {
-					log.Error("txErr: ", txErr)
-				}
-				return nil, pkgErrors.Wrap(err, "could not decrease balance")
+	// if user.Balance < args.AmountSat {
+	//	return nil, ErrBalanceTooLowForWithdrawal
+	// }
 
-		txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
-			Addr:       args.Address,
-			Amount:     args.AmountSat,
-			TargetConf: int32(args.TargetConf),
-			SatPerByte: int64(args.SatPerByte),
-		})
-		if err != nil {
-			if txErr := tx.Rollback(); txErr != nil {
-				log.WithError(txErr).Error("could not rollback tx")
-			}
-			return nil, pkgErrors.Wrap(err, "could not send on-chain")
-		}
+	txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
+		Addr:       args.Address,
+		Amount:     args.AmountSat,
+		TargetConf: int32(args.TargetConf),
+		SatPerByte: int64(args.SatPerByte),
+	})
 
-		vout, err := bitcoin.FindVout(txid, args.AmountSat)
-		if err != nil {
-			log.WithError(err).Error("could not find output")
-		}
+	vout, err := bitcoin.FindVout(txid, args.AmountSat)
+	if err != nil {
+		log.WithError(err).Error("Could not find output for sent TX")
+		return Onchain{}, fmt.Errorf("could not find output for sent TX: %w", err)
+	}
 
-		txToInsert := Transaction{
-			UserID:    user.ID,
-			Address:   args.Address,
-			AmountSat: args.AmountSat,
-			Txid:      &txid,
-			Vout:      &vout,
-			Direction: OUTBOUND,
-		}
+	txToInsert := Onchain{
+		UserID:    user.ID,
+		Address:   args.Address,
+		AmountSat: args.AmountSat,
+		Txid:      &txid,
+		Vout:      &vout,
+		Direction: OUTBOUND,
+	}
 
-		if args.Description != "" {
-			txToInsert.Description = &args.Description
-		}
+	if args.Description != "" {
+		txToInsert.Description = &args.Description
+	}
 
-		transaction, err := insertTransaction(db, txToInsert)
-		if err != nil {
-			if txErr := tx.Rollback(); txErr != nil {
-				log.Error("txErr: ", txErr)
-			}
-			return nil, pkgErrors.Wrap(err, "could not insert transaction")
-		}
+	transaction, err := insertOnchain(db, txToInsert)
+	if err != nil {
+		return Onchain{}, pkgErrors.Wrap(err, "could not insert transaction")
+	}
 
-		err = tx.Commit()
-		if err != nil {
-			return nil, pkgErrors.Wrap(err, "could not commit transaction")
-		}
-
-		log.Debugf("transaction: %+v", transaction)
-
-		return &transaction, nil
-	*/
-	return &Transaction{}, nil
+	return transaction, nil
 }
 
 func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
-	description string) (Transaction, error) {
+	description string) (Onchain, error) {
 	return NewDepositWithFields(d, lncli, userID, description, nil, nil, 0)
 }
 
@@ -412,47 +408,43 @@ func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
 // in a new 'UNCONFIRMED', 'INBOUND' transaction together with the UserID
 // Returns the same transaction as insertTransaction(), in full
 func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
-	description string, vout *int, txid *string, amountSat int64) (Transaction, error) {
-	/*
+	description string, vout *int, txid *string, amountSat int64) (Onchain, error) {
+	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
+		// This type means lnd will force-create a new address
+		Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
+	})
 
-		address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
-			// This type means lnd will force-create a new address
-			Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
-		})
+	if err != nil {
+		return Onchain{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")
+	}
 
-		if err != nil {
-			return Transaction{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")
-		}
+	txToInsert := Onchain{
+		UserID:      userID,
+		Address:     address.Address,
+		Direction:   INBOUND,
+		Description: &description,
+		Txid:        txid,
+		Vout:        vout,
+		AmountSat:   amountSat,
+	}
 
-		txToInsert := Transaction{
-			UserID:      userID,
-			Address:     address.Address,
-			Direction:   INBOUND,
-			Description: &description,
-			Txid:        txid,
-			Vout:        vout,
-			AmountSat:   amountSat,
-		}
+	if description != "" {
+		txToInsert.Description = &description
+	}
 
-		if description != "" {
-			txToInsert.Description = &description
-		}
+	transaction, err := insertOnchain(db, txToInsert)
+	if err != nil {
+		return Onchain{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
+	}
 
-		transaction, err := insertTransaction(db, txToInsert)
-		if err != nil {
-			return Transaction{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
-		}
-
-		return transaction, nil
-	*/
-	return Transaction{}, nil
+	return transaction, nil
 }
 
 // GetOrCreateDeposit attempts to retreive a deposit whose address has not yet received any coins
 // It does this by selecting the last inserted deposit whose txid == "" (order by id desc)
 // If the ForceNewAddress argument is true, or no deposit is found, the function creates a new deposit
 func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forceNewAddress bool,
-	description string) (Transaction, error) {
+	description string) (Onchain, error) {
 	log.WithFields(logrus.Fields{"userID": userID, "forceNewAddress": forceNewAddress,
 		"description": description}).Tracef("GetOrCreateDeposit")
 	// If forceNewAddress is supplied, we return a new deposit instantly
@@ -462,7 +454,7 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forc
 
 	// Get the latest INBOUND transaction whose txid is empty from the DB
 	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' AND txid ISNULL ORDER BY id DESC LIMIT 1;"
-	var deposit Transaction
+	var deposit Onchain
 	err := db.Get(&deposit, query, userID)
 
 	switch {
@@ -474,7 +466,7 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forc
 		// we found a deposit
 		return deposit, nil
 	default:
-		return Transaction{}, pkgErrors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
+		return Onchain{}, pkgErrors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
 	}
 }
 
