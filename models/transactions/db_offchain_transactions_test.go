@@ -1,4 +1,4 @@
-package payments
+package transactions
 
 import (
 	"crypto/sha256"

@@ -7,28 +7,26 @@ import (
 	"path"
 	"strings"
 
-	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
-
-	"gitlab.com/arcanecrypto/teslacoil/api/auth"
-	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/db"
+	"github.com/gin-gonic/gin/binding"
+	"gitlab.com/arcanecrypto/teslacoil/api/validation"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
-	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+	"gopkg.in/go-playground/validator.v8"
+
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/email"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/validation"
-	"gopkg.in/go-playground/validator.v8"
-
 	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
@@ -121,7 +119,7 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 
 //NewApp creates a new app
 func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
-	bitcoin bitcoind.TeslacoilBitcoind, callbacks payments.HttpPoster,
+	bitcoin bitcoind.TeslacoilBitcoind, callbacks transactions.HttpPoster,
 	config Config) (RestServer, error) {
 	build.SetLogLevel(config.LogLevel)
 
@@ -162,7 +160,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
 	// Start a goroutine for handling the newly added/settled invoices.
-	go payments.InvoiceStatusListener(invoiceUpdatesCh, db, callbacks)
+	go transactions.InvoiceStatusListener(invoiceUpdatesCh, db, callbacks)
 
 	r := RestServer{
 		Router:      g,
@@ -187,8 +185,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	r.registerApiKeyRoutes()
 	r.registerAdminRoutes()
 	r.registerAuthRoutes()
-	r.registerUserRoutes()
-	r.registerPaymentRoutes()
+	r.RegisterUserRoutes()
 	r.registerTransactionRoutes()
 
 	return r, nil
@@ -294,21 +291,8 @@ func (r *RestServer) RegisterUserRoutes() {
 	users := r.Router.Group("")
 	users.Use(auth.GetMiddleware(r.db))
 	users.GET("/users", r.getAllUsers())
-	users.GET("/user", r.getUser())
+	users.GET("/user", r.GetUser())
 	users.PUT("/user", r.updateUser())
-}
-
-// RegisterPaymentRoutes registers all payment routes on the router.
-// Payment is defined as a lightning transaction, so all things lightning
-// can be found in payment packages
-func (r *RestServer) registerPaymentRoutes() {
-	payment := r.Router.Group("")
-	payment.Use(auth.GetMiddleware(r.db))
-
-	payment.GET("payments", r.getAllPayments())
-	payment.GET("payment/:id", r.getPaymentByID())
-	payment.POST("/invoices/create", r.createInvoice())
-	payment.POST("/invoices/pay", r.payInvoice())
 }
 
 // RegisterTransactionRoutes registers all transaction routes on the router.
@@ -317,8 +301,15 @@ func (r *RestServer) registerTransactionRoutes() {
 	transaction := r.Router.Group("")
 	transaction.Use(auth.GetMiddleware(r.db))
 
+	// common
 	transaction.GET("/transactions", r.getAllTransactions())
 	transaction.GET("/transaction/:id", r.getTransactionByID())
+
+	// onchain transactions
 	transaction.POST("/withdraw", r.withdrawOnChain())
 	transaction.POST("/deposit", r.newDeposit())
+
+	// offchain transactions
+	transaction.POST("/invoices/create", r.createInvoice())
+	transaction.POST("/invoices/pay", r.payInvoice())
 }

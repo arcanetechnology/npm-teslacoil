@@ -80,40 +80,6 @@ func insertOffChain(db *db.DB, offchain Offchain) (Offchain, error) {
 
 }
 
-func insertTransaction(db *db.DB, t Transaction) (Transaction, error) {
-	createTransactionQuery := `
-	INSERT INTO transactions (user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
-	                          confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
-	                          hashed_preimage, settled_at, memo, invoice_status)
-	VALUES (:user_id, :callback_url, :customer_order_id, :expiry, :direction, :amount_milli_sat, :description, 
-	        :confirmed_at_block, :confirmed_at, :address, :txid, :vout, :payment_request, :preimage, 
-	        :hashed_preimage, :settled_at, :memo, :invoice_status)
-	RETURNING id, user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
-	    confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
-	    hashed_preimage, settled_at, memo, invoice_status, created_at, updated_at, deleted_at`
-
-	rows, err := db.NamedQuery(createTransactionQuery, t)
-	if err != nil {
-		return Transaction{}, fmt.Errorf("could not insert transaction: %w", err)
-	}
-	defer func() {
-		err = rows.Close()
-		if err != nil {
-			log.WithError(err).Error("could not close rows")
-		}
-	}()
-
-	var transaction Transaction
-	if rows.Next() {
-		if err = rows.StructScan(&transaction); err != nil {
-			log.WithError(err).Error("could not scan result into transaction struct")
-			return Transaction{}, fmt.Errorf("could not insert transaction: %w", err)
-		}
-	}
-
-	return transaction, nil
-}
-
 // GetAllTransactions selects all the transactions for a user
 func GetAllTransactions(d *db.DB, userID int) ([]Transaction, error) {
 	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, 0)

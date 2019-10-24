@@ -1,14 +1,18 @@
 package api
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/sirupsen/logrus"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 
-	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/gin-gonic/gin"
@@ -87,14 +91,14 @@ func (r *RestServer) getTransactionByID() gin.HandlerFunc {
 // TODO: verify dust limits
 func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 	type withdrawResponse struct {
-		ID          int                `json:"id"`
-		Address     string             `json:"address"`
-		Txid        *string            `json:"txid"`
-		Vout        *int               `json:"vout"`
-		Direction   payments.Direction `json:"direction"`
-		AmountSat   int64              `json:"amountSat"`
-		Description *string            `json:"description"`
-		Confirmed   bool               `json:"confirmed"`
+		ID          int                    `json:"id"`
+		Address     string                 `json:"address"`
+		Txid        *string                `json:"txid"`
+		Vout        *int                   `json:"vout"`
+		Direction   transactions.Direction `json:"direction"`
+		AmountSat   int64                  `json:"amountSat"`
+		Description *string                `json:"description"`
+		Confirmed   bool                   `json:"confirmed"`
 
 		ConfirmedAt *time.Time `json:"confirmedAt"`
 	}
@@ -125,11 +129,11 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 
 		c.JSONP(http.StatusOK, withdrawResponse{
 			ID:          transaction.ID,
-			Address:     transaction.Address,
+			Address:     *transaction.Address,
 			Txid:        transaction.Txid,
 			Vout:        transaction.Vout,
 			Direction:   transaction.Direction,
-			AmountSat:   transaction.AmountSat,
+			AmountSat:   transaction.AmountMSat,
 			Description: transaction.Description,
 			Confirmed:   transaction.Confirmed,
 
@@ -150,12 +154,12 @@ func (r *RestServer) newDeposit() gin.HandlerFunc {
 	}
 
 	type response struct {
-		ID          int                `json:"id"`
-		Address     string             `json:"address"`
-		Direction   payments.Direction `json:"direction"`
-		Description *string            `json:"description"`
-		Confirmed   bool               `json:"confirmed"`
-		CreatedAt   time.Time          `json:"createdAt"`
+		ID          int                    `json:"id"`
+		Address     string                 `json:"address"`
+		Direction   transactions.Direction `json:"direction"`
+		Description *string                `json:"description"`
+		Confirmed   bool                   `json:"confirmed"`
+		CreatedAt   time.Time              `json:"createdAt"`
 	}
 
 	return func(c *gin.Context) {
@@ -179,11 +183,127 @@ func (r *RestServer) newDeposit() gin.HandlerFunc {
 		res := response{
 			ID:          transaction.ID,
 			Address:     transaction.Address,
-			Direction:   payments.INBOUND,
+			Direction:   transactions.INBOUND,
 			Description: transaction.Description,
 			Confirmed:   false,
 			CreatedAt:   transaction.CreatedAt,
 		}
 		c.JSONP(http.StatusOK, res)
+	}
+}
+
+// createInvoice creates a new invoice
+func (r *RestServer) createInvoice() gin.HandlerFunc {
+	// createInvoiceRequest is a deposit
+	type createInvoiceRequest struct {
+		AmountSat   int64  `json:"amountSat" binding:"required,gt=0,lte=4294967"`
+		Memo        string `json:"memo" binding:"max=256"`
+		Description string `json:"description"`
+		CallbackURL string `json:"callbackUrl" binding:"omitempty,url"`
+		OrderId     string `json:"orderId" binding:"max=256"`
+	}
+
+	return func(c *gin.Context) {
+
+		userID, ok := getUserIdOrReject(c)
+
+		if !ok {
+			return
+		}
+
+		var req createInvoiceRequest
+		if c.BindJSON(&req) != nil {
+			return
+		}
+
+		t, err := transactions.NewPayment(
+			r.db, r.lncli, transactions.NewPaymentOpts{
+				UserID:      userID,
+				AmountSat:   req.AmountSat,
+				Memo:        req.Memo,
+				Description: req.Description,
+				CallbackURL: req.CallbackURL,
+				OrderId:     req.OrderId,
+			})
+
+		if err != nil {
+			log.WithError(err).Error("Could not add new payment")
+			_ = c.Error(err)
+			return
+		}
+
+		if t.UserID != userID {
+			_ = c.Error(err)
+			return
+		}
+
+		c.JSONP(http.StatusOK, t)
+	}
+}
+
+// payInvoice pays a valid invoice on behalf of a user
+func (r *RestServer) payInvoice() gin.HandlerFunc {
+	// PayInvoiceRequest is the required and optional fields for initiating a
+	// withdrawal.
+	type payInvoiceRequest struct {
+		PaymentRequest string `json:"paymentRequest" binding:"required,paymentrequest"`
+		Description    string `json:"description"`
+	}
+
+	return func(c *gin.Context) {
+		userID, ok := getUserIdOrReject(c)
+		if !ok {
+			return
+		}
+
+		var req payInvoiceRequest
+		if c.BindJSON(&req) != nil {
+			return
+		}
+
+		// Pays an invoice from claims.UserID's balance. This is secure because
+		// the UserID is extracted from the JWT
+		t, err := transactions.PayInvoiceWithDescription(r.db, r.lncli, userID,
+			req.PaymentRequest, req.Description)
+		if err != nil {
+			// investigate details around failure
+			go func() {
+				origErr := err
+				decoded, err := r.lncli.DecodePayReq(context.Background(), &lnrpc.PayReqString{
+					PayReq: req.PaymentRequest,
+				})
+				if err != nil {
+					log.WithError(err).Error("Could not decode payment request")
+					return
+				}
+
+				channels, err := r.lncli.ListChannels(context.Background(), &lnrpc.ListChannelsRequest{
+					ActiveOnly: true,
+				})
+				if err != nil {
+					log.WithError(err).Error("Could not list active channels")
+					return
+				}
+
+				balance, err := r.lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
+				if err != nil {
+					log.WithError(err).Error("Could not get channel balance")
+				}
+
+				log.WithFields(logrus.Fields{
+					"destination":    decoded.Destination,
+					"amountSat":      decoded.NumSatoshis,
+					"activeChannels": len(channels.Channels),
+					"channelBalance": balance.Balance,
+					"routeHints":     decoded.RouteHints,
+				}).WithError(origErr).Error("Could not pay invoice")
+				fmt.Println(2 + 2)
+
+			}()
+			_ = c.Error(err)
+			return
+		}
+
+		c.JSONP(http.StatusOK, t)
 	}
 }

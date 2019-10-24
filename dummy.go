@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/models/payments"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
 
@@ -136,7 +136,7 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			memo = mem
 		}
 
-		inv, err := payments.NewPayment(db, lncli, payments.NewPaymentOpts{
+		inv, err := transactions.NewPayment(db, lncli, transactions.NewPaymentOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(amountSat),
 			Memo:        memo,
@@ -157,7 +157,7 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			duration := time.Duration(nanos)
 			paidAt := inv.CreatedAt.Add(duration)
 
-			err := payments.MarkInvoiceAsPaid(db, inv.PaymentRequest, paidAt)
+			err := transactions.MarkInvoiceAsPaid(db, inv.PaymentRequest, paidAt)
 
 			if err != nil {
 				log.Debugf("Could not mark invoice as paid: %s", err)

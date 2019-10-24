@@ -7,33 +7,28 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
-
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
-	"gitlab.com/arcanecrypto/teslacoil/models/payments"
-	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/brianvoe/gofakeit"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/dchest/passwordreset"
-	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pquerna/otp/totp"
-	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
-	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
@@ -60,28 +55,10 @@ func init() {
 		mockSendGridClient, mockBitcoindClient,
 		mockHttpPoster, conf)
 	if err != nil {
-		panic(err.Error())
+		panic(err)
 	}
 
 	h = httptestutil.NewTestHarness(app.Router, testDB)
-}
-
-func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.DebugLevel)
-
-	// new values for gofakeit every time
-	gofakeit.Seed(0)
-
-	result := m.Run()
-
-	if err := nodetestutil.CleanupNodes(); err != nil {
-		panic(err)
-	}
-
-	if err := testDB.Close(); err != nil {
-		panic(err)
-	}
-	os.Exit(result)
 }
 
 func TestCreateUser(t *testing.T) {
@@ -998,25 +975,6 @@ func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
 	})
 }
 
-// var (
-// simnetAddress = "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4"
-// )
-
-// func createFakeWithdrawal(t *testing.T, accessToken string) int {
-// req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-// AccessToken: accessToken,
-// Path:        "/withdraw",
-// Method:      "POST",
-// Body:        fmt.Sprintf(`{ "address": %q }`, simnetAddress),
-// })
-// res := h.AssertResponseOk(t, req)
-//
-// var trans transactions.Transaction
-// h.AssertResponseOKWithStruct(t, res.Body, &trans)
-//
-// return trans.ID
-// }
-
 func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, description string) int {
 	req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 		AccessToken: accessToken,
@@ -1042,20 +1000,6 @@ func createFakeDeposits(t *testing.T, amount int, accessToken string) []int {
 	}
 	return ids
 }
-
-// createFakeTransactions creates `amount` transactions, has a 50/50 chance
-// of creating either a withdrawal or a deposit
-// func createFakeTransactions(t *testing.T, amount int, accessToken string) []int {
-// ids := make([]int, amount)
-// for i := 0; i < amount; i++ {
-// if gofakeit.Int8()%2 == 0 {
-// ids[i] = createFakeWithdrawal(t, accessToken)
-// } else {
-// ids[i] = createFakeDeposit(t, accessToken, true, "")
-// }
-// }
-// return ids
-// }
 
 func TestGetTransactionByID(t *testing.T) {
 	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
