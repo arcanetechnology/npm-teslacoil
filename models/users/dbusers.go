@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/dchest/passwordreset"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
@@ -14,6 +16,8 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var log = build.Log
 
 // User is a database table
 type User struct {

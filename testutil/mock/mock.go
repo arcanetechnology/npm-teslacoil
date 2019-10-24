@@ -3,9 +3,10 @@ package mock
 import (
 	"sync"
 
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/email"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 var _ email.Sender = &mockSendGridClient{}

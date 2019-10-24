@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -20,6 +22,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/macaroon.v2"
 )
+
+var log = build.Log
 
 // AddLookupInvoiceClient defines the required methods for adding an invoice
 type AddLookupInvoiceClient interface {

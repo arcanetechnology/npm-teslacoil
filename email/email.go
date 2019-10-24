@@ -6,12 +6,13 @@ import (
 	"net/url"
 	"strings"
 
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 var log = build.Log
