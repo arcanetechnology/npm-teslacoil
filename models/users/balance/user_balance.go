@@ -1,10 +1,14 @@
 package balance
 
 import (
+	"fmt"
+
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
-type AmountUnit int
+var log = build.Log
 
 const (
 	milliSatsPerSat     = 1000
@@ -13,7 +17,7 @@ const (
 )
 
 // Balance is a type we use to easily convert between different denominations of BTC(sats, millisats, Bitcoins)
-type Balance uint
+type Balance int
 
 // NewBalanceFromSats creates a Balance type from satoshis by multiplying sats with 1000
 func NewBalanceFromSats(sats int64) Balance {
@@ -21,13 +25,13 @@ func NewBalanceFromSats(sats int64) Balance {
 }
 
 // MilliSats converts a Balance type to an int
-func (b Balance) MilliSats() int {
-	return int(b)
+func (b Balance) MilliSats() int64 {
+	return int64(b)
 }
 
 // Sats converts a Balance type to an int by dividing with 1000
-func (b Balance) Sats() int {
-	return int(b / milliSatsPerSat)
+func (b Balance) Sats() int64 {
+	return int64(b / milliSatsPerSat)
 }
 
 // Bitcoins converts a Balance type to a btc amount by dividing with milliSatsPerBitcoin
@@ -35,20 +39,65 @@ func (b Balance) Bitcoins() float64 {
 	return float64(b / milliSatsPerBitcoin)
 }
 
+func (b Balance) String() string {
+	return fmt.Sprintf("%d msats", b.MilliSats())
+}
+
 // ForUser calculates the balance for a user ID
+// TODO parallellize this
 func ForUser(db *db.DB, userID int) (Balance, error) {
-	type balanceResult struct {
-		BalanceMilliSat uint64 `db:"balance"`
-	}
-	var result balanceResult
-
-	query := "SELECT COALESCE(sum(amount_milli_sat), 0) as balance from transactions WHERE (settled_at IS NOT NULL OR confirmed_at IS NOT NULL) AND user_id=$1;"
-
-	if err := db.Get(&result, query, userID); err != nil {
+	incoming, err := IncomingForUser(db, userID)
+	if err != nil {
 		return 0, err
 	}
 
-	balance := Balance(result.BalanceMilliSat)
+	outgoing, err := OutgoingForUser(db, userID)
+	if err != nil {
+		return 0, err
+	}
 
+	balance := incoming - outgoing
+	bLogger := log.WithFields(logrus.Fields{
+		"userId":   userID,
+		"incoming": incoming,
+		"outgoing": outgoing,
+		"balance":  balance,
+	})
+	if balance < 0 {
+		bLogger.Error("User has negative balance!")
+	}
+
+	bLogger.Trace("Calculated user balance")
 	return balance, nil
+}
+
+func IncomingForUser(db *db.DB, userID int) (Balance, error) {
+	var res balanceResult
+	query := `SELECT COALESCE(SUM(amount_milli_sat), 0) AS balance FROM transactions 
+		WHERE direction = 'INBOUND' AND user_id=$1 AND (
+		    (settled_at IS NOT NULL OR confirmed_at IS NOT NULL) AND
+		    (invoice_status = 'SUCCEEDED' OR invoice_status IS NULL) -- only check for invoices that are confirmed paid
+		)`
+	if err := db.Get(&res, query, userID); err != nil {
+		return 0, err
+	}
+	incoming := Balance(res.BalanceMilliSat)
+	return incoming, nil
+}
+
+func OutgoingForUser(db *db.DB, userID int) (Balance, error) {
+	var res balanceResult
+	query := `SELECT COALESCE(SUM(amount_milli_sat), 0) AS balance FROM transactions 
+		WHERE direction = 'OUTBOUND' AND user_id=$1 AND (
+		    invoice_status IS NULL OR invoice_status != 'FAILED'
+		)`
+	if err := db.Get(&res, query, userID); err != nil {
+		return 0, err
+	}
+	outgoing := Balance(res.BalanceMilliSat)
+	return outgoing, nil
+}
+
+type balanceResult struct {
+	BalanceMilliSat uint64 `db:"balance"`
 }

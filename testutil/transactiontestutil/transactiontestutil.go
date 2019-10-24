@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcutil"
@@ -100,28 +100,31 @@ func GenOnchain(userID int) transactions.Onchain {
 	now := time.Now()
 	start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
 
-	var settledAt *time.Time
+	var txid *string
+	var vout *int
+	var amountSat *int64
 	if gofakeit.Bool() {
-		s := gofakeit.DateRange(start, now)
-		settledAt = &s
+		t := genTxid() // do me later
+		txid = &t
+		v := gofakeit.Number(0, 12)
+		vout = &v
+		a := int64Between(0, btcutil.MaxSatoshi)
+		amountSat = &a
 	}
 
 	var confirmedAtBlock *int
 	var confirmedAt *time.Time
-	if gofakeit.Bool() {
+	if txid != nil && gofakeit.Bool() {
 		cA := gofakeit.DateRange(start, now)
 		confirmedAt = &cA
 		c := gofakeit.Number(1, 1000000)
 		confirmedAtBlock = &c
 	}
 
-	var txid *string
-	var vout *int
-	if gofakeit.Bool() {
-		t := genTxid() // do me later
-		txid = &t
-		v := gofakeit.Number(0, 12)
-		vout = &v
+	var settledAt *time.Time
+	if txid != nil && gofakeit.Bool() {
+		s := gofakeit.DateRange(start, now)
+		settledAt = &s
 	}
 
 	return transactions.Onchain{
@@ -130,7 +133,7 @@ func GenOnchain(userID int) transactions.Onchain {
 		CustomerOrderId: genMaybeString(gofakeit.Word),
 		Expiry:          gofakeit.Int64(),
 		Direction:       genDirection(),
-		AmountSat:       int64Between(0, btcutil.MaxSatoshi),
+		AmountSat:       amountSat,
 		Description: genMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(0, 10))
 		}),
@@ -143,19 +146,48 @@ func GenOnchain(userID int) transactions.Onchain {
 	}
 }
 
-func InsertFakeOnChainOrFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
-	tx, err := transactions.InsertOnchain(db, GenOnchain(userID))
-	if err != nil {
-		testutil.FatalMsg(t, "could not insert transaction")
-	}
-
+func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
+	onchain := GenOnchain(userID)
+	onchain.Direction = transactions.INBOUND
+	tx, err := transactions.InsertOnchain(db, onchain)
+	require.NoError(t, err)
 	return tx
 }
-func InsertFakeOffChainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
-	tx, err := transactions.InsertOffchain(db, GenOffchain(userID))
-	if err != nil {
-		testutil.FatalMsg(t, "could not insert transaction")
-	}
 
+func InsertFakeOutgoingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
+	onchain := GenOnchain(userID)
+	onchain.Direction = transactions.OUTBOUND
+	tx, err := transactions.InsertOnchain(db, onchain)
+	require.NoError(t, err)
 	return tx
+}
+
+func InsertFakeOnChainOrFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
+	if gofakeit.Bool() {
+		return InsertFakeIncomingOnchainorFail(t, db, userID)
+	}
+	return InsertFakeOutgoingOnchainorFail(t, db, userID)
+}
+
+func InsertFakeIncomingOffchainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
+	offchain := GenOffchain(userID)
+	offchain.Direction = transactions.INBOUND
+	tx, err := transactions.InsertOffchain(db, offchain)
+	require.NoError(t, err)
+	return tx
+}
+
+func InsertFakeOutgoingOffchainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
+	offchain := GenOffchain(userID)
+	offchain.Direction = transactions.OUTBOUND
+	tx, err := transactions.InsertOffchain(db, offchain)
+	require.NoError(t, err)
+	return tx
+}
+
+func InsertFakeOffChainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
+	if gofakeit.Bool() {
+		return InsertFakeIncomingOffchainOrFail(t, db, userID)
+	}
+	return InsertFakeOutgoingOffchainOrFail(t, db, userID)
 }
