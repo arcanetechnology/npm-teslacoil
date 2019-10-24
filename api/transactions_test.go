@@ -511,12 +511,12 @@ func TestRestServer_GetAllPayments(t *testing.T) {
 			UserID:    user.ID,
 			AmountSat: 123,
 		}
-		_ = transactions.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewPaymentOrFail(t, testDB, mockLightningClient, opts)
+		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
+		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
+		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
+		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
+		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
+		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
 		const numPayments = 6
 
 		const limit = 3

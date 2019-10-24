@@ -30,11 +30,6 @@ import (
 )
 
 var (
-	databaseConfig = testutil.GetDatabaseConfig("payments")
-	testDB         *db.DB
-)
-
-var (
 	SamplePreimage = func() []byte {
 		encoded, _ := hex.DecodeString(SamplePreimageHex)
 		return encoded
@@ -63,7 +58,7 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func TestNewPayment(t *testing.T) {
+func TestNewOffchainTx(t *testing.T) {
 	t.Parallel()
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
@@ -80,7 +75,7 @@ func TestNewPayment(t *testing.T) {
 		orderId     string
 
 		lndInvoice lnrpc.Invoice
-		want       Payment
+		want       Offchain
 	}{
 		{
 			memo:        firstMemo,
@@ -94,7 +89,7 @@ func TestNewPayment(t *testing.T) {
 				RPreimage:      SamplePreimage,
 				Settled:        false,
 			},
-			want: Payment{
+			want: Offchain{
 				UserID:         user.ID,
 				AmountSat:      amount1,
 				AmountMSat:     amount1 * 1000,
@@ -117,7 +112,7 @@ func TestNewPayment(t *testing.T) {
 				RPreimage:      SamplePreimage,
 				Settled:        false,
 			},
-			want: Payment{
+			want: Offchain{
 				UserID:         user.ID,
 				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
@@ -141,7 +136,7 @@ func TestNewPayment(t *testing.T) {
 				RPreimage:      SamplePreimage,
 				Settled:        false,
 			},
-			want: Payment{
+			want: Offchain{
 				UserID:          user.ID,
 				AmountSat:       amount3,
 				AmountMSat:      amount3 * 1000,
@@ -164,7 +159,7 @@ func TestNewPayment(t *testing.T) {
 				InvoiceResponse: tt.lndInvoice,
 			}
 
-			payment, err := NewPayment(testDB, mockLNcli, NewPaymentOpts{
+			offchainTx, err := NewOffchain(testDB, mockLNcli, NewOffchainOpts{
 				UserID:      tt.want.UserID,
 				AmountSat:   tt.amountSat,
 				Memo:        tt.memo,
@@ -176,99 +171,11 @@ func TestNewPayment(t *testing.T) {
 			}
 
 			// Assertions
-			got := payment
+			got := offchainTx
 			want := tt.want
 
-			assertPaymentsAreEqual(t, got, want)
+			assertOffchainTxsAreEqual(t, got, want)
 		})
-	}
-}
-
-func TestGetByID(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
-
-	const email1 = "email1@example.com"
-	const password1 = "password1"
-	const email2 = "email2@example.com"
-	const password2 = "password2"
-	amount1 := rand.Int63n(4294967)
-	amount2 := rand.Int63n(4294967)
-
-	user := userstestutil.CreateUserOrFail(t, testDB)
-
-	testCases := []struct {
-		email          string
-		password       string
-		expectedResult Payment
-	}{
-		{
-
-			email1,
-			password1,
-			Payment{
-				UserID:         user.ID,
-				AmountSat:      amount1,
-				AmountMSat:     amount1 * 1000,
-				HashedPreimage: SampleHashHex,
-				Memo:           &firstMemo,
-				Description:    &description,
-				Status:         Status("OPEN"),
-				Direction:      Direction("INBOUND"),
-			},
-		},
-		{
-
-			email2,
-			password2,
-			Payment{
-				UserID:         user.ID,
-				AmountSat:      amount2,
-				AmountMSat:     amount2 * 1000,
-				HashedPreimage: SampleHashHex,
-				Memo:           &secondMemo,
-				Description:    &description,
-				Status:         Status("OPEN"),
-				Direction:      Direction("INBOUND"),
-			},
-		},
-	}
-
-	for _, test := range testCases {
-		t.Run(fmt.Sprintf("GetByID() for payment with amount %d", test.expectedResult.AmountSat),
-			func(t *testing.T) {
-
-				tx := testDB.MustBegin()
-
-				payment, err := insert(tx, test.expectedResult)
-				/* TODO: Move these assertions to it's own test: `TestInsertWithBadOpts`
-				 * Right now, there are no inputs causing assertion to be made,
-				 * therefore it is commented out
-				if test.expectedResult.HashedPreimage != "" && test.expectedResult.Preimage != nil {
-					if !strings.Contains(err.Error(), "cant supply both a preimage and a hashed preimage") {
-						testutil.FatalMsgf(t,
-							"should return error when preimage AND hashed preimage supplied. Error:  %+v",
-							err)
-					}
-					testutil.Succeed(t, "should return error when preimage AND hashed preimage supplied")
-					return
-				}
-				*/
-
-				if err != nil {
-					testutil.FatalMsgf(t, "should be able to insertPayment. Error:  %+v",
-						err)
-				}
-				_ = tx.Commit()
-
-				// Act
-				payment, err = GetByID(testDB, payment.ID, test.expectedResult.UserID)
-				if err != nil {
-					testutil.FatalMsgf(t, "should be able to GetByID. Error: %+v", err)
-				}
-
-				assertPaymentsAreEqual(t, payment, test.expectedResult)
-			})
 	}
 }
 
@@ -291,8 +198,8 @@ func TestPayInvoice(t *testing.T) {
 			NumSatoshis: amount,
 		},
 	}
-	paymentRequest := "SomePaymentRequest1"
-	expectedPayment := Payment{
+	paymentRequest := "SomeOffchainRequest1"
+	expectedOffchain := Offchain{
 		UserID:         user.ID,
 		AmountSat:      amount,
 		AmountMSat:     amount * 1000,
@@ -356,14 +263,14 @@ func TestPayInvoice(t *testing.T) {
 			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
-		expectedPayment.SettledAt = got.SettledAt
-		expectedPayment.Status = SUCCEEDED
-		expectedPayment.Preimage = got.Preimage
+		expectedOffchain.SettledAt = got.SettledAt
+		expectedOffchain.Status = SUCCEEDED
+		expectedOffchain.Preimage = got.Preimage
 
-		assertPaymentsAreEqual(t, *got, expectedPayment)
+		assertOffchainTxsAreEqual(t, *got, expectedOffchain)
 	})
 	t.Run("successfully paying invoice marks invoice settledAt date", func(t *testing.T) {
-		paymentRequest := "SomePaymentRequest1"
+		paymentRequest := "SomeOffchainRequest1"
 
 		got, err := PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
@@ -371,10 +278,10 @@ func TestPayInvoice(t *testing.T) {
 			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
-		expectedPayment.SettledAt = got.SettledAt
-		expectedPayment.Status = SUCCEEDED
+		expectedOffchain.SettledAt = got.SettledAt
+		expectedOffchain.Status = SUCCEEDED
 
-		assertPaymentsAreEqual(t, *got, expectedPayment)
+		assertOffchainTxsAreEqual(t, *got, expectedOffchain)
 
 		updatedInvoice, _ := GetByID(testDB, got.ID, user.ID)
 
@@ -383,7 +290,7 @@ func TestPayInvoice(t *testing.T) {
 		}
 	})
 	t.Run("successfully paying invoice marks invoice settledAt date", func(t *testing.T) {
-		paymentRequest := "SomePaymentRequest1"
+		paymentRequest := "SomeOffchainRequest1"
 
 		got, err := PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
@@ -391,10 +298,10 @@ func TestPayInvoice(t *testing.T) {
 			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
 		}
 
-		expectedPayment.SettledAt = got.SettledAt
-		expectedPayment.Status = SUCCEEDED
+		expectedOffchain.SettledAt = got.SettledAt
+		expectedOffchain.Status = SUCCEEDED
 
-		assertPaymentsAreEqual(t, *got, expectedPayment)
+		assertOffchainTxsAreEqual(t, *got, expectedOffchain)
 
 		updatedInvoice, err := GetByID(testDB, got.ID, user.ID)
 		if err != nil {
@@ -408,7 +315,7 @@ func TestPayInvoice(t *testing.T) {
 }
 
 // TODO: Add cases where the triggerInvoice .settled is false
-// This case should return the exact same payment and an empty User
+// This case should return the exact same offchainTx and an empty User
 func TestUpdateInvoiceStatus(t *testing.T) {
 	t.Parallel()
 	// Arrange
@@ -428,16 +335,16 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		payment := CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
+		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, NewOffchainOpts{
 			UserID:      u.ID,
 			AmountSat:   mockInvoice.Value,
 			CallbackURL: "https://example.com",
 		})
 
-		testutil.AssertMsg(t, payment.CallbackURL != nil,
-			"Callback URL was nil! Payment: "+payment.String())
+		testutil.AssertMsg(t, offchainTx.CallbackURL != nil,
+			"Callback URL was nil! Offchain: "+offchainTx.String())
 		invoice := lnrpc.Invoice{
-			PaymentRequest: payment.PaymentRequest,
+			PaymentRequest: offchainTx.PaymentRequest,
 			Settled:        true,
 		}
 
@@ -464,14 +371,14 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		payment := CreateNewPaymentOrFail(t, testDB, lnMock, NewPaymentOpts{
+		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, NewOffchainOpts{
 			UserID:      u.ID,
 			AmountSat:   mockInvoice.Value,
 			CallbackURL: "https://example.com",
 		})
 
 		invoice := lnrpc.Invoice{
-			PaymentRequest: payment.PaymentRequest,
+			PaymentRequest: offchainTx.PaymentRequest,
 			Settled:        false,
 		}
 
@@ -490,219 +397,9 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		// enough for test to pick up
 		if err := async.Await(4,
 			time.Millisecond*20, checkPostSent); err == nil {
-			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled payment")
+			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled offchainTx")
 		}
 	})
-}
-
-func TestGetAllOffset(t *testing.T) {
-	testutil.DescribeTest(t)
-
-	// Arrange
-	user := userstestutil.CreateUserOrFail(t, testDB)
-
-	testInvoices := []struct {
-		Memo      string
-		AmountSat int64
-	}{
-		{
-			Memo:      "1",
-			AmountSat: 20001,
-		},
-		{
-
-			Memo:      "2",
-			AmountSat: 20002,
-		},
-		{
-			Memo:      "3",
-			AmountSat: 20003,
-		},
-	}
-
-	for _, invoice := range testInvoices {
-		if _, err := NewPayment(testDB,
-			lntestutil.LightningMockClient{
-				InvoiceResponse: lnrpc.Invoice{
-					Value: int64(invoice.AmountSat),
-					Memo:  invoice.Memo,
-				},
-			},
-			NewPaymentOpts{
-				UserID:    user.ID,
-				AmountSat: invoice.AmountSat,
-				Memo:      invoice.Memo,
-			}); err != nil {
-			testutil.FatalMsg(t, pkgErrors.Wrap(err, "could not create invoice"))
-		}
-	}
-
-	testCases := []struct {
-		offset                   int
-		expectedNumberOfInvoices int
-	}{
-		{
-			offset:                   0,
-			expectedNumberOfInvoices: 3,
-		},
-		{
-			offset:                   1,
-			expectedNumberOfInvoices: 2,
-		},
-		{
-			offset:                   3,
-			expectedNumberOfInvoices: 0,
-		},
-		{
-			offset:                   5000,
-			expectedNumberOfInvoices: 0,
-		},
-	}
-
-	for _, test := range testCases {
-		t.Run(fmt.Sprintf("GetAll() with offset %d expects %d invoices",
-			test.offset, test.expectedNumberOfInvoices),
-			func(t *testing.T) {
-
-				invoices, err := GetAll(testDB, user.ID, 10, test.offset)
-				if err != nil {
-					testutil.FatalMsgf(t, "should be able to GetAll. Error: %+v", err)
-				}
-				numberOfInvoices := len(invoices)
-
-				if test.expectedNumberOfInvoices != numberOfInvoices {
-					testutil.FatalMsgf(t,
-						"expectedNumberofInvoices should be equal to expected numberOfInvoices. Expected %q got %q",
-						test.expectedNumberOfInvoices,
-						numberOfInvoices)
-				}
-
-				for i, invoice := range invoices {
-
-					if test.offset > len(testInvoices) {
-						testutil.FatalMsg(t, "offset was greater than number of testinvoices, aborting test")
-					}
-
-					// We add test.offset to i to skip 'test.offset' invoices
-					expectedInvoice := testInvoices[i+test.offset]
-
-					if invoice.Memo != nil && expectedInvoice.Memo != *invoice.Memo {
-						testutil.FailMsgf(t, "Memo should be equal to expected memo. Expected %q got %q",
-							expectedInvoice.Memo,
-							*invoice.Memo)
-					}
-					if invoice.AmountSat != expectedInvoice.AmountSat {
-						testutil.FailMsgf(t, "AmountSat should be equal to expected AmountSat. Expected %q got %q",
-							expectedInvoice.AmountSat,
-							invoice.AmountSat)
-					}
-					if invoice.UserID != user.ID {
-						testutil.FailMsgf(t, "UserID should be equal to expected UserID. Expected %q got %q",
-							user.ID,
-							invoice.UserID)
-					}
-				}
-			})
-	}
-}
-
-func TestGetAllLimit(t *testing.T) {
-	// Arrange
-	testInvoices := []struct {
-		Memo      string
-		AmountSat int64
-	}{
-		{
-			Memo:      "1",
-			AmountSat: 20001,
-		},
-		{
-
-			Memo:      "2",
-			AmountSat: 20002,
-		},
-		{
-			Memo:      "3",
-			AmountSat: 20003,
-		},
-	}
-
-	user := userstestutil.CreateUserOrFail(t, testDB)
-
-	for _, invoice := range testInvoices {
-		if _, err := NewPayment(testDB,
-			lntestutil.LightningMockClient{
-				InvoiceResponse: lnrpc.Invoice{
-					Value: int64(invoice.AmountSat),
-					Memo:  invoice.Memo,
-				},
-			},
-			NewPaymentOpts{
-				UserID:    user.ID,
-				AmountSat: invoice.AmountSat,
-				Memo:      invoice.Memo,
-			}); err != nil {
-			testutil.FatalMsg(t, "could not create invoice")
-		}
-	}
-
-	testCases := []struct {
-		limit                    int
-		expectedNumberOfInvoices int
-	}{
-		{
-			limit:                    50,
-			expectedNumberOfInvoices: 3,
-		},
-		{
-			limit:                    3,
-			expectedNumberOfInvoices: 3,
-		},
-		{
-			limit:                    1,
-			expectedNumberOfInvoices: 1,
-		},
-		{
-			limit:                    0,
-			expectedNumberOfInvoices: 0,
-		},
-	}
-
-	for _, test := range testCases {
-
-		invoices, err := GetAll(testDB, user.ID, test.limit, 0)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		numberOfInvoices := len(invoices)
-
-		if test.expectedNumberOfInvoices != numberOfInvoices {
-			testutil.FailMsgf(t, "expectedNumberofInvoices should be equal to expected numberOfInvoices. Expected %q got %q",
-				test.expectedNumberOfInvoices,
-				numberOfInvoices)
-		}
-
-		for i, invoice := range invoices {
-
-			expectedInvoice := testInvoices[i]
-
-			if invoice.Memo != nil && expectedInvoice.Memo != *invoice.Memo {
-				testutil.FailMsgf(t, "Memo should be equal to expected memo. Expected %q got %q",
-					expectedInvoice.Memo,
-					*invoice.Memo)
-			}
-			if invoice.AmountSat != expectedInvoice.AmountSat {
-				testutil.FailMsgf(t, "AmountSat should be equal to expected AmountSat. Expected %q got %q",
-					expectedInvoice.AmountSat,
-					invoice.AmountSat)
-			}
-			if invoice.UserID != user.ID {
-				testutil.FailMsgf(t, "UserID should be equal to expected UserID. Expected %q got %q",
-					user.ID,
-					invoice.UserID)
-			}
-		}
-	}
 }
 
 func TestWithAdditionalFieldsShouldBeExpired(t *testing.T) {
@@ -711,7 +408,7 @@ func TestWithAdditionalFieldsShouldBeExpired(t *testing.T) {
 
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
-	payment := Payment{
+	offchainTx := Offchain{
 		UserID:         user.ID,
 		HashedPreimage: "f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57",
 		Expiry:         1,
@@ -722,23 +419,23 @@ func TestWithAdditionalFieldsShouldBeExpired(t *testing.T) {
 	}
 
 	tx := testDB.MustBegin()
-	payment, err := insert(tx, payment)
+	offchainTx, err := insert(tx, offchainTx)
 	if err != nil {
-		testutil.FailMsg(t, "could not insert payment")
+		testutil.FailMsg(t, "could not insert offchainTx")
 	}
 	_ = tx.Commit()
 
 	// Sleep for expiry to check if expired property is set
 	// correctly. expired should be true
-	time.Sleep(time.Second * time.Duration(payment.Expiry))
+	time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
 
-	payment = payment.WithAdditionalFields()
+	offchainTx = offchainTx.WithAdditionalFields()
 
-	if !payment.Expired {
-		testutil.FailMsg(t, "payment should be expired")
+	if !offchainTx.Expired {
+		testutil.FailMsg(t, "offchainTx should be expired")
 	}
 
-	if payment.ExpiresAt != payment.CreatedAt.Add(time.Second*time.Duration(payment.Expiry)) {
+	if offchainTx.ExpiresAt != offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)) {
 		testutil.FailMsg(t, "expiresAt should equal createdAt + expiry")
 	}
 }
@@ -749,8 +446,8 @@ func TestWithAdditionalFields(t *testing.T) {
 
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
-	invoices := []Payment{
-		Payment{
+	invoices := []Offchain{
+		Offchain{
 			UserID:         user.ID,
 			HashedPreimage: "f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57",
 			Expiry:         3600,
@@ -759,7 +456,7 @@ func TestWithAdditionalFields(t *testing.T) {
 			AmountSat:      100,
 			AmountMSat:     100000,
 		},
-		Payment{
+		Offchain{
 			UserID:         user.ID,
 			HashedPreimage: "f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57",
 			Expiry:         2,
@@ -788,7 +485,7 @@ func TestWithAdditionalFields(t *testing.T) {
 	}
 }
 
-func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
+func assertOffchainTxsAreEqual(t *testing.T, got, want Offchain) {
 	t.Helper()
 	testutil.AssertEqual(t, got.UserID, want.UserID, "userID")
 	testutil.AssertEqual(t, got.AmountSat, want.AmountSat, "amountSat")
@@ -824,8 +521,8 @@ func assertPaymentsAreEqual(t *testing.T, got, want Payment) {
 	}
 }
 
-// CreateNewOffchainOrFail creates a new offchain or fail
-func CreateNewOffchainOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
+// CreateNewOffchainTxOrFail creates a new offchain or fail
+func CreateNewOffchainTxOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
 	opts NewOffchainOpts) Offchain {
 	payment, err := NewOffchain(db, ln, opts)
 	if err != nil {
