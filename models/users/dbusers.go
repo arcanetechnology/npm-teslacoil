@@ -48,9 +48,7 @@ type ChangeBalance struct {
 	AmountSat int64
 }
 
-// UsersTable is the tablename of users, as saved in the DB
 const (
-	UsersTable = "users"
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
 	returningFromUsersTable = "RETURNING id, email, has_verified_email, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
@@ -143,6 +141,23 @@ func GetByCredentials(d *db.DB, email string, password string) (
 	}
 
 	return userResult, nil
+}
+
+// CalculateBalance calculates the balance for a given user
+func CalculateBalance(db *db.DB, userID int) (int, error) {
+	type balanceResult struct {
+		Balance int `db:"balance"`
+	}
+
+	var result balanceResult
+
+	query := "SELECT sum(amount_sat) as balance from transactions WHERE invoice_settled_at IS NOT NULL OR confirmed_at IS NOT NULL AND user_id=$1;"
+
+	if err := db.Get(&result, query, userID); err != nil {
+		return -1, err
+	}
+
+	return result.Balance, nil
 }
 
 // getEmailVerificationTokenWithKey creates a token that can be used to verify
