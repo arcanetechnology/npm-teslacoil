@@ -126,21 +126,15 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 			return
 		}
 
-		tx, err := onchain.ToOnchain()
-		if err != nil {
-			log.WithError(err).Error("could not convert transaction from withdrawonchain to Onchain")
-		}
-
 		c.JSONP(http.StatusOK, withdrawResponse{
-			ID:          tx.ID,
-			Address:     tx.Address,
-			Txid:        tx.Txid,
-			Vout:        tx.Vout,
-			Direction:   tx.Direction,
-			AmountSat:   tx.AmountSat,
-			Description: tx.Description,
-
-			ConfirmedAt: tx.ConfirmedAt,
+			ID:          onchain.ID,
+			Address:     onchain.Address,
+			Txid:        onchain.Txid,
+			Vout:        onchain.Vout,
+			Direction:   onchain.Direction,
+			AmountSat:   onchain.AmountSat,
+			Description: onchain.Description,
+			ConfirmedAt: onchain.ConfirmedAt,
 		})
 	}
 
