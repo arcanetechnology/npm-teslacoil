@@ -49,7 +49,7 @@ const (
 )
 
 // TODO verify invariants?
-func insertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
+func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 	converted := onchain.ToTransaction()
 	tx, err := insertTransaction(db, converted)
 	if err != nil {
@@ -65,7 +65,7 @@ func insertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 }
 
 // TODO verify invariants?
-func insertOffChain(db db.Inserter, offchain Offchain) (Offchain, error) {
+func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 	tx, err := insertTransaction(db, offchain.ToTransaction())
 	if err != nil {
 		return Offchain{}, err
@@ -391,7 +391,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		txToInsert.Description = &args.Description
 	}
 
-	transaction, err := insertOnchain(db, txToInsert)
+	transaction, err := InsertOnchain(db, txToInsert)
 	if err != nil {
 		return Onchain{}, pkgErrors.Wrap(err, "could not insert transaction")
 	}
@@ -432,7 +432,7 @@ func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
 		txToInsert.Description = &description
 	}
 
-	transaction, err := insertOnchain(db, txToInsert)
+	transaction, err := InsertOnchain(db, txToInsert)
 	if err != nil {
 		return Onchain{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
 	}
