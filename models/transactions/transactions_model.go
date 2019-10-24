@@ -48,22 +48,22 @@ type Transaction struct {
 	Status         *Status    `db:"invoice_status"`
 }
 
-// withAdditionalFields adds useful fields that's derived from information stored
+// WithAdditionalFields adds useful fields that's derived from information stored
 // in the DB.
-func (t Transaction) withAdditionalFields() Transaction {
-	t.ExpiresAt = t.getExpiryDate()
-	t.Expired = t.isExpired()
+func (t Transaction) WithAdditionalFields() Transaction {
+	t.ExpiresAt = t.GetExpiryDate()
+	t.Expired = t.IsExpired()
 
 	return t
 }
 
-// getExpiryDate converts the Expiry field to a more human-friendly format
-func (t Transaction) getExpiryDate() time.Time {
+// GetExpiryDate converts the Expiry field to a more human-friendly format
+func (t Transaction) GetExpiryDate() time.Time {
 	return t.CreatedAt.Add(time.Second * time.Duration(t.Expiry))
 }
 
-// isExpired calculates whether a transaction is expired or not
-func (t Transaction) isExpired() bool {
+// IsExpired calculates whether a transaction is expired or not
+func (t Transaction) IsExpired() bool {
 	expiresAt := t.CreatedAt.Add(time.Second * time.Duration(t.Expiry))
 
 	// Return whether the expiry date is before the time now
@@ -71,8 +71,8 @@ func (t Transaction) isExpired() bool {
 	return expiresAt.Before(time.Now().UTC())
 }
 
-// toOnChain converst a transaction into an onchain transaction
-func (t Transaction) toOnchain() (Onchain, error) {
+// ToOnChain converst a transaction into an onchain transaction
+func (t Transaction) ToOnchain() (Onchain, error) {
 	if t.Address == nil {
 		return Onchain{}, errors.New("transaction was offchain")
 	}
@@ -101,8 +101,8 @@ func (t Transaction) toOnchain() (Onchain, error) {
 	return on, nil
 }
 
-// toOffchain converst a transaction into an offchain transaction
-func (t Transaction) toOffChain() (Offchain, error) {
+// ToOffchain converst a transaction into an offchain transaction
+func (t Transaction) ToOffChain() (Offchain, error) {
 	if t.PaymentRequest == nil {
 		return Offchain{}, errors.New("TX was onchain")
 	}
@@ -167,8 +167,8 @@ type Offchain struct {
 	DeletedAt *time.Time `json:"-"`
 }
 
-// toTransaction converts a Offchain struct into a Transaction
-func (o Offchain) toTransaction() Transaction {
+// ToTransaction converts a Offchain struct into a Transaction
+func (o Offchain) ToTransaction() Transaction {
 	return Transaction{
 		ID:              o.ID,
 		UserID:          o.UserID,
@@ -222,8 +222,8 @@ type Onchain struct {
 	DeletedAt   *time.Time `json:"-"`
 }
 
-// toTransaction converts a Onchain struct into a Transaction
-func (o Onchain) toTransaction() Transaction {
+// ToTransaction converts a Onchain struct into a Transaction
+func (o Onchain) ToTransaction() Transaction {
 	return Transaction{
 		ID:               o.ID,
 		UserID:           o.UserID,
@@ -283,11 +283,11 @@ func insertTransaction(db *db.DB, t Transaction) (Transaction, error) {
 	return transaction, nil
 }
 
-// saveTxToTransaction saves a txid consisting of a txid, a vout and an amount to the
+// SaveTxToTransaction saves a txid consisting of a txid, a vout and an amount to the
 // db transaction
 // If the transaction already has a txid, it returns an error
 // TODO move this to onchain
-func (t Transaction) saveTxToTransaction(db *db.DB, txHash chainhash.Hash, vout int,
+func (t Transaction) SaveTxToTransaction(db *db.DB, txHash chainhash.Hash, vout int,
 	amountSat int64) error {
 
 	if t.Txid != nil {
@@ -320,12 +320,12 @@ func (t Transaction) saveTxToTransaction(db *db.DB, txHash chainhash.Hash, vout 
 	return nil
 }
 
-// markAsConfirmed updates the transaction stored in the db
+// MarkAsConfirmed updates the transaction stored in the db
 // with Confirmed = true and ConfirmedAt = Now(). After updating the transaction
 // it attempts to credit the user with the tx amount. Should anything fail, all
 // changes are rolled back
 // TODO move this to onchain
-func (t Transaction) markAsConfirmed(db *db.DB) error {
+func (t Transaction) MarkAsConfirmed(db *db.DB) error {
 
 	query := `UPDATE transactions
 		SET confirmed_at = $1, confirmed = true

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -116,7 +115,7 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 		// add the userID to send coins from
 		req.UserID = userID
 
-		transaction, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, req)
+		onchain, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, req)
 		if err != nil {
 			if errors.Is(err, transactions.ErrBalanceTooLowForWithdrawal) {
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrBalanceTooLowForWithdrawal)
@@ -127,17 +126,21 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, withdrawResponse{
-			ID:          transaction.ID,
-			Address:     *transaction.Address,
-			Txid:        transaction.Txid,
-			Vout:        transaction.Vout,
-			Direction:   transaction.Direction,
-			AmountSat:   transaction.AmountMSat,
-			Description: transaction.Description,
-			Confirmed:   transaction.Confirmed,
+		tx, err := onchain.ToOnchain()
+		if err != nil {
+			log.WithError(err).Error("could not convert transaction from withdrawonchain to Onchain")
+		}
 
-			ConfirmedAt: transaction.ConfirmedAt,
+		c.JSONP(http.StatusOK, withdrawResponse{
+			ID:          tx.ID,
+			Address:     tx.Address,
+			Txid:        tx.Txid,
+			Vout:        tx.Vout,
+			Direction:   tx.Direction,
+			AmountSat:   tx.AmountSat,
+			Description: tx.Description,
+
+			ConfirmedAt: tx.ConfirmedAt,
 		})
 	}
 
@@ -216,8 +219,9 @@ func (r *RestServer) createInvoice() gin.HandlerFunc {
 			return
 		}
 
-		t, err := transactions.NewPayment(
-			r.db, r.lncli, transactions.NewPaymentOpts{
+		// TODO: rename this function to something like `NewLightningPayment` or `NewLightningInvoice`
+		t, err := transactions.NewOffchain(
+			r.db, r.lncli, transactions.NewOffchainOpts{
 				UserID:      userID,
 				AmountSat:   req.AmountSat,
 				Memo:        req.Memo,
@@ -228,11 +232,6 @@ func (r *RestServer) createInvoice() gin.HandlerFunc {
 
 		if err != nil {
 			log.WithError(err).Error("Could not add new payment")
-			_ = c.Error(err)
-			return
-		}
-
-		if t.UserID != userID {
 			_ = c.Error(err)
 			return
 		}
@@ -261,8 +260,7 @@ func (r *RestServer) payInvoice() gin.HandlerFunc {
 			return
 		}
 
-		// Pays an invoice from claims.UserID's balance. This is secure because
-		// the UserID is extracted from the JWT
+		// Pays an invoice from userid found in authorization header.
 		t, err := transactions.PayInvoiceWithDescription(r.db, r.lncli, userID,
 			req.PaymentRequest, req.Description)
 		if err != nil {
@@ -297,7 +295,6 @@ func (r *RestServer) payInvoice() gin.HandlerFunc {
 					"channelBalance": balance.Balance,
 					"routeHints":     decoded.RouteHints,
 				}).WithError(origErr).Error("Could not pay invoice")
-				fmt.Println(2 + 2)
 
 			}()
 			_ = c.Error(err)
