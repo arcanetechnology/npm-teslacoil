@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/brianvoe/gofakeit"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
@@ -26,6 +27,10 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
+
+func init() {
+	gofakeit.Seed(0)
+}
 
 var (
 	SamplePreimage = func() []byte {
@@ -139,6 +144,7 @@ func TestNewOffchainTx(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("create invoice with amount %d memo %s and description %s",
 			tt.amountSat, tt.memo, tt.description), func(t *testing.T) {
+			t.Parallel()
 
 			// Create Mock LND client with preconfigured invoice response
 			mockLNcli := lntestutil.LightningMockClient{
@@ -152,82 +158,119 @@ func TestNewOffchainTx(t *testing.T) {
 				Description: tt.description,
 				OrderId:     tt.orderId,
 			})
-			if err != nil {
-				testutil.FatalMsgf(t, "should be able to CreateInvoice %+v", err)
-			}
+			require.NoError(t, err)
 
 			// Assertions
 			got := offchainTx
 			want := tt.want
 
-			assertOffchainTxsAreEqual(t, got, want)
+			assert.Equal(t, want, got)
 		})
 	}
 }
 
+func TestOffchain_MarkAsPaid(t *testing.T) {
+	t.Parallel()
+	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
+	tx := genOffchain(user)
+	inserted, err := InsertOffchain(testDB, tx)
+	require.NoError(t, err)
+
+	settlement := time.Now()
+	paid, err := inserted.MarkAsPaid(testDB, settlement)
+	require.NoError(t, err)
+	assert.Equal(t, SUCCEEDED, paid.Status)
+	require.NotNil(t, paid.SettledAt)
+	assert.WithinDuration(t, settlement, *paid.SettledAt, time.Second)
+}
+
+func TestOffchain_MarkAsFailed(t *testing.T) {
+	t.Parallel()
+	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
+	tx := genOffchain(user)
+	inserted, err := InsertOffchain(testDB, tx)
+	require.NoError(t, err)
+
+	paid, err := inserted.MarkAsFailed(testDB)
+	require.NoError(t, err)
+	assert.Equal(t, FAILED, paid.Status)
+
+	// hm, what are we going to require here? Are failed invoices settled?
+	// assert.Nil(t, paid.SettledAt)
+}
+
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
-	// Setup the database
-	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
 
 	amount := int64(gofakeit.Number(1, ln.MaxAmountMsatPerInvoice))
-	// Create Mock LND client with preconfigured invoice response
-	mockLNcli := lntestutil.LightningMockClient{
-		InvoiceResponse: lnrpc.Invoice{},
-		SendPaymentSyncResponse: lnrpc.SendResponse{
-			PaymentPreimage: SamplePreimage,
-			PaymentHash:     SampleHash[:],
-		},
-		// define what lncli.DecodePayReq returns
-		DecodePayReqResponse: lnrpc.PayReq{
-			PaymentHash: SampleHashHex,
-			NumSatoshis: amount,
-		},
-	}
+
 	paymentRequest := "SomeOffchainRequest1"
-	expectedOffchain := Offchain{
-		UserID:         user.ID,
-		AmountSat:      amount,
-		AmountMSat:     amount * 1000,
-		Preimage:       SamplePreimage,
-		HashedPreimage: SampleHash[:],
-		Direction:      OUTBOUND,
-		Status:         SUCCEEDED,
-	}
 
 	t.Run("paying invoice decreases balance of user", func(t *testing.T) {
-
-		_, err := PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
+		t.Parallel()
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
+		// Create Mock LND client with preconfigured invoice response
+		mockLNcli := lntestutil.LightningMockClient{
+			SendPaymentSyncResponse: lnrpc.SendResponse{
+				PaymentPreimage: SamplePreimage,
+				PaymentHash:     SampleHash[:],
+			},
+			// define what lncli.DecodePayReq returns
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: amount,
+			},
 		}
+		balancePrePayment, err := balance.ForUser(testDB, user.ID)
+		require.NoError(t, err)
+
+		_, err = PayInvoice(
+			testDB, &mockLNcli, user.ID, paymentRequest)
+		require.NoError(t, err)
 
 		_, err = users.GetByID(testDB, user.ID)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		// testutil.AssertEqual(t, updatedUser.Balance, user.Balance-amount)
+		bal, err := balance.ForUser(testDB, user.ID)
+		require.NoError(t, err)
+
+		assert.Equal(t, balancePrePayment.Sats()-amount, bal.Sats())
 	})
 
-	t.Run("paying invoice greater than balance fails with 'violates check constraint user_balance_check'", func(t *testing.T) {
-		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
-			PaymentHash: SampleHashHex,
-			NumSatoshis: ln.MaxAmountMsatPerInvoice * 6,
+	t.Run("paying invoice greater than balance fails", func(t *testing.T) {
+		t.Parallel()
+
+		user := CreateUserWithBalanceOrFail(t, testDB, 5)
+		// Create Mock LND client with preconfigured invoice response
+		mockLNcli := lntestutil.LightningMockClient{
+			SendPaymentSyncResponse: lnrpc.SendResponse{
+				PaymentPreimage: SamplePreimage,
+				PaymentHash:     SampleHash[:],
+			},
+			// define what lncli.DecodePayReq returns
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: 6,
+			},
 		}
 
-		_, err := PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
-		if !errors.Is(err, ErrUserBalanceTooLow) {
-			testutil.FailMsgf(t, "should not pay invoice greater than users balance")
-		}
+		_, err := PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
+		assert.True(t, errors.Is(err, ErrUserBalanceTooLow))
 
 	})
 	t.Run("paying invoice with 0 amount fails with Err0AmountInvoiceNotSupported", func(t *testing.T) {
-		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
-			PaymentHash: SampleHashHex,
-			NumSatoshis: 0,
+		t.Parallel()
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
+		mockLNcli := lntestutil.LightningMockClient{
+			SendPaymentSyncResponse: lnrpc.SendResponse{
+				PaymentPreimage: SamplePreimage,
+				PaymentHash:     SampleHash[:],
+			},
+			// define what lncli.DecodePayReq returns
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: 0,
+			},
 		}
 
 		_, err := PayInvoice(
@@ -237,69 +280,28 @@ func TestPayInvoice(t *testing.T) {
 		}
 
 	})
-	t.Run("successfully paying invoice marks invoice as paid", func(t *testing.T) {
-		mockLNcli.DecodePayReqResponse = lnrpc.PayReq{
-			PaymentHash: SampleHashHex,
-			NumSatoshis: amount,
-		}
 
-		got, err := PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
-		}
-
-		expectedOffchain.SettledAt = got.SettledAt
-		expectedOffchain.Status = SUCCEEDED
-		expectedOffchain.Preimage = got.Preimage
-
-		assertOffchainTxsAreEqual(t, got, expectedOffchain)
-	})
 	t.Run("successfully paying invoice marks invoice settledAt date", func(t *testing.T) {
-		paymentRequest := "SomeOffchainRequest1"
-
-		got, err := PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
+		t.Parallel()
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
+		mockLNcli := lntestutil.LightningMockClient{
+			SendPaymentSyncResponse: lnrpc.SendResponse{
+				PaymentPreimage: SamplePreimage,
+				PaymentHash:     SampleHash[:],
+			},
+			// define what lncli.DecodePayReq returns
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: amount,
+			},
 		}
 
-		expectedOffchain.SettledAt = got.SettledAt
-		expectedOffchain.Status = SUCCEEDED
+		got, err := PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
+		require.NoError(t, err)
 
-		assertOffchainTxsAreEqual(t, got, expectedOffchain)
-
-		updatedInvoice, err := GetTransactionByID(testDB, got.ID, user.ID)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
-		if updatedInvoice.SettledAt == nil {
-			testutil.FailMsgf(t, "expected settledAt to be defined, but was <nil>")
-		}
-	})
-	t.Run("successfully paying invoice marks invoice settledAt date", func(t *testing.T) {
-		paymentRequest := "SomeOffchainRequest1"
-
-		got, err := PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not pay invoice: %v", err)
-		}
-
-		expectedOffchain.SettledAt = got.SettledAt
-		expectedOffchain.Status = SUCCEEDED
-
-		assertOffchainTxsAreEqual(t, got, expectedOffchain)
-
-		updatedInvoice, err := GetTransactionByID(testDB, got.ID, user.ID)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not getbyid: %v", err)
-		}
-
-		if updatedInvoice.SettledAt == nil {
-			testutil.FailMsgf(t, "expected settledAt to be defined, but was <nil>")
-		}
+		assert.Equal(t, SUCCEEDED, got.Status)
+		assert.NotNil(t, got.SettledAt)
+		assert.WithinDuration(t, *got.SettledAt, time.Now(), time.Second)
 	})
 }
 
@@ -450,6 +452,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 	}
 }
 
+/*
 func assertOffchainTxsAreEqual(t *testing.T, got, want Offchain) {
 	t.Helper()
 	testutil.AssertEqual(t, got.UserID, want.UserID, "userID")
@@ -485,6 +488,7 @@ func assertOffchainTxsAreEqual(t *testing.T, got, want Offchain) {
 		testutil.AssertEqual(t, *got.CustomerOrderId, *want.CustomerOrderId)
 	}
 }
+*/
 
 // CreateNewOffchainTxOrFail creates a new offchain or fail
 func CreateNewOffchainTxOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,

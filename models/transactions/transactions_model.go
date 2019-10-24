@@ -60,7 +60,7 @@ func (t Transaction) String() string {
 	if on, err := t.ToOnchain(); err == nil {
 		return on.String()
 	}
-	if off, err := t.ToOffchain(); err != nil {
+	if off, err := t.ToOffchain(); err == nil {
 		return off.String()
 	}
 	panic("TX is neither offchain nor onchain!")
@@ -223,6 +223,72 @@ func (o Offchain) WithAdditionalFields() Offchain {
 		panic("Could not convert back to offchain TX!")
 	}
 	return offWithFields
+}
+
+// MarkAsPaid marks the given payment request as paid at the given date
+func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error) {
+	updateOffchainTxQuery := `UPDATE transactions
+		SET settled_at = :settled_at, invoice_status = :invoice_status
+		WHERE id = :id ` + txReturningSql
+
+	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
+
+	o.SettledAt = &paidAt
+	o.Status = SUCCEEDED
+	tx := o.ToTransaction()
+	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
+	if err != nil {
+		log.WithError(err).Error("Couldn't mark invoice as paid")
+		return Offchain{}, err
+	}
+
+	if !rows.Next() {
+		return Offchain{}, fmt.Errorf("could not mark invoice as paid: %w", sql.ErrNoRows)
+	}
+
+	var updated Transaction
+	if err := rows.StructScan(&updated); err != nil {
+		return Offchain{}, err
+	}
+
+	updatedOffchain, err := updated.ToOffchain()
+	if err != nil {
+		return Offchain{}, err
+	}
+
+	return updatedOffchain, nil
+}
+
+// MarkAsFailed marks the transaction as failed
+func (o Offchain) MarkAsFailed(db db.Inserter) (Offchain, error) {
+	updateOffchainTxQuery := `UPDATE transactions 
+		SET invoice_status = :invoice_status
+		WHERE id = :id ` + txReturningSql
+
+	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
+
+	o.Status = FAILED
+	tx := o.ToTransaction()
+	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
+	if err != nil {
+		log.WithError(err).Errorf("Couldn't mark invoice as failed")
+		return Offchain{}, err
+	}
+	if !rows.Next() {
+		return Offchain{}, fmt.Errorf("couldn't mark invoice as failed: %w", sql.ErrNoRows)
+	}
+
+	var updated Transaction
+	if err := rows.StructScan(&updated); err != nil {
+		return Offchain{}, err
+	}
+
+	updatedOffchain, err := updated.ToOffchain()
+	if err != nil {
+		return Offchain{}, err
+	}
+
+	return updatedOffchain, nil
 }
 
 func (o Offchain) String() string {
