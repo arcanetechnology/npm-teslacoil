@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/dchest/passwordreset"
 	"github.com/jmoiron/sqlx"
@@ -41,6 +42,10 @@ type User struct {
 	CreatedAt           time.Time  `db:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at"`
 	DeletedAt           *time.Time `db:"deleted_at"`
+
+	// BalanceSats is an additional property that is not
+	// saved in the db, but is computed using the balance package
+	BalanceSats int64 `db:"-"`
 }
 
 const (
@@ -95,20 +100,30 @@ func GetByID(db *db.DB, id int) (User, error) {
 		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
 	}
 
-	return userResult, nil
+	withBalance, err := userResult.withBalance(db)
+	if err != nil {
+		log.WithError(err).Error("could not add balance")
+	}
+
+	return withBalance, nil
 }
 
 // GetByEmail selects all columns for user where email=email
-func GetByEmail(d *db.DB, email string) (User, error) {
+func GetByEmail(db *db.DB, email string) (User, error) {
 	userResult := User{}
 	uQuery := fmt.Sprintf(`%s FROM users WHERE email=$1 LIMIT 1`,
 		selectFromUsersTable)
 
-	if err := d.Get(&userResult, uQuery, email); err != nil {
+	if err := db.Get(&userResult, uQuery, email); err != nil {
 		return User{}, err
 	}
 
-	return userResult, nil
+	withBalance, err := userResult.withBalance(db)
+	if err != nil {
+		log.WithError(err).Error("could not add balance")
+	}
+
+	return withBalance, nil
 }
 
 // GetByCredentials retrieves a user from the database by taking in
@@ -132,7 +147,12 @@ func GetByCredentials(db *db.DB, email string, password string) (
 		return User{}, err
 	}
 
-	return userResult, nil
+	withBalance, err := userResult.withBalance(db)
+	if err != nil {
+		log.WithError(err).Error("could not add balance")
+	}
+
+	return withBalance, nil
 }
 
 // GetEmailVerificationTokenWithKey creates a token that can be used
@@ -452,6 +472,17 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 
 	return user, nil
 
+}
+
+// WithBalance fills in the BalanceSats property in the User struct
+func (u User) withBalance(db *db.DB) (User, error) {
+	uBalance, err := balance.ForUser(db, u.ID)
+	if err != nil {
+		log.WithError(err).Error("could not get balance")
+	}
+	u.BalanceSats = uBalance.Sats()
+
+	return u, nil
 }
 
 // ChangePassword changes the password for a user
