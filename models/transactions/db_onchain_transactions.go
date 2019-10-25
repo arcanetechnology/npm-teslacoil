@@ -15,6 +15,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -28,7 +29,8 @@ import (
 var log = build.Log
 
 var (
-	ErrTxHasTxid = pkgErrors.New("transaction already has txid, cant overwrite")
+	ErrNonPositiveAmount = errors.New("cannot send non-positiv amount")
+	ErrTxHasTxid         = pkgErrors.New("transaction already has txid, cant overwrite")
 	// ErrBalanceTooLowForWithdrawal means the user tried to withdraw too much money
 	ErrBalanceTooLowForWithdrawal = errors.New("cannot withdraw, balance is too low")
 )
@@ -60,7 +62,10 @@ func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 		return Onchain{}, fmt.Errorf("could not convert inserted TX to onchain TX: %w", err)
 	}
 	// update the sats field
-	insertedOnchain.AmountSat = tx.AmountMSat / 1000
+	if tx.AmountMSat != nil {
+		sats := *tx.AmountMSat / 1000
+		insertedOnchain.AmountSat = &sats
+	}
 	return insertedOnchain, nil
 }
 
@@ -70,7 +75,7 @@ func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 	if err != nil {
 		return Offchain{}, err
 	}
-	insertedOffchain, err := tx.ToOffChain()
+	insertedOffchain, err := tx.ToOffchain()
 	if err != nil {
 		return Offchain{}, fmt.Errorf("could not convert inserted TX to offchain TX: %w", err)
 	}
@@ -283,7 +288,13 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 					}
 				}
 
-				if math.Round(btcutil.SatoshiPerBitcoin*output.Value) != float64(onchain.AmountSat) {
+				outputValue, err := btcutil.NewAmount(output.Value)
+				if err != nil {
+					logrus.WithError(err).Error("Could not convert to btcutil.Amount")
+					continue
+				}
+				onchainValue := btcutil.Amount(*onchain.AmountSat)
+				if outputValue != onchainValue {
 					log.WithFields(logrus.Fields{"value": output.Value, "amount": onchain.AmountSat}).
 						Errorf("actual outputValue and expected amount not equal, check logic")
 					continue
@@ -308,6 +319,11 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 
 func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
 	string, error) {
+
+	if args.Amount < 1 {
+		return "", ErrNonPositiveAmount
+	}
+
 	// don't pass the args directly to lnd, to safeguard
 	// against ever supplying the SendAll flag
 	lnArgs := &lnrpc.SendCoinsRequest{
@@ -353,17 +369,25 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		return Onchain{}, err
 	}
 
-	// TODO get user balance
+	bal, err := balance.ForUser(db, user.ID)
+	if err != nil {
+		return Onchain{}, err
+	}
 
 	// We dont pass sendAll to lncli, as that would send the entire nodes
 	// balance to the address
 	if args.SendAll {
-		// args.AmountSat = user.Balance
+		args.AmountSat = bal.Sats()
 	}
 
-	// if user.Balance < args.AmountSat {
-	//	return nil, ErrBalanceTooLowForWithdrawal
-	// }
+	if args.AmountSat > bal.Sats() {
+		log.WithFields(logrus.Fields{
+			"balanceSats":       bal.Sats(),
+			"requestedSendSats": args.AmountSat,
+			"userId":            user.ID,
+		}).Error("User tried to withdraw more than their balance")
+		return Onchain{}, ErrUserBalanceTooLow
+	}
 
 	txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
 		Addr:       args.Address,
@@ -371,6 +395,10 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		TargetConf: int32(args.TargetConf),
 		SatPerByte: int64(args.SatPerByte),
 	})
+	if err != nil {
+		log.WithError(err).Error("Could not send money onchain")
+		return Onchain{}, err
+	}
 
 	vout, err := bitcoin.FindVout(txid, args.AmountSat)
 	if err != nil {
@@ -381,7 +409,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 	txToInsert := Onchain{
 		UserID:    user.ID,
 		Address:   args.Address,
-		AmountSat: args.AmountSat,
+		AmountSat: &args.AmountSat,
 		Txid:      &txid,
 		Vout:      &vout,
 		Direction: OUTBOUND,
@@ -425,7 +453,7 @@ func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
 		Description: &description,
 		Txid:        txid,
 		Vout:        vout,
-		AmountSat:   amountSat,
+		AmountSat:   &amountSat,
 	}
 
 	if description != "" {

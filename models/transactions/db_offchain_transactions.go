@@ -10,13 +10,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
-	"strings"
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -123,44 +121,6 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 	return inserted, nil
 }
 
-// MarkInvoiceAsPaid marks the given payment request as paid at the given date
-func MarkInvoiceAsPaid(db *db.DB, paymentRequest string, paidAt time.Time) error {
-	updateOffchainTxQuery := `UPDATE offchaintx 
-		SET settled_at = $1, status = $2
-		WHERE payment_request = $3`
-
-	log.Infof("marking %s as paid", paymentRequest)
-
-	result, err := db.Exec(updateOffchainTxQuery, paidAt, SUCCEEDED, paymentRequest)
-	if err != nil {
-		log.Errorf("Couldn't mark invoice as paid: %+v", err)
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	log.Infof("Marking an invoice as paid resulted in %d updated rows", rows)
-
-	return nil
-}
-
-// MarkInvoiceAsFailed marks the given payment request as paid at the given date
-func MarkInvoiceAsFailed(db *db.DB, paymentRequest string) error {
-	updateOffchainTxQuery := `UPDATE offchaintx 
-		SET status = $1
-		WHERE payment_request = $2`
-
-	log.Infof("marking %s as failed", paymentRequest)
-
-	result, err := db.Exec(updateOffchainTxQuery, FAILED, paymentRequest)
-	if err != nil {
-		log.Errorf("Couldn't mark invoice as failed: %+v", err)
-		return err
-	}
-	rows, _ := result.RowsAffected()
-	log.Tracef("Marking an invoice as paid resulted in %d updated rows", rows)
-
-	return nil
-}
-
 // PayInvoice is used to Pay an invoice without a description
 func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 	paymentRequest string) (Offchain, error) {
@@ -181,12 +141,29 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	}
 
 	if payreq.NumSatoshis == 0 {
+		log.WithFields(logrus.Fields{
+			"userId":  userID,
+			"invoice": paymentRequest,
+		}).Warn("User tried to pay zero amount invoice")
 		return Offchain{}, Err0AmountInvoiceNotSupported
 	}
 
 	hashedPreimage, err := hex.DecodeString(payreq.PaymentHash)
 	if err != nil {
 		return Offchain{}, err
+	}
+
+	userBalance, err := balance.ForUser(db, userID)
+	if err != nil {
+		return Offchain{}, nil
+	}
+	if userBalance.Sats() < payreq.NumSatoshis {
+		log.WithFields(logrus.Fields{
+			"userId":          userID,
+			"balanceSats":     userBalance.MilliSats(),
+			"requestedAmount": payreq.NumSatoshis,
+		}).Warn("User tried to pay invoice for more than their balance")
+		return Offchain{}, ErrUserBalanceTooLow
 	}
 
 	// insert pay_req into DB
@@ -227,33 +204,20 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	}).Info("Tried sending payment")
 
 	if paymentResponse.PaymentError != "" {
-		if err := MarkInvoiceAsFailed(db, paymentRequest); err != nil {
+		failed, err := payment.MarkAsFailed(db)
+		if err != nil {
 			return Offchain{}, err
 		}
 
-		return Offchain{}, errors.New(paymentResponse.PaymentError)
+		return failed, errors.New(paymentResponse.PaymentError)
 	}
 
-	settledAt := time.Now()
-	if err := MarkInvoiceAsPaid(db, paymentRequest, settledAt); err != nil {
-		log.WithError(err).Error("Could not mark invoice as paid")
-		return Offchain{}, fmt.Errorf("could not mark invoice as paid; %w", err)
-	}
-
-	log.WithField("payment", payment.String()).Info("updated payment")
-
-	// to always return the latest state of the payment, we retreive it from the DB
-	found, err := GetTransactionByID(db, payment.ID, payment.UserID)
-	if err != nil {
-		return Offchain{}, ErrCouldNotGetByID
-	}
-
-	foundOffchain, err := found.ToOffChain()
+	paid, err := payment.MarkAsPaid(db, time.Now())
 	if err != nil {
 		return Offchain{}, err
 	}
 
-	return foundOffchain, nil
+	return paid, nil
 }
 
 // InvoiceStatusListener is
@@ -313,12 +277,9 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 	payment.Status = Status("SUCCEEDED")
 	payment.Preimage = invoice.RPreimage
 
-	updateOffchainTxQuery := `UPDATE offchaintx 
-		SET status = :status, settled_at = :settled_at, preimage = :preimage
-		WHERE hashed_preimage = :hashed_preimage
-		RETURNING id, user_id, payment_request, preimage, hashed_preimage,
-	   			memo, description, expiry, direction, status, amount_sat, amount_msat,
-				callback_url, created_at, updated_at`
+	updateOffchainTxQuery := `UPDATE transactions 
+		SET invoice_status = :invoice_status, settled_at = :settled_at, preimage = :preimage
+		WHERE hashed_preimage = :hashed_preimage ` + txReturningSql
 
 	tx := database.MustBegin()
 
@@ -450,53 +411,4 @@ func postCallback(database *db.DB, payment Offchain, sender HttpPoster) error {
 
 type HttpPoster interface {
 	Post(url, contentType string, reader io.Reader) (*http.Response, error)
-}
-
-func (p Offchain) String() string {
-	fragments := []string{
-		"Offchain: {",
-		fmt.Sprintf("ID: %d", p.ID),
-		fmt.Sprintf("UserID: %d", p.UserID),
-		fmt.Sprintf("PaymentRequest: %s", p.PaymentRequest),
-		fmt.Sprintf("Preimage: %v", p.Preimage),
-		fmt.Sprintf("HashedPreimage: %s", p.HashedPreimage),
-		fmt.Sprintf("CallbackURL: %v", p.CallbackURL),
-		fmt.Sprintf("Status: %s", p.Status),
-	}
-
-	if p.Memo != nil {
-		fragments = append(fragments, fmt.Sprintf("Memo: %s", *p.Memo))
-	}
-	if p.Description != nil {
-		fragments = append(fragments, fmt.Sprintf("Description: %s", *p.Description))
-	}
-
-	fragments = append(fragments,
-		fmt.Sprintf("Expiry: %d", p.Expiry),
-		fmt.Sprintf("Direction: %s", p.Direction),
-		fmt.Sprintf("AmountSat: %d", p.AmountSat),
-		fmt.Sprintf("AmountMSat: %d", p.AmountMSat),
-		fmt.Sprintf("Expired: %v", p.Expired),
-		fmt.Sprintf("ExpiresAt: %v", p.ExpiresAt),
-		fmt.Sprintf("SettledAt: %v", p.SettledAt),
-		fmt.Sprintf("CreatedAt: %v", p.CreatedAt),
-		fmt.Sprintf("UpdatedAt: %v", p.UpdatedAt),
-		fmt.Sprintf("DeletedAt: %v", p.DeletedAt),
-		"}",
-	)
-
-	return strings.Join(fragments, ", ")
-}
-
-func (p Offchain) Equal(other Offchain) (bool, string) {
-	p.CreatedAt = other.CreatedAt
-	p.UpdatedAt = other.UpdatedAt
-	p.DeletedAt = other.DeletedAt
-	p.ID = other.ID
-
-	if !reflect.DeepEqual(p, other) {
-		return false, cmp.Diff(p, other)
-	}
-
-	return true, ""
 }
