@@ -5,6 +5,7 @@ import (
 	"context"
 	hmac2 "crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -78,6 +79,17 @@ type NewOffchainOpts struct {
 	OrderId     string
 }
 
+func (o NewOffchainOpts) toFields() logrus.Fields {
+	return logrus.Fields{
+		"userId":      o.UserID,
+		"amountSat":   o.AmountSat,
+		"memo":        o.Memo,
+		"description": o.Description,
+		"callbackUrl": o.CallbackURL,
+		"orderId":     o.OrderId,
+	}
+}
+
 // NewOffchain creates a new payment by first creating an invoice
 // using lnd, then saving info returned from lnd to a new payment
 func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (Offchain, error) {
@@ -86,7 +98,7 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
 	if err != nil {
-		log.WithError(err).Error("Could not create invoice")
+		log.WithError(err).WithFields(opts.toFields()).Error("Could not create invoice")
 		return Offchain{}, err
 	}
 
@@ -115,6 +127,7 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 
 	inserted, err := InsertOffchain(d, tx)
 	if err != nil {
+		log.WithError(err).WithFields(opts.toFields()).Error("Could not insert invoice")
 		return Offchain{}, err
 	}
 
@@ -232,102 +245,84 @@ func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 		hash := hex.EncodeToString(invoice.RHash)
 		log.WithField("hash",
 			hash,
-		).Debug("Received invoice on invoice status listener")
+		).Info("Received invoice on invoice status listener")
 		updated, err := UpdateInvoiceStatus(*invoice, database, sender)
 		if err != nil {
-			log.Errorf("Error when updating invoice status: %v", err)
+			log.WithError(err).Error("Error when updating invoice status")
 			// TODO: Here we need to handle the errors from UpdateInvoiceStatus
 		} else {
 			log.WithFields(logrus.Fields{"hash": hash,
 				"id":      updated.ID,
 				"settled": updated.SettledAt != nil},
-			).Debug("Updated invoice status")
+			).Info("Updated invoice status")
 		}
 	}
 }
 
 // UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
 // (newly added/settled invoices). If received payment was successful, updates
-// the payment stored in our db and increases the users balance
-func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPoster) (
-	*Offchain, error) {
-	tQuery := "SELECT * FROM offchaintx WHERE payment_request=$1"
+// the payment stored in our DB.
+func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender HttpPoster) (
+	Offchain, error) {
+	tQuery := "SELECT * FROM transactions WHERE payment_request=$1"
 
-	var payment Offchain
+	var selectTx Transaction
 	if err := database.Get(
-		&payment,
+		&selectTx,
 		tQuery,
 		invoice.PaymentRequest); err != nil {
-		return nil, errors.Wrapf(err,
+		log.WithError(err).WithField("paymentRequest",
+			invoice.PaymentRequest).Error("Could not read TX from DB")
+		return Offchain{}, errors.Wrapf(err,
 			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
 			invoice.PaymentRequest,
 		)
+	}
+	payment, err := selectTx.ToOffchain()
+	if err != nil {
+		return Offchain{}, err
 	}
 
 	log.WithFields(logrus.Fields{
 		"id":      payment.ID,
 		"settled": invoice.Settled,
-	}).Debug("Updating invoice status of payment", payment.ID, invoice.Settled)
+	}).Debug("Updating invoice status of payment")
 
 	if !invoice.Settled {
-		return &payment, nil
+		return Offchain{}, nil
 	}
+
 	now := time.Now()
 	payment.SettledAt = &now
-	payment.Status = Status("SUCCEEDED")
+	payment.Status = SUCCEEDED
 	payment.Preimage = invoice.RPreimage
 
+	updatedTx := payment.ToTransaction()
 	updateOffchainTxQuery := `UPDATE transactions 
 		SET invoice_status = :invoice_status, settled_at = :settled_at, preimage = :preimage
 		WHERE hashed_preimage = :hashed_preimage ` + txReturningSql
 
-	tx := database.MustBegin()
-
-	rows, err := tx.NamedQuery(updateOffchainTxQuery, &payment)
+	rows, err := database.NamedQuery(updateOffchainTxQuery, &updatedTx)
 	if err != nil {
-		_ = tx.Rollback()
-		return nil, errors.Wrapf(err,
-			"UpdateInvoiceStatus->tx.NamedQuery(&t, query, %+v)",
-			payment,
-		)
+		return Offchain{}, err
 	}
-	rows.Close()
+	defer rows.Close()
 
-	if rows.Next() {
-		if err = rows.Scan(
-			&payment.ID,
-			&payment.UserID,
-			&payment.PaymentRequest,
-			&payment.Preimage,
-			&payment.HashedPreimage,
-			&payment.Memo,
-			&payment.Description,
-			&payment.Expiry,
-			&payment.Direction,
-			&payment.Status,
-			&payment.AmountSat,
-			&payment.AmountMSat,
-			&payment.CallbackURL,
-			&payment.CreatedAt,
-			&payment.UpdatedAt,
-		); err != nil {
-			_ = tx.Rollback()
-			return nil, errors.Wrap(
-				err,
-				"UpdateInvoiceStatus->rows.Scan()",
-			)
-		}
+	if !rows.Next() {
+		return Offchain{}, fmt.Errorf("could not update offchain TX: %w", sql.ErrNoRows)
+	}
+	var tx Transaction
+	if err := rows.StructScan(&tx); err != nil {
+		return Offchain{}, fmt.Errorf("could not read TX from DB: %w", err)
 	}
 
-	err = tx.Commit()
+	inserted, err := tx.ToOffchain()
 	if err != nil {
-		return nil, errors.Wrap(
-			err,
-			"UpdateInvoiceStatus->tx.Commit()",
-		)
+		return Offchain{}, fmt.Errorf("could not convert TX to offchain TX: %w", err)
 	}
-	if payment.CallbackURL != nil {
-		if err := postCallback(database, payment, sender); err != nil {
+
+	if inserted.CallbackURL != nil {
+		if err := postCallback(database, inserted, sender); err != nil {
 			// don't return here, we don't want this to fail the entire
 			// operation
 			log.WithError(err).Error("Could not POST to callback URL")
@@ -336,7 +331,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database *db.DB, sender HttpPost
 		log.WithField("id", payment.ID).Debug("Invoice did not have callback URL")
 	}
 
-	return &payment, nil
+	return inserted, nil
 }
 
 // CallbackBody is the shape of the body we send to a specified payment callback
@@ -359,7 +354,7 @@ type CallbackBody struct {
 // .createHmac("sha256", hashedKey)
 // .update(payment.id.toString())
 // .digest("hex");
-func postCallback(database *db.DB, payment Offchain, sender HttpPoster) error {
+func postCallback(database db.Getter, payment Offchain, sender HttpPoster) error {
 	if payment.CallbackURL == nil {
 		return errors.New("callback URL was nil")
 	}

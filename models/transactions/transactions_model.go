@@ -4,12 +4,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/google/go-cmp/cmp"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
@@ -89,7 +87,7 @@ func (t Transaction) IsExpired() bool {
 	return expiresAt.Before(time.Now().UTC())
 }
 
-// ToOnChain converst a transaction into an onchain transaction
+// ToOnchain converts a transaction into an onchain transaction
 func (t Transaction) ToOnchain() (Onchain, error) {
 	if t.Address == nil {
 		return Onchain{}, errors.New("transaction was offchain")
@@ -327,19 +325,6 @@ func (o Offchain) String() string {
 	return strings.Join(fragments, ", ")
 }
 
-func (o Offchain) Equal(other Offchain) (bool, string) {
-	o.CreatedAt = other.CreatedAt
-	o.UpdatedAt = other.UpdatedAt
-	o.DeletedAt = other.DeletedAt
-	o.ID = other.ID
-
-	if !reflect.DeepEqual(o, other) {
-		return false, cmp.Diff(o, other)
-	}
-
-	return true, ""
-}
-
 // Onchain is the struct for an onchain transaction
 type Onchain struct {
 	ID          int     `json:"id"`
@@ -442,10 +427,10 @@ func (o Onchain) MarkAsConfirmed(db db.Inserter, height int) (Onchain, error) {
 	return updatedOnchain, nil
 }
 
-// AddReceivedMoney saves a TX consisting of a TXID, a vout and an amount to the
+// PersistReceivedMoney saves a TX consisting of a TXID, a vout and an amount to the
 // DB transaction. If the Onchain transaction already has received money (i.e.
 // has a TXID) the method errors.
-func (o Onchain) AddReceivedMoney(db db.Inserter, txid chainhash.Hash, vout int,
+func (o Onchain) PersistReceivedMoney(db db.Inserter, txid chainhash.Hash, vout int,
 	amountSat int64) (Onchain, error) {
 
 	if vout < 0 {
