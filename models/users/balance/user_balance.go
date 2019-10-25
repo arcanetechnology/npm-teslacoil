@@ -1,6 +1,7 @@
 package balance
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -12,8 +13,11 @@ var log = build.Log
 
 const (
 	milliSatsPerSat     = 1000
-	satsPerBitcoin      = 100000000    // 100 milllion
 	milliSatsPerBitcoin = 100000000000 // 100 000 million
+)
+
+var (
+	ErrUserHasNegativeBalance = errors.New("user has negative balance")
 )
 
 // Balance is a type we use to easily convert between different denominations of BTC(sats, millisats, Bitcoins)
@@ -48,12 +52,12 @@ func (b Balance) String() string {
 func ForUser(db *db.DB, userID int) (Balance, error) {
 	incoming, err := IncomingForUser(db, userID)
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
 	outgoing, err := OutgoingForUser(db, userID)
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
 	balance := incoming - outgoing
@@ -65,6 +69,8 @@ func ForUser(db *db.DB, userID int) (Balance, error) {
 	})
 	if balance < 0 {
 		bLogger.Error("User has negative balance!")
+		// TODO: create some monitoring service that shuts everything down if this happens
+		return -1, ErrUserHasNegativeBalance
 	}
 
 	bLogger.Trace("Calculated user balance")

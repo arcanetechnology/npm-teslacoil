@@ -14,9 +14,9 @@
         <array />
       </option>
       <option name="outputFromStdout" value="false" />
-      <option name="program" value="goimports" />
+      <option name="program" value="$PROJECT_DIR$/../../../../bin/goimports" />
       <option name="runOnExternalChanges" value="false" />
-      <option name="scopeName" value="Project Files" />
+      <option name="scopeName" value="All Places" />
       <option name="trackOnlyRoot" value="true" />
       <option name="workingDir" value="$ProjectFileDir$" />
       <envs>

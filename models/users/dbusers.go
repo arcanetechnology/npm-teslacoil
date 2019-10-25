@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/dchest/passwordreset"
@@ -13,8 +15,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
-	"gitlab.com/arcanecrypto/teslacoil/db"
 	"golang.org/x/crypto/bcrypt"
+
+	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
 var log = build.Log
@@ -26,7 +29,6 @@ type User struct {
 	Email            string `db:"email"`
 	HasVerifiedEmail bool   `db:"has_verified_email"`
 
-	// Balance is the balance of the user, expressed in sats
 	Firstname      *string `db:"first_name"`
 	Lastname       *string `db:"last_name"`
 	HashedPassword []byte  `db:"hashed_password" json:"-"`
@@ -45,39 +47,36 @@ const (
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
 	returningFromUsersTable = "RETURNING id, email, has_verified_email, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
-
 	// selectFromUsersTable is a SQL snippet that selects all the rows needed to
 	// get a full fledged user struct
 	selectFromUsersTable = "SELECT id, email, has_verified_email, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
 	// PasswordResetTokenDuration is how long our password reset tokens are valid
 	PasswordResetTokenDuration = 1 * time.Hour
-
 	// EmailVerificationTokenDuration is how long our email verification tokens are valid
 	EmailVerificationTokenDuration = 1 * time.Hour
-
-	//TotpIssuer is the name we issue 2FA TOTP tokens under
+	// TotpIssuer is the name we issue 2FA TOTP tokens under
 	TotpIssuer = "Teslacoil"
 )
 
-// TODO: Make this secure :-)
 var (
 	// Secret key used for resetting passwords.
+	// TODO: Make this secure :-)
 	passwordResetSecretKey = []byte("assume we have a long randomly generated secret key here")
-
 	// Secret key used for verifying emails
+	// TODO: Make this secure :-)
 	emailVerificationSecretKey = []byte("assume we have a different long and also random secret key here")
-)
 
-var (
+	// custom errors for this package
 	Err2faAlreadyEnabled = errors.New("user already has 2FA credentials")
 	Err2faNotEnabled     = errors.New("user does not have 2FA enabled")
 	ErrInvalidTotpCode   = errors.New("invalid TOTP code")
+	ErrEmailMustBeUnique = errors.New("users_email_key")
 )
 
 // GetAll reads all users from the database
 func GetAll(d *db.DB) ([]User, error) {
-	queryResult := []User{}
+	var queryResult []User
 	err := d.Select(&queryResult, "SELECT * FROM users")
 	if err != nil {
 		return queryResult, err
@@ -86,8 +85,7 @@ func GetAll(d *db.DB) ([]User, error) {
 	return queryResult, nil
 }
 
-// GetByID is a GET request that returns users that match the one specified
-// in the body
+// GetByID selects all columns for user where id=id
 func GetByID(db *db.DB, id int) (User, error) {
 	userResult := User{}
 	uQuery := fmt.Sprintf(`%s FROM users WHERE id=$1 LIMIT 1`,
@@ -100,8 +98,7 @@ func GetByID(db *db.DB, id int) (User, error) {
 	return userResult, nil
 }
 
-// GetByEmail is a GET request that returns users that match the one specified
-// in the body
+// GetByEmail selects all columns for user where email=email
 func GetByEmail(d *db.DB, email string) (User, error) {
 	userResult := User{}
 	uQuery := fmt.Sprintf(`%s FROM users WHERE email=$1 LIMIT 1`,
@@ -114,8 +111,10 @@ func GetByEmail(d *db.DB, email string) (User, error) {
 	return userResult, nil
 }
 
-// GetByCredentials retrieves a user from the database using the email and
-// the salted/hashed password
+// GetByCredentials retrieves a user from the database by taking in
+// the email and the raw password, and with bcrypt, compares the hashed
+// password stored in the db and the raw password
+// returns the user if and only if the password matches
 func GetByCredentials(db *db.DB, email string, password string) (
 	User, error) {
 
@@ -136,10 +135,13 @@ func GetByCredentials(db *db.DB, email string, password string) (
 	return userResult, nil
 }
 
-// GetEmailVerificationTokenWithKey creates a token that can be used to verify
-// the given email. This function is exposed for testing purposes, all other
-// callers should use the exposed method which use a predefined key.
-func GetEmailVerificationTokenWithKey(db *db.DB, email string, key []byte) (string, error) {
+// GetEmailVerificationTokenWithKey creates a token that can be used
+// to verify the given email. This function is exposed for testing
+// purposes, all other callers should use the exposed method which use
+// a predefined key.
+func GetEmailVerificationTokenWithKey(db *db.DB, email string, key []byte) (
+	string, error) {
+
 	user, err := GetByEmail(db, email)
 	if err != nil {
 		return "", err
@@ -148,50 +150,54 @@ func GetEmailVerificationTokenWithKey(db *db.DB, email string, key []byte) (stri
 	hashedEmail := sha256.Sum256([]byte(user.Email))
 
 	// we use the passwordreset package here because resetting a password
-	// and verifying an email is fundamentally the same operation: we need to
-	// give the user a secret they can use at a later point in time, and that
-	// token needs to depend on both input from the user (their email) as well
-	// as something secret to us. A difference between this usage and when we're
-	// resetting a password is that password reset tokens are single use, as they
-	// depend on both the users email and password (which makes the token invalid
-	// after the password has been changed). The tokens created here could be
-	// used multiple times, but there doesn't seem to be any harm in this.
+	// and verifying an email is fundamentally the same operation: we
+	// need to give the user a secret they can use at a later point in
+	// time, and that token needs to depend on both input from the user
+	// (their email) as well as something secret to us. A difference
+	// between this usage and when we're resetting a password is that
+	// password reset tokens are single use, as they depend on both the
+	// users email and password (which makes the token invalid after
+	// the password has been changed). The tokens created here could
+	// be used multiple times, but there doesn't seem to be any harm in this.
 	token := passwordreset.NewToken(
 		email, EmailVerificationTokenDuration,
 		hashedEmail[:], key)
 	return token, nil
 }
 
-// GetEmailVerificationToken creates a token that can be used to verify the given
-// email.
+// GetEmailVerificationToken creates a token that can be used to
+// verify the given email.
 func GetEmailVerificationToken(db *db.DB, email string) (string, error) {
 	return GetEmailVerificationTokenWithKey(db, email, emailVerificationSecretKey)
 }
 
-// VerifyEmailVerificationToken verifies that the given token matches the signing
-// key used to create tokens.
+// VerifyEmailVerificationToken verifies that the given token matches
+// the signing key used to create tokens.
 func VerifyEmailVerificationToken(token string) (string, error) {
 	getEmailHash := func(email string) ([]byte, error) {
 		hash := sha256.Sum256([]byte(email))
 		return hash[:], nil
 	}
 
-	// see comment in getEmailVerificationTokenWithKey for explanation on why
-	// we use the passwordreset package.
+	// see comment in getEmailVerificationTokenWithKey for explanation
+	// on why we use the passwordreset package.
 	return passwordreset.VerifyToken(
 		token,
 		getEmailHash,
 		emailVerificationSecretKey)
 }
 
-// VerifyEmail checks the given token, and if valid sets the users email as verified
+// VerifyEmail checks the given token, and if valid sets the users
+// email as verified
 func VerifyEmail(db *db.DB, token string) (User, error) {
 	email, err := VerifyEmailVerificationToken(token)
 	if err != nil {
 		return User{}, err
 	}
 
-	query := `UPDATE users SET has_verified_email = true WHERE email = $1 ` + returningFromUsersTable
+	query := `UPDATE users SET has_verified_email = true WHERE email = $1
+` + returningFromUsersTable
+
 	rows, err := db.Query(query, email)
 	if err != nil {
 		return User{}, err
@@ -201,9 +207,9 @@ func VerifyEmail(db *db.DB, token string) (User, error) {
 
 }
 
-// GetPasswordResetToken creates a valid password reset token for the user
-// corresponding to the given email, if such an user exists. This token
-// can later be used to send a reset password request to the API.
+// GetPasswordResetToken creates a valid password reset token for the
+// user corresponding to the given email, if such an user exists. This
+// token can later be used to send a reset password request to the API.
 func GetPasswordResetToken(db *db.DB, email string) (string, error) {
 	user, err := GetByEmail(db, email)
 	if err != nil {
@@ -217,9 +223,9 @@ func GetPasswordResetToken(db *db.DB, email string) (string, error) {
 }
 
 // VerifyPasswordResetToken verifies the given token against the hashed
-// password and email of the associated user, as well as our private signing
-// key. It returns the login (email) that's allowed to use this password
-// reset token.
+// password and email of the associated user, as well as our private
+// signing key. It returns the login (email) that's allowed to use this
+// password reset token.
 func VerifyPasswordResetToken(db *db.DB, token string) (string, error) {
 	getPasswordHash := func(email string) ([]byte, error) {
 		user, err := GetByEmail(db, email)
@@ -235,6 +241,8 @@ func VerifyPasswordResetToken(db *db.DB, token string) (string, error) {
 		passwordResetSecretKey)
 }
 
+// CreateUserArgs is the struct required to create a new user using
+// the Create method
 type CreateUserArgs struct {
 	Email     string
 	Password  string
@@ -242,7 +250,9 @@ type CreateUserArgs struct {
 	LastName  *string
 }
 
-// Create is a POST request and inserts the user in the body into the database
+// Create inserts a user with email, password, firstname,
+// and lastname into the db. The password is hashed and salted
+// before it is saved
 func Create(d *db.DB, args CreateUserArgs) (User, error) {
 	hashedPassword, err := hashAndSalt(args.Password)
 	if err != nil {
@@ -260,7 +270,8 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 	if err != nil {
 		txErr := tx.Rollback()
 		if txErr != nil {
-			return User{}, errors.Wrap(txErr, "--> tx.Rollback()")
+			return User{}, errors.Wrap(txErr,
+				"create(): could not roll back tx")
 		}
 		return User{}, err
 	}
@@ -268,9 +279,9 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 	if err != nil {
 		txErr := tx.Rollback()
 		if txErr != nil {
-			return User{}, errors.Wrap(txErr, "--> tx.Rollback()")
+			return User{}, errors.Wrap(txErr, "create(): could not rollbacktx")
 		}
-		log.Errorf("Could not commit user creation: %v\n", err)
+		log.WithError(err).Error("could not commit user creation")
 		return User{}, err
 	}
 
@@ -318,31 +329,33 @@ func scanUser(rows dbScanner) (User, error) {
 	return user, nil
 }
 
-func hashAndSalt(pwd string) ([]byte, error) {
-	// Use GenerateFromPassword to hash & salt pwd.
-	// MinCost is just an integer constant provided by the bcrypt
-	// package along with DefaultCost & MaxCost.
-	// The cost can be any value you want provided it isn't lower
-	// than the MinCost (4)
-
+// hashAndSalt generates a bcrypt hash from a string
+func hashAndSalt(password string) ([]byte, error) {
+	// hashPasswordCost is how many rounds the password
+	// should be hashed. rounds = 1 << hashPasswordCost
 	const hashPasswordCost = 12
-	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), hashPasswordCost)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), hashPasswordCost)
 	if err != nil {
-		log.Errorf("Couldn't hash password: %v", err)
+		log.WithError(err).Error("could not hash password")
 		return nil, err
 	}
 
-	// bcrypt returns a base64 encoded hash, therefore string(hash) works for
-	// converting the password to a readable format
-	log.Tracef("generated password %s", string(hash))
+	// bcrypt returns a base64 encoded hash, therefore string(hash)
+	// works for converting the password to a readable format
+	log.WithField("passwordHash", string(hash)).Trace("generated password")
 
 	return hash, nil
 }
 
+// InsertUser inserts fields from a user struct into the
+// database.
 func InsertUser(tx *sqlx.Tx, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
-		(email, hashed_password, totp_secret, confirmed_totp_secret, first_name, last_name)
-		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, :last_name) ` + returningFromUsersTable
+		(email, hashed_password, totp_secret, confirmed_totp_secret, 
+first_name, last_name)
+		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, 
+:last_name) ` + returningFromUsersTable
 
 	rows, err := tx.NamedQuery(userCreateQuery, user)
 	if err != nil {
@@ -361,21 +374,19 @@ type UpdateOptions struct {
 	// If set to nil, does nothing. If set to the empty string, deletes
 	// firstName
 	NewFirstName *string
-
 	// If set to nil, does nothing. If set to the empty string, deletes
 	// lastName
 	NewLastName *string
-
 	// If set to nil, does nothing, if set to the empty string, we return
 	// an error
 	NewEmail *string
 }
 
 // Update the users email, first name and last name, depending on
-// what options we get passed in
+// what options are passed in
 func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 	if u.ID == 0 {
-		return User{}, errors.New("User ID cannot be 0!")
+		return User{}, errors.New("UserID cannot be 0")
 	}
 
 	// no action needed
@@ -385,7 +396,7 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 	}
 
 	updateQuery := `UPDATE users SET `
-	updates := []string{}
+	var updates []string
 	queryUser := User{
 		ID: u.ID,
 	}
@@ -416,7 +427,13 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 
 	updateQuery += strings.Join(updates, ",")
 	updateQuery += ` WHERE id = :id ` + returningFromUsersTable
-	log.Debugf("Executing SQL for updating user: %s with opts %+v", updateQuery, opts)
+	log.WithFields(logrus.Fields{
+		"userID":       queryUser.ID,
+		"sqlQuery":     updateQuery,
+		"newEmail":     opts.NewEmail,
+		"newFirstName": opts.NewFirstName,
+		"newLastName":  opts.NewLastName,
+	}).Debug("executing SQL for updating user")
 
 	rows, err := db.NamedQuery(
 		updateQuery,
@@ -437,55 +454,65 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 
 }
 
-func (u User) ResetPassword(db *db.DB, password string) (User, error) {
-	hashed, err := hashAndSalt(password)
+// ChangePassword changes the password for a user
+func (u User) ChangePassword(db *db.DB, newPassword string) (User, error) {
+	hash, err := hashAndSalt(newPassword)
 	if err != nil {
-		return User{}, errors.Wrap(err, "User.ChangePassword(): couldn't hash new password")
+		return User{}, errors.Wrap(err, "could not hash new password")
 	}
 
 	tx := db.MustBegin()
+	// UPDATE user with new password
 	query := `UPDATE users SET hashed_password = $1 WHERE id = $2 ` + returningFromUsersTable
-	rows, err := tx.Query(query, hashed, u.ID)
+	rows, err := tx.Query(query, hash, u.ID)
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
 			return User{}, errors.Wrap(err, txErr.Error())
 		}
-		return User{}, errors.Wrap(err, "couldn't update user password")
+		return User{}, errors.Wrap(err, "could not update user password")
 	}
+
+	// read updated user from db
 	user, err := scanUser(rows)
 	if err != nil {
 		if txErr := tx.Rollback(); txErr != nil {
 			return User{}, errors.Wrap(err, txErr.Error())
 		}
-		return User{}, errors.Wrap(err, "couldn't scan user when changing password")
+		return User{}, errors.Wrap(err, "could not scan user when changing password")
 	}
 
+	// commit changes
 	if err = tx.Commit(); err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return User{}, errors.Wrap(err, rollbackErr.Error())
 		}
 		return User{}, err
 	}
+
 	return user, nil
 }
 
-// Create2faCredentials creates TOTP based 2FA credentials for the user.
-// It fails if the user already has 2FA credentials set. It returns the updated
-// user.
+// Create2faCredentials creates TOTP based 2FA credentials
+// for the user. It fails if the user already has 2FA credentials
+// set. It returns the totp key
 // TODO(torkelrogstad) if the user doesn't confirm TOTP code within a set
-// time period, reverse this operation
+//  time period, reverse this operation
 func (u *User) Create2faCredentials(d *db.DB) (*otp.Key, error) {
+
 	if u.TotpSecret != nil {
 		return nil, Err2faAlreadyEnabled
 	}
+
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      TotpIssuer,
 		AccountName: u.Email,
 	})
 	if err != nil {
-		log.Errorf("Could not generate TOTP key for u %d: %v", u.ID, err)
+		log.WithError(err).WithField("userID",
+			u.ID).Error("could not generate TOTP key")
 		return nil, err
 	}
+
 	updateTotpSecret := `UPDATE users 
 		SET totp_secret = $1 
 		WHERE id = $2`
@@ -496,9 +523,10 @@ func (u *User) Create2faCredentials(d *db.DB) (*otp.Key, error) {
 	return key, nil
 }
 
-// Delete2faCredentials disabled 2FA authorizaton, assuming the user already
-// has requested and confirmed 2FA credentials.
+// Delete2faCredentials disabled 2FA authorizaton, assuming
+// the user already has requested and confirmed 2FA credentials.
 func (u *User) Delete2faCredentials(d *db.DB, passcode string) (User, error) {
+
 	if u.TotpSecret == nil {
 		return *u, Err2faNotEnabled
 	}
@@ -514,17 +542,19 @@ func (u *User) Delete2faCredentials(d *db.DB, passcode string) (User, error) {
 	if err != nil {
 		return *u, errors.Wrap(err, "could not unset TOTP status in DB")
 	}
-	updated, err := scanUser(rows)
+
+	updatedUser, err := scanUser(rows)
 	if err != nil {
 		return *u, err
 	}
-	return updated, nil
+	return updatedUser, nil
 
 }
 
-// Confirm2faCredentials enables 2FA authorization, assuming the user already
-// has requested 2FA credentials.
+// Confirm2faCredentials enables 2FA authorization, assuming
+// the user already has requested 2FA credentials.
 func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
+
 	if u.TotpSecret == nil {
 		return *u, Err2faNotEnabled
 	}
@@ -542,11 +572,12 @@ func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
 	if err != nil {
 		return *u, errors.Wrap(err, "could not confirm TOTP status in DB")
 	}
-	updated, err := scanUser(rows)
+
+	updatedUser, err := scanUser(rows)
 	if err != nil {
 		return *u, err
 	}
-	return updated, nil
+	return updatedUser, nil
 }
 
 func (u User) String() string {

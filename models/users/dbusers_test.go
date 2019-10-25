@@ -13,10 +13,11 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/pquerna/otp/totp"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/bcrypt"
+
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -192,21 +193,22 @@ func TestUser_CreateConfirmAndDelete2FA(t *testing.T) {
 	})
 }
 
-func TestUser_ResetPassword(t *testing.T) {
+func TestUser_ChangePassword(t *testing.T) {
 	t.Parallel()
 	testutil.DescribeTest(t)
-	password := gofakeit.Password(true, true, true, true, true, 32)
+	newPassword := gofakeit.Password(true, true, true, true, true, 32)
 	user := CreateUserOrFail(t)
 
-	if err := bcrypt.CompareHashAndPassword(user.HashedPassword, []byte(password)); err == nil {
+	if err := bcrypt.CompareHashAndPassword(user.HashedPassword,
+		[]byte(newPassword)); err == nil {
 		testutil.FatalMsg(t, "User has new password before reset occured")
 	}
 
-	updated, err := user.ResetPassword(testDB, password)
+	updated, err := user.ChangePassword(testDB, newPassword)
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
-	if err := bcrypt.CompareHashAndPassword(updated.HashedPassword, []byte(password)); err != nil {
+	if err = bcrypt.CompareHashAndPassword(updated.HashedPassword, []byte(newPassword)); err != nil {
 		testutil.FatalMsgf(t, "User password did not change: %v", err)
 	}
 }
