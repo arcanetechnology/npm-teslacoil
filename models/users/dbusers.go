@@ -45,7 +45,9 @@ type User struct {
 
 	// BalanceSats is an additional property that is not
 	// saved in the db, but is computed using the balance package
-	BalanceSats int64 `db:"-"`
+	// it's a pointer because we never want to mistake a
+	// unfilled balance (default 0) with an actual 0 balance
+	BalanceSats *int64 `db:"-"`
 }
 
 const (
@@ -127,8 +129,8 @@ func GetByEmail(db *db.DB, email string) (User, error) {
 }
 
 // GetByCredentials retrieves a user from the database by taking in
-// the email and the raw password, and with bcrypt, compares the hashed
-// password stored in the db and the raw password
+// the email and the raw password, then with bcrypt, compares the hashed
+// password stored in the db and the raw password.
 // returns the user if and only if the password matches
 func GetByCredentials(db *db.DB, email string, password string) (
 	User, error) {
@@ -153,6 +155,150 @@ func GetByCredentials(db *db.DB, email string, password string) (
 	}
 
 	return withBalance, nil
+}
+
+// CreateUserArgs is the struct required to create a new user using
+// the Create method
+type CreateUserArgs struct {
+	Email     string
+	Password  string
+	FirstName *string
+	LastName  *string
+}
+
+// Create inserts a user with email, password, firstname,
+// and lastname into the db. The password is hashed and salted
+// before it is saved
+func Create(d *db.DB, args CreateUserArgs) (User, error) {
+	hashedPassword, err := hashAndSalt(args.Password)
+	if err != nil {
+		return User{}, err
+	}
+	user := User{
+		Email:          args.Email,
+		HashedPassword: hashedPassword,
+		Firstname:      args.FirstName,
+		Lastname:       args.LastName,
+	}
+
+	tx := d.MustBegin()
+	userResp, err := InsertUser(tx, user)
+	if err != nil {
+		txErr := tx.Rollback()
+		if txErr != nil {
+			return User{}, errors.Wrap(txErr,
+				"create(): could not roll back tx")
+		}
+		return User{}, err
+	}
+	err = tx.Commit()
+	if err != nil {
+		txErr := tx.Rollback()
+		if txErr != nil {
+			return User{}, errors.Wrap(txErr, "create(): could not rollbacktx")
+		}
+		log.WithError(err).Error("could not commit user creation")
+		return User{}, err
+	}
+
+	return userResp, nil
+}
+
+// UpdateOptions represents the different actions `UpdateUser` can perform.
+type UpdateOptions struct {
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// firstName
+	NewFirstName *string
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// lastName
+	NewLastName *string
+	// If set to nil, does nothing, if set to the empty string, we return
+	// an error
+	NewEmail *string
+}
+
+// Update the users email, first name and last name, depending on
+// what options are passed in
+func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
+	if u.ID == 0 {
+		return User{}, errors.New("UserID cannot be 0")
+	}
+
+	// no action needed
+	if opts.NewFirstName == nil &&
+		opts.NewLastName == nil && opts.NewEmail == nil {
+		return User{}, errors.New("no actions given in UpdateOptions")
+	}
+
+	updateQuery := `UPDATE users SET `
+	var updates []string
+	queryUser := User{
+		ID: u.ID,
+	}
+
+	if opts.NewEmail != nil {
+		if *opts.NewEmail == "" {
+			return User{}, errors.New("cannot delete email")
+		}
+		updates = append(updates, "email = :email")
+		queryUser.Email = *opts.NewEmail
+	}
+	if opts.NewFirstName != nil {
+		if *opts.NewFirstName == "" {
+			updates = append(updates, "first_name = NULL")
+		} else {
+			updates = append(updates, "first_name = :first_name")
+		}
+		queryUser.Firstname = opts.NewFirstName
+	}
+	if opts.NewLastName != nil {
+		if *opts.NewLastName == "" {
+			updates = append(updates, "last_name = NULL")
+		} else {
+			updates = append(updates, "last_name = :last_name")
+		}
+		queryUser.Lastname = opts.NewLastName
+	}
+
+	updateQuery += strings.Join(updates, ",")
+	updateQuery += ` WHERE id = :id ` + returningFromUsersTable
+	log.WithFields(logrus.Fields{
+		"userID":       queryUser.ID,
+		"sqlQuery":     updateQuery,
+		"newEmail":     opts.NewEmail,
+		"newFirstName": opts.NewFirstName,
+		"newLastName":  opts.NewLastName,
+	}).Debug("executing SQL for updating user")
+
+	rows, err := db.NamedQuery(
+		updateQuery,
+		&queryUser,
+	)
+
+	if err != nil {
+		return User{}, errors.Wrap(err, "could not update user")
+	}
+	user, err := scanUser(rows)
+
+	if err != nil {
+		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
+		return User{}, errors.Wrap(err, msg)
+	}
+
+	return user, nil
+
+}
+
+// WithBalance fills in the BalanceSats property in the User struct
+func (u User) withBalance(db *db.DB) (User, error) {
+	uBalance, err := balance.ForUser(db, u.ID)
+	if err != nil {
+		log.WithError(err).Error("could not get balance")
+	}
+	sats := uBalance.Sats()
+	u.BalanceSats = &sats
+
+	return u, nil
 }
 
 // GetEmailVerificationTokenWithKey creates a token that can be used
@@ -259,230 +405,6 @@ func VerifyPasswordResetToken(db *db.DB, token string) (string, error) {
 		token,
 		getPasswordHash,
 		passwordResetSecretKey)
-}
-
-// CreateUserArgs is the struct required to create a new user using
-// the Create method
-type CreateUserArgs struct {
-	Email     string
-	Password  string
-	FirstName *string
-	LastName  *string
-}
-
-// Create inserts a user with email, password, firstname,
-// and lastname into the db. The password is hashed and salted
-// before it is saved
-func Create(d *db.DB, args CreateUserArgs) (User, error) {
-	hashedPassword, err := hashAndSalt(args.Password)
-	if err != nil {
-		return User{}, err
-	}
-	user := User{
-		Email:          args.Email,
-		HashedPassword: hashedPassword,
-		Firstname:      args.FirstName,
-		Lastname:       args.LastName,
-	}
-
-	tx := d.MustBegin()
-	userResp, err := InsertUser(tx, user)
-	if err != nil {
-		txErr := tx.Rollback()
-		if txErr != nil {
-			return User{}, errors.Wrap(txErr,
-				"create(): could not roll back tx")
-		}
-		return User{}, err
-	}
-	err = tx.Commit()
-	if err != nil {
-		txErr := tx.Rollback()
-		if txErr != nil {
-			return User{}, errors.Wrap(txErr, "create(): could not rollbacktx")
-		}
-		log.WithError(err).Error("could not commit user creation")
-		return User{}, err
-	}
-
-	return userResp, nil
-}
-
-type dbScanner interface {
-	Next() bool
-	Scan(dest ...interface{}) error
-	Close() error
-	Err() error
-}
-
-// scanUser tries to scan a User struct frm the given scannable interface
-func scanUser(rows dbScanner) (User, error) {
-	user := User{}
-
-	if err := rows.Err(); err != nil {
-		return user, err
-	}
-
-	if rows.Next() {
-		if err := rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.HasVerifiedEmail,
-			&user.HashedPassword,
-			&user.TotpSecret,
-			&user.ConfirmedTotpSecret,
-			&user.UpdatedAt,
-			&user.Firstname,
-			&user.Lastname,
-		); err != nil {
-			return user, errors.Wrap(
-				err, "could not scan user returned from DB")
-		}
-	} else {
-		return user, errors.New("given rows did not have any elements")
-	}
-
-	if err := rows.Close(); err != nil {
-		return user, err
-	}
-
-	return user, nil
-}
-
-// hashAndSalt generates a bcrypt hash from a string
-func hashAndSalt(password string) ([]byte, error) {
-	// hashPasswordCost is how many rounds the password
-	// should be hashed. rounds = 1 << hashPasswordCost
-	const hashPasswordCost = 12
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), hashPasswordCost)
-	if err != nil {
-		log.WithError(err).Error("could not hash password")
-		return nil, err
-	}
-
-	// bcrypt returns a base64 encoded hash, therefore string(hash)
-	// works for converting the password to a readable format
-	log.WithField("passwordHash", string(hash)).Trace("generated password")
-
-	return hash, nil
-}
-
-// InsertUser inserts fields from a user struct into the
-// database.
-func InsertUser(tx *sqlx.Tx, user User) (User, error) {
-	userCreateQuery := `INSERT INTO users 
-		(email, hashed_password, totp_secret, confirmed_totp_secret, 
-first_name, last_name)
-		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, 
-:last_name) ` + returningFromUsersTable
-
-	rows, err := tx.NamedQuery(userCreateQuery, user)
-	if err != nil {
-		return User{}, fmt.Errorf("could not insert user: %w", err)
-	}
-
-	userResp, err := scanUser(rows)
-	if err != nil {
-		return User{}, fmt.Errorf("could not scan user: %w", err)
-	}
-	return userResp, nil
-}
-
-// UpdateOptions represents the different actions `UpdateUser` can perform.
-type UpdateOptions struct {
-	// If set to nil, does nothing. If set to the empty string, deletes
-	// firstName
-	NewFirstName *string
-	// If set to nil, does nothing. If set to the empty string, deletes
-	// lastName
-	NewLastName *string
-	// If set to nil, does nothing, if set to the empty string, we return
-	// an error
-	NewEmail *string
-}
-
-// Update the users email, first name and last name, depending on
-// what options are passed in
-func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
-	if u.ID == 0 {
-		return User{}, errors.New("UserID cannot be 0")
-	}
-
-	// no action needed
-	if opts.NewFirstName == nil &&
-		opts.NewLastName == nil && opts.NewEmail == nil {
-		return User{}, errors.New("no actions given in UpdateOptions")
-	}
-
-	updateQuery := `UPDATE users SET `
-	var updates []string
-	queryUser := User{
-		ID: u.ID,
-	}
-
-	if opts.NewEmail != nil {
-		if *opts.NewEmail == "" {
-			return User{}, errors.New("cannot delete email")
-		}
-		updates = append(updates, "email = :email")
-		queryUser.Email = *opts.NewEmail
-	}
-	if opts.NewFirstName != nil {
-		if *opts.NewFirstName == "" {
-			updates = append(updates, "first_name = NULL")
-		} else {
-			updates = append(updates, "first_name = :first_name")
-		}
-		queryUser.Firstname = opts.NewFirstName
-	}
-	if opts.NewLastName != nil {
-		if *opts.NewLastName == "" {
-			updates = append(updates, "last_name = NULL")
-		} else {
-			updates = append(updates, "last_name = :last_name")
-		}
-		queryUser.Lastname = opts.NewLastName
-	}
-
-	updateQuery += strings.Join(updates, ",")
-	updateQuery += ` WHERE id = :id ` + returningFromUsersTable
-	log.WithFields(logrus.Fields{
-		"userID":       queryUser.ID,
-		"sqlQuery":     updateQuery,
-		"newEmail":     opts.NewEmail,
-		"newFirstName": opts.NewFirstName,
-		"newLastName":  opts.NewLastName,
-	}).Debug("executing SQL for updating user")
-
-	rows, err := db.NamedQuery(
-		updateQuery,
-		&queryUser,
-	)
-
-	if err != nil {
-		return User{}, errors.Wrap(err, "could not update user")
-	}
-	user, err := scanUser(rows)
-
-	if err != nil {
-		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
-		return User{}, errors.Wrap(err, msg)
-	}
-
-	return user, nil
-
-}
-
-// WithBalance fills in the BalanceSats property in the User struct
-func (u User) withBalance(db *db.DB) (User, error) {
-	uBalance, err := balance.ForUser(db, u.ID)
-	if err != nil {
-		log.WithError(err).Error("could not get balance")
-	}
-	u.BalanceSats = uBalance.Sats()
-
-	return u, nil
 }
 
 // ChangePassword changes the password for a user
@@ -609,6 +531,87 @@ func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
 		return *u, err
 	}
 	return updatedUser, nil
+}
+
+// scanUser tries to scan a User struct frm the given scannable interface
+func scanUser(rows dbScanner) (User, error) {
+	user := User{}
+
+	if err := rows.Err(); err != nil {
+		return user, err
+	}
+
+	if rows.Next() {
+		if err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.HasVerifiedEmail,
+			&user.HashedPassword,
+			&user.TotpSecret,
+			&user.ConfirmedTotpSecret,
+			&user.UpdatedAt,
+			&user.Firstname,
+			&user.Lastname,
+		); err != nil {
+			return user, errors.Wrap(
+				err, "could not scan user returned from DB")
+		}
+	} else {
+		return user, errors.New("given rows did not have any elements")
+	}
+
+	if err := rows.Close(); err != nil {
+		return user, err
+	}
+
+	return user, nil
+}
+
+// hashAndSalt generates a bcrypt hash from a string
+func hashAndSalt(password string) ([]byte, error) {
+	// hashPasswordCost is how many rounds the password
+	// should be hashed. rounds = 1 << hashPasswordCost
+	const hashPasswordCost = 12
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), hashPasswordCost)
+	if err != nil {
+		log.WithError(err).Error("could not hash password")
+		return nil, err
+	}
+
+	// bcrypt returns a base64 encoded hash, therefore string(hash)
+	// works for converting the password to a readable format
+	log.WithField("passwordHash", string(hash)).Trace("generated password")
+
+	return hash, nil
+}
+
+type dbScanner interface {
+	Next() bool
+	Scan(dest ...interface{}) error
+	Close() error
+	Err() error
+}
+
+// InsertUser inserts fields from a user struct into the
+// database.
+func InsertUser(tx *sqlx.Tx, user User) (User, error) {
+	userCreateQuery := `INSERT INTO users 
+		(email, hashed_password, totp_secret, confirmed_totp_secret, 
+first_name, last_name)
+		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, 
+:last_name) ` + returningFromUsersTable
+
+	rows, err := tx.NamedQuery(userCreateQuery, user)
+	if err != nil {
+		return User{}, fmt.Errorf("could not insert user: %w", err)
+	}
+
+	userResp, err := scanUser(rows)
+	if err != nil {
+		return User{}, fmt.Errorf("could not scan user: %w", err)
+	}
+	return userResp, nil
 }
 
 func (u User) String() string {
