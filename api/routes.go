@@ -279,19 +279,19 @@ func (r *RestServer) registerApiKeyRoutes() {
 // RegisterUserRoutes registers all user routes on the router
 func (r *RestServer) RegisterUserRoutes() {
 	// Creating a user doesn't require authentication
-	r.Router.POST("/users", r.CreateUser())
+	r.Router.POST("/users", r.createUser())
 
 	// verifying an email doesn't require authentication beyond the
 	// verification token
-	r.Router.PUT("/user/verify_email", r.VerifyEmail())
-	r.Router.POST("/user/verify_email", r.SendEmailVerificationEmail())
+	r.Router.PUT("/user/verify_email", r.verifyEmail())
+	r.Router.POST("/user/verify_email", r.sendEmailVerificationEmail())
 
 	// We group on empty paths to apply middlewares to everything but the
 	// /login route. The group path is empty because it is easier to read
 	users := r.Router.Group("")
 	users.Use(auth.GetMiddleware(r.db))
 	users.GET("/users", r.getAllUsers())
-	users.GET("/user", r.GetUser())
+	users.GET("/user", r.getUser())
 	users.PUT("/user", r.updateUser())
 }
 

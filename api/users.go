@@ -365,7 +365,7 @@ func (r *RestServer) login() gin.HandlerFunc {
 			userResponse: userResponse{
 				ID:          user.ID,
 				Email:       user.Email,
-				BalanceSats: user.BalanceSats,
+				BalanceSats: *user.BalanceSats,
 				Firstname:   user.Firstname,
 				Lastname:    user.Lastname,
 			},
