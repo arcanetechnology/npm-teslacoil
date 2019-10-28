@@ -8,9 +8,15 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin/binding"
+	uuid "github.com/satori/go.uuid"
+	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
+	"gitlab.com/arcanecrypto/teslacoil/api/apitxs"
+	"gitlab.com/arcanecrypto/teslacoil/api/apiusers"
 	"gitlab.com/arcanecrypto/teslacoil/api/validation"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
+	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
 	"gopkg.in/go-playground/validator.v8"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -170,9 +176,6 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 		EmailSender: sender,
 	}
 
-	// We register /login separately to require jwt-tokens on every other endpoint
-	// than /login
-	r.Router.POST("/login", r.login())
 	// Ping handler
 	r.Router.GET("/ping", func(c *gin.Context) {
 		c.String(200, "pong")
@@ -182,11 +185,14 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 		apierr.Public(c, http.StatusNotFound, apierr.ErrRouteNotFound)
 	})
 
+	middleware := auth.GetMiddleware(r.db)
+
 	r.registerApiKeyRoutes()
 	r.registerAdminRoutes()
-	r.registerAuthRoutes()
-	r.RegisterUserRoutes()
-	r.registerTransactionRoutes()
+
+	apitxs.RegisterRoutes(r.Router, r.db, r.lncli, r.bitcoind, middleware)
+	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware)
+	apiauth.RegisterRoutes(r.Router, r.db, sender, middleware)
 
 	return r, nil
 }
@@ -250,66 +256,41 @@ func (r *RestServer) registerAdminRoutes() {
 	r.Router.GET("/info", getInfo)
 }
 
-// RegisterAuthRoutes registers all auth routes
-func (r *RestServer) registerAuthRoutes() {
-	authGroup := r.Router.Group("auth")
-
-	// Does not need auth token to reset password
-	authGroup.PUT("reset_password", r.resetPassword())
-	authGroup.POST("reset_password", r.sendPasswordResetEmail())
-
-	authGroup.Use(auth.GetMiddleware(r.db))
-
-	// 2FA methods
-	authGroup.POST("2fa", r.enable2fa())
-	authGroup.PUT("2fa", r.confirm2fa())
-	authGroup.DELETE("2fa", r.delete2fa())
-
-	authGroup.GET("refresh_token", r.refreshToken())
-	authGroup.PUT("change_password", r.changePassword())
-}
-
 func (r *RestServer) registerApiKeyRoutes() {
 	keys := r.Router.Group("")
 	keys.Use(auth.GetMiddleware(r.db))
 	keys.POST("apikey", r.createApiKey())
 
 }
+func (r *RestServer) createApiKey() gin.HandlerFunc {
+	type createApiKeyResponse struct {
+		Key    uuid.UUID `json:"key"`
+		UserID int       `json:"userId"`
+	}
 
-// RegisterUserRoutes registers all user routes on the router
-func (r *RestServer) RegisterUserRoutes() {
-	// Creating a user doesn't require authentication
-	r.Router.POST("/users", r.createUser())
+	return func(c *gin.Context) {
+		userID, ok := auth.GetUserIdOrReject(c)
+		if !ok {
+			return
+		}
 
-	// verifying an email doesn't require authentication beyond the
-	// verification token
-	r.Router.PUT("/user/verify_email", r.verifyEmail())
-	r.Router.POST("/user/verify_email", r.sendEmailVerificationEmail())
+		user, err := users.GetByID(r.db, userID)
+		if err != nil {
+			log.WithError(err).WithField("user", userID).Error("could not get user")
+			_ = c.Error(err)
+			return
+		}
 
-	// We group on empty paths to apply middlewares to everything but the
-	// /login route. The group path is empty because it is easier to read
-	users := r.Router.Group("")
-	users.Use(auth.GetMiddleware(r.db))
-	users.GET("/users", r.getAllUsers())
-	users.GET("/user", r.getUser())
-	users.PUT("/user", r.updateUser())
-}
+		rawKey, key, err := apikeys.New(r.db, user.ID)
+		if err != nil {
+			log.WithError(err).WithField("user", userID).Error("could not create API key")
+			_ = c.Error(err)
+			return
+		}
 
-// RegisterTransactionRoutes registers all transaction routes on the router.
-// A transaction is defined as an on-chain transaction
-func (r *RestServer) registerTransactionRoutes() {
-	transaction := r.Router.Group("")
-	transaction.Use(auth.GetMiddleware(r.db))
-
-	// common
-	transaction.GET("/transactions", r.getAllTransactions())
-	transaction.GET("/transaction/:id", r.getTransactionByID())
-
-	// onchain transactions
-	transaction.POST("/withdraw", r.withdrawOnChain())
-	transaction.POST("/deposit", r.newDeposit())
-
-	// offchain transactions
-	transaction.POST("/invoices/create", r.createInvoice())
-	transaction.POST("/invoices/pay", r.payInvoice())
+		c.JSON(http.StatusCreated, createApiKeyResponse{
+			Key:    rawKey,
+			UserID: key.UserID,
+		})
+	}
 }

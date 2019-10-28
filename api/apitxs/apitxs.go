@@ -1,32 +1,68 @@
-package api
+// Package apitxs provides HTTP handlers for querying for, creating and settling
+// payments in our API.
+package apitxs
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
-
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
-
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-
-	"github.com/gin-gonic/gin"
 )
+
+var log = build.Log
+
+// services that gets initiated in RegisterRoutes
+var (
+	database *db.DB
+	lncli    lnrpc.LightningClient
+	bitcoin  bitcoind.TeslacoilBitcoind
+)
+
+func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
+	bitcoind bitcoind.TeslacoilBitcoind, authmiddleware gin.HandlerFunc) {
+	// assign the services given
+	database = db
+	lncli = lnd
+	bitcoin = bitcoind
+
+	transaction := server.Group("")
+
+	transaction.Use(authmiddleware)
+
+	// common
+	transaction.GET("/transactions", getAllTransactions())
+	transaction.GET("/transaction/:id", getTransactionByID())
+
+	// onchain transactions
+	transaction.POST("/withdraw", withdrawOnChain())
+	transaction.POST("/deposit", newDeposit())
+
+	// offchain transactions
+	transaction.POST("/invoices/create", createInvoice())
+	transaction.POST("/invoices/pay", payInvoice())
+}
 
 // getAllTransactions finds all payments for the given user. Takes two URL
 // parameters, `limit` and `offset`
-func (r *RestServer) getAllTransactions() gin.HandlerFunc {
+func getAllTransactions() gin.HandlerFunc {
 	type Params struct {
 		Limit  int `form:"limit" binding:"gte=0"`
 		Offset int `form:"offset" binding:"gte=0"`
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := getUserIdOrReject(c)
+		userID, ok := auth.GetUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -36,16 +72,14 @@ func (r *RestServer) getAllTransactions() gin.HandlerFunc {
 			return
 		}
 
-		log.Debugf("received request for %d: %+v", userID, params)
-
 		var t []transactions.Transaction
 		var err error
 		if params.Limit == 0 && params.Offset == 0 {
-			t, err = transactions.GetAllTransactions(r.db, userID)
+			t, err = transactions.GetAllTransactions(database, userID)
 		} else if params.Limit == 0 {
-			t, err = transactions.GetAllTransactionsOffset(r.db, userID, params.Offset)
+			t, err = transactions.GetAllTransactionsOffset(database, userID, params.Offset)
 		} else {
-			t, err = transactions.GetAllTransactionsLimitOffset(r.db, userID, params.Limit, params.Offset)
+			t, err = transactions.GetAllTransactionsLimitOffset(database, userID, params.Limit, params.Offset)
 		}
 		if err != nil {
 			log.WithError(err).Error("Couldn't get transactions")
@@ -57,26 +91,29 @@ func (r *RestServer) getAllTransactions() gin.HandlerFunc {
 	}
 }
 
-// getTransactionByID is a GET request that returns users that match the one
-// specified in the body
-func (r *RestServer) getTransactionByID() gin.HandlerFunc {
+// getTransactionByID takes in a transaction ID path parameter, and fetches that from the DB
+func getTransactionByID() gin.HandlerFunc {
+	type request struct {
+		ID int `uri:"id" binding:"required"`
+	}
 	return func(c *gin.Context) {
-		userID, ok := getUserIdOrReject(c)
+		userID, ok := auth.GetUserIdOrReject(c)
 		if !ok {
 			return
 		}
 
-		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-		if err != nil {
-			log.Error(err)
-			c.JSONP(http.StatusBadRequest, gin.H{"error": "url param invoice id should be a integer"})
+		var req request
+		if c.BindUri(&req) != nil {
 			return
 		}
 
-		log.Debugf("find transaction %d for user %d", id, userID)
-		t, err := transactions.GetTransactionByID(r.db, int(id), userID)
+		t, err := transactions.GetTransactionByID(database, req.ID, userID)
 		if err != nil {
-			apierr.Public(c, http.StatusNotFound, apierr.ErrTransactionNotFound)
+			if errors.Is(err, sql.ErrNoRows) {
+				apierr.Public(c, http.StatusNotFound, apierr.ErrTransactionNotFound)
+				return
+			}
+			_ = c.Error(err)
 			return
 		}
 
@@ -88,22 +125,13 @@ func (r *RestServer) getTransactionByID() gin.HandlerFunc {
 // withdrawOnChain is a request handler used for withdrawing funds
 // to an on-chain address
 // TODO: verify dust limits
-func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
+func withdrawOnChain() gin.HandlerFunc {
 	type withdrawResponse struct {
-		ID          int                    `json:"id"`
-		Address     string                 `json:"address"`
-		Txid        *string                `json:"txid"`
-		Vout        *int                   `json:"vout"`
-		Direction   transactions.Direction `json:"direction"`
-		AmountSat   int64                  `json:"amountSat"`
-		Description *string                `json:"description"`
-		Confirmed   bool                   `json:"confirmed"`
-
-		ConfirmedAt *time.Time `json:"confirmedAt"`
+		transactions.Onchain
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := getUserIdOrReject(c)
+		userID, ok := auth.GetUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -115,10 +143,10 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 		// add the userID to send coins from
 		req.UserID = userID
 
-		onchain, err := transactions.WithdrawOnChain(r.db, r.lncli, r.bitcoind, req)
+		onchain, err := transactions.WithdrawOnChain(database, lncli, bitcoin, req)
 		if err != nil {
-			if errors.Is(err, transactions.ErrBalanceTooLowForWithdrawal) {
-				apierr.Public(c, http.StatusBadRequest, apierr.ErrBalanceTooLowForWithdrawal)
+			if errors.Is(err, transactions.ErrBalanceTooLow) {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrBalanceTooLow)
 				return
 			}
 			log.WithError(err).Errorf("Cannot withdraw onchain")
@@ -127,14 +155,7 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 		}
 
 		c.JSONP(http.StatusOK, withdrawResponse{
-			ID:          onchain.ID,
-			Address:     onchain.Address,
-			Txid:        onchain.Txid,
-			Vout:        onchain.Vout,
-			Direction:   onchain.Direction,
-			AmountSat:   onchain.AmountSat,
-			Description: onchain.Description,
-			ConfirmedAt: onchain.ConfirmedAt,
+			Onchain: onchain,
 		})
 	}
 
@@ -142,7 +163,7 @@ func (r *RestServer) withdrawOnChain() gin.HandlerFunc {
 
 // newDeposit is a request handler used for creating a new deposit
 // If successful, response with an address, and the saved description
-func (r *RestServer) newDeposit() gin.HandlerFunc {
+func newDeposit() gin.HandlerFunc {
 	type request struct {
 		// Whether to discard the old address and force create a new one
 		ForceNewAddress bool `json:"forceNewAddress"`
@@ -160,7 +181,7 @@ func (r *RestServer) newDeposit() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := getUserIdOrReject(c)
+		userID, ok := auth.GetUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -170,7 +191,7 @@ func (r *RestServer) newDeposit() gin.HandlerFunc {
 			return
 		}
 
-		transaction, err := transactions.GetOrCreateDeposit(r.db, r.lncli, userID,
+		transaction, err := transactions.GetOrCreateDeposit(database, lncli, userID,
 			req.ForceNewAddress, req.Description)
 		if err != nil {
 			log.WithError(err).Error("Cannot deposit onchain")
@@ -190,7 +211,7 @@ func (r *RestServer) newDeposit() gin.HandlerFunc {
 }
 
 // createInvoice creates a new invoice
-func (r *RestServer) createInvoice() gin.HandlerFunc {
+func createInvoice() gin.HandlerFunc {
 	// createInvoiceRequest is a deposit
 	type createInvoiceRequest struct {
 		AmountSat   int64  `json:"amountSat" binding:"required,gt=0,lte=4294967"`
@@ -202,7 +223,7 @@ func (r *RestServer) createInvoice() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		userID, ok := getUserIdOrReject(c)
+		userID, ok := auth.GetUserIdOrReject(c)
 
 		if !ok {
 			return
@@ -215,7 +236,7 @@ func (r *RestServer) createInvoice() gin.HandlerFunc {
 
 		// TODO: rename this function to something like `NewLightningPayment` or `NewLightningInvoice`
 		t, err := transactions.NewOffchain(
-			r.db, r.lncli, transactions.NewOffchainOpts{
+			database, lncli, transactions.NewOffchainOpts{
 				UserID:      userID,
 				AmountSat:   req.AmountSat,
 				Memo:        req.Memo,
@@ -235,7 +256,7 @@ func (r *RestServer) createInvoice() gin.HandlerFunc {
 }
 
 // payInvoice pays a valid invoice on behalf of a user
-func (r *RestServer) payInvoice() gin.HandlerFunc {
+func payInvoice() gin.HandlerFunc {
 	// PayInvoiceRequest is the required and optional fields for initiating a
 	// withdrawal.
 	type payInvoiceRequest struct {
@@ -244,7 +265,7 @@ func (r *RestServer) payInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := getUserIdOrReject(c)
+		userID, ok := auth.GetUserIdOrReject(c)
 		if !ok {
 			return
 		}
@@ -255,13 +276,13 @@ func (r *RestServer) payInvoice() gin.HandlerFunc {
 		}
 
 		// Pays an invoice from userid found in authorization header.
-		t, err := transactions.PayInvoiceWithDescription(r.db, r.lncli, userID,
+		t, err := transactions.PayInvoiceWithDescription(database, lncli, userID,
 			req.PaymentRequest, req.Description)
 		if err != nil {
 			// investigate details around failure
 			go func() {
 				origErr := err
-				decoded, err := r.lncli.DecodePayReq(context.Background(), &lnrpc.PayReqString{
+				decoded, err := lncli.DecodePayReq(context.Background(), &lnrpc.PayReqString{
 					PayReq: req.PaymentRequest,
 				})
 				if err != nil {
@@ -269,7 +290,7 @@ func (r *RestServer) payInvoice() gin.HandlerFunc {
 					return
 				}
 
-				channels, err := r.lncli.ListChannels(context.Background(), &lnrpc.ListChannelsRequest{
+				channels, err := lncli.ListChannels(context.Background(), &lnrpc.ListChannelsRequest{
 					ActiveOnly: true,
 				})
 				if err != nil {
@@ -277,7 +298,7 @@ func (r *RestServer) payInvoice() gin.HandlerFunc {
 					return
 				}
 
-				balance, err := r.lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
+				balance, err := lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
 				if err != nil {
 					log.WithError(err).Error("Could not get channel balance")
 				}

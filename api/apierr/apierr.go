@@ -63,11 +63,11 @@ var (
 		code: "ERR_NO_SUCH_USER",
 	}
 
-	// ErrBalanceTooLowForWithdrawal means the user tried to withdraw more than
+	// ErrBalanceTooLow means the user tried to spend or withdraw more money than
 	// they had available
-	ErrBalanceTooLowForWithdrawal = apiError{
-		err:  transactions.ErrBalanceTooLowForWithdrawal,
-		code: "ERR_BALANCE_TOO_LOW_FOR_WITHDRAWAL",
+	ErrBalanceTooLow = apiError{
+		err:  transactions.ErrBalanceTooLow,
+		code: "ERR_BALANCE_TOO_LOW",
 	}
 
 	// errInvalidJson means we got sent invalid JSON

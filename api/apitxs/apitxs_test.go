@@ -1,4 +1,4 @@
-package api
+package apitxs_test
 
 import (
 	"crypto/hmac"
@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -24,18 +28,20 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
 var (
-	databaseConfig = testutil.GetDatabaseConfig("routes")
+	databaseConfig = testutil.GetDatabaseConfig("tx_routes")
 	testDB         *db.DB
-	conf           = Config{
+	conf           = api.Config{
 		LogLevel: logrus.InfoLevel,
 		Network:  chaincfg.RegressionNetParams,
 	}
@@ -51,14 +57,14 @@ var (
 func init() {
 	testDB = testutil.InitDatabase(databaseConfig)
 
-	app, err := NewApp(testDB, mockLightningClient,
+	app, err := api.NewApp(testDB, mockLightningClient,
 		mockSendGridClient, mockBitcoindClient,
 		mockHttpPoster, conf)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	h = httptestutil.NewTestHarness(app.Router)
+	h = httptestutil.NewTestHarness(app.Router, testDB)
 }
 
 func TestMain(m *testing.M) {
@@ -79,13 +85,44 @@ func TestMain(m *testing.M) {
 	os.Exit(result)
 }
 
-func TestGetTransactionByID(t *testing.T) {
-	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+func TestGetTransaction(t *testing.T) {
+	token, userId := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
 
 	ids := createFakeDeposits(t, 3, token)
+
+	t.Run("reject request with bad ID parameter", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transaction/foobar",
+			Method:      "GET",
+		})
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("not find non-existant TX", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transaction/99999",
+			Method:      "GET",
+		})
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
+	})
+
+	t.Run("not find TX for other user", func(t *testing.T) {
+		otherUser := userstestutil.CreateUserOrFail(t, testDB)
+		txForOtherUser := txtest.InsertFakeIncomingOrFail(t, testDB, otherUser.ID)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transaction/%d", txForOtherUser.ID),
+			Method:      "GET",
+		})
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
+
+	})
 
 	t.Run("can get transaction by ID", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -97,32 +134,131 @@ func TestGetTransactionByID(t *testing.T) {
 		var trans transactions.Transaction
 		h.AssertResponseOKWithStruct(t, req, &trans)
 
-		if trans.ID != ids[0] {
-			testutil.FailMsgf(t, "id's not equal, expected %d got %d", ids[0], trans.ID)
-		}
+		assert.Equal(t, trans.ID, ids[0])
 	})
-	t.Run("getting transaction with wrong ID returns error", func(t *testing.T) {
+
+	t.Run("can get an offchain TX by ID", func(t *testing.T) {
+		tx := txtest.InsertFakeOffChainOrFail(t, testDB, userId)
+
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			// createFakeTransaction will always return the transaction in ascending order
-			// where the highest index is the highest index saved to the user. therefore we +1
-			Path:   fmt.Sprintf("/transaction/%d", ids[len(ids)-1]+1),
-			Method: "GET",
+			Path:        fmt.Sprintf("/transaction/%d", tx.ID),
+			Method:      "GET",
 		})
-
-		_, _ = h.AssertResponseNotOkWithCode(t, req, 404)
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, float64(tx.ID), res["id"])
+		assert.Equal(t, float64(tx.UserID), res["userId"])
+		assert.Equal(t, "lightning", res["type"])
 	})
 
+	t.Run("can get an onchain TX by ID", func(t *testing.T) {
+		tx := txtest.InsertFakeOnChainOrFail(t, testDB, userId)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transaction/%d", tx.ID),
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, float64(tx.ID), res["id"])
+		assert.Equal(t, float64(tx.UserID), res["userId"])
+		assert.Equal(t, "blockchain", res["type"])
+	})
 }
 
-func TestGetAllTransactions(t *testing.T) {
+func TestGetTransactionsBothKinds(t *testing.T) {
+	t.Parallel()
+
+	token, userId := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+
+	var wg sync.WaitGroup
+	incomingOnchainTxs := gofakeit.Number(1, 30)
+	wg.Add(1)
+	go func() {
+		for i := 0; i < incomingOnchainTxs; i++ {
+			txtest.InsertFakeIncomingOnchainorFail(t, testDB, userId)
+		}
+		wg.Done()
+	}()
+
+	outgoingOnchainTxs := gofakeit.Number(1, 30)
+	wg.Add(1)
+	go func() {
+		for i := 0; i < outgoingOnchainTxs; i++ {
+			txtest.InsertFakeOutgoingOnchainorFail(t, testDB, userId)
+		}
+		wg.Done()
+	}()
+
+	outgoingOffchainTxs := gofakeit.Number(1, 30)
+	wg.Add(1)
+	go func() {
+		for i := 0; i < outgoingOffchainTxs; i++ {
+			txtest.InsertFakeOutgoingOffchainOrFail(t, testDB, userId)
+		}
+		wg.Done()
+	}()
+
+	incomingOffchainTxs := gofakeit.Number(1, 30)
+	wg.Add(1)
+	go func() {
+		for i := 0; i < incomingOffchainTxs; i++ {
+			txtest.InsertFakeIncomingOffchainOrFail(t, testDB, userId)
+		}
+		wg.Done()
+	}()
+
+	req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+		AccessToken: token,
+		Path:        "/transactions",
+		Method:      "GET",
+	})
+
+	// wait for TXs to be inserted
+	if async.WaitTimeout(&wg, time.Second*3) {
+		t.Fatal("TX creation timed out")
+	}
+
+	response := h.AssertResponseOkWithJsonList(t, req)
+	assert.Len(t, response, incomingOffchainTxs+incomingOnchainTxs+outgoingOffchainTxs+outgoingOnchainTxs)
+}
+
+func TestGetTransactionsFiltering(t *testing.T) {
+	t.Parallel()
 	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
-	createFakeDeposits(t, 10, token)
+	const incomingOnchainTxs = 10
+	createFakeDeposits(t, incomingOnchainTxs, token)
+
+	t.Run("should reject non-numeric limit", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?limit=baz",
+			Method:      "GET",
+		})
+
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("should reject non-numeric offset", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?offset=qux",
+			Method:      "GET",
+		})
+
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
 
 	t.Run("get transactions without query params should get all", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions",
@@ -132,6 +268,7 @@ func TestGetAllTransactions(t *testing.T) {
 		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get transactions with limit 10 should get 10", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?limit=10",
@@ -141,6 +278,7 @@ func TestGetAllTransactions(t *testing.T) {
 		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get transactions with limit 5 should get 5", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?limit=5",
@@ -150,6 +288,7 @@ func TestGetAllTransactions(t *testing.T) {
 		assertGetsRightAmount(t, req, 5)
 	})
 	t.Run("get transactions with limit 0 should get all", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?limit=0",
@@ -159,6 +298,7 @@ func TestGetAllTransactions(t *testing.T) {
 		assertGetsRightAmount(t, req, 10)
 	})
 	t.Run("get /transactions with offset 10 should get 0", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?offset=10",
@@ -169,6 +309,7 @@ func TestGetAllTransactions(t *testing.T) {
 	})
 
 	t.Run("get /transactions with offset 0 should get 10", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?offset=0",
@@ -179,6 +320,7 @@ func TestGetAllTransactions(t *testing.T) {
 	})
 
 	t.Run("get /transactions with offset 5 should get 5", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?offset=5",
@@ -188,6 +330,7 @@ func TestGetAllTransactions(t *testing.T) {
 		assertGetsRightAmount(t, req, 5)
 	})
 	t.Run("get /transactions with offset 5 and limit 3 should get 3", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transactions?limit=3&offset=5",
@@ -246,9 +389,9 @@ func TestCreateInvoice(t *testing.T) {
 	testutil.DescribeTest(t)
 
 	randomMockClient := lntestutil.GetRandomLightningMockClient()
-	app, _ := NewApp(testDB, randomMockClient, mockSendGridClient,
+	app, _ := api.NewApp(testDB, randomMockClient, mockSendGridClient,
 		mockBitcoindClient, mockHttpPoster, conf)
-	otherH := httptestutil.NewTestHarness(app.Router)
+	otherH := httptestutil.NewTestHarness(app.Router, testDB)
 
 	password := gofakeit.Password(true, true, true, true, true, 32)
 	email := gofakeit.Email()
@@ -330,9 +473,10 @@ func TestCreateInvoice(t *testing.T) {
 			})
 
 		res := otherH.AssertResponseOkWithJson(t, req)
-		testutil.AssertEqual(t, res["customerOrderId"], orderId)
+		assert.Equal(t, orderId, res["customerOrderId"])
 
 		t.Run("create an invoice with the same order ID twice", func(t *testing.T) {
+			t.Parallel()
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
@@ -350,7 +494,7 @@ func TestCreateInvoice(t *testing.T) {
 	})
 
 	t.Run("Not create an invoice with zero amount ", func(t *testing.T) {
-		testutil.DescribeTest(t)
+		t.Parallel()
 
 		req := httptestutil.GetAuthRequest(t,
 			httptestutil.AuthRequestArgs{
@@ -396,6 +540,7 @@ func TestCreateInvoice(t *testing.T) {
 
 		t.Run("receive a POST to the given URL when paying the invoice",
 			func(t *testing.T) {
+				t.Parallel()
 				user, err := users.GetByEmail(testDB, email)
 				if err != nil {
 					testutil.FatalMsg(t, err)
@@ -406,16 +551,14 @@ func TestCreateInvoice(t *testing.T) {
 				if keys, err := apikeys.GetByUserId(testDB, user.ID); err == nil && len(keys) > 0 {
 					apiKey = keys[0]
 					// if not, try to create one, fail it if doesn't work
-				} else if _, key, err := apikeys.New(testDB, user); err != nil {
+				} else if _, key, err := apikeys.New(testDB, user.ID); err != nil {
 					testutil.FatalMsg(t, err)
 				} else {
 					apiKey = key
 				}
 
-				if _, err := transactions.UpdateInvoiceStatus(*mockInvoice,
-					testDB, mockHttpPoster); err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				_, err = transactions.UpdateInvoiceStatus(*mockInvoice, testDB, mockHttpPoster)
+				require.NoError(t, err)
 
 				checkPostSent := func() bool {
 					return mockHttpPoster.GetSentPostRequests() == 1
@@ -423,19 +566,15 @@ func TestCreateInvoice(t *testing.T) {
 
 				// emails are sent in a go-routine, so can't assume they're sent fast
 				// enough for test to pick up
-				if err := async.Await(8,
-					time.Millisecond*20, checkPostSent); err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				require.NoError(t, async.Await(8, time.Millisecond*20, checkPostSent))
 
 				bodyBytes := mockHttpPoster.GetSentPostRequest(0)
 				body := transactions.CallbackBody{}
 
-				if err := json.Unmarshal(bodyBytes, &body); err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				require.NoError(t, json.Unmarshal(bodyBytes, &body))
+
 				hmac := hmac.New(sha256.New, apiKey.HashedKey)
-				_, _ = hmac.Write([]byte(fmt.Sprintf("%d", body.Payment.ID)))
+				_, _ = hmac.Write([]byte(fmt.Sprintf("%d", body.Offchain.ID)))
 
 				sum := hmac.Sum(nil)
 				testutil.AssertEqual(t, sum, body.Hash)
@@ -443,113 +582,28 @@ func TestCreateInvoice(t *testing.T) {
 	})
 }
 
-func TestRestServer_CreateApiKey(t *testing.T) {
-	testutil.DescribeTest(t)
-
-	password := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
-		Email:    gofakeit.Email(),
-		Password: password,
-	})
-
-	t.Run("create an API key", func(t *testing.T) {
-		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-			AccessToken: accessToken,
-			Path:        "/apikey",
-			Method:      "POST",
-		})
-		json := h.AssertResponseOkWithJson(t, req)
-
-		testutil.AssertMsg(t, json["key"] != "", "`key` was empty!")
-
-		t.Run("creating a new key should yield a different one", func(t *testing.T) {
-
-			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-				AccessToken: accessToken,
-				Path:        "/apikey",
-				Method:      "POST",
-			})
-			newJson := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertNotEqual(t, json["key"], newJson["key"])
-			testutil.AssertEqual(t, json["userId"], newJson["userId"])
-			testutil.AssertNotEqual(t, json["userId"], nil)
-		})
-	})
-}
-
-func TestRestServer_GetAllPayments(t *testing.T) {
+func TestWithdrawOnChain(t *testing.T) {
 	t.Parallel()
-	pass := gofakeit.Password(true, true, true, true, true, 32)
-	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
-	accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
-		Email:    user.Email,
-		Password: pass,
-	})
-
-	t.Run("fail with bad query parameters", func(t *testing.T) {
-		t.Run("string argument", func(t *testing.T) {
-			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-				AccessToken: accessToken,
-				Path:        fmt.Sprintf("/payments?limit=foobar&offset=0"),
-				Method:      "GET",
-			})
-
-			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-		})
-		t.Run("negative argument", func(t *testing.T) {
-			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-				AccessToken: accessToken,
-				Path:        fmt.Sprintf("/payments?offset=-1"),
-				Method:      "GET",
-			})
-
-			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-		})
-	})
-
-	t.Run("succeed with query parameters", func(t *testing.T) {
-		opts := transactions.NewPaymentOpts{
-			UserID:    user.ID,
-			AmountSat: 123,
-		}
-		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
-		_ = transactions.CreateNewOffchainTxOrFail(t, testDB, mockLightningClient, opts)
-		const numPayments = 6
-
-		const limit = 3
-		const offset = 2
-		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-			AccessToken: accessToken,
-			Path:        fmt.Sprintf("/payments?limit=%d&offset=%d", limit, offset),
-			Method:      "GET",
-		})
-
-		res := h.AssertResponseOkWithJsonList(t, req)
-		testutil.AssertMsgf(t, len(res) == numPayments-limit, "Unexpected number of payments: %d", len(res))
-
-	})
-}
-
-func TestRestServer_WithdrawOnChain(t *testing.T) {
-	t.Parallel()
-	const balanceSats = 10000
 
 	t.Run("regular withdrawal", func(t *testing.T) {
 		t.Parallel()
+		const withdrawAmount = 1234
+
 		pass := gofakeit.Password(true, true, true, true, true, 32)
 		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
-		userstestutil.IncreaseBalanceOrFail(t, testDB, user, balanceSats)
-		const withdrawAmount = 1234
+		tx := txtest.InsertFundedIncoming(t, testDB, withdrawAmount, user.ID)
+		require.NotNil(t, tx.AmountMSat)
+
+		bal, err := balance.ForUser(testDB, user.ID)
+		require.NoError(t, err)
+		require.True(t, bal.Sats() > withdrawAmount, tx)
 
 		accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
 			Email:    user.Email,
 			Password: pass,
 		})
 
+		const address = "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/withdraw",
@@ -557,10 +611,14 @@ func TestRestServer_WithdrawOnChain(t *testing.T) {
 			Body: fmt.Sprintf(`{
 			"amountSat": %d,
 			"address": %q
-		}`, withdrawAmount, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
+		}`, withdrawAmount, address),
 		})
 
-		h.AssertResponseOk(t, req)
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, address, res["address"])
+		assert.Equal(t, float64(withdrawAmount), res["amountSat"])
+		assert.Equal(t, false, res["confirmed"])
+		assert.Equal(t, "blockchain", res["type"])
 
 		balanceReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
@@ -569,14 +627,17 @@ func TestRestServer_WithdrawOnChain(t *testing.T) {
 		})
 
 		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
-		testutil.AssertEqual(t, balanceRes["balance"], balanceSats-withdrawAmount)
+		expectedBalance := (*tx.AmountMSat / 1000) - withdrawAmount
+
+		testutil.AssertEqual(t, expectedBalance, balanceRes["balanceSats"])
 	})
 
 	t.Run("fail to withdraw too much", func(t *testing.T) {
 		t.Parallel()
+
 		pass := gofakeit.Password(true, true, true, true, true, 32)
 		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
-		userstestutil.IncreaseBalanceOrFail(t, testDB, user, balanceSats)
+
 		accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
 			Email:    user.Email,
 			Password: pass,
@@ -589,11 +650,11 @@ func TestRestServer_WithdrawOnChain(t *testing.T) {
 			Body: fmt.Sprintf(`{
 			"amountSat": %d,
 			"address": %q
-		}`, balanceSats+1, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
+		}`, 1337, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
 		})
 
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-		testutil.AssertEqual(t, apierr.ErrBalanceTooLowForWithdrawal, err)
+		testutil.AssertEqual(t, apierr.ErrBalanceTooLow, err)
 
 	})
 }
@@ -615,7 +676,6 @@ func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, d
 	return trans.ID
 }
 
-// below this point are util functions, not actual tests
 func createFakeDeposits(t *testing.T, amount int, accessToken string) []int {
 	t.Helper()
 
@@ -629,7 +689,5 @@ func createFakeDeposits(t *testing.T, amount int, accessToken string) []int {
 func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {
 	var trans []transactions.Transaction
 	h.AssertResponseOKWithStruct(t, req, &trans)
-	if len(trans) != expected {
-		testutil.FailMsgf(t, "expected %d transactions, got %d", expected, len(trans))
-	}
+	assert.Equal(t, expected, len(trans))
 }

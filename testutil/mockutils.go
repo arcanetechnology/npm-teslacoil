@@ -31,7 +31,6 @@ func GetMockHttpPoster() *mockHttpPoster {
 func (m *mockHttpPoster) Post(url, contentType string, reader io.Reader) (*http.Response, error) {
 	m.Lock()
 	m.sentPostRequests += 1
-	m.Unlock()
 
 	log.WithField("url", url).Info("Mock HTTP poster POSTing")
 
@@ -40,6 +39,7 @@ func (m *mockHttpPoster) Post(url, contentType string, reader io.Reader) (*http.
 		return nil, err
 	}
 	m.sentBodies = append(m.sentBodies, body)
+	m.Unlock()
 
 	return &http.Response{
 		StatusCode: 200,
