@@ -10,7 +10,6 @@ import (
 
 	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
 
 // Key is the database representation of our API keys
@@ -29,7 +28,7 @@ type Key struct {
 // New creates a new API key for the given user. It returns both the inserted
 // DB struct as well as the raw API key. It's not possible to retrieve the raw
 // API key at a later point in time.
-func New(d *db.DB, user users.User) (uuid.UUID, Key, error) {
+func New(d *db.DB, userId int) (uuid.UUID, Key, error) {
 	key := uuid.NewV4()
 
 	hasher := sha256.New()
@@ -39,7 +38,7 @@ func New(d *db.DB, user users.User) (uuid.UUID, Key, error) {
 
 	apiKey := Key{
 		HashedKey: hashedKey,
-		UserID:    user.ID,
+		UserID:    userId,
 	}
 	query := `INSERT INTO api_keys 
 	VALUES (:hashed_key, :user_id) 
