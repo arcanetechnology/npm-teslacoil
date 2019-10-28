@@ -3,6 +3,7 @@ package transactiontestutil
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func GenOffchain(userID int) transactions.Offchain {
 		CustomerOrderId: genMaybeString(gofakeit.Word),
 		Expiry:          gofakeit.Int64(),
 		Direction:       genDirection(),
-		AmountSat:       amountMSat / 1000,
+		AmountSat:       int64(math.Round(float64(amountMSat) / 1000)),
 		Description: genMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(0, 10))
 		}),

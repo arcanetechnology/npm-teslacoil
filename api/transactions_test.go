@@ -27,6 +27,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
@@ -41,7 +42,7 @@ var (
 
 	h httptestutil.TestHarness
 
-	mockSendGridClient                             = testutil.GetMockSendGridClient()
+	mockSendGridClient                             = mock.GetMockSendGridClient()
 	mockLightningClient lnrpc.LightningClient      = lntestutil.GetLightningMockClient()
 	mockBitcoindClient  bitcoind.TeslacoilBitcoind = bitcoind.GetBitcoinMockClient()
 	mockHttpPoster                                 = testutil.GetMockHttpPoster()

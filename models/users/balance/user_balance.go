@@ -1,7 +1,9 @@
 package balance
 
 import (
+	"errors"
 	"fmt"
+	"math"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -12,8 +14,11 @@ var log = build.Log
 
 const (
 	milliSatsPerSat     = 1000
-	satsPerBitcoin      = 100000000    // 100 milllion
 	milliSatsPerBitcoin = 100000000000 // 100 000 million
+)
+
+var (
+	ErrUserHasNegativeBalance = errors.New("user has negative balance")
 )
 
 // Balance is a type we use to easily convert between different denominations of BTC(sats, millisats, Bitcoins)
@@ -31,7 +36,8 @@ func (b Balance) MilliSats() int64 {
 
 // Sats converts a Balance type to an int by dividing with 1000
 func (b Balance) Sats() int64 {
-	return int64(b / milliSatsPerSat)
+	sats := math.Round(float64(b) / float64(milliSatsPerSat))
+	return int64(sats)
 }
 
 // Bitcoins converts a Balance type to a btc amount by dividing with milliSatsPerBitcoin
@@ -48,12 +54,12 @@ func (b Balance) String() string {
 func ForUser(db *db.DB, userID int) (Balance, error) {
 	incoming, err := IncomingForUser(db, userID)
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
 	outgoing, err := OutgoingForUser(db, userID)
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
 	balance := incoming - outgoing
@@ -65,6 +71,8 @@ func ForUser(db *db.DB, userID int) (Balance, error) {
 	})
 	if balance < 0 {
 		bLogger.Error("User has negative balance!")
+		// TODO: create some monitoring service that shuts everything down if this happens
+		return -1, ErrUserHasNegativeBalance
 	}
 
 	bLogger.Trace("Calculated user balance")
