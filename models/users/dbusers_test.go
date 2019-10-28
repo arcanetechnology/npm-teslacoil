@@ -120,13 +120,7 @@ func TestGetByID(t *testing.T) {
 	for i, tt := range tests {
 		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
 
-		tx := testDB.MustBegin()
-		u, err := users.InsertUser(tx, tt.user)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
-		err = tx.Commit()
+		u, err := users.InsertUser(testDB, tt.user)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -162,13 +156,8 @@ func TestGetByEmail(t *testing.T) {
 
 	for _, tt := range tests {
 
-		tx := testDB.MustBegin()
-		user, err := users.InsertUser(tx, tt.user)
+		user, err := users.InsertUser(testDB, tt.user)
 		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
-		if err = tx.Commit(); err != nil {
 			testutil.FatalMsg(t, err)
 		}
 
@@ -231,22 +220,6 @@ func TestCreateUser(t *testing.T) {
 		}
 
 		testutil.AssertEqual(t, user.Email, email)
-	})
-
-	t.Run("inserting user ID 0 should not result in that user ID being used", func(t *testing.T) {
-		user := users.User{
-			ID:             0,
-			Email:          gofakeit.Email(),
-			Firstname:      nil,
-			Lastname:       nil,
-			HashedPassword: []byte("this is a hashed password"),
-		}
-		inserted, err := users.InsertUser(testDB.MustBegin(), user)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertNotEqual(t, inserted.ID, user.ID)
-
 	})
 }
 

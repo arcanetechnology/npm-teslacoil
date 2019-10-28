@@ -163,11 +163,13 @@ func (d *DB) Drop(migrationsPath string) error {
 	return nil
 }
 
+// InsertGetter can get and insert into a db
 type InsertGetter interface {
 	Getter
 	Inserter
 }
 
+// Getter can get from a db
 type Getter interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 }

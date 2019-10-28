@@ -172,7 +172,7 @@ type CreateUserArgs struct {
 // Create inserts a user with email, password, firstname,
 // and lastname into the db. The password is hashed and salted
 // before it is saved
-func Create(d *db.DB, args CreateUserArgs) (User, error) {
+func Create(db *db.DB, args CreateUserArgs) (User, error) {
 	hashedPassword, err := hashAndSalt(args.Password)
 	if err != nil {
 		return User{}, err
@@ -184,23 +184,8 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 		Lastname:       args.LastName,
 	}
 
-	tx := d.MustBegin()
-	userResp, err := InsertUser(tx, user)
+	userResp, err := InsertUser(db, user)
 	if err != nil {
-		txErr := tx.Rollback()
-		if txErr != nil {
-			return User{}, errors.Wrap(txErr,
-				"create(): could not roll back tx")
-		}
-		return User{}, err
-	}
-	err = tx.Commit()
-	if err != nil {
-		txErr := tx.Rollback()
-		if txErr != nil {
-			return User{}, errors.Wrap(txErr, "create(): could not rollbacktx")
-		}
-		log.WithError(err).Error("could not commit user creation")
 		return User{}, err
 	}
 
