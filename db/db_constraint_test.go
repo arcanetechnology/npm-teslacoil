@@ -1,9 +1,11 @@
-package db
+package db_test
 
 import (
 	"errors"
 	"math"
 	"testing"
+
+	"gitlab.com/arcanecrypto/teslacoil/testutil/transactiontestutil"
 
 	"github.com/brianvoe/gofakeit"
 
@@ -17,26 +19,22 @@ var (
 	ErrEitherOnChainOrOffchainConstraint = errors.New("transactions_must_either_onchain_or_offchain ")
 )
 
-var (
-	databaseConfig = testutil.GetDatabaseConfig("constraint")
-	testDB         *DB
-)
-
 func init() {
+	databaseConfig = testutil.GetDatabaseConfig("constraint")
 	testDB = testutil.InitDatabase(databaseConfig)
 }
 
 func insertMockTransaction(amountSat int, txid string, vout int) error {
 
 	_, err := testDB.NamedExec(`
-		INSERT INTO transactions (amount_sat, direction, address, txid, vout)
-			VALUES (:amount_sat, :direction, :address,:txid, :vout)`,
+		INSERT INTO transactions (amount_milli_sat, direction, address, txid, vout)
+			VALUES (:amount_milli_sat, :direction, :address,:txid, :vout)`,
 		map[string]interface{}{
-			"amount_sat": amountSat,
-			"direction":  testutil.MockTransactionDirection(),
-			"address":    "this is an address",
-			"txid":       txid,
-			"vout":       vout,
+			"amount_milli_sat": amountSat,
+			"direction":        transactiontestutil.MockDirection(),
+			"address":          "this is an address",
+			"txid":             txid,
+			"vout":             vout,
 		},
 	)
 	return err
@@ -54,7 +52,7 @@ func TestTransactionsAmountSatConstraint(t *testing.T) {
 
 	t.Run("inserting transaction with greater than 0 amount succeeds", func(t *testing.T) {
 		txid := testutil.MockTxid()
-		amountSat := gofakeit.Number(0, math.MaxInt64)
+		amountSat := gofakeit.Number(0, math.MaxInt64-1)
 
 		if err := insertMockTransaction(amountSat, txid, 0); err != nil {
 			testutil.FailMsgf(t, "could not insert: %w", err)
@@ -63,7 +61,7 @@ func TestTransactionsAmountSatConstraint(t *testing.T) {
 
 	t.Run("inserting transaction with negative amount fails", func(t *testing.T) {
 		txid := testutil.MockTxid()
-		amountSat := gofakeit.Number(math.MinInt64, 0)
+		amountSat := gofakeit.Number(math.MinInt64+2, 0)
 
 		if err := insertMockTransaction(amountSat, txid, 0); err == nil {
 			testutil.FailMsg(t, "successfully inserted transaction with negative amount")
@@ -77,8 +75,8 @@ func TestTransactionsTxidAndVoutMustBeUniqueConstraint(t *testing.T) {
 		txid := testutil.MockTxid()
 		// to test for vouts of big sizes as well, we randomize a number
 		// we don't want to generate a random number for both, as it is a chance they are the same
-		vout := gofakeit.Number(1, math.MaxInt64)
-		amountSat := gofakeit.Number(0, math.MaxInt64)
+		vout := gofakeit.Number(1, math.MaxInt64-1)
+		amountSat := gofakeit.Number(0, math.MaxInt64-1)
 
 		if err := insertMockTransaction(amountSat, txid, 0); err != nil {
 			testutil.FailMsgf(t, "could not insert: %w", err)
@@ -92,8 +90,8 @@ func TestTransactionsTxidAndVoutMustBeUniqueConstraint(t *testing.T) {
 	t.Run("can insert two transactions with different txid but same vout", func(t *testing.T) {
 		txid1 := testutil.MockTxid()
 		txid2 := testutil.MockTxid()
-		vout := gofakeit.Number(0, math.MaxInt64)
-		amountSat := gofakeit.Number(0, math.MaxInt64)
+		vout := gofakeit.Number(0, math.MaxInt64-1)
+		amountSat := gofakeit.Number(0, math.MaxInt64-1)
 
 		if err := insertMockTransaction(amountSat, txid1, vout); err != nil {
 			testutil.FailMsgf(t, "could not insert: %w", err)
@@ -108,8 +106,8 @@ func TestTransactionsTxidAndVoutMustBeUniqueConstraint(t *testing.T) {
 
 		txid1 := testutil.MockTxid()
 		txid2 := testutil.MockTxid()
-		vout := gofakeit.Number(1, math.MaxInt64)
-		amountSat := gofakeit.Number(0, math.MaxInt64)
+		vout := gofakeit.Number(1, math.MaxInt64-1)
+		amountSat := gofakeit.Number(0, math.MaxInt64-1)
 
 		if err := insertMockTransaction(amountSat, txid1, 0); err != nil {
 			testutil.FailMsgf(t, "could not insert: %w", err)
@@ -122,8 +120,8 @@ func TestTransactionsTxidAndVoutMustBeUniqueConstraint(t *testing.T) {
 
 	t.Run("can not insert two transactions with same txid and vout", func(t *testing.T) {
 		txid := testutil.MockTxid()
-		vout := gofakeit.Number(0, math.MaxInt64)
-		amountSat := gofakeit.Number(math.MinInt64, 0)
+		vout := gofakeit.Number(0, math.MaxInt64-1)
+		amountSat := gofakeit.Number(math.MinInt64+2, 0)
 
 		if err := insertMockTransaction(amountSat, txid, vout); err == nil {
 			testutil.FailMsgf(t, "inserted regardless of constraint")
@@ -141,9 +139,9 @@ func TestTransactionsTxidLengthConstraint(t *testing.T) {
 	t.Run("can insert txid of length 64", func(t *testing.T) {
 
 		if err := insertMockTransaction(
-			gofakeit.Number(0, math.MaxInt64),
+			gofakeit.Number(0, math.MaxInt64-1),
 			testutil.MockTxid(),
-			gofakeit.Number(0, math.MaxInt64)); err != nil {
+			gofakeit.Number(0, math.MaxInt64-1)); err != nil {
 			testutil.FailMsgf(t, "could not insert transaction: %w", err)
 		}
 
@@ -152,9 +150,9 @@ func TestTransactionsTxidLengthConstraint(t *testing.T) {
 	t.Run("can not insert txid of length 0", func(t *testing.T) {
 
 		if err := insertMockTransaction(
-			gofakeit.Number(0, math.MaxInt64),
+			gofakeit.Number(0, math.MaxInt64-1),
 			testutil.MockStringOfLength(0),
-			gofakeit.Number(0, math.MaxInt64)); err == nil {
+			gofakeit.Number(0, math.MaxInt64-1)); err == nil {
 			testutil.FailMsg(t, "inserted bad transaction")
 		}
 
@@ -163,9 +161,9 @@ func TestTransactionsTxidLengthConstraint(t *testing.T) {
 	t.Run("can not insert txid of length less than 64", func(t *testing.T) {
 
 		if err := insertMockTransaction(
-			gofakeit.Number(0, math.MaxInt64),
+			gofakeit.Number(0, math.MaxInt64-1),
 			testutil.MockStringOfLength(gofakeit.Number(0, 63)),
-			gofakeit.Number(0, math.MaxInt64)); err == nil {
+			gofakeit.Number(0, math.MaxInt64-1)); err == nil {
 			testutil.FailMsg(t, "inserted bad transaction")
 		}
 
@@ -174,9 +172,9 @@ func TestTransactionsTxidLengthConstraint(t *testing.T) {
 	t.Run("can not insert txid of length greater than 64", func(t *testing.T) {
 
 		if err := insertMockTransaction(
-			gofakeit.Number(0, math.MaxInt64),
+			gofakeit.Number(0, math.MaxInt64-1),
 			testutil.MockStringOfLength(gofakeit.Number(65, 500)),
-			gofakeit.Number(0, math.MaxInt64)); err == nil {
+			gofakeit.Number(0, math.MaxInt64-1)); err == nil {
 			testutil.FailMsg(t, "inserted bad transaction")
 		}
 
@@ -186,7 +184,6 @@ func TestTransactionsTxidLengthConstraint(t *testing.T) {
 // TestTransactionsAmountSatConstraint tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsMustEitherBeOnOrOffchainConstraint(t *testing.T) {
 	testutil.DescribeTest(t)
-	txid := testutil.MockTxid()
 
 	t.Run("can insert on-chain transaction with all fields", func(t *testing.T) {
 	})
@@ -209,9 +206,6 @@ func TestTransactionsMustEitherBeOnOrOffchainConstraint(t *testing.T) {
 
 // TestTransactionsAmountSatConstraint tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsTxidOrVoutCantExistAloneConstraint(t *testing.T) {
-	testutil.DescribeTest(t)
-	txid := testutil.MockTxid()
-
 }
 
 // TestTransactionsAmountSatConstraint tests that it is impossible to create a transaction with amount less than 0
