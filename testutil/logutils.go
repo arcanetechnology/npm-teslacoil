@@ -78,6 +78,11 @@ func FailMsgf(t *testing.T, format string, args ...interface{}) {
 	t.Fail()
 }
 
+func FailError(t *testing.T, message string, err error) {
+	t.Helper()
+	t.Errorf("\t%s%s\t %s: \terr: %s%s", red, cross, message, err, reset)
+}
+
 // DescribeTest logs the name of test with a green checkmark
 func DescribeTest(t *testing.T) {
 	t.Helper()
