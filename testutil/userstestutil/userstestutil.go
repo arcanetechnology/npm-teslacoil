@@ -49,6 +49,7 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, balance int) users.Use
 		UserID:     u.ID,
 		AmountMSat: int64(balance) * 1000,
 		Direction:  transactions.INBOUND,
+		Expiry:     1337,
 		Status:     transactions.SUCCEEDED,
 		SettledAt:  &settled,
 	}

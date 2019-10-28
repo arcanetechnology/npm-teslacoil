@@ -26,7 +26,6 @@ import (
 
 var (
 	ErrCouldNotGetByID            = errors.New("could not get payment by ID")
-	ErrUserBalanceTooLow          = errors.New("user balance too low, cant decrease")
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
 )
 
@@ -104,7 +103,6 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 
 	tx := Offchain{
 		UserID:         opts.UserID,
-		AmountSat:      invoice.Value,
 		AmountMSat:     invoice.Value * 1000,
 		Expiry:         invoice.Expiry,
 		PaymentRequest: invoice.PaymentRequest,
@@ -127,7 +125,8 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 
 	inserted, err := InsertOffchain(d, tx)
 	if err != nil {
-		log.WithError(err).WithFields(opts.toFields()).Error("Could not insert invoice")
+		log.WithError(err).WithFields(opts.toFields()).WithField("expiry",
+			invoice.Expiry).Error("Could not insert invoice")
 		return Offchain{}, err
 	}
 
@@ -176,7 +175,6 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		Memo:           &payreq.Description,
 		Description:    &description,
 		Direction:      OUTBOUND,
-		AmountSat:      payreq.NumSatoshis,
 		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
 
@@ -195,10 +193,10 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	if userBalance.Sats() < payreq.NumSatoshis {
 		log.WithFields(logrus.Fields{
 			"userId":          userID,
-			"balanceSats":     userBalance.MilliSats(),
+			"balanceSats":     userBalance.Sats(),
 			"requestedAmount": payreq.NumSatoshis,
 		}).Warn("User tried to pay invoice for more than their balance")
-		return Offchain{}, ErrUserBalanceTooLow
+		return Offchain{}, ErrBalanceTooLow
 	}
 
 	// attempt to pay invoice

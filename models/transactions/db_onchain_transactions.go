@@ -3,6 +3,7 @@ package transactions
 import (
 	"context"
 	"database/sql"
+	"encoding"
 	"errors"
 	"fmt"
 	"math"
@@ -28,15 +29,44 @@ var log = build.Log
 var (
 	ErrNonPositiveAmount = errors.New("cannot send non-positiv amount")
 	ErrTxHasTxid         = pkgErrors.New("transaction already has txid, cant overwrite")
-	// ErrBalanceTooLowForWithdrawal means the user tried to withdraw too much money
-	ErrBalanceTooLowForWithdrawal = errors.New("cannot withdraw, balance is too low")
+
+	// ErrBalanceTooLow means the user tried to withdraw too much money
+	ErrBalanceTooLow = errors.New("balance is too low")
 )
 
 // Direction is the direction of a transaction, seen from the users perspective
 type Direction string
 
+func (d Direction) MarshalText() (text []byte, err error) {
+	switch d {
+	case INBOUND:
+		return []byte("inbound"), nil
+	case OUTBOUND:
+		return []byte("outbound"), nil
+	default:
+		return nil, fmt.Errorf("unknown transaction direction: %s", d)
+	}
+}
+
+var _ encoding.TextMarshaler = INBOUND
+
 // Status is the status of a lightning payment
 type Status string
+
+func (s Status) MarshalText() (text []byte, err error) {
+	switch s {
+	case SUCCEEDED:
+		return []byte("succeeded"), nil
+	case FAILED:
+		return []byte("failed"), nil
+	case OPEN:
+		return []byte("open"), nil
+	default:
+		return nil, fmt.Errorf("unknown transaction status: %s", s)
+	}
+}
+
+var _ encoding.TextMarshaler = SUCCEEDED
 
 const (
 	INBOUND  Direction = "INBOUND"
@@ -117,7 +147,11 @@ func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) 
 	transactions := []Transaction{}
 	err := d.Select(&transactions, query, userID, limit, offset)
 	if err != nil {
-		log.Error(err)
+		log.WithError(err).WithFields(logrus.Fields{
+			"limit":   limit,
+			"offset":  offset,
+			"usuerId": userID,
+		}).Error("Could not get transactions")
 		return transactions, err
 	}
 
@@ -160,8 +194,8 @@ func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
 
 	var transaction Transaction
 	if err := d.Get(&transaction, query, id, userID); err != nil {
-		log.Error(err)
-		return transaction, pkgErrors.Wrap(err, "could not get transaction")
+		log.WithError(err).WithField("id", id).Error("Could not get transaction")
+		return transaction, fmt.Errorf("could not get transaction: %w", err)
 	}
 
 	return transaction, nil
@@ -421,7 +455,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 			"requestedSendSats": args.AmountSat,
 			"userId":            args.UserID,
 		}).Error("User tried to withdraw more than their balance")
-		return Onchain{}, ErrUserBalanceTooLow
+		return Onchain{}, ErrBalanceTooLow
 	}
 
 	txid, err := SendOnChain(lncli, &lnrpc.SendCoinsRequest{
@@ -456,7 +490,8 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 
 	transaction, err := InsertOnchain(db, txToInsert)
 	if err != nil {
-		return Onchain{}, pkgErrors.Wrap(err, "could not insert transaction")
+		log.WithError(err).WithField("tx", txToInsert).Error("Could not insert onchain TX when withdrawing")
+		return Onchain{}, err
 	}
 
 	return transaction, nil
@@ -558,17 +593,17 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forc
 
 	// Get the latest INBOUND transaction whose txid is empty from the DB
 	query := "SELECT * from transactions WHERE user_id=$1 AND direction='INBOUND' AND txid ISNULL ORDER BY id DESC LIMIT 1;"
-	var deposit Onchain
+	var deposit Transaction
 	err := db.Get(&deposit, query, userID)
 
 	switch {
-	case err != nil && err == sql.ErrNoRows:
+	case errors.Is(err, sql.ErrNoRows):
 		// no deposit exists yet
 		log.Debug("SELECT found no transactions, creating new deposit")
 		return NewDepositWithDescription(db, lncli, userID, description)
 	case err == nil:
 		// we found a deposit
-		return deposit, nil
+		return deposit.ToOnchain()
 	default:
 		return Onchain{}, pkgErrors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
 	}

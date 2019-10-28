@@ -81,11 +81,11 @@ func TestNewOffchainTx(t *testing.T) {
 				PaymentRequest: payReq1,
 				RHash:          SampleHash[:],
 				RPreimage:      SamplePreimage,
+				Expiry:         1337,
 				Settled:        false,
 			},
 			want: Offchain{
 				UserID:         user.ID,
-				AmountSat:      amount1,
 				PaymentRequest: payReq1,
 				AmountMSat:     amount1 * 1000,
 				HashedPreimage: SampleHash[:],
@@ -105,11 +105,11 @@ func TestNewOffchainTx(t *testing.T) {
 				PaymentRequest: payReq2,
 				RHash:          SampleHash[:],
 				RPreimage:      SamplePreimage,
+				Expiry:         1337,
 				Settled:        false,
 			},
 			want: Offchain{
 				UserID:         user.ID,
-				AmountSat:      amount2,
 				AmountMSat:     amount2 * 1000,
 				HashedPreimage: SampleHash[:],
 				PaymentRequest: payReq2,
@@ -130,11 +130,11 @@ func TestNewOffchainTx(t *testing.T) {
 				PaymentRequest: payReq3,
 				RHash:          SampleHash[:],
 				RPreimage:      SamplePreimage,
+				Expiry:         1337,
 				Settled:        false,
 			},
 			want: Offchain{
 				UserID:          user.ID,
-				AmountSat:       amount3,
 				AmountMSat:      amount3 * 1000,
 				Memo:            &firstMemo,
 				HashedPreimage:  SampleHash[:],
@@ -171,7 +171,6 @@ func TestNewOffchainTx(t *testing.T) {
 			want := tt.want
 
 			assert := assert.New(t)
-			assert.Equal(want.AmountSat, got.AmountSat)
 			assert.Equal(want.AmountMSat, got.AmountMSat)
 			assert.Equal(want.SettledAt, got.SettledAt)
 			assert.Equal(want.Memo, got.Memo)
@@ -330,6 +329,7 @@ func TestPayInvoice(t *testing.T) {
 			DecodePayReqResponse: lnrpc.PayReq{
 				PaymentHash: SampleHashHex,
 				NumSatoshis: amount,
+				Expiry:      1337,
 			},
 		}
 		balancePrePayment, err := balance.ForUser(testDB, user.ID)
@@ -366,7 +366,9 @@ func TestPayInvoice(t *testing.T) {
 		}
 
 		_, err := PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
-		assert.True(t, errors.Is(err, ErrUserBalanceTooLow))
+		if errors.Is(err, ErrBalanceTooLow) {
+			assert.Equal(t, err, ErrBalanceTooLow)
+		}
 
 	})
 	t.Run("paying invoice with 0 amount fails with Err0AmountInvoiceNotSupported", func(t *testing.T) {
@@ -400,10 +402,10 @@ func TestPayInvoice(t *testing.T) {
 				PaymentPreimage: SamplePreimage,
 				PaymentHash:     SampleHash[:],
 			},
-			// define what lncli.DecodePayReq returns
 			DecodePayReqResponse: lnrpc.PayReq{
 				PaymentHash: SampleHashHex,
 				NumSatoshis: amount,
+				Expiry:      1000,
 			},
 		}
 
@@ -466,7 +468,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		// for the callback to be executed, we need to create an API key for the
 		// current user. this is because the callback body is hashed with the
 		// users API key
-		if _, _, err := apikeys.New(testDB, u); err != nil {
+		if _, _, err := apikeys.New(testDB, u.ID); err != nil {
 			require.NoError(t, err)
 		}
 
@@ -544,7 +546,6 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 			Expiry:         1,
 			Direction:      Direction("INBOUND"),
 			Status:         Status("OPEN"),
-			AmountSat:      100,
 			AmountMSat:     100000,
 		}
 
@@ -555,10 +556,10 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 		// correctly. expired should be true
 		time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
 
-		offchainTx = offchainTx.WithAdditionalFields()
+		withFields := offchainTx.withAdditionalFields()
 
-		assert.True(t, offchainTx.Expired)
-		assert.Equal(t, offchainTx.ExpiresAt, offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
+		assert.True(t, withFields.Expired)
+		assert.Equal(t, withFields.ExpiresAt, offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
 	})
 
 	invoices := []Offchain{
@@ -568,7 +569,6 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 			Expiry:         3600,
 			Direction:      Direction("INBOUND"),
 			Status:         Status("OPEN"),
-			AmountSat:      100,
 			AmountMSat:     100000,
 		},
 		Offchain{
@@ -577,7 +577,6 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 			Expiry:         2,
 			Direction:      Direction("INBOUND"),
 			Status:         Status("OPEN"),
-			AmountSat:      100,
 			AmountMSat:     100000,
 		},
 	}
@@ -587,7 +586,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 			func(t *testing.T) {
 				payment, err := InsertOffchain(testDB, invoice)
 				require.NoError(t, err)
-				assert.False(t, payment.Expired)
+				assert.False(t, payment.withAdditionalFields().Expired)
 			})
 	}
 }
