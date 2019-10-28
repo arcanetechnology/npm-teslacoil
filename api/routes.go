@@ -152,7 +152,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	// Start two goroutines for listening to zmq events
 	bitcoin.StartZmq()
 
-	go transactions.TxListener(db, lncli, bitcoin.ZmqTxChannel(), config.Network)
+	go transactions.TxListener(db, bitcoin.ZmqTxChannel(), config.Network)
 	go transactions.BlockListener(db, bitcoin.Btcctl(), bitcoin.ZmqBlockChannel())
 
 	invoiceUpdatesCh := make(chan *lnrpc.Invoice)

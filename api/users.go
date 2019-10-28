@@ -26,7 +26,7 @@ import (
 
 // UserResponse is the type returned by the api to the front-end
 type userResponse struct {
-	ID          int     `json:"id"`
+	ID          int     `json:"userId"`
 	Email       string  `json:"email"`
 	BalanceSats int64   `json:"balanceSats"`
 	Firstname   *string `json:"firstName"`
@@ -254,7 +254,7 @@ func (r *RestServer) createUser() gin.HandlerFunc {
 		})
 		if err != nil {
 			log.WithError(err).Error("could not create user")
-			if stderr.Is(err, users.ErrEmailMustBeUnique) {
+			if stderr.As(err, &users.ErrEmailMustBeUnique) {
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrUserAlreadyExists)
 				return
 			}
