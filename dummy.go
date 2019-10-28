@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/brianvoe/gofakeit"
@@ -136,7 +137,7 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			memo = mem
 		}
 
-		inv, err := transactions.NewPayment(db, lncli, transactions.NewPaymentOpts{
+		inv, err := transactions.NewOffchain(db, lncli, transactions.NewOffchainOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(amountSat),
 			Memo:        memo,
@@ -157,13 +158,16 @@ func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
 			duration := time.Duration(nanos)
 			paidAt := inv.CreatedAt.Add(duration)
 
-			err := transactions.MarkInvoiceAsPaid(db, inv.PaymentRequest, paidAt)
+			paid, err := inv.MarkAsPaid(db, paidAt)
 
 			if err != nil {
 				log.Debugf("Could not mark invoice as paid: %s", err)
 				return err
 			} else {
-				log.Debugf("Updated invoice for user with settled_at %+v", paidAt)
+				log.WithFields(logrus.Fields{
+					"settledAt": paid.SettledAt,
+					"userId":    paid.UserID,
+				}).Debug("Updated invoice for user")
 			}
 		}
 	}
