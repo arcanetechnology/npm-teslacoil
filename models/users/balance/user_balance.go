@@ -3,6 +3,7 @@ package balance
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -35,7 +36,8 @@ func (b Balance) MilliSats() int64 {
 
 // Sats converts a Balance type to an int by dividing with 1000
 func (b Balance) Sats() int64 {
-	return int64(b / milliSatsPerSat)
+	sats := math.Round(float64(b) / float64(milliSatsPerSat))
+	return int64(sats)
 }
 
 // Bitcoins converts a Balance type to a btc amount by dividing with milliSatsPerBitcoin

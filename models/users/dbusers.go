@@ -12,7 +12,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/dchest/passwordreset"
-	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -75,10 +74,14 @@ var (
 	emailVerificationSecretKey = []byte("assume we have a different long and also random secret key here")
 
 	// custom errors for this package
-	Err2faAlreadyEnabled = errors.New("user already has 2FA credentials")
-	Err2faNotEnabled     = errors.New("user does not have 2FA enabled")
-	ErrInvalidTotpCode   = errors.New("invalid TOTP code")
-	ErrEmailMustBeUnique = errors.New("users_email_key")
+	Err2faAlreadyEnabled           = errors.New("user already has 2FA credentials")
+	Err2faNotEnabled               = errors.New("user does not have 2FA enabled")
+	ErrInvalidTotpCode             = errors.New("invalid TOTP code")
+	ErrEmailMustBeUnique           = errors.New("users_email_key")
+	ErrHashedPasswordMustBeDefined = errors.New(
+		"property HashedPassword on user must be defined")
+	ErrEmailMustBeDefined = errors.New(
+		"property Email on user must be defined ")
 )
 
 // GetAll reads all users from the database
@@ -102,7 +105,7 @@ func GetByID(db *db.DB, id int) (User, error) {
 		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
 	}
 
-	withBalance, err := userResult.withBalance(db)
+	withBalance, err := userResult.WithBalance(db)
 	if err != nil {
 		log.WithError(err).Error("could not add balance")
 	}
@@ -120,7 +123,7 @@ func GetByEmail(db *db.DB, email string) (User, error) {
 		return User{}, err
 	}
 
-	withBalance, err := userResult.withBalance(db)
+	withBalance, err := userResult.WithBalance(db)
 	if err != nil {
 		log.WithError(err).Error("could not add balance")
 	}
@@ -149,7 +152,7 @@ func GetByCredentials(db *db.DB, email string, password string) (
 		return User{}, err
 	}
 
-	withBalance, err := userResult.withBalance(db)
+	withBalance, err := userResult.WithBalance(db)
 	if err != nil {
 		log.WithError(err).Error("could not add balance")
 	}
@@ -202,103 +205,6 @@ func Create(d *db.DB, args CreateUserArgs) (User, error) {
 	}
 
 	return userResp, nil
-}
-
-// UpdateOptions represents the different actions `UpdateUser` can perform.
-type UpdateOptions struct {
-	// If set to nil, does nothing. If set to the empty string, deletes
-	// firstName
-	NewFirstName *string
-	// If set to nil, does nothing. If set to the empty string, deletes
-	// lastName
-	NewLastName *string
-	// If set to nil, does nothing, if set to the empty string, we return
-	// an error
-	NewEmail *string
-}
-
-// Update the users email, first name and last name, depending on
-// what options are passed in
-func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
-	if u.ID == 0 {
-		return User{}, errors.New("UserID cannot be 0")
-	}
-
-	// no action needed
-	if opts.NewFirstName == nil &&
-		opts.NewLastName == nil && opts.NewEmail == nil {
-		return User{}, errors.New("no actions given in UpdateOptions")
-	}
-
-	updateQuery := `UPDATE users SET `
-	var updates []string
-	queryUser := User{
-		ID: u.ID,
-	}
-
-	if opts.NewEmail != nil {
-		if *opts.NewEmail == "" {
-			return User{}, errors.New("cannot delete email")
-		}
-		updates = append(updates, "email = :email")
-		queryUser.Email = *opts.NewEmail
-	}
-	if opts.NewFirstName != nil {
-		if *opts.NewFirstName == "" {
-			updates = append(updates, "first_name = NULL")
-		} else {
-			updates = append(updates, "first_name = :first_name")
-		}
-		queryUser.Firstname = opts.NewFirstName
-	}
-	if opts.NewLastName != nil {
-		if *opts.NewLastName == "" {
-			updates = append(updates, "last_name = NULL")
-		} else {
-			updates = append(updates, "last_name = :last_name")
-		}
-		queryUser.Lastname = opts.NewLastName
-	}
-
-	updateQuery += strings.Join(updates, ",")
-	updateQuery += ` WHERE id = :id ` + returningFromUsersTable
-	log.WithFields(logrus.Fields{
-		"userID":       queryUser.ID,
-		"sqlQuery":     updateQuery,
-		"newEmail":     opts.NewEmail,
-		"newFirstName": opts.NewFirstName,
-		"newLastName":  opts.NewLastName,
-	}).Debug("executing SQL for updating user")
-
-	rows, err := db.NamedQuery(
-		updateQuery,
-		&queryUser,
-	)
-
-	if err != nil {
-		return User{}, errors.Wrap(err, "could not update user")
-	}
-	user, err := scanUser(rows)
-
-	if err != nil {
-		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
-		return User{}, errors.Wrap(err, msg)
-	}
-
-	return user, nil
-
-}
-
-// WithBalance fills in the BalanceSats property in the User struct
-func (u User) withBalance(db *db.DB) (User, error) {
-	uBalance, err := balance.ForUser(db, u.ID)
-	if err != nil {
-		log.WithError(err).Error("could not get balance")
-	}
-	sats := uBalance.Sats()
-	u.BalanceSats = &sats
-
-	return u, nil
 }
 
 // GetEmailVerificationTokenWithKey creates a token that can be used
@@ -533,6 +439,126 @@ func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
 	return updatedUser, nil
 }
 
+// UpdateOptions represents the different actions `UpdateUser` can perform.
+type UpdateOptions struct {
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// firstName
+	NewFirstName *string
+	// If set to nil, does nothing. If set to the empty string, deletes
+	// lastName
+	NewLastName *string
+	// If set to nil, does nothing, if set to the empty string, we return
+	// an error
+	NewEmail *string
+}
+
+// Update the users email, first name and last name, depending on
+// what options are passed in
+func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
+	if u.ID == 0 {
+		return User{}, errors.New("UserID cannot be 0")
+	}
+
+	// no action needed
+	if opts.NewFirstName == nil &&
+		opts.NewLastName == nil && opts.NewEmail == nil {
+		return User{}, errors.New("no actions given in UpdateOptions")
+	}
+
+	updateQuery := `UPDATE users SET `
+	var updates []string
+	queryUser := User{
+		ID: u.ID,
+	}
+
+	if opts.NewEmail != nil {
+		if *opts.NewEmail == "" {
+			return User{}, errors.New("cannot delete email")
+		}
+		updates = append(updates, "email = :email")
+		queryUser.Email = *opts.NewEmail
+	}
+	if opts.NewFirstName != nil {
+		if *opts.NewFirstName == "" {
+			updates = append(updates, "first_name = NULL")
+		} else {
+			updates = append(updates, "first_name = :first_name")
+		}
+		queryUser.Firstname = opts.NewFirstName
+	}
+	if opts.NewLastName != nil {
+		if *opts.NewLastName == "" {
+			updates = append(updates, "last_name = NULL")
+		} else {
+			updates = append(updates, "last_name = :last_name")
+		}
+		queryUser.Lastname = opts.NewLastName
+	}
+
+	updateQuery += strings.Join(updates, ",")
+	updateQuery += ` WHERE id = :id ` + returningFromUsersTable
+	log.WithFields(logrus.Fields{
+		"userID":       queryUser.ID,
+		"sqlQuery":     updateQuery,
+		"newEmail":     opts.NewEmail,
+		"newFirstName": opts.NewFirstName,
+		"newLastName":  opts.NewLastName,
+	}).Debug("executing SQL for updating user")
+
+	rows, err := db.NamedQuery(
+		updateQuery,
+		&queryUser,
+	)
+
+	if err != nil {
+		return User{}, errors.Wrap(err, "could not update user")
+	}
+	user, err := scanUser(rows)
+
+	if err != nil {
+		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
+		return User{}, errors.Wrap(err, msg)
+	}
+
+	return user, nil
+
+}
+
+// WithBalance fills in the BalanceSats property in the User struct
+func (u User) WithBalance(db *db.DB) (User, error) {
+	uBalance, err := balance.ForUser(db, u.ID)
+	if err != nil {
+		log.WithError(err).Error("could not get balance")
+	}
+	sats := uBalance.Sats()
+	u.BalanceSats = &sats
+
+	return u, nil
+}
+
+func (u User) String() string {
+	fragments := []string{
+		fmt.Sprintf("ID: %d", u.ID),
+		fmt.Sprintf("Email: %s", u.Email),
+		fmt.Sprintf("HasVerifiedEmail: %t", u.HasVerifiedEmail),
+		fmt.Sprintf("CreatedAt: %s", u.CreatedAt),
+	}
+
+	if u.Firstname != nil {
+		fragments = append(fragments, fmt.Sprintf(" Firstname: %s", *u.Firstname))
+	} else {
+		fragments = append(fragments, "Firstname: <nil>")
+	}
+
+	if u.Lastname != nil {
+		fragments = append(fragments, fmt.Sprintf("Lastname: %s", *u.Lastname))
+	} else {
+		fragments = append(fragments, "Lastname: <nil>")
+	}
+
+	return strings.Join(fragments, ", ")
+}
+
 // scanUser tries to scan a User struct frm the given scannable interface
 func scanUser(rows dbScanner) (User, error) {
 	user := User{}
@@ -593,16 +619,24 @@ type dbScanner interface {
 	Err() error
 }
 
-// InsertUser inserts fields from a user struct into the
-// database.
-func InsertUser(tx *sqlx.Tx, user User) (User, error) {
+// InsertUser inserts fields from a user struct into the database.
+func InsertUser(i db.Inserter, user User) (User, error) {
 	userCreateQuery := `INSERT INTO users 
 		(email, hashed_password, totp_secret, confirmed_totp_secret, 
 first_name, last_name)
 		VALUES (:email, :hashed_password, :totp_secret, false, :first_name, 
 :last_name) ` + returningFromUsersTable
 
-	rows, err := tx.NamedQuery(userCreateQuery, user)
+	if len(user.Email) == 0 {
+		return User{}, ErrEmailMustBeDefined
+	}
+
+	if len(user.HashedPassword) == 0 {
+		// hased password is not set
+		return User{}, ErrHashedPasswordMustBeDefined
+	}
+
+	rows, err := i.NamedQuery(userCreateQuery, user)
 	if err != nil {
 		return User{}, fmt.Errorf("could not insert user: %w", err)
 	}
@@ -612,27 +646,4 @@ first_name, last_name)
 		return User{}, fmt.Errorf("could not scan user: %w", err)
 	}
 	return userResp, nil
-}
-
-func (u User) String() string {
-	fragments := []string{
-		fmt.Sprintf("ID: %d", u.ID),
-		fmt.Sprintf("Email: %s", u.Email),
-		fmt.Sprintf("HasVerifiedEmail: %t", u.HasVerifiedEmail),
-		fmt.Sprintf("CreatedAt: %s", u.CreatedAt),
-	}
-
-	if u.Firstname != nil {
-		fragments = append(fragments, fmt.Sprintf(" Firstname: %s", *u.Firstname))
-	} else {
-		fragments = append(fragments, "Firstname: <nil>")
-	}
-
-	if u.Lastname != nil {
-		fragments = append(fragments, fmt.Sprintf("Lastname: %s", *u.Lastname))
-	} else {
-		fragments = append(fragments, "Lastname: <nil>")
-	}
-
-	return strings.Join(fragments, ", ")
 }
