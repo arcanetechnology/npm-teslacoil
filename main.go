@@ -1,4 +1,4 @@
-package teslacoil
+package main
 
 import (
 	"context"
@@ -455,7 +455,7 @@ var (
 					if err != nil {
 						return pkgerrors.Wrap(err, "could not connect to lnd")
 					}
-					return FillWithDummyData(database, lncli, c.Bool("only-once"))
+					return fillWithDummyData(database, lncli, c.Bool("only-once"))
 				},
 			},
 		},

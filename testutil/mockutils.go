@@ -90,7 +90,7 @@ func GetPortOrFail(t *testing.T) int {
 	if err != nil {
 		return GetPortOrFail(t)
 	}
-	if err := listener.Close(); err != nil {
+	if err = listener.Close(); err != nil {
 		FatalMsgf(t, "Couldn't close port: %sl", err)
 	}
 	return port
