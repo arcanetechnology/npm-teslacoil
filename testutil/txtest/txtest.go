@@ -1,9 +1,8 @@
-package transactiontestutil
+package txtest
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -78,9 +77,8 @@ func GenOffchain(userID int) transactions.Offchain {
 		UserID:          userID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          gofakeit.Int64(),
+		Expiry:          int64(gofakeit.Number(100, 100000)),
 		Direction:       genDirection(),
-		AmountSat:       int64(math.Round(float64(amountMSat) / 1000)),
 		Description: genMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(0, 10))
 		}),
@@ -122,19 +120,20 @@ func GenOnchain(userID int) transactions.Onchain {
 		confirmedAtBlock = &c
 	}
 
-	var settledAt *time.Time
-	if txid != nil && gofakeit.Bool() {
-		s := gofakeit.DateRange(start, now)
-		settledAt = &s
-	}
+	// var settledAt *time.Time
+	// if txid != nil && gofakeit.Bool() {
+	//	s := gofakeit.DateRange(start, now)
+	//	settledAt = &s
+	// }
 
 	return transactions.Onchain{
 		UserID:          userID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          gofakeit.Int64(),
-		Direction:       genDirection(),
-		AmountSat:       amountSat,
+		// SettledAt:        settledAt,
+		// Expiry:          gofakeit.Int64(),
+		Direction: genDirection(),
+		AmountSat: amountSat,
 		Description: genMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(0, 10))
 		}),
@@ -143,7 +142,6 @@ func GenOnchain(userID int) transactions.Onchain {
 		Txid:             txid,
 		Vout:             vout,
 		ConfirmedAt:      confirmedAt,
-		SettledAt:        settledAt,
 	}
 }
 
@@ -151,7 +149,7 @@ func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transa
 	onchain := GenOnchain(userID)
 	onchain.Direction = transactions.INBOUND
 	tx, err := transactions.InsertOnchain(db, onchain)
-	require.NoError(t, err)
+	require.NoError(t, err, onchain)
 	return tx
 }
 
@@ -159,7 +157,7 @@ func InsertFakeOutgoingOnchainorFail(t *testing.T, db *db.DB, userID int) transa
 	onchain := GenOnchain(userID)
 	onchain.Direction = transactions.OUTBOUND
 	tx, err := transactions.InsertOnchain(db, onchain)
-	require.NoError(t, err)
+	require.NoError(t, err, onchain)
 	return tx
 }
 
@@ -191,4 +189,74 @@ func InsertFakeOffChainOrFail(t *testing.T, db *db.DB, userID int) transactions.
 		return InsertFakeIncomingOffchainOrFail(t, db, userID)
 	}
 	return InsertFakeOutgoingOffchainOrFail(t, db, userID)
+}
+
+func InsertFakeIncomingOrFail(t *testing.T, db *db.DB, userID int) transactions.Transaction {
+	if gofakeit.Bool() {
+		return InsertFakeIncomingOffchainOrFail(t, db, userID).ToTransaction()
+	}
+	return InsertFakeIncomingOnchainorFail(t, db, userID).ToTransaction()
+}
+
+func fundedOnchain(minAmountSats, userId int) transactions.Onchain {
+	on := GenOnchain(userId)
+
+	sats := int64(gofakeit.Number(minAmountSats, btcutil.SatoshiPerBitcoin*10))
+	on.AmountSat = &sats
+
+	txid := genTxid()
+	on.Txid = &txid
+
+	vout := gofakeit.Number(0, 10)
+	on.Vout = &vout
+
+	block := gofakeit.Number(1, 600000)
+	blockTime := gofakeit.Date()
+
+	on.ConfirmedAtBlock = &block
+	on.ConfirmedAt = &blockTime
+
+	return on
+}
+
+func successfullOffchain(minAmountSats, userId int) transactions.Offchain {
+	off := GenOffchain(userId)
+
+	off.Status = transactions.SUCCEEDED
+
+	s := gofakeit.Date()
+	off.SettledAt = &s
+
+	off.AmountMSat = int64(gofakeit.Number(minAmountSats*1000, ln.MaxAmountMsatPerInvoice))
+
+	return off
+}
+
+func fundedIncoming(minAmountSats, userId int) transactions.Transaction {
+	var tx transactions.Transaction
+	if gofakeit.Bool() {
+		tx = fundedOnchain(minAmountSats, userId).ToTransaction()
+	} else {
+		tx = successfullOffchain(minAmountSats, userId).ToTransaction()
+	}
+	tx.Direction = transactions.INBOUND
+	return tx
+}
+
+func InsertFundedIncoming(t *testing.T, db db.Inserter, minAmountSats, userId int) transactions.Transaction {
+	tx := fundedIncoming(minAmountSats, userId)
+	if on, err := tx.ToOnchain(); err == nil {
+		inserted, err := transactions.InsertOnchain(db, on)
+		require.NoError(t, err)
+		return inserted.ToTransaction()
+	}
+
+	if off, err := tx.ToOffchain(); err == nil {
+		inserted, err := transactions.InsertOffchain(db, off)
+		require.NoError(t, err)
+		return inserted.ToTransaction()
+	}
+
+	require.FailNow(t, "Got neither onchain not offchain")
+	panic("")
 }

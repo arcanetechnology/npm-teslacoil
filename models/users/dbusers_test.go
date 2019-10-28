@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-
-	"gitlab.com/arcanecrypto/teslacoil/testutil/transactiontestutil"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -550,7 +549,7 @@ func TestWithBalance(t *testing.T) {
 
 		var txAmountMilliSat int64
 		for i := 0; i < 10; i++ {
-			tx := transactiontestutil.InsertFakeIncomingOffchainOrFail(t,
+			tx := txtest.InsertFakeIncomingOffchainOrFail(t,
 				testDB, user.ID)
 
 			if tx.Status == transactions.SUCCEEDED && tx.SettledAt != nil {
