@@ -84,7 +84,7 @@ func IncomingForUser(db *db.DB, userID int) (Balance, error) {
 	query := `SELECT COALESCE(SUM(amount_milli_sat), 0) AS balance FROM transactions 
 		WHERE direction = 'INBOUND' AND user_id=$1 AND (
 		    (settled_at IS NOT NULL OR confirmed_at IS NOT NULL) AND
-		    (invoice_status = 'SUCCEEDED' OR invoice_status IS NULL) -- only check for invoices that are confirmed paid
+			(invoice_status = 'SUCCEEDED' OR txid IS NOT NULL) -- only check for invoices that are confirmed paid
 		)`
 	if err := db.Get(&res, query, userID); err != nil {
 		return 0, err
@@ -96,9 +96,8 @@ func IncomingForUser(db *db.DB, userID int) (Balance, error) {
 func OutgoingForUser(db *db.DB, userID int) (Balance, error) {
 	var res balanceResult
 	query := `SELECT COALESCE(SUM(amount_milli_sat), 0) AS balance FROM transactions 
-		WHERE direction = 'OUTBOUND' AND user_id=$1 AND (
-		    invoice_status IS NULL OR invoice_status != 'FAILED'
-		)`
+		WHERE direction = 'OUTBOUND' AND user_id=$1 AND
+		      (invoice_status != 'FAILED' OR txid IS NOT NULL) -- include OPEN, SUCCEEDED and IN-FLIGHT invoices in outgoing balance`
 	if err := db.Get(&res, query, userID); err != nil {
 		return 0, err
 	}

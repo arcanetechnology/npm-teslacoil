@@ -166,19 +166,6 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return Offchain{}, err
 	}
 
-	userBalance, err := balance.ForUser(db, userID)
-	if err != nil {
-		return Offchain{}, nil
-	}
-	if userBalance.Sats() < payreq.NumSatoshis {
-		log.WithFields(logrus.Fields{
-			"userId":          userID,
-			"balanceSats":     userBalance.MilliSats(),
-			"requestedAmount": payreq.NumSatoshis,
-		}).Warn("User tried to pay invoice for more than their balance")
-		return Offchain{}, ErrUserBalanceTooLow
-	}
-
 	// insert pay_req into DB
 	payment := Offchain{
 		UserID:         userID,
@@ -193,14 +180,28 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		AmountMSat:     payreq.NumSatoshis * 1000,
 	}
 
+	// we insert the payment before calculating balance to ensure
+	// all outgoing payments are included in the balance calculation
 	payment, err = InsertOffchain(db, payment)
 	if err != nil {
 		log.WithError(err).Error("Could not insert offchain TX into DB")
 		return Offchain{}, fmt.Errorf("could not insert offchain TX into DB: %w", err)
 	}
 
+	userBalance, err := balance.ForUser(db, userID)
+	if err != nil {
+		return Offchain{}, nil
+	}
+	if userBalance.Sats() < payreq.NumSatoshis {
+		log.WithFields(logrus.Fields{
+			"userId":          userID,
+			"balanceSats":     userBalance.MilliSats(),
+			"requestedAmount": payreq.NumSatoshis,
+		}).Warn("User tried to pay invoice for more than their balance")
+		return Offchain{}, ErrUserBalanceTooLow
+	}
+
 	// attempt to pay invoice
-	// TODO make this non sync
 	paymentResponse, err := lncli.SendPaymentSync(
 		context.Background(), &lnrpc.SendRequest{
 			PaymentRequest: paymentRequest,
@@ -284,10 +285,13 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender
 	}
 
 	log.WithFields(logrus.Fields{
-		"id":      payment.ID,
+		"id": payment.ID,
+		// TODO: Settled is deprecated in lnd
 		"settled": invoice.Settled,
 	}).Debug("Updating invoice status of payment")
 
+	// TODO: Settled is deprecated in lnd
+	//  Figure out how to check whether an invoice is settled or not
 	if !invoice.Settled {
 		return Offchain{}, nil
 	}
@@ -312,7 +316,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender
 		return Offchain{}, fmt.Errorf("could not update offchain TX: %w", sql.ErrNoRows)
 	}
 	var tx Transaction
-	if err := rows.StructScan(&tx); err != nil {
+	if err = rows.StructScan(&tx); err != nil {
 		return Offchain{}, fmt.Errorf("could not read TX from DB: %w", err)
 	}
 
@@ -322,7 +326,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender
 	}
 
 	if inserted.CallbackURL != nil {
-		if err := postCallback(database, inserted, sender); err != nil {
+		if err = postCallback(database, inserted, sender); err != nil {
 			// don't return here, we don't want this to fail the entire
 			// operation
 			log.WithError(err).Error("Could not POST to callback URL")
@@ -393,7 +397,7 @@ func postCallback(database db.Getter, payment Offchain, sender HttpPoster) error
 				response = res
 				return err
 			}
-			err := async.Retry(5, time.Millisecond*1000, retry)
+			err = async.Retry(5, time.Millisecond*1000, retry)
 			if err != nil {
 				logger.WithError(err).Error("Error when POSTing callback")
 			} else {
