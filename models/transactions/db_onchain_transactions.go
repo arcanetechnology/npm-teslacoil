@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"reflect"
 
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -14,10 +13,8 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"gitlab.com/arcanecrypto/teslacoil/models/users"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgErrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -127,6 +124,30 @@ func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) 
 	return transactions, nil
 }
 
+func GetOnchainByID(d *db.DB, id int, userID int) (Onchain, error) {
+	tx, err := GetTransactionByID(d, id, userID)
+	if err != nil {
+		return Onchain{}, err
+	}
+	onchain, err := tx.ToOnchain()
+	if err != nil {
+		return Onchain{}, fmt.Errorf("requested TX was not onchain TX: %w", err)
+	}
+	return onchain, nil
+}
+
+func GetOffchainByID(d *db.DB, id int, userID int) (Offchain, error) {
+	tx, err := GetTransactionByID(d, id, userID)
+	if err != nil {
+		return Offchain{}, err
+	}
+	offchain, err := tx.ToOffchain()
+	if err != nil {
+		return Offchain{}, fmt.Errorf("requested TX was not offchain TX: %w", err)
+	}
+	return offchain, nil
+}
+
 // GetTransactionByID performs this query:
 // `SELECT * FROM transactions WHERE id=id AND user_id=userID`,
 // where id is the primary key of the table(autoincrementing)
@@ -154,8 +175,7 @@ func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
 // txid+vout as a unique entry in the DB
 //
 // NOTE: This must be run as a goroutine
-func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.MsgTx,
-	chainCfg chaincfg.Params) {
+func TxListener(db *db.DB, zmqRawTxCh chan *wire.MsgTx, chainCfg chaincfg.Params) {
 	for {
 		tx := <-zmqRawTxCh
 
@@ -195,25 +215,49 @@ func TxListener(db *db.DB, lncli lnrpc.LightningClient, zmqRawTxCh chan *wire.Ms
 			amountSat := output.Value
 			txHash := tx.TxHash()
 			for i, transaction := range result {
+				onchain, err := transaction.ToOnchain()
+				if err != nil {
+					break
+				}
 
-				// err = transaction.saveTxToTransaction(db, txHash, vout, amountSat)
+				updated, err := onchain.PersistReceivedMoney(db, txHash, vout, amountSat)
 				switch {
 				case err == nil:
 					// if we get here, it means the txhash+vout was successfully
 					// saved to a transaction, and we don't need to loop through more
 					// transactions
+					log.WithFields(logrus.Fields{
+						"address":   updated.Address,
+						"txid":      updated.Txid,
+						"vout":      updated.Vout,
+						"amountSat": updated.AmountSat,
+						"userId":    updated.UserID,
+					}).Info("Added received money to onchain TX")
 					break
 				case i == len(result)-1:
 					// we reached the last found transaction without being able to save
 					// the txid. This means the user deposited to an address he has used
 					// before, without creating a new deposit using our API
-
-					txid := txHash.String()
-					_, err = NewDepositWithFields(db, lncli, transaction.UserID,
-						"", &vout, &txid, amountSat)
+					deposit, err := NewDepositWithMoney(db, WithMoneyArgs{
+						Tx:          tx,
+						OutputIndex: vout,
+						UserID:      transaction.UserID,
+						Chain:       chainCfg,
+					})
 					if err != nil {
-						log.WithError(err).Errorf("could not create new deposit for %d with txid %s:%d",
-							transaction.UserID, txid, vout)
+						log.WithError(err).WithFields(logrus.Fields{
+							"userId": transaction.UserID,
+							"txid":   transaction.Txid,
+							"vout":   transaction.Vout,
+						}).Error("Could not credit new deposit with money")
+					} else {
+						log.WithFields(logrus.Fields{
+							"address":   deposit.Address,
+							"txid":      deposit.Txid,
+							"vout":      deposit.Vout,
+							"amountSat": deposit.AmountSat,
+							"userId":    deposit.UserID,
+						}).Info("Added new deposit with money")
 					}
 				case errors.Is(err, ErrTxHasTxid):
 					log.WithError(err).Error("could not save txid to deposit")
@@ -234,10 +278,6 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 	const confirmationLimit = 3
 
 	for {
-		// we don't actually use the block contents for anything, because
-		// we query bitcoind directly for the status of every transaction
-		// TODO?: Check all the transactions to see whether they are
-		//  a deposit to us, but is not saved in our DB yet
 		rawBlock := <-ch
 		hash := rawBlock.Header.BlockHash()
 		block, err := bitcoindRpc.GetBlockVerbose(&hash)
@@ -246,15 +286,15 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 			continue
 		}
 
-		query := "SELECT * FROM transactions WHERE  address != '' AND confirmed = false AND txid NOTNULL"
-		queryResult := []Transaction{}
+		// query for all onchain TXs which aren't confirmed but has money credited to them
+		query := "SELECT * FROM transactions WHERE address NOTNULL AND confirmed_at IS NULL AND txid NOTNULL"
+		var queryResult []Transaction
 		if err := db.Select(&queryResult, query); err != nil {
 			if err != sql.ErrNoRows {
 				log.WithError(err).Errorf("query %q failed", query)
 			}
 			continue
 		}
-		log.Tracef("found transactions: %+v", queryResult)
 
 		for _, transaction := range queryResult {
 			onchain, err := transaction.ToOnchain()
@@ -364,12 +404,7 @@ type WithdrawOnChainArgs struct {
 // See WithdrawOnChainArgs for more information about the possible arguments
 func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind,
 	args WithdrawOnChainArgs) (Onchain, error) {
-	user, err := users.GetByID(db, args.UserID)
-	if err != nil {
-		return Onchain{}, err
-	}
-
-	bal, err := balance.ForUser(db, user.ID)
+	bal, err := balance.ForUser(db, args.UserID)
 	if err != nil {
 		return Onchain{}, err
 	}
@@ -384,7 +419,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		log.WithFields(logrus.Fields{
 			"balanceSats":       bal.Sats(),
 			"requestedSendSats": args.AmountSat,
-			"userId":            user.ID,
+			"userId":            args.UserID,
 		}).Error("User tried to withdraw more than their balance")
 		return Onchain{}, ErrUserBalanceTooLow
 	}
@@ -396,7 +431,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		SatPerByte: int64(args.SatPerByte),
 	})
 	if err != nil {
-		log.WithError(err).Error("Could not send money onchain")
+		log.WithError(err).WithField("amountSats", args.AmountSat).Error("Could not send money onchain")
 		return Onchain{}, err
 	}
 
@@ -407,7 +442,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 	}
 
 	txToInsert := Onchain{
-		UserID:    user.ID,
+		UserID:    args.UserID,
 		Address:   args.Address,
 		AmountSat: &args.AmountSat,
 		Txid:      &txid,
@@ -427,16 +462,61 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 	return transaction, nil
 }
 
-func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int,
-	description string) (Onchain, error) {
-	return NewDepositWithFields(d, lncli, userID, description, nil, nil, 0)
+func NewDeposit(d *db.DB, lncli lnrpc.LightningClient, userID int) (Onchain, error) {
+	return NewDepositWithDescription(d, lncli, userID, "")
 }
 
-// NewDepositWithFields retrieves a new address from lnd, and saves the address
-// in a new 'UNCONFIRMED', 'INBOUND' transaction together with the UserID
-// Returns the same transaction as insertTransaction(), in full
-func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
-	description string, vout *int, txid *string, amountSat int64) (Onchain, error) {
+type WithMoneyArgs struct {
+	Tx          *wire.MsgTx
+	OutputIndex int
+	UserID      int
+	Chain       chaincfg.Params
+}
+
+// NewDepositWithMoney creates a new deposit address in our DB, and marks this
+// as spent to (giving it an associated satoshi value, TXID and vout index).
+// Note that the function doesn't set the confirmation status of the deposit.
+// If the deposit is confirmed, this would have to be handled in a separate
+// function call to Onchain.MarkAsConfirmed.
+func NewDepositWithMoney(db *db.DB, args WithMoneyArgs) (Onchain, error) {
+	if len(args.Tx.TxOut) < args.OutputIndex {
+		return Onchain{}, errors.New("vout not found in TX")
+	}
+
+	vout := args.Tx.TxOut[args.OutputIndex]
+	// to extract the address, we first need to parse the output-script
+	script, err := txscript.ParsePkScript(vout.PkScript)
+	if err != nil {
+		return Onchain{}, err
+	}
+
+	address, err := script.Address(&args.Chain)
+	if err != nil {
+		return Onchain{}, err
+	}
+	txid := args.Tx.TxHash().String()
+	txToInsert := Onchain{
+		UserID:    args.UserID,
+		Direction: INBOUND,
+		AmountSat: &vout.Value,
+		Address:   address.EncodeAddress(),
+		Txid:      &txid,
+		Vout:      &args.OutputIndex,
+	}
+
+	transaction, err := InsertOnchain(db, txToInsert)
+	if err != nil {
+		return Onchain{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
+	}
+
+	return transaction, nil
+}
+
+// NewDepositWithDescription retrieves a new address from lnd, and saves the address
+// in a new deposit. When we're processing blocks and transactions these deposits
+// are checked for received funds.
+func NewDepositWithDescription(db *db.DB, lncli lnrpc.LightningClient, userID int,
+	description string) (Onchain, error) {
 	address, err := lncli.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		// This type means lnd will force-create a new address
 		Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
@@ -447,13 +527,9 @@ func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
 	}
 
 	txToInsert := Onchain{
-		UserID:      userID,
-		Address:     address.Address,
-		Direction:   INBOUND,
-		Description: &description,
-		Txid:        txid,
-		Vout:        vout,
-		AmountSat:   &amountSat,
+		UserID:    userID,
+		Address:   address.Address,
+		Direction: INBOUND,
 	}
 
 	if description != "" {
@@ -474,10 +550,10 @@ func NewDepositWithFields(db *db.DB, lncli lnrpc.LightningClient, userID int,
 func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forceNewAddress bool,
 	description string) (Onchain, error) {
 	log.WithFields(logrus.Fields{"userID": userID, "forceNewAddress": forceNewAddress,
-		"description": description}).Tracef("GetOrCreateDeposit")
+		"description": description}).Tracef("Getting or creating a new deposit")
 	// If forceNewAddress is supplied, we return a new deposit instantly
 	if forceNewAddress {
-		return NewDeposit(db, lncli, userID, description)
+		return NewDepositWithDescription(db, lncli, userID, description)
 	}
 
 	// Get the latest INBOUND transaction whose txid is empty from the DB
@@ -489,40 +565,11 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forc
 	case err != nil && err == sql.ErrNoRows:
 		// no deposit exists yet
 		log.Debug("SELECT found no transactions, creating new deposit")
-		return NewDeposit(db, lncli, userID, description)
+		return NewDepositWithDescription(db, lncli, userID, description)
 	case err == nil:
 		// we found a deposit
 		return deposit, nil
 	default:
 		return Onchain{}, pkgErrors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
 	}
-}
-
-// ExactlyEqual checks whether the two transactions are exactly
-// equal, including all postgres-fields, such as DeletedAt, CreatedAt etc.
-func (t Transaction) ExactlyEqual(t2 Transaction) (bool, string) {
-	if !reflect.DeepEqual(t, t2) {
-		return false, cmp.Diff(t, t2)
-	}
-
-	return true, ""
-}
-
-// Equal checks whether the Transaction is equal to another, and
-// returns an explanation of the diff if not equal
-// Equal does not compare db-tables unique for every entry, such
-// as CreatedAt, UpdatedAt, DeletedAt and ID
-func (t Transaction) Equal(t2 Transaction) (bool, string) {
-	// These four fields do not decide whether the transaction is
-	// equal another or not, use ExactlyEqual if you want to compare
-	t.CreatedAt = t2.CreatedAt
-	t.UpdatedAt = t2.UpdatedAt
-	t.DeletedAt, t2.DeletedAt = nil, nil
-	t.ID = t2.ID
-
-	if !reflect.DeepEqual(t, t2) {
-		return false, cmp.Diff(t, t2)
-	}
-
-	return true, ""
 }

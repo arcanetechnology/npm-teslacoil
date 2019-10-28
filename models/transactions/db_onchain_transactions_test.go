@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
@@ -23,7 +25,6 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
-	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -167,7 +168,7 @@ func genOnchain(user users.User) Onchain {
 
 // CreateUserWithBalanceOrFail creates a user with an initial balance
 func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User {
-	u := userstestutil.CreateUserOrFail(t, db)
+	u := CreateUserOrFail(t, db)
 
 	block := gofakeit.Number(0, 600000)
 	txid := genTxid()
@@ -196,7 +197,7 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User
 
 func TestInsertOnchainTransaction(t *testing.T) {
 	t.Parallel()
-	user := userstestutil.CreateUserOrFail(t, testDB)
+	user := CreateUserOrFail(t, testDB)
 	for i := 0; i < 20; i++ {
 		t.Run("inserting arbitrary onchain "+strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
@@ -270,7 +271,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 
 func TestInsertOffchainTransaction(t *testing.T) {
 	t.Parallel()
-	user := userstestutil.CreateUserOrFail(t, testDB)
+	user := CreateUserOrFail(t, testDB)
 	for i := 0; i < 20; i++ {
 		t.Run("inserting arbitrary offchain "+strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
@@ -345,10 +346,12 @@ func TestGetTransactionByID(t *testing.T) {
 	const password1 = "password1"
 	const email2 = "email2@example.com"
 	const password2 = "password2"
-	// amount1 := rand.Int63n(ln.MaxAmountSatPerInvoice)
-	// amount2 := rand.Int63n(ln.MaxAmountSatPerInvoice)
+	amount1 := rand.Int63n(ln.MaxAmountMsatPerInvoice)
+	address1 := gofakeit.Word()
+	amount2 := rand.Int63n(ln.MaxAmountMsatPerInvoice)
+	address2 := gofakeit.Word()
 
-	user := userstestutil.CreateUserOrFail(t, testDB)
+	user := CreateUserOrFail(t, testDB)
 
 	foo := "foo"
 	testCases := []struct {
@@ -361,9 +364,9 @@ func TestGetTransactionByID(t *testing.T) {
 			email1,
 			password1,
 			Transaction{
-				UserID: user.ID,
-				// AmountSat: amount1,
-				// Address:     "bar",
+				UserID:      user.ID,
+				AmountMSat:  &amount1,
+				Address:     &address1,
 				Description: &foo,
 				Direction:   INBOUND,
 			},
@@ -373,9 +376,9 @@ func TestGetTransactionByID(t *testing.T) {
 			email2,
 			password2,
 			Transaction{
-				UserID: user.ID,
-				// AmountSat: amount2,
-				// Address:     "bar",
+				UserID:      user.ID,
+				AmountMSat:  &amount2,
+				Address:     &address2,
 				Description: &foo,
 				Direction:   INBOUND,
 			},
@@ -385,20 +388,20 @@ func TestGetTransactionByID(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountMSat),
 			func(t *testing.T) {
+				t.Parallel()
 
 				transaction, err := insertTransaction(testDB, test.expectedResult)
-				if err != nil {
-					testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
-						err)
-				}
+				require.NoError(t, err)
 
-				// Act
 				transaction, err = GetTransactionByID(testDB, transaction.ID, test.expectedResult.UserID)
-				if err != nil {
-					testutil.FatalMsgf(t, "should be able to GetByID. Error: %+v", err)
-				}
+				require.NoError(t, err)
 
-				assertTransactionsAreEqual(t, transaction, test.expectedResult)
+				test.expectedResult.ID = transaction.ID
+				assert.Equal(t, transaction.Address, test.expectedResult.Address)
+				assert.Equal(t, transaction.AmountMSat, test.expectedResult.AmountMSat)
+				assert.Equal(t, transaction.Direction, test.expectedResult.Direction)
+				assert.Equal(t, transaction.Description, test.expectedResult.Description)
+				assert.Equal(t, transaction.UserID, test.expectedResult.UserID)
 			})
 	}
 }
@@ -556,12 +559,12 @@ func TestWithdrawOnChain(t *testing.T) {
 
 func TestOnchain_AddReceivedMoney(t *testing.T) {
 	t.Parallel()
-	user := userstestutil.CreateUserOrFail(t, testDB)
+	user := CreateUserOrFail(t, testDB)
 
 	t.Run("should fail to save negative amount", func(t *testing.T) {
 		t.Parallel()
 		transaction := CreateOnChainOrFail(t, user.ID)
-		if _, err := transaction.AddReceivedMoney(testDB,
+		if _, err := transaction.PersistReceivedMoney(testDB,
 			chainhash.HashH([]byte("some hash")),
 			1,
 			-1337,
@@ -573,7 +576,7 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 	t.Run("should fail to save negative vout", func(t *testing.T) {
 		t.Parallel()
 		transaction := CreateOnChainOrFail(t, user.ID)
-		if _, err := transaction.AddReceivedMoney(testDB,
+		if _, err := transaction.PersistReceivedMoney(testDB,
 			chainhash.HashH([]byte("some hash")),
 			-1,
 			1337,
@@ -592,7 +595,7 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 		}
 
 		transaction := CreateOnChainOrFail(t, user.ID)
-		if _, err := transaction.AddReceivedMoney(testDB, *hash, 0, amountSat); err != nil {
+		if _, err := transaction.PersistReceivedMoney(testDB, *hash, 0, amountSat); err != nil {
 			testutil.FatalMsgf(t, "SaveTxToTransaction(): %+v", err)
 		}
 
@@ -625,7 +628,7 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 		const vout = 0
 		const amountSat = 901237
 
-		once, err := transaction.AddReceivedMoney(testDB, hash, vout, amountSat)
+		once, err := transaction.PersistReceivedMoney(testDB, hash, vout, amountSat)
 		assert.NoError(t, err)
 
 		require.NotNil(t, once.AmountSat)
@@ -636,7 +639,7 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 		assert.Equal(t, *once.Vout, vout)
 
 		otherHash := chainhash.HashH([]byte("another hash"))
-		_, err = transaction.AddReceivedMoney(testDB, otherHash, vout, amountSat)
+		_, err = transaction.PersistReceivedMoney(testDB, otherHash, vout, amountSat)
 		assert.Error(t, err)
 	})
 }
@@ -646,7 +649,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 
 	t.Run("should fail to mark a TX as confirmed if it hasn't received any money", func(t *testing.T) {
 		t.Parallel()
-		user := userstestutil.CreateUserOrFail(t, testDB)
+		user := CreateUserOrFail(t, testDB)
 		transaction := CreateOnChainOrFail(t, user.ID)
 
 		const confHeight = 100
@@ -656,10 +659,10 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 	})
 
 	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
-		user := userstestutil.CreateUserOrFail(t, testDB)
+		user := CreateUserOrFail(t, testDB)
 		transaction := CreateOnChainOrFail(t, user.ID)
 
-		spent, err := transaction.AddReceivedMoney(testDB,
+		spent, err := transaction.PersistReceivedMoney(testDB,
 			chainhash.HashH([]byte("foobar")),
 			0,
 			1337,
@@ -709,165 +712,81 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 	})
 }
 
-func TestTransaction_ExactlyEqual(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
+func TestNewDepositWithMoney(t *testing.T) {
+	user := CreateUserOrFail(t, testDB)
+	const expectedAddr = "mw3gPvWixiiShySrr87igcSubQc9TPqUGV"
+	const scriptPubkey = "76a914aa59828a194ddef9d1d4244000f0d3636c1bb78888ac"
+	spkBytes, err := hex.DecodeString(scriptPubkey)
+	require.NoError(t, err)
 
-	t.Run("should be equal", func(t *testing.T) {
-		t1 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address: "footy",
-		}
+	sats := int64(gofakeit.Number(1, btcutil.SatoshiPerBitcoin*100))
+	out := wire.NewTxOut(sats, spkBytes)
+	tx := wire.NewMsgTx(0)
+	tx.AddTxOut(out)
 
-		t2 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address: "footy",
-		}
-
-		equal, reason := t1.ExactlyEqual(t2)
-		if !equal {
-			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
-		}
+	onchain, err := NewDepositWithMoney(testDB, WithMoneyArgs{
+		Tx:          tx,
+		OutputIndex: 0,
+		UserID:      user.ID,
+		Chain:       chaincfg.RegressionNetParams,
 	})
-	t.Run("different dates should not be equal", func(t *testing.T) {
-		t1 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address:   "footy",
-			UpdatedAt: time.Unix(5000, 0),
-			CreatedAt: time.Unix(5000, 0),
-		}
 
-		t2 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address:   "footy",
-			UpdatedAt: time.Unix(1000, 0),
-			CreatedAt: time.Unix(1000, 0),
-		}
+	require.NoError(t, err)
 
-		equal, _ := t1.ExactlyEqual(t2)
-		if equal {
-			testutil.FatalMsgf(t, "should not be equal, but are")
-		}
-	})
-	t.Run("different ID's should not be equal", func(t *testing.T) {
-		t1 := Transaction{
-			ID:     1,
-			UserID: 3,
-			// Address: "footy",
-		}
+	assert.Equal(t, expectedAddr, onchain.Address)
 
-		t2 := Transaction{
-			ID:     2,
-			UserID: 3,
-			// Address: "footy",
-		}
+	// this should have money spent to it
+	require.NotNil(t, onchain.Txid)
+	require.NotNil(t, onchain.Vout)
+	require.NotNil(t, onchain.AmountSat)
+	assert.Equal(t, tx.TxHash().String(), *onchain.Txid)
+	assert.Equal(t, 0, *onchain.Vout)
+	assert.Equal(t, out.Value, *onchain.AmountSat)
 
-		equal, _ := t1.ExactlyEqual(t2)
-		if equal {
-			testutil.FatalMsgf(t, "should not be equal, but are")
-		}
-	})
+	assert.Equal(t, user.ID, onchain.UserID)
+
+	foundTx, err := GetOnchainByID(testDB, onchain.ID, user.ID)
+	require.NoError(t, err)
+
+	assert.Nil(t, foundTx.ConfirmedAt)
+	assert.Nil(t, foundTx.ConfirmedAtBlock)
 }
 
-func TestTransaction_Equal(t *testing.T) {
-	t.Parallel()
+func TestNewDeposit(t *testing.T) {
+	mockLn := lntestutil.GetLightningMockClient()
+	user := CreateUserOrFail(t, testDB)
 
-	t.Run("should be equal", func(t *testing.T) {
-		t1 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address: "footy",
-		}
+	onchain, err := NewDeposit(testDB, mockLn, user.ID)
+	require.NoError(t, err)
 
-		t2 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address: "footy",
-		}
+	// this should have not money spent to it
+	assert.Nil(t, onchain.Txid)
+	assert.Nil(t, onchain.Vout)
+	assert.Nil(t, onchain.AmountSat)
 
-		equal, reason := t1.Equal(t2)
-		if !equal {
-			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
-		}
-	})
-	t.Run("different dates should be equal", func(t *testing.T) {
-		deletedAt1 := time.Unix(5000, 0)
-		deletedAt2 := time.Unix(1000, 0)
-		t1 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address:   "footy",
-			CreatedAt: time.Unix(5000, 0),
-			UpdatedAt: time.Unix(5000, 0),
-			DeletedAt: &deletedAt1,
-		}
+	assert.Equal(t, user.ID, onchain.UserID)
 
-		t2 := Transaction{
-			ID:     3,
-			UserID: 3,
-			// Address:   "footy",
-			CreatedAt: time.Unix(1000, 0),
-			UpdatedAt: time.Unix(1000, 0),
-			DeletedAt: &deletedAt2,
-		}
-
-		equal, reason := t1.Equal(t2)
-		if !equal {
-			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
-		}
-	})
-	t.Run("different dates and ID's should be equal", func(t *testing.T) {
-		deletedAt1 := time.Unix(5000, 0)
-		deletedAt2 := time.Unix(1000, 0)
-		t1 := Transaction{
-			ID:     1,
-			UserID: 3,
-			// Address:   "footy",
-			CreatedAt: time.Unix(5000, 0),
-			UpdatedAt: time.Unix(5000, 0),
-			DeletedAt: &deletedAt1,
-		}
-
-		t2 := Transaction{
-			ID:     2,
-			UserID: 3,
-			// Address:   "footy",
-			CreatedAt: time.Unix(1000, 0),
-			UpdatedAt: time.Unix(1000, 0),
-			DeletedAt: &deletedAt2,
-		}
-
-		equal, reason := t1.Equal(t2)
-		if !equal {
-			testutil.FatalMsgf(t, "should be equal, but were not: %s", reason)
-		}
-	})
-	t.Run("should not be equal", func(t *testing.T) {
-		t1 := Transaction{
-			// Address: "footy",
-		}
-
-		t2 := Transaction{
-			// Address: "footyBar",
-		}
-
-		equal, _ := t1.Equal(t2)
-		if equal {
-			testutil.FatalMsgf(t, "should not be equal, but are")
-		}
-	})
+	require.Nil(t, onchain.Description)
 }
 
-func assertTransactionsAreEqual(t *testing.T, actual, expected Transaction) {
-	t.Helper()
-	ok, diff := actual.Equal(expected)
-	if !ok {
-		t.Fatalf("transactions not equal: %s", diff)
-	}
+func TestNewDepositWithDescription(t *testing.T) {
+	mockLn := lntestutil.GetLightningMockClient()
+	user := CreateUserOrFail(t, testDB)
+	description := gofakeit.Sentence(gofakeit.Number(1, 12))
+
+	onchain, err := NewDepositWithDescription(testDB, mockLn, user.ID, description)
+	require.NoError(t, err)
+
+	// this should have not money spent to it
+	assert.Nil(t, onchain.Txid)
+	assert.Nil(t, onchain.Vout)
+	assert.Nil(t, onchain.AmountSat)
+
+	assert.Equal(t, user.ID, onchain.UserID)
+
+	require.NotNil(t, onchain.Description)
+	assert.Equal(t, description, *onchain.Description)
+
 }
 
 func CreateOnChainOrFail(t *testing.T, userID int) Onchain {
@@ -888,4 +807,13 @@ func CreateOnChainOrFail(t *testing.T, userID int) Onchain {
 	}
 
 	return inserted
+}
+func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
+	u, err := users.Create(db, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 32),
+	})
+	require.NoError(t, err)
+
+	return u
 }

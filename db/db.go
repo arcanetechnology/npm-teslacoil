@@ -163,6 +163,15 @@ func (d *DB) Drop(migrationsPath string) error {
 	return nil
 }
 
+type InsertGetter interface {
+	Getter
+	Inserter
+}
+
+type Getter interface {
+	Get(dest interface{}, query string, args ...interface{}) error
+}
+
 type Inserter interface {
 	NamedQuery(query string, arg interface{}) (*sqlx.Rows, error)
 }
