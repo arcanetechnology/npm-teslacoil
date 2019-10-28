@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -97,7 +98,7 @@ func genOffchain(user users.User) Offchain {
 		UserID:          user.ID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          int64(gofakeit.Number(1, 100000)),
+		Expiry:          int64(gofakeit.Number(0, math.MaxInt64-1)),
 		Direction:       genDirection(),
 		Description: genMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
@@ -137,7 +138,8 @@ func genOnchain(user users.User) Onchain {
 	var txid *string
 	var vout *int
 	var amountSat *int64
-	if gofakeit.Bool() {
+	// it is required to have a txid if either of the three is defined
+	if confirmedAt != nil || confirmedAtBlock != nil || settledAt != nil {
 		t := genTxid() // do me later
 		txid = &t
 		v := gofakeit.Number(0, 12)
@@ -156,7 +158,7 @@ func genOnchain(user users.User) Onchain {
 		UserID:          user.ID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          expiry,
+		Expiry:          int64(gofakeit.Number(0, math.MaxInt64-1)),
 		Direction:       genDirection(),
 		AmountSat:       amountSat,
 		Description: genMaybeString(func() string {
@@ -208,6 +210,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 			t.Parallel()
 			onchain := genOnchain(user)
 
+			testutil.Succeedf(t, "inserting transaction %+v", onchain)
 			inserted, err := InsertOnchain(testDB, onchain)
 			if err != nil {
 				testutil.FatalMsg(t, err)
