@@ -1,11 +1,11 @@
-all: test build-lpp
+all: test build-teslacoil
 
-# If we're on a tag, binary name is lpp, else lpp-dev
-LPP := $(shell git describe --exact-match HEAD 2>/dev/null && echo lpp || echo lpp-dev)
-BINARIES := lpp lpp-dev
+# If we're on a tag, binary name is teslacoil, else teslacoil-dev
+TESLACOIL := $(shell git describe --exact-match HEAD 2>/dev/null && echo teslacoil || echo teslacoil-dev)
+BINARIES := teslacoil teslacoil-dev
 
-build-lpp:
-	go build -o ${LPP} main.go
+build-teslacoil:
+	go build -o ${TESLACOIL} main.go
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
@@ -20,14 +20,14 @@ start-db:
 start-regtest-alice: 
 	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 
 
-migrate-db-up: build-lpp start-db
-	./lpp-dev db up
+migrate-db-up: build-teslacoil start-db
+	./teslacoil-dev db up
 
-drop-db: build-lpp start-db
-	./lpp-dev db drop --force
+drop-db: build-teslacoil start-db
+	./teslacoil-dev db drop --force
 
-dummy-data: build-lpp start-db migrate-db-up start-regtest-alice
-	./lpp-dev --network regtest db dummy --force --only-once
+dummy-data: build-teslacoil start-db migrate-db-up start-regtest-alice
+	./teslacoil-dev --network regtest db dummy --force --only-once
 	docker-compose stop alice bitcoind
 
 
@@ -45,10 +45,10 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-serve: dummy-data build-lpp 
+serve: dummy-data build-teslacoil
 	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
 
-serve-testnet: dummy-data build-lpp 
+serve-testnet: dummy-data build-teslacoil
 	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
 test-only: 

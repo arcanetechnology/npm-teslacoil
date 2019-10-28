@@ -44,11 +44,11 @@ func genMaybeString(fn func() string) *string {
 }
 
 func genDirection() transactions.Direction {
-	direction := transactions.OUTBOUND
-	if gofakeit.Bool() {
-		direction = transactions.INBOUND
+	if gofakeit.Int8()%2 == 0 {
+		return transactions.INBOUND
 	}
-	return direction
+
+	return transactions.OUTBOUND
 }
 
 func int64Between(min, max int64) int64 {

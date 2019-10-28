@@ -1,7 +1,7 @@
 # Postgres database
-export DATABASE_USER="lpp"
+export DATABASE_USER="teslacoil"
 export DATABASE_PASSWORD="password"
-export DATABASE_NAME="lpp"
+export DATABASE_NAME="teslacoil"
 export DATABASE_PORT=5432
 
 # LND/Bitcoin Core
