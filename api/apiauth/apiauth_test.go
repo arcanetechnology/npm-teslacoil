@@ -487,7 +487,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 	})
 
 	t.Run("must have access token to enable 2FA", func(t *testing.T) {
-		t.Parallel()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/auth/2fa",
 			Method: "POST",
@@ -496,7 +495,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 	})
 
 	t.Run("enable 2FA", func(t *testing.T) {
-		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/auth/2fa",
@@ -513,7 +511,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 		testutil.AssertMsg(t, !user.ConfirmedTotpSecret, "User confirmed TOTP secret!")
 
 		t.Run("fail to confirm 2FA with bad code", func(t *testing.T) {
-			t.Parallel()
 			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 				AccessToken: accessToken,
 				Path:        "/auth/2fa",
@@ -527,7 +524,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 		})
 
 		t.Run("confirm 2FA", func(t *testing.T) {
-			t.Parallel()
 
 			code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
 			if err != nil {
@@ -546,7 +542,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 			h.AssertResponseOk(t, req)
 
 			t.Run("fail to confirm 2FA twice", func(t *testing.T) {
-				t.Parallel()
 				code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
 				if err != nil {
 					testutil.FatalMsg(t, err)
@@ -565,7 +560,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 			})
 
 			t.Run("should need TOTP code for login", func(t *testing.T) {
-				t.Parallel()
 				req = httptestutil.GetRequest(t, httptestutil.RequestArgs{
 					Path:   "/login",
 					Method: "POST",
@@ -578,7 +572,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 			})
 
 			t.Run("should be able to login with TOTP code", func(t *testing.T) {
-				t.Parallel()
 				code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
 				if err != nil {
 					testutil.FatalMsg(t, err)
@@ -596,7 +589,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 			})
 
 			t.Run("don't delete 2FA credentials with an invalid code", func(t *testing.T) {
-				t.Parallel()
 				req = httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
 					Path:        "/auth/2fa",
@@ -609,7 +601,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 			})
 
 			t.Run("delete 2FA credentials", func(t *testing.T) {
-				t.Parallel()
 				code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
 				if err != nil {
 					testutil.FatalMsg(t, err)
@@ -637,7 +628,6 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 				h.AssertResponseOk(t, loginReq)
 
 				t.Run("fail to delete already deleted 2FA credentials", func(t *testing.T) {
-					t.Parallel()
 					code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
 					if err != nil {
 						testutil.FatalMsg(t, err)

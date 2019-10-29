@@ -245,7 +245,6 @@ func TestPutUserRoute(t *testing.T) {
 	})
 
 	t.Run("updating with an invalid email should fail", func(t *testing.T) {
-		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/user",
@@ -258,7 +257,6 @@ func TestPutUserRoute(t *testing.T) {
 	})
 
 	t.Run("update email, first name and last name", func(t *testing.T) {
-		t.Parallel()
 		newFirst := "new-firstname"
 		newLast := "new-lastname"
 		newEmail := gofakeit.Email()
