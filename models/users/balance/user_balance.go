@@ -36,7 +36,7 @@ func (b Balance) MilliSats() int64 {
 
 // Sats converts a Balance type to an int by dividing with 1000
 func (b Balance) Sats() int64 {
-	sats := math.Round(float64(b) / float64(milliSatsPerSat))
+	sats := math.Floor(float64(b) / float64(milliSatsPerSat))
 	return int64(sats)
 }
 

@@ -398,7 +398,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		fmt.Sprintf("--bitcoind.rpchost=localhost:%d", +bitcoindConfig.RpcPort),
 		"--bitcoind.zmqpubrawtx=" + bitcoindConfig.ZmqPubRawTx,
 		"--bitcoind.zmqpubrawblock=" + bitcoindConfig.ZmqPubRawBlock,
-		"--debuglevel=trace",
+		"--debuglevel=debug",
 	}
 
 	cmd := exec.Command("lnd", args...)

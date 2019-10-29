@@ -221,14 +221,14 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX with description", func(t *testing.T) {
 		t.Parallel()
-		desc := gofakeit.Sentence(gofakeit.Number(0, 12))
+		desc := gofakeit.Sentence(gofakeit.Number(1, 12))
 		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Description: desc,
 		})
 		require.NoError(t, err)
-		assert.NotNil(t, offchain.Description)
+		require.NotNil(t, offchain.Description)
 		assert.Equal(t, desc, *offchain.Description)
 	})
 
@@ -244,14 +244,14 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX with memo", func(t *testing.T) {
 		t.Parallel()
-		memo := gofakeit.Sentence(gofakeit.Number(0, 12))
+		memo := gofakeit.Sentence(gofakeit.Number(1, 12))
 		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Memo:      memo,
 		})
 		require.NoError(t, err)
-		assert.NotNil(t, offchain.Memo)
+		require.NotNil(t, offchain.Memo)
 		assert.Equal(t, memo, *offchain.Memo)
 	})
 

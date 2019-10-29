@@ -80,7 +80,7 @@ func GenOffchain(userID int) transactions.Offchain {
 		Expiry:          int64(gofakeit.Number(100, 100000)),
 		Direction:       genDirection(),
 		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		PaymentRequest: "DO ME LATER",
 		Preimage:       preimage,
@@ -88,7 +88,7 @@ func GenOffchain(userID int) transactions.Offchain {
 		AmountMSat:     amountMSat,
 		SettledAt:      settledAt,
 		Memo: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 
 		Status: genStatus(),
@@ -120,22 +120,28 @@ func GenOnchain(userID int) transactions.Onchain {
 		confirmedAtBlock = &c
 	}
 
-	// var settledAt *time.Time
-	// if txid != nil && gofakeit.Bool() {
-	//	s := gofakeit.DateRange(start, now)
-	//	settledAt = &s
-	// }
+	var settledAt *time.Time
+	if txid != nil && gofakeit.Bool() {
+		s := gofakeit.DateRange(start, now)
+		settledAt = &s
+	}
+
+	var expiry *int64
+	if gofakeit.Bool() {
+		e := int64(gofakeit.Number(100, 100000))
+		expiry = &e
+	}
 
 	return transactions.Onchain{
 		UserID:          userID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		// SettledAt:        settledAt,
-		// Expiry:          gofakeit.Int64(),
-		Direction: genDirection(),
-		AmountSat: amountSat,
+		SettledAt:       settledAt,
+		Expiry:          expiry,
+		Direction:       genDirection(),
+		AmountSat:       amountSat,
 		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		ConfirmedAtBlock: confirmedAtBlock,
 		Address:          "DO ME LATER",

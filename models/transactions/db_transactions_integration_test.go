@@ -85,9 +85,9 @@ func TestEverything(t *testing.T) {
 		t.Run("fail to create invoice with too large memo", func(t *testing.T) {
 			t.Parallel()
 			amount := int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice))
-			memo := gofakeit.Sentence(gofakeit.Number(30, 100))
-			_, err := transactions.CreateInvoiceWithMemo(lnd, amount, memo)
-			require.Error(t, err)
+			memo := gofakeit.Sentence(gofakeit.Number(100, 300))
+			inv, err := transactions.CreateInvoiceWithMemo(lnd, amount, memo)
+			require.Error(t, err, inv)
 		})
 
 		t.Run("InvoiceStatusListener should pick up a paid invoice and POST to the callback URL", func(t *testing.T) {

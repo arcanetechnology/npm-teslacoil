@@ -100,7 +100,7 @@ func genOffchain(user users.User) Offchain {
 		Expiry:          int64(gofakeit.Number(1, 100000)),
 		Direction:       genDirection(),
 		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		PaymentRequest: "DO ME LATER",
 		Preimage:       preimage,
@@ -108,7 +108,7 @@ func genOffchain(user users.User) Offchain {
 		AmountMSat:     amountMSat,
 		SettledAt:      settledAt,
 		Memo: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 
 		Status: genStatus(),
@@ -160,7 +160,7 @@ func genOnchain(user users.User) Onchain {
 		Direction:       genDirection(),
 		AmountSat:       amountSat,
 		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		ConfirmedAtBlock: confirmedAtBlock,
 		Address:          "DO ME LATER",

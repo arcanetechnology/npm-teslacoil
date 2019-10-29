@@ -39,8 +39,6 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmidd
 	server.PUT("/user/verify_email", verifyEmail())
 	server.POST("/user/verify_email", sendEmailVerificationEmail())
 
-	// We group on empty paths to apply middlewares to everything but the
-	// /login route. The group path is empty because it is easier to read
 	users := server.Group("")
 	users.Use(authmiddleware)
 	users.GET("/users", getAllUsers())

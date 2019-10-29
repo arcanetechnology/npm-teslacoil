@@ -628,7 +628,6 @@ func main() {
 		dbCommand,
 	}
 
-	// sort.Sort(cli.CommandsByName(app.Commands))
 	err := app.Run(os.Args)
 	if err != nil {
 		log.Fatal(err)
