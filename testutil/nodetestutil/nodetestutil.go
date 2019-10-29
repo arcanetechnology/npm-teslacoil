@@ -172,7 +172,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		wg.Done()
 	}()
 
-	timeout := time.Second * 10
+	timeout := time.Second * 20
 	if async.WaitTimeout(&wg, timeout) {
 		t.Fatalf("LND nodes did not start after %s", timeout)
 	}
@@ -410,8 +410,8 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		return nil
 	}
 
-	if err := async.RetryNoBackoff(20, time.Millisecond*300, isReady); err != nil {
-		wrapped := fmt.Errorf("cert, macaroon and channel.backup files was not created in %s : %w", lndConfig.LndDir, err)
+	if err := async.RetryNoBackoff(40, time.Millisecond*300, isReady); err != nil {
+		wrapped := fmt.Errorf("cert, macaroon and channel.backup files was not created in %s: %w", lndConfig.LndDir, err)
 		testutil.FatalMsg(t, wrapped)
 	}
 
