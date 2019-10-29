@@ -23,12 +23,17 @@ func MockPreimage() []byte {
 	return p
 }
 
+// MockHash mocks a hashed preimage
+func MockHash(preimage []byte) []byte {
+	h := sha256.Sum256(preimage)
+	return h[:]
+}
+
 // MockTxid will create a random txid
 func MockTxid() string {
 	p := make([]byte, 32)
 	_, _ = rand.Read(p)
 	return hex.EncodeToString(p)
-
 }
 
 // MockStatus will create a random status
@@ -37,7 +42,8 @@ func MockStatus() transactions.Status {
 	return s[rand.Intn(3)]
 }
 
-// MockMaybeString will sometimes return nil, and other times return a string
+// MockMaybeString will sometimes return nil, and other times return a
+// string using the argument function
 func MockMaybeString(fn func() string) *string {
 	var res *string
 	if gofakeit.Bool() {
@@ -58,6 +64,10 @@ func MockDirection() transactions.Direction {
 
 func int64Between(min, max int64) int64 {
 	return rand.Int63n(max-min+1) + min
+}
+
+func positiveInt64() int64 {
+	return rand.Int63n(math.MaxInt64)
 }
 
 func GenOffchain(userID int) transactions.Offchain {
@@ -82,7 +92,7 @@ func GenOffchain(userID int) transactions.Offchain {
 		UserID:          userID,
 		CallbackURL:     MockMaybeString(gofakeit.URL),
 		CustomerOrderId: MockMaybeString(gofakeit.Word),
-		Expiry:          gofakeit.Int64(),
+		Expiry:          positiveInt64(),
 		Direction:       MockDirection(),
 		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
@@ -141,7 +151,7 @@ func GenOnchain(userID int) transactions.Onchain {
 		UserID:          userID,
 		CallbackURL:     MockMaybeString(gofakeit.URL),
 		CustomerOrderId: MockMaybeString(gofakeit.Word),
-		Expiry:          gofakeit.Int64(),
+		Expiry:          positiveInt64(),
 		Direction:       MockDirection(),
 		AmountSat:       amountSat,
 		Description: MockMaybeString(func() string {
@@ -153,6 +163,18 @@ func GenOnchain(userID int) transactions.Onchain {
 		Vout:             vout,
 		ConfirmedAt:      confirmedAt,
 	}
+}
+
+func InsertFakeOnchain(t *testing.T, db *db.DB, userID int) (transactions.Onchain, error) {
+	onchain := GenOnchain(userID)
+	onchain.Direction = MockDirection()
+	return transactions.InsertOnchain(db, onchain)
+}
+
+func InsertFakeOffchain(t *testing.T, db *db.DB, userID int) (transactions.Offchain, error) {
+	offchain := GenOffchain(userID)
+	offchain.Direction = MockDirection()
+	return transactions.InsertOffchain(db, offchain)
 }
 
 func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {

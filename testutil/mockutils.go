@@ -54,16 +54,6 @@ func (m *mockHttpPoster) GetSentPostRequest(index int) []byte {
 	return m.sentBodies[index]
 }
 
-func MockTxid() string {
-	var letters = []rune("abcdef1234567890")
-
-	b := make([]rune, 64)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
-}
-
 func MockStringOfLength(n int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
 
