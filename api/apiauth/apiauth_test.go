@@ -1,4 +1,4 @@
-package api
+package apiauth_test
 
 import (
 	"fmt"
@@ -7,24 +7,43 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/dchest/passwordreset"
 	"github.com/pquerna/otp/totp"
-
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
-func init() {
-	testDB = testutil.InitDatabase(databaseConfig)
+var (
+	testDB              *db.DB
+	h                   httptestutil.TestHarness
+	mockLightningClient = lntestutil.GetLightningMockClient()
+	mockBitcoindClient  = bitcoind.GetBitcoinMockClient()
+	mockHttpPoster      = testutil.GetMockHttpPoster()
+	mockSendGridClient  = mock.GetMockSendGridClient()
+	conf                = api.Config{
+		LogLevel: logrus.InfoLevel,
+		Network:  chaincfg.RegressionNetParams,
+	}
+)
 
-	app, err := NewApp(testDB, mockLightningClient,
+func init() {
+	dbConf := testutil.GetDatabaseConfig("api_auth")
+	testDB = testutil.InitDatabase(dbConf)
+
+	app, err := api.NewApp(testDB, mockLightningClient,
 		mockSendGridClient, mockBitcoindClient,
 		mockHttpPoster, conf)
+
 	if err != nil {
 		panic(err)
 	}
@@ -32,184 +51,7 @@ func init() {
 	h = httptestutil.NewTestHarness(app.Router, testDB)
 }
 
-func TestCreateUser(t *testing.T) {
-	t.Run("creating a user must fail with a bad password", func(t *testing.T) {
-		testutil.DescribeTest(t)
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path: "/users", Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": "foobar",
-				"email": %q
-			}`, gofakeit.Email()),
-		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-	t.Run("Creating a user must fail without an email", func(t *testing.T) {
-		testutil.DescribeTest(t)
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path: "/users", Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q
-			}`, gofakeit.Password(true, true, true, true, true, 32)),
-		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-
-	t.Run("Creating a user must fail with an empty email", func(t *testing.T) {
-		testutil.DescribeTest(t)
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path: "/users", Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q,
-				"email": ""
-			}`, gofakeit.Password(true, true, true, true, true, 32)),
-		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-
-	t.Run("creating an user with an invalid email should fail", func(t *testing.T) {
-		pass := gofakeit.Password(true, true, true, true, true, 32)
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/users",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q,
-				"email": "this-is-not@a-valid-mail"
-			}`, pass),
-		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-
-	t.Run("It should be possible to create a user without any names", func(t *testing.T) {
-		email := gofakeit.Email()
-		pass := gofakeit.Password(true, true, true, true, true, 32)
-		testutil.DescribeTest(t)
-		body := httptestutil.RequestArgs{
-			Path: "/users", Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q,
-				"email": "%s"
-			}`, pass, email),
-		}
-		req := httptestutil.GetRequest(t, body)
-		jsonRes := h.AssertResponseOkWithJson(t, req)
-		testutil.AssertEqual(t, jsonRes["email"], email)
-		testutil.AssertEqual(t, jsonRes["firstName"], nil)
-		testutil.AssertEqual(t, jsonRes["lastName"], nil)
-	})
-
-	t.Run("It should be possible to create a user with names", func(t *testing.T) {
-		email := gofakeit.Email()
-		pass := gofakeit.Password(true, true, true, true, true, 32)
-		firstName := gofakeit.FirstName()
-		lastName := gofakeit.LastName()
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path: "/users", Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q,
-				"email": "%s",
-				"firstName": "%s", 
-				"lastName": "%s"
-			}`, pass, email, firstName, lastName),
-		})
-		jsonRes := h.AssertResponseOkWithJson(t, req)
-		testutil.AssertEqual(t, jsonRes["email"], email)
-
-		user := h.VerifyEmail(t, email)
-		testutil.AssertEqual(t, *user.Firstname, firstName)
-		testutil.AssertEqual(t, *user.Lastname, lastName)
-	})
-}
-
-func TestPostUsersRoute(t *testing.T) {
-	testutil.DescribeTest(t)
-	t.Parallel()
-
-	// we need a new email sender here to record the amount of emails
-	// sent correctly
-	postUserEmailClient := mock.GetMockSendGridClient()
-	app, err := NewApp(testDB, mockLightningClient,
-		postUserEmailClient, mockBitcoindClient,
-		mockHttpPoster, conf)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	harness := httptestutil.NewTestHarness(app.Router, testDB)
-
-	preCreationEmails := postUserEmailClient.GetEmailVerificationMails()
-	t.Run("create a user", func(t *testing.T) {
-		t.Parallel()
-		email := gofakeit.Email()
-		pass := gofakeit.Password(true, true, true, true, true, 32)
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/users",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-				"email": %q,
-				"password": %q
-			}`, email, pass),
-		})
-		jsonRes := harness.AssertResponseOkWithJson(t, req)
-
-		var postCreation int
-		// emails are sent in a go routine
-		if err = async.RetryNoBackoff(10, time.Millisecond*10, func() error {
-			postCreation = postUserEmailClient.GetEmailVerificationMails()
-			if preCreationEmails+1 != postCreation {
-				return fmt.Errorf("emails sent before creating user (%d) does not match ut with emails sent after creating user (%d)", preCreationEmails, postCreation)
-			}
-			return nil
-		}); err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertEqual(t, jsonRes["firstName"], nil)
-		testutil.AssertEqual(t, jsonRes["lastName"], nil)
-		testutil.AssertEqual(t, jsonRes["email"], email)
-		testutil.AssertEqual(t, jsonRes["balance"], 0)
-
-		t.Run("not create the same user twice", func(t *testing.T) {
-			otherReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-				Path:   "/users",
-				Method: "POST",
-				Body: fmt.Sprintf(`{
-				"email": %q,
-				"password": %q
-			}`, email, pass),
-			})
-			_, err = harness.AssertResponseNotOk(t, otherReq)
-			testutil.AssertEqual(t, apierr.ErrUserAlreadyExists, err)
-			testutil.AssertEqual(t, postCreation, postUserEmailClient.GetEmailVerificationMails())
-		})
-	})
-
-	t.Run("not create a user with no pass", func(t *testing.T) {
-		t.Parallel()
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/users",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-				"email": %q
-			}`, gofakeit.Email()),
-		})
-		_, _ = harness.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-
-	t.Run("not create a user with no email", func(t *testing.T) {
-		t.Parallel()
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/users",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q
-			}`, gofakeit.Password(true, true, true, true, true, 32)),
-		})
-		_, _ = harness.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-}
-
 func TestPostLoginRoute(t *testing.T) {
-	testutil.DescribeTest(t)
 	t.Parallel()
 
 	email := gofakeit.Email()
@@ -283,6 +125,7 @@ func TestPostLoginRoute(t *testing.T) {
 	})
 
 	t.Run("fail to login with non-verified email", func(t *testing.T) {
+		t.Parallel()
 		nonVerifiedEmail := gofakeit.Email()
 		newPass := gofakeit.Password(true, true, true, true, true, 32)
 		_ = h.CreateUserNoVerifyEmail(t, users.CreateUserArgs{Email: nonVerifiedEmail, Password: newPass})
@@ -301,7 +144,7 @@ func TestPostLoginRoute(t *testing.T) {
 }
 
 func TestChangePasswordRoute(t *testing.T) {
-	testutil.DescribeTest(t)
+	t.Parallel()
 	email := gofakeit.Email()
 	pass := gofakeit.Password(true, true, true, true, true, 32)
 	newPass := gofakeit.Password(true, true, true, true, true, 32)
@@ -312,6 +155,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Should give an error if not including the old password", func(t *testing.T) {
+		t.Parallel()
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/auth/change_password",
@@ -326,6 +170,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Should give an error if not including the new password", func(t *testing.T) {
+		t.Parallel()
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/auth/change_password",
@@ -340,6 +185,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Should give an error if not including the repeated password", func(t *testing.T) {
+		t.Parallel()
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/auth/change_password",
@@ -354,6 +200,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Should give an error if including the wrong repeated password", func(t *testing.T) {
+		t.Parallel()
 		anotherNewPassword := gofakeit.Password(true, true, true, true, true, 32)
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
@@ -370,6 +217,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Should give an error if not including the access token", func(t *testing.T) {
+		t.Parallel()
 		changePassReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/auth/change_password",
 			Method: "PUT",
@@ -384,6 +232,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("should give an error on bad password", func(t *testing.T) {
+		t.Parallel()
 		badNewPass := "badNewPass"
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
@@ -399,6 +248,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Must be able to change password", func(t *testing.T) {
+		t.Parallel()
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
 			Path:        "/auth/change_password",
@@ -436,6 +286,7 @@ func TestChangePasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Must not be able to change the password by providing a bad old password", func(t *testing.T) {
+		t.Parallel()
 		badPass := gofakeit.Password(true, true, true, true, true, 32)
 		changePassReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
@@ -453,12 +304,57 @@ func TestChangePasswordRoute(t *testing.T) {
 
 }
 
+func TestResetPasswordRouteBadToken(t *testing.T) {
+	t.Parallel()
+	pass := gofakeit.Password(true, true, true, true, true, 32)
+	newPass := gofakeit.Password(true, true, true, true, true, 32)
+
+	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+
+	badSecretKey := []byte("this is a secret key which we expect to fail")
+	badToken := passwordreset.NewToken(user.Email, users.PasswordResetTokenDuration,
+		user.HashedPassword, badSecretKey)
+	badTokenReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+		Path:   "/auth/reset_password",
+		Method: "PUT",
+		Body: fmt.Sprintf(`{
+				"token": %q,
+				"password": %q
+			}`, badToken, newPass),
+	})
+	_, _ = h.AssertResponseNotOkWithCode(t, badTokenReq, http.StatusForbidden)
+
+	// we should be able to log in with old credentials
+	loginReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+		Path:   "/login",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": %q
+			}`, pass, user.Email),
+	})
+	h.AssertResponseOk(t, loginReq)
+
+	// we should NOT be able to log in with new credentials
+	badLoginReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
+		Path:   "/login",
+		Method: "POST",
+		Body: fmt.Sprintf(`{
+				"password": %q,
+				"email": %q
+			}`, newPass, user.Email),
+	})
+	_, _ = h.AssertResponseNotOk(t, badLoginReq)
+}
+
 func TestResetPasswordRoute(t *testing.T) {
+	t.Parallel()
 	pass := gofakeit.Password(true, true, true, true, true, 32)
 	newPass := gofakeit.Password(true, true, true, true, true, 32)
 	user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
 
 	t.Run("should not be able to reset to a weak password", func(t *testing.T) {
+		t.Parallel()
 		badPass := "12345678"
 		token, err := users.GetPasswordResetToken(testDB, user.Email)
 		if err != nil {
@@ -475,44 +371,8 @@ func TestResetPasswordRoute(t *testing.T) {
 		_, _ = h.AssertResponseNotOkWithCode(t, resetPassReq, http.StatusBadRequest)
 	})
 
-	t.Run("Should not be able to reset the user password by using a bad token", func(t *testing.T) {
-		badSecretKey := []byte("this is a secret key which we expect to fail")
-		badToken := passwordreset.NewToken(user.Email, users.PasswordResetTokenDuration,
-			user.HashedPassword, badSecretKey)
-		badTokenReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/auth/reset_password",
-			Method: "PUT",
-			Body: fmt.Sprintf(`{
-				"token": %q,
-				"password": %q
-			}`, badToken, newPass),
-		})
-		_, _ = h.AssertResponseNotOkWithCode(t, badTokenReq, http.StatusForbidden)
-
-		// we should be able to log in with old credentials
-		loginReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/login",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q,
-				"email": %q
-			}`, pass, user.Email),
-		})
-		h.AssertResponseOk(t, loginReq)
-
-		// we should NOT be able to log in with new credentials
-		badLoginReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/login",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-				"password": %q,
-				"email": %q
-			}`, newPass, user.Email),
-		})
-		_, _ = h.AssertResponseNotOk(t, badLoginReq)
-	})
-
 	t.Run("Reset the password by using the correct token", func(t *testing.T) {
+		t.Parallel()
 		token, err := users.GetPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
@@ -551,6 +411,7 @@ func TestResetPasswordRoute(t *testing.T) {
 	})
 
 	t.Run("Should not be able to reset the password twice", func(t *testing.T) {
+		t.Parallel()
 		token, err := users.GetPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
@@ -576,65 +437,6 @@ func TestResetPasswordRoute(t *testing.T) {
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, secondResetPassReq, http.StatusForbidden)
 
-	})
-}
-
-func TestPutUserRoute(t *testing.T) {
-	testutil.DescribeTest(t)
-
-	email := gofakeit.Email()
-	password := gofakeit.Password(true, true, true, true, true, 32)
-	accessToken, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
-		Email:    email,
-		Password: password,
-	})
-
-	t.Run("updating with an invalid email should fail", func(t *testing.T) {
-		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-			AccessToken: accessToken,
-			Path:        "/user",
-			Method:      "PUT",
-			Body: `{
-				"email": "bad-email.coming.through"
-			}`,
-		})
-		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-	})
-
-	t.Run("update email, first name and last name", func(t *testing.T) {
-		newFirst := "new-firstname"
-		newLast := "new-lastname"
-		newEmail := gofakeit.Email()
-
-		// Update User endpoint
-		updateUserReq := httptestutil.GetAuthRequest(t,
-			httptestutil.AuthRequestArgs{
-				AccessToken: accessToken,
-				Path:        "/user", Method: "PUT",
-				Body: fmt.Sprintf(`
-			{
-				"firstName": %q,
-				"lastName": %q,
-				"email": %q
-			}`, newFirst, newLast, newEmail)})
-
-		jsonRes := h.AssertResponseOkWithJson(t, updateUserReq)
-		testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
-		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
-		testutil.AssertEqual(t, jsonRes["email"], newEmail)
-
-		// Get User endpoint
-		getUserReq := httptestutil.GetAuthRequest(t,
-			httptestutil.AuthRequestArgs{
-				AccessToken: accessToken,
-				Method:      "GET", Path: "/user",
-			})
-
-		// Verify that update and get returns the same
-		jsonRes = h.AssertResponseOkWithJson(t, getUserReq)
-		testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
-		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
-		testutil.AssertEqual(t, jsonRes["email"], newEmail)
 	})
 }
 
@@ -674,109 +476,8 @@ func TestSendPasswordResetEmail(t *testing.T) {
 
 }
 
-func TestRestServer_SendEmailVerificationEmail(t *testing.T) {
+func TestEnableConfirmAndDelete2fa(t *testing.T) {
 	t.Parallel()
-
-	// we need a new email sender here to record the amount of emails
-	// sent correctly
-	emailClient := mock.GetMockSendGridClient()
-	app, err := NewApp(testDB, mockLightningClient,
-		emailClient, mockBitcoindClient,
-		mockHttpPoster, conf)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-
-	harness := httptestutil.NewTestHarness(app.Router, testDB)
-
-	t.Run("reject a bad email request", func(t *testing.T) {
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
-			Method: "POST",
-			Body: `{
-			"email": "foobar"
-			}`,
-		})
-		_, err := harness.AssertResponseNotOk(t, req)
-		testutil.AssertEqual(t, apierr.ErrRequestValidationFailed, err)
-	})
-
-	// we don't want to leak information about users, so we respond with 200
-	t.Run("respond with 200 for a non-existant user", func(t *testing.T) {
-		email := gofakeit.Email()
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-			"email": %q
-			}`, email),
-		})
-
-		harness.AssertResponseOk(t, req)
-
-	})
-
-	t.Run("Send out a password verification email for an existing user", func(t *testing.T) {
-		email := gofakeit.Email()
-		password := gofakeit.Password(true, true, true, true, true, 32)
-		_ = h.CreateUserNoVerifyEmail(t, users.CreateUserArgs{
-			Email:    email,
-			Password: password,
-		})
-
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-			"email": %q
-			}`, email),
-		})
-		emailsPreReq := emailClient.GetEmailVerificationMails()
-		harness.AssertResponseOk(t, req)
-		if err = async.RetryNoBackoff(5, time.Millisecond*10, func() error {
-			postReq := emailClient.GetEmailVerificationMails()
-			if emailsPreReq+1 != postReq {
-				return fmt.Errorf("mismatch between emails pre equest (%d) and post request (%d", emailsPreReq, postReq)
-			}
-			return nil
-		}); err != nil {
-			testutil.FatalMsg(t, err)
-		}
-	})
-
-	t.Run("not send out an email for already verified users", func(t *testing.T) {
-		email := gofakeit.Email()
-		password := gofakeit.Password(true, true, true, true, true, 32)
-		_ = h.CreateUser(t, users.CreateUserArgs{
-			Email:    email,
-			Password: password,
-		})
-
-		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
-			Method: "POST",
-			Body: fmt.Sprintf(`{
-			"email": %q
-			}`, email),
-		})
-		emailsPreReq := emailClient.GetEmailVerificationMails()
-		harness.AssertResponseOk(t, req)
-		if err = async.RetryNoBackoff(5, time.Millisecond*10, func() error {
-			postReq := emailClient.GetEmailVerificationMails()
-			if emailsPreReq+1 != postReq {
-				return fmt.Errorf("mismatch between emails pre equest (%d) and post request (%d", emailsPreReq, postReq)
-			}
-			return nil
-		}); err == nil {
-			testutil.FatalMsg(t, "Sent out emails for already verified user!")
-		}
-	})
-
-}
-
-func TestRestServer_EnableConfirmAndDelete2fa(t *testing.T) {
-	t.Parallel()
-	testutil.DescribeTest(t)
 
 	email := gofakeit.Email()
 	password := gofakeit.Password(true, true, true, true, true, 32)

@@ -193,7 +193,7 @@ func TestGetMiddleware(t *testing.T) {
 	})
 
 	t.Run("authentiate with API key", func(t *testing.T) {
-		apiKey, _, err := apikeys.New(testDB, user)
+		apiKey, _, err := apikeys.New(testDB, user.ID)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}

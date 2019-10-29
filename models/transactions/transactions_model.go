@@ -2,6 +2,7 @@ package transactions
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,19 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"gitlab.com/arcanecrypto/teslacoil/db"
+)
+
+type txType string
+
+const (
+	lightning  txType = "lightning"
+	blockchain txType = "blockchain"
+)
+
+var (
+	_ json.Marshaler = Transaction{}
+	_ json.Marshaler = Offchain{}
+	_ json.Marshaler = Onchain{}
 )
 
 // Transaction is the DB type for a transaction in Teslacoil. This
@@ -22,11 +36,16 @@ type Transaction struct {
 	// CustomerOrderId is an optional field where the user can specify an
 	// order ID of their choosing. The only place this is used is when hitting
 	// the callback URL of a transaction.
-	CustomerOrderId *string   `db:"customer_order_id"`
-	Expiry          int64     `db:"expiry"` // Encoded into invoice if offchain, internally only if onchain
-	Expired         bool      `db:"-"`
-	ExpiresAt       time.Time `db:"-"`
-	Direction       Direction `db:"direction"`
+	CustomerOrderId *string `db:"customer_order_id"`
+
+	// Expiry is the associated expiry time for a TX, if any. An offchain TX always
+	// has an expiry, the one encoded into the invoice. An onchain TX may have an 
+	// expiry, for example when a merchant gives an offer to the consumer, but only
+	// wants the offer to be valid for a certain time frame. On the other hand, a 
+	// TX that's a withdrawal from a merchant won't have this field set. 
+	Expiry    *int64    `db:"expiry"`
+
+	Direction Direction `db:"direction"`
 
 	// AmountMsat is the amount of money spent to a transaction. In the case of this being an offchain TX the field
 	// is set to the amount in the associated invoice. In that case it should always be non-nil. In the case of an
@@ -54,6 +73,18 @@ type Transaction struct {
 	Status         *Status    `db:"invoice_status"`
 }
 
+// MarshalJSON is added to make sure that we never serialize raw Transactions
+// directly, but instead convert them to the approriate specific type.
+func (t Transaction) MarshalJSON() ([]byte, error) {
+	if on, err := t.ToOnchain(); err == nil {
+		return json.Marshal(on)
+	}
+	if off, err := t.ToOffchain(); err == nil {
+		return json.Marshal(off)
+	}
+	panic("TX is neither offchain nor onchain!")
+}
+
 func (t Transaction) String() string {
 	if on, err := t.ToOnchain(); err == nil {
 		return on.String()
@@ -64,23 +95,13 @@ func (t Transaction) String() string {
 	panic("TX is neither offchain nor onchain!")
 }
 
-// WithAdditionalFields adds useful fields that's derived from information stored
-// in the DB.
-func (t Transaction) WithAdditionalFields() Transaction {
-	t.ExpiresAt = t.GetExpiryDate()
-	t.Expired = t.IsExpired()
-
-	return t
-}
-
-// GetExpiryDate converts the Expiry field to a more human-friendly format
-func (t Transaction) GetExpiryDate() time.Time {
-	return t.CreatedAt.Add(time.Second * time.Duration(t.Expiry))
-}
-
 // IsExpired calculates whether a transaction is expired or not
 func (t Transaction) IsExpired() bool {
-	expiresAt := t.CreatedAt.Add(time.Second * time.Duration(t.Expiry))
+	if t.Expiry == nil {
+		return false
+	}
+
+	expiresAt := t.CreatedAt.Add(time.Second * time.Duration(*t.Expiry))
 
 	// Return whether the expiry date is before the time now
 	// We get the UTC time because the db is in UTC time
@@ -98,25 +119,26 @@ func (t Transaction) ToOnchain() (Onchain, error) {
 		amountSat = &a
 	}
 	on := Onchain{
-		ID:               t.ID,
-		UserID:           t.UserID,
-		CallbackURL:      t.CallbackURL,
-		CustomerOrderId:  t.CustomerOrderId,
-		Expiry:           t.Expiry,
-		Expired:          t.Expired,
-		ExpiresAt:        t.ExpiresAt,
-		Direction:        t.Direction,
-		AmountSat:        amountSat,
-		Description:      t.Description,
+		ID:              t.ID,
+		UserID:          t.UserID,
+		CallbackURL:     t.CallbackURL,
+		CustomerOrderId: t.CustomerOrderId,
+		SettledAt:       t.SettledAt,
+		Expiry:          t.Expiry,
+		Direction:       t.Direction,
+		AmountSat:       amountSat,
+		Description:     t.Description,
+
 		ConfirmedAtBlock: t.ConfirmedAtBlock,
-		Address:          *t.Address,
-		Txid:             t.Txid,
-		Vout:             t.Vout,
-		SettledAt:        t.SettledAt,
 		ConfirmedAt:      t.ConfirmedAt,
-		CreatedAt:        t.CreatedAt,
-		UpdatedAt:        t.UpdatedAt,
-		DeletedAt:        t.DeletedAt,
+
+		Address: *t.Address,
+		Txid:    t.Txid,
+		Vout:    t.Vout,
+
+		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
+		DeletedAt: t.DeletedAt,
 	}
 
 	return on, nil
@@ -133,10 +155,7 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 		UserID:          t.UserID,
 		CallbackURL:     t.CallbackURL,
 		CustomerOrderId: t.CustomerOrderId,
-		Expiry:          t.Expiry,
-		Expired:         t.Expired,
-		ExpiresAt:       t.ExpiresAt,
-		AmountSat:       *t.AmountMSat / 1000,
+		Expiry:          *t.Expiry,
 		AmountMSat:      *t.AmountMSat,
 		Description:     t.Description,
 		Direction:       t.Direction,
@@ -159,34 +178,55 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 	return off, nil
 }
 
+// offchainNoJson is a simple custom type we introduce to avoid a stack
+// overflow error when serializing an offchain TX with additional fields.
+// Type aliases break interface satisfaction when using embedded structs,
+// which causes the JSON marshaller to fallback to using struct tags.
+type offchainNoJson Offchain
+
+// offchainWithDerived is a struct that embed a regular offchain TX, but adds
+// certain fields that we derive from the other fields. This struct is used
+// when serializing the data to JSON, as this ensures we include all fields the
+// user might be interested in, without having to duplicate logic all over the
+// place.
+type offchainWithDerived struct {
+	offchainNoJson
+
+	Expired   bool      `json:"expired"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	AmountSat int64     `json:"amountSat"`
+	Type      txType    `json:"type"`
+}
+
 // Offchain is the db-type for an offchain transaction
 type Offchain struct {
 	ID          int     `json:"id"`
 	UserID      int     `json:"userId"`
-	CallbackURL *string `json:"callbackUrl"`
+	CallbackURL *string `json:"callbackUrl,omitempty"`
 	// CustomerOrderId is an optional field where the user can specify an
 	// order ID of their choosing. The only place this is used is when hitting
 	// the callback URL of a transaction.
-	CustomerOrderId *string `json:"customerOrderId"`
+	CustomerOrderId *string `json:"customerOrderId,omitempty"`
 
-	Expiry    int64     `json:"-"`
-	Expired   bool      `json:"expired"`
-	ExpiresAt time.Time `json:"expiry"`
+	Expiry int64 `json:"-"`
 
-	AmountSat      int64     `json:"amountSat"`
 	AmountMSat     int64     `json:"amountMSat"`
-	Description    *string   `json:"description"`
+	Description    *string   `json:"description,omitempty"`
 	Direction      Direction `json:"direction"`
 	HashedPreimage []byte    `json:"hash"`
 	PaymentRequest string    `json:"paymentRequest"`
 	Preimage       []byte    `json:"preimage"`
-	Memo           *string   `json:"memo"`
+	Memo           *string   `json:"memo,omitempty"`
 	Status         Status    `json:"status"`
 
-	SettledAt *time.Time `json:"settledAt"` // If defined, it means the  invoice is settled
+	SettledAt *time.Time `json:"settledAt,omitempty"` // If defined, it means the  invoice is settled
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"-"`
 	DeletedAt *time.Time `json:"-"`
+}
+
+func (o Offchain) MarshalJSON() ([]byte, error) {
+	return json.Marshal(o.withAdditionalFields())
 }
 
 // ToTransaction converts a Offchain struct into a Transaction
@@ -196,9 +236,7 @@ func (o Offchain) ToTransaction() Transaction {
 		UserID:          o.UserID,
 		CallbackURL:     o.CallbackURL,
 		CustomerOrderId: o.CustomerOrderId,
-		Expiry:          o.Expiry,
-		Expired:         o.Expired,
-		ExpiresAt:       o.ExpiresAt,
+		Expiry:          &o.Expiry,
 		Direction:       o.Direction,
 		Description:     o.Description,
 		PaymentRequest:  &o.PaymentRequest,
@@ -214,13 +252,15 @@ func (o Offchain) ToTransaction() Transaction {
 	}
 }
 
-func (o Offchain) WithAdditionalFields() Offchain {
-	withFields := o.ToTransaction().WithAdditionalFields()
-	offWithFields, err := withFields.ToOffchain()
-	if err != nil {
-		panic("Could not convert back to offchain TX!")
+func (o Offchain) withAdditionalFields() offchainWithDerived {
+	expiresAt := o.CreatedAt.Add(time.Second * time.Duration(o.Expiry))
+	return offchainWithDerived{
+		offchainNoJson: offchainNoJson(o),
+		Type:           lightning,
+		Expired:        expiresAt.Before(time.Now()),
+		ExpiresAt:      expiresAt,
+		AmountSat:      o.AmountMSat / 1000,
 	}
-	return offWithFields
 }
 
 // MarkAsPaid marks the given payment request as paid at the given date
@@ -312,10 +352,7 @@ func (o Offchain) String() string {
 	fragments = append(fragments,
 		fmt.Sprintf("Expiry: %d", o.Expiry),
 		fmt.Sprintf("Direction: %s", o.Direction),
-		fmt.Sprintf("AmountSat: %d", o.AmountSat),
 		fmt.Sprintf("AmountMSat: %d", o.AmountMSat),
-		fmt.Sprintf("Expired: %t", o.Expired),
-		fmt.Sprintf("ExpiresAt: %v", o.ExpiresAt),
 		fmt.Sprintf("SettledAt: %v", o.SettledAt),
 		fmt.Sprintf("CreatedAt: %v", o.CreatedAt),
 		fmt.Sprintf("UpdatedAt: %v", o.UpdatedAt),
@@ -325,35 +362,81 @@ func (o Offchain) String() string {
 	return strings.Join(fragments, ", ")
 }
 
+// onchainNoJson is a simple custom type we introduce to avoid a stack
+// overflow error when serializing an onchain TX with additional fields.
+// Type aliases break interface satisfaction when using embedded structs,
+// which causes the JSON marshaller to fallback to using struct tags.
+
+type onchainNoJson Onchain
+
+// onchainWithDerived is a struct that embed a regular onchain TX, but adds
+// certain fields that we derive from the other fields. This struct is used
+// when serializing the data to JSON, as this ensures we include all fields the
+// user might be interested in, without having to duplicate logic all over the
+// place
+type onchainWithDerived struct {
+	onchainNoJson
+	Expired   *bool      `json:"expired,omitempty"`
+	ExpiresAt *time.Time `json:"expiry,omitempty"`
+	Confirmed bool       `json:"confirmed"`
+	Type      txType     `json:"type"`
+}
+
 // Onchain is the struct for an onchain transaction
 type Onchain struct {
 	ID          int     `json:"id"`
 	UserID      int     `json:"userId"`
-	CallbackURL *string `json:"callbackUrl"`
+	CallbackURL *string `json:"callbackUrl,omitempty"`
 	// CustomerOrderId is an optional field where the user can specify an
 	// order ID of their choosing. The only place this is used is when hitting
 	// the callback URL of a transaction.
-	CustomerOrderId *string `json:"customerOrderId"`
-
-	Expiry    int64     `json:"expiry"`
-	Expired   bool      `db:"-"`
-	ExpiresAt time.Time `db:"-"`
+	CustomerOrderId *string `json:"customerOrderId,omitempty"`
 
 	Direction Direction `json:"direction"`
 
-	AmountSat        *int64  `json:"amountSat"`
-	Description      *string `json:"description"`
-	ConfirmedAtBlock *int    `json:"confirmedAtBlock"`
-	Address          string  `json:"address"`
-	Txid             *string `json:"txid"`
-	Vout             *int    `json:"vout"`
+	Description *string `json:"description,omitempty"`
+
+	// Some onchain TXs may have an expiry time associated with them. Typically
+	// this would be done where a merchant wants to give an offer to the consumer
+	// without comitting to the price for too long.
+	Expiry *int64 `json:"expiry,omitempty"`
 
 	// TODO doc
-	SettledAt   *time.Time `json:"settledAt"`
-	ConfirmedAt *time.Time `json:"confirmedAt"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"-"`
-	DeletedAt   *time.Time `json:"-"`
+	SettledAt *time.Time `json:"settledAt,omitempty"`
+
+	ConfirmedAtBlock *int       `json:"confirmedAtBlock,omitempty"`
+	ConfirmedAt      *time.Time `json:"confirmedAt,omitempty"`
+
+	AmountSat *int64  `json:"amountSat"`
+	Address   string  `json:"address"`
+	Txid      *string `json:"txid,omitempty"`
+	Vout      *int    `json:"vout,omitempty"`
+
+	CreatedAt time.Time  `json:"-"`
+	UpdatedAt time.Time  `json:"-"`
+	DeletedAt *time.Time `json:"-"`
+}
+
+func (o Onchain) MarshalJSON() ([]byte, error) {
+	return json.Marshal(o.withAdditionalFields())
+}
+
+func (o Onchain) withAdditionalFields() onchainWithDerived {
+	var expiresAt *time.Time
+	var expired *bool
+	if o.Expiry != nil {
+		eAt := o.CreatedAt.Add(time.Second * time.Duration(*o.Expiry))
+		expiresAt = &eAt
+		e := expiresAt.After(time.Now())
+		expired = &e
+	}
+	return onchainWithDerived{
+		onchainNoJson: onchainNoJson(o),
+		Type:          blockchain,
+		Expired:       expired,
+		ExpiresAt:     expiresAt,
+		Confirmed:     o.ConfirmedAt != nil,
+	}
 }
 
 // ToTransaction converts a Onchain struct into a Transaction
@@ -364,27 +447,29 @@ func (o Onchain) ToTransaction() Transaction {
 		amountMsat = &a
 	}
 	return Transaction{
-		ID:               o.ID,
-		UserID:           o.UserID,
-		CallbackURL:      o.CallbackURL,
-		CustomerOrderId:  o.CustomerOrderId,
-		Expiry:           o.Expiry,
-		AmountMSat:       amountMsat,
-		Expired:          o.Expired,
-		ExpiresAt:        o.ExpiresAt,
-		Direction:        o.Direction,
-		Description:      o.Description,
+		ID:              o.ID,
+		UserID:          o.UserID,
+		CallbackURL:     o.CallbackURL,
+		CustomerOrderId: o.CustomerOrderId,
+		AmountMSat:      amountMsat,
+		SettledAt:       o.SettledAt,
+		Expiry:          o.Expiry,
+		Direction:       o.Direction,
+		Description:     o.Description,
+
 		ConfirmedAtBlock: o.ConfirmedAtBlock,
+		ConfirmedAt:      o.ConfirmedAt,
+
 		// Preimage:         nil, // otherwise we get empty slice
 		// HashedPreimage:   nil, // otherwise we get empty slice
-		Address:     &o.Address,
-		Txid:        o.Txid,
-		Vout:        o.Vout,
-		SettledAt:   o.SettledAt,
-		ConfirmedAt: o.ConfirmedAt,
-		CreatedAt:   o.CreatedAt,
-		UpdatedAt:   o.UpdatedAt,
-		DeletedAt:   o.DeletedAt,
+
+		Address: &o.Address,
+		Txid:    o.Txid,
+		Vout:    o.Vout,
+
+		CreatedAt: o.CreatedAt,
+		UpdatedAt: o.UpdatedAt,
+		DeletedAt: o.DeletedAt,
 	}
 }
 

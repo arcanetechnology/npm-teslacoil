@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/stretchr/testify/assert"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
@@ -68,8 +69,8 @@ func TestRunWithBitcoindAndLndPair(t *testing.T) {
 			return
 		}
 	})
-	testutil.AssertMsg(t, !test.Failed(), "Test was failed")
+	assert.False(t, test.Failed(), "test was failed")
 
 	// two LND nodes and one bitcoind
-	testutil.AssertEqual(t, prevNodeLen+3, len(nodeCleaners))
+	assert.Len(t, nodeCleaners, prevNodeLen+3)
 }

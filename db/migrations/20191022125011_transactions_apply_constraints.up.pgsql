@@ -6,6 +6,8 @@ ALTER TABLE transactions
     DROP CONSTRAINT txid_or_vout_cant_exist_alone,
     DROP CONSTRAINT transactions_amount_sat_check,
 
+    ADD CONSTRAINT positive_expiry check (expiry IS NULL OR expiry > 0),
+
     ADD CONSTRAINT positive_vout CHECK (vout >= 0),
 
     ADD CONSTRAINT transactions_amount_milli_sat_must_be_greater_than_0 CHECK (amount_milli_sat > 0),

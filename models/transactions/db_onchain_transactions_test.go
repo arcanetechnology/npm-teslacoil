@@ -97,11 +97,10 @@ func genOffchain(user users.User) Offchain {
 		UserID:          user.ID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          gofakeit.Int64(),
+		Expiry:          int64(gofakeit.Number(1, 100000)),
 		Direction:       genDirection(),
-		AmountSat:       amountMSat / 1000,
 		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		PaymentRequest: "DO ME LATER",
 		Preimage:       preimage,
@@ -109,7 +108,7 @@ func genOffchain(user users.User) Offchain {
 		AmountMSat:     amountMSat,
 		SettledAt:      settledAt,
 		Memo: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 
 		Status: genStatus(),
@@ -147,15 +146,21 @@ func genOnchain(user users.User) Onchain {
 		amountSat = &a
 	}
 
+	var expiry *int64
+	if gofakeit.Bool() {
+		e := int64(gofakeit.Number(1, 100000000))
+		expiry = &e
+	}
+
 	return Onchain{
 		UserID:          user.ID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          gofakeit.Int64(),
+		Expiry:          expiry,
 		Direction:       genDirection(),
 		AmountSat:       amountSat,
 		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(0, 10))
+			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		ConfirmedAtBlock: confirmedAtBlock,
 		Address:          "DO ME LATER",
@@ -504,7 +509,7 @@ func TestWithdrawOnChain(t *testing.T) {
 			Address:   testnetAddress,
 		})
 
-		assert.Equal(t, err, ErrUserBalanceTooLow)
+		assert.Equal(t, err, ErrBalanceTooLow)
 	})
 	t.Run("withdraw negative amount fails", func(t *testing.T) {
 		user := CreateUserWithBalanceOrFail(t, testDB, 500)

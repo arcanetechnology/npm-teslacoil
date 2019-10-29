@@ -15,7 +15,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
-	"gitlab.com/arcanecrypto/teslacoil/testutil/transactiontestutil"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
@@ -66,7 +66,7 @@ func TestIncomingForUser(t *testing.T) {
 			t.Parallel()
 			user := userstestutil.CreateUserOrFail(t, testDB)
 			var expected balance.Balance
-			tx := transactiontestutil.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
+			tx := txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
 			expected += calcNewBalance(t, tx.ToTransaction())
 
 			bal, err := balance.IncomingForUser(testDB, user.ID)
@@ -78,7 +78,7 @@ func TestIncomingForUser(t *testing.T) {
 			t.Parallel()
 			user := userstestutil.CreateUserOrFail(t, testDB)
 			var expected balance.Balance
-			tx := transactiontestutil.InsertFakeOffChainOrFail(t, testDB, user.ID)
+			tx := txtest.InsertFakeOffChainOrFail(t, testDB, user.ID)
 			expected += calcNewBalance(t, tx.ToTransaction())
 
 			bal, err := balance.IncomingForUser(testDB, user.ID)
@@ -95,26 +95,26 @@ func TestIncomingForUser(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, expectedBalance, preTxGeneration)
 
-			tx := transactiontestutil.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
+			tx := txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, tx.ToTransaction())
 
-			tx = transactiontestutil.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
+			tx = txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, tx.ToTransaction())
 
-			tx = transactiontestutil.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
+			tx = txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, tx.ToTransaction())
 
 			postOnchain, err := balance.IncomingForUser(testDB, user.ID)
 			require.NoError(t, err)
 			assert.Equal(t, postOnchain, expectedBalance)
 
-			offchain := transactiontestutil.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
+			offchain := txtest.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
 
-			offchain = transactiontestutil.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
+			offchain = txtest.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
 
-			offchain = transactiontestutil.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
+			offchain = txtest.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
 
 			postOffchain, err := balance.IncomingForUser(testDB, user.ID)
@@ -152,7 +152,7 @@ func TestOutgoingForUser(t *testing.T) {
 			t.Parallel()
 			user := userstestutil.CreateUserOrFail(t, testDB)
 			var expected balance.Balance
-			tx := transactiontestutil.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
+			tx := txtest.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
 			expected += calcNewBalance(t, tx.ToTransaction())
 
 			bal, err := balance.OutgoingForUser(testDB, user.ID)
@@ -164,7 +164,7 @@ func TestOutgoingForUser(t *testing.T) {
 			t.Parallel()
 			user := userstestutil.CreateUserOrFail(t, testDB)
 			var expected balance.Balance
-			tx := transactiontestutil.InsertFakeOffChainOrFail(t, testDB, user.ID)
+			tx := txtest.InsertFakeOffChainOrFail(t, testDB, user.ID)
 			expected += calcNewBalance(t, tx.ToTransaction())
 
 			bal, err := balance.OutgoingForUser(testDB, user.ID)
@@ -181,26 +181,26 @@ func TestOutgoingForUser(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, expectedBalance, preTxGeneration)
 
-			tx := transactiontestutil.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
+			tx := txtest.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, tx.ToTransaction())
 
-			tx = transactiontestutil.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
+			tx = txtest.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, tx.ToTransaction())
 
-			tx = transactiontestutil.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
+			tx = txtest.InsertFakeOutgoingOnchainorFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, tx.ToTransaction())
 
 			postOnchain, err := balance.OutgoingForUser(testDB, user.ID)
 			require.NoError(t, err)
 			assert.Equal(t, expectedBalance, postOnchain)
 
-			offchain := transactiontestutil.InsertFakeOutgoingOffchainOrFail(t, testDB, user.ID)
+			offchain := txtest.InsertFakeOutgoingOffchainOrFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
 
-			offchain = transactiontestutil.InsertFakeOutgoingOffchainOrFail(t, testDB, user.ID)
+			offchain = txtest.InsertFakeOutgoingOffchainOrFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
 
-			offchain = transactiontestutil.InsertFakeOutgoingOffchainOrFail(t, testDB, user.ID)
+			offchain = txtest.InsertFakeOutgoingOffchainOrFail(t, testDB, user.ID)
 			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
 
 			postOffchain, err := balance.OutgoingForUser(testDB, user.ID)

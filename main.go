@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"time"
 
@@ -499,7 +498,7 @@ func askForConfirmation() bool {
 	}
 }
 
-func main() {
+func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
 	app.Name = "lpp"
 	app.Usage = "Managing helper for developing lightning payment processor"
@@ -629,7 +628,6 @@ func main() {
 		dbCommand,
 	}
 
-	sort.Sort(cli.CommandsByName(app.Commands))
 	err := app.Run(os.Args)
 	if err != nil {
 		log.Fatal(err)

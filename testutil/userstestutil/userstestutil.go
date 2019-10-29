@@ -34,7 +34,7 @@ func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) user
 	verified, err := users.VerifyEmail(db, token)
 	require.NoError(t, err)
 
-	_, _, err = apikeys.New(db, u)
+	_, _, err = apikeys.New(db, u.ID)
 	require.NoError(t, err)
 
 	return verified
@@ -49,6 +49,7 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, balance int) users.Use
 		UserID:     u.ID,
 		AmountMSat: int64(balance) * 1000,
 		Direction:  transactions.INBOUND,
+		Expiry:     1337,
 		Status:     transactions.SUCCEEDED,
 		SettledAt:  &settled,
 	}

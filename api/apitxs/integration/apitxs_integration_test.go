@@ -1,6 +1,6 @@
 //+build integration
 
-package api_test
+package apitxs_integration_test
 
 import (
 	"context"
@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/api"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -26,7 +29,7 @@ import (
 )
 
 var (
-	databaseConfig = testutil.GetDatabaseConfig("routes_integration")
+	databaseConfig = testutil.GetDatabaseConfig("api_txs_integration")
 	testDB         *db.DB
 	conf           = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
 )
@@ -202,22 +205,18 @@ func TestPayInvoice(t *testing.T) {
 		})
 
 		t.Run("sending invoice with bad path does not decrease users balance", func(t *testing.T) {
-			testutil.DescribeTest(t)
-
 			user, err := users.GetByID(testDB, userID)
-			if err != nil {
-				testutil.FatalMsgf(t, "could not getbyid: %v", err)
-			}
-			balance := user.Balance
+			require.NoError(t, err)
+
+			prepaymentBalance, err := balance.ForUser(testDB, user.ID)
+			require.NoError(t, err)
 
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 
 			paymentRequest, err := lnd1.AddInvoice(context.Background(), &lnrpc.Invoice{
 				Value: int64(amountSat),
 			})
-			if err != nil {
-				testutil.FatalMsgf(t, "could not create invoice: %v", err)
-			}
+			require.NoError(t, err)
 
 			description := gofakeit.HipsterSentence(5)
 			req := httptestutil.GetAuthRequest(t,
@@ -234,13 +233,10 @@ func TestPayInvoice(t *testing.T) {
 			_, _ = h.AssertResponseNotOk(t, req)
 
 			user, err = users.GetByID(testDB, userID)
-			if err != nil {
-				testutil.FatalMsgf(t, "could not getbyid: %v", err)
-			}
+			require.NoError(t, err)
 
-			if user.Balance != balance {
-				testutil.FatalMsgf(t, "expected users balance to not decrease and be %d, but was %d", balance, user.Balance)
-			}
+			postpaymentBalance, err := balance.ForUser(testDB, user.ID)
+			assert.Equal(t, prepaymentBalance, postpaymentBalance)
 		})
 	})
 }
