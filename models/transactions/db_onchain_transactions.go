@@ -134,10 +134,9 @@ func GetAllTransactionsOffset(d *db.DB, userID int, offset int) ([]Transaction, 
 // GetAllTransactionsLimitOffset selects all transactions for a userID from the DB.
 func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) (
 	[]Transaction, error) {
-	var query string
 	// Using OFFSET is not ideal, but until we start seeing
 	// performance problems it's fine
-	query = `SELECT *
+	query := `SELECT *
 		FROM transactions
 		WHERE user_id=$1
 		ORDER BY created_at
@@ -267,7 +266,6 @@ func TxListener(db *db.DB, zmqRawTxCh chan *wire.MsgTx, chainCfg chaincfg.Params
 						"amountSat": updated.AmountSat,
 						"userId":    updated.UserID,
 					}).Info("Added received money to onchain TX")
-					break
 				case i == len(result)-1:
 					// we reached the last found transaction without being able to save
 					// the txid. This means the user deposited to an address he has used

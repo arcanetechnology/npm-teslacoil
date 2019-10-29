@@ -498,7 +498,7 @@ func askForConfirmation() bool {
 	}
 }
 
-func main() {
+func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
 	app.Name = "lpp"
 	app.Usage = "Managing helper for developing lightning payment processor"

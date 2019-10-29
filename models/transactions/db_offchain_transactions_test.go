@@ -45,7 +45,6 @@ var (
 	SampleHashHex = hex.EncodeToString(SampleHash[:])
 	firstMemo     = "HiMisterHey"
 	description   = "My personal description"
-	secondMemo    = "HelloWorld"
 )
 
 func TestNewOffchainTx(t *testing.T) {
