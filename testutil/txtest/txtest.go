@@ -3,6 +3,7 @@ package txtest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -151,7 +152,7 @@ func GenOnchain(userID int) transactions.Onchain {
 		UserID:          userID,
 		CallbackURL:     MockMaybeString(gofakeit.URL),
 		CustomerOrderId: MockMaybeString(gofakeit.Word),
-		Expiry:          positiveInt64(),
+		Expiry:          expiry,
 		Direction:       MockDirection(),
 		AmountSat:       amountSat,
 		Description: MockMaybeString(func() string {
@@ -162,6 +163,7 @@ func GenOnchain(userID int) transactions.Onchain {
 		Txid:             txid,
 		Vout:             vout,
 		ConfirmedAt:      confirmedAt,
+		SettledAt:        settledAt,
 	}
 }
 
@@ -236,7 +238,7 @@ func fundedOnchain(minAmountSats, userId int) transactions.Onchain {
 	sats := int64(gofakeit.Number(minAmountSats, btcutil.SatoshiPerBitcoin*10))
 	on.AmountSat = &sats
 
-	txid := genTxid()
+	txid := MockTxid()
 	on.Txid = &txid
 
 	vout := gofakeit.Number(0, 10)

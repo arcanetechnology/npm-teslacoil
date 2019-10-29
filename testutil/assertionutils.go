@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -108,9 +107,12 @@ func AssertEqual(t *testing.T, expected interface{}, actual interface{}, msgs ..
 	firstErr, firstErrOk := expected.(error)
 	secondErr, secondErrOk := actual.(error)
 	if firstErrOk && secondErrOk {
-		AssertMsgf(t, strings.Contains(secondErr.Error(), firstErr.Error()),
-			"expected (%s) is not contained in (%s)",
-			firstErr, secondErr)
+		if x, ok := firstErr.(interface{ Is(error) bool }); ok {
+			AssertMsgf(t, x.Is(secondErr),
+				"Expected (%s) and actual (%s) are not equal", firstErr, secondErr)
+			return
+		}
+		AssertEqual(t, firstErr.Error(), secondErr.Error(), msgs...)
 		return
 	}
 
