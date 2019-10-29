@@ -1,11 +1,11 @@
 -- add new fields from offchaintx to transaction
 ALTER TABLE transactions
     -- add common fields for both lightning and on-chain transactions
-    ADD COLUMN amount_milli_sat bigint,
+    ADD COLUMN amount_milli_sat   bigint,
     ADD COLUMN callback_url       TEXT,
     ADD COLUMN expiry             bigint,
     ADD COLUMN customer_order_id  VARCHAR(256),
-    ADD COLUMN settled_at TIMESTAMPTZ,
+    ADD COLUMN settled_at         TIMESTAMPTZ,
     ALTER COLUMN address DROP NOT NULL,
 
     -- add fields for lightning transactions
