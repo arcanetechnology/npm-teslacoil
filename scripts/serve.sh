@@ -32,7 +32,7 @@ exe docker-compose build --parallel
 exe docker-compose up -d
 
 BITCOIND_IP=`docker inspect --format '{{json .NetworkSettings}}' bitcoind | jq .Networks.teslacoil_default.IPAddress --raw-output`
-exe ./teslacoil-dev \
+exe ./lpp-dev \
     --lnddir $LND_DIR \
     --bitcoind.rpcuser $RPCUSER \
     --bitcoind.rpcpassword $RPCPASS \

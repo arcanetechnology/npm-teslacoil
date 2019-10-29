@@ -210,7 +210,6 @@ func TestInsertOnchainTransaction(t *testing.T) {
 			t.Parallel()
 			onchain := genOnchain(user)
 
-			testutil.Succeedf(t, "inserting transaction %+v", onchain)
 			inserted, err := InsertOnchain(testDB, onchain)
 			if err != nil {
 				testutil.FatalMsg(t, err)

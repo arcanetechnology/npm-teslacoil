@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"gitlab.com/arcanecrypto/teslacoil/testutil/transactiontestutil"
@@ -56,14 +58,14 @@ func TestTransactionsPositiveVout(t *testing.T) {
 		vout := gofakeit.Number(1, math.MaxInt32-1)
 
 		err := insertMockTransaction(vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert 0 vout", func(t *testing.T) {
 		vout := 0
 
 		err := insertMockTransaction(vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert negative vout", func(t *testing.T) {
@@ -95,12 +97,12 @@ func TestTransactionsPositiveExpiry(t *testing.T) {
 		expiry := gofakeit.Number(1, math.MaxInt64-1)
 
 		err := insertMockTransaction(expiry)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert 0 expiry", func(t *testing.T) {
 		err := insertMockTransaction(0)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert negative expiry", func(t *testing.T) {
@@ -111,7 +113,6 @@ func TestTransactionsPositiveExpiry(t *testing.T) {
 	})
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 	insertMockTransaction := func(txid string, vout int) error {
 		_, err := testDB.NamedExec(`
@@ -134,10 +135,10 @@ func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 		vout := gofakeit.Number(1, math.MaxInt32-1)
 
 		err := insertMockTransaction(txid, 0)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 
 		err = insertMockTransaction(txid, vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert two transactions with different txid but same vout", func(t *testing.T) {
@@ -146,10 +147,10 @@ func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 		vout := gofakeit.Number(0, math.MaxInt32-1)
 
 		err := insertMockTransaction(txid1, vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 
 		err = insertMockTransaction(txid2, vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert two transactions with different txid and different vout", func(t *testing.T) {
@@ -158,10 +159,10 @@ func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 		vout := gofakeit.Number(1, math.MaxInt32-1)
 
 		err := insertMockTransaction(txid1, 0)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 
 		err = insertMockTransaction(txid2, vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert two transactions with same txid and vout", func(t *testing.T) {
@@ -169,7 +170,7 @@ func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 		vout := gofakeit.Number(0, math.MaxInt32-1)
 
 		err := insertMockTransaction(txid, vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 
 		err = insertMockTransaction(txid, vout)
 		testutil.AssertEqual(t, ErrConstraintTxidVoutUnique, err)
@@ -177,7 +178,6 @@ func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsTxidLength(t *testing.T) {
 	insertMockTransaction := func(txid string) error {
 		_, err := testDB.NamedExec(`
@@ -195,7 +195,7 @@ func TestTransactionsTxidLength(t *testing.T) {
 
 	t.Run("can insert txid of length 64", func(t *testing.T) {
 		err := insertMockTransaction(transactiontestutil.MockTxid())
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert txid of length 0", func(t *testing.T) {
@@ -214,7 +214,6 @@ func TestTransactionsTxidLength(t *testing.T) {
 	})
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 	insertMockTransaction := func(txid *string, confirmedAt *time.Time, confirmedAtBlock *int, settledAt *time.Time) error {
 		var vout *int
@@ -247,7 +246,7 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 		txid := transactiontestutil.MockTxid()
 		err := insertMockTransaction(&txid, &now, nil, nil)
 
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert transaction with confirmed_at_block and txid", func(t *testing.T) {
@@ -255,14 +254,14 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 		confirmedAtBlock := gofakeit.Number(100, 2000000)
 		err := insertMockTransaction(&txid, nil, &confirmedAtBlock, nil)
 
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert transaction with settled_at and txid", func(t *testing.T) {
 		txid := transactiontestutil.MockTxid()
 		err := insertMockTransaction(&txid, nil, nil, &now)
 
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not be confirmed_at if txid is not present", func(t *testing.T) {
@@ -285,7 +284,6 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 	})
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsTxidOrVoutCantExistAlone(t *testing.T) {
 	insertMockTransaction := func(txid *string, vout *int) error {
 		_, err := testDB.NamedExec(`
@@ -306,7 +304,7 @@ func TestTransactionsTxidOrVoutCantExistAlone(t *testing.T) {
 		vout := gofakeit.Number(0, math.MaxInt32)
 
 		err := insertMockTransaction(&txid, &vout)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert transaction with just txid", func(t *testing.T) {
@@ -326,7 +324,6 @@ func TestTransactionsTxidOrVoutCantExistAlone(t *testing.T) {
 	})
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsHashMustExistIfPreimageIsDefined(t *testing.T) {
 	insertMockTransaction := func(preimage *[]byte, hashedPreimage *[]byte) error {
 		paymentRequest := "pay_req"
@@ -348,14 +345,14 @@ func TestTransactionsHashMustExistIfPreimageIsDefined(t *testing.T) {
 		hash := transactiontestutil.MockHash([]byte("a really bad preimage"))
 
 		err := insertMockTransaction(&preimage, &hash)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can insert transaction with just payment hash", func(t *testing.T) {
 		hash := transactiontestutil.MockHash([]byte("a really bad preimage"))
 
 		err := insertMockTransaction(nil, &hash)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert transaction with just preimage", func(t *testing.T) {
@@ -366,7 +363,6 @@ func TestTransactionsHashMustExistIfPreimageIsDefined(t *testing.T) {
 	})
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsPaymentRequestMustExistForOtherFieldsToExist(t *testing.T) {
 	t.Run("can insert transaction with payment request and memo", func(t *testing.T) {
 
@@ -386,17 +382,16 @@ func TestTransactionsPaymentRequestMustExistForOtherFieldsToExist(t *testing.T) 
 	})
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsMustEitherBeOnchainOrOffchain(t *testing.T) {
 	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	t.Run("can insert onchain transaction", func(t *testing.T) {
 		_, err := transactiontestutil.InsertFakeOnchain(t, testDB, user.ID)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 	t.Run("can insert offchain transaction", func(t *testing.T) {
 		_, err := transactiontestutil.InsertFakeOffchain(t, testDB, user.ID)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 	t.Run("can not insert transaction with address and payment_request", func(t *testing.T) {
 		insertMockTransaction := func() error {
@@ -419,7 +414,6 @@ func TestTransactionsMustEitherBeOnchainOrOffchain(t *testing.T) {
 
 }
 
-// TestTransactionsAmountSat tests that it is impossible to create a transaction with amount less than 0
 func TestTransactionsAmountMilliSat(t *testing.T) {
 	insertMockTransaction := func(amountMilliSat int) error {
 		_, err := testDB.NamedExec(`
@@ -436,14 +430,14 @@ func TestTransactionsAmountMilliSat(t *testing.T) {
 
 	t.Run("inserting transaction with 0 amount succeeds", func(t *testing.T) {
 		err := insertMockTransaction(0)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("inserting transaction with greater than 0 amount succeeds", func(t *testing.T) {
 		amount := gofakeit.Number(1, math.MaxInt64-1)
 
 		err := insertMockTransaction(amount)
-		testutil.AssertEqual(t, nil, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("inserting transaction with negative amount fails", func(t *testing.T) {

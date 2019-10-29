@@ -13,7 +13,6 @@ node_0/
 node_1/
 
 # compiled binaries
-teslacoil
-teslacoil-dev
-!teslacoil/
-TODO.md
+lpp
+lpp-dev
+!lpp/
