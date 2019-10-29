@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -233,12 +234,20 @@ func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Requ
 // AssertResponseNotOkWithCode checks that the given request results in the
 // given HTTP status code. It returns the response to the request.
 func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
-	testutil.AssertMsgf(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
+	require.Truef(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
 	t.Helper()
 
+	reqBody, err := ioutil.ReadAll(request.Body)
+	require.NoError(t, err)
+
+	request.Body = ioutil.NopCloser(bytes.NewReader(reqBody))
+
 	response, error := harness.AssertResponseNotOk(t, request)
-	testutil.AssertMsgf(t, response.Code == code,
-		"Expected code (%d) does not match with found code (%d)", code, response.Code)
+	resBody := response.Body.String()
+	if resBody == "" {
+		resBody = "empty body"
+	}
+	require.Equalf(t, code, response.Code, "%s %s: Request: %s. Response: %s", request.Method, request.URL.Path, reqBody, resBody)
 	return response, error
 }
 
