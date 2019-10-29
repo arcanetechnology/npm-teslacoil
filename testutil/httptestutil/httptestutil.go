@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 
@@ -279,6 +280,7 @@ func (harness *TestHarness) AssertResponseOkWithJsonList(t *testing.T, request *
 
 	var destination []map[string]interface{}
 	harness.AssertResponseOKWithStruct(t, request, &destination)
+	assert.NotNil(t, destination, "Did not receive JSON list, but null")
 
 	return destination
 
