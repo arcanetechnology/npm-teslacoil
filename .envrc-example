@@ -2,7 +2,7 @@
 export DATABASE_USER="tlc"
 export DATABASE_PASSWORD="password"
 export DATABASE_NAME="tlc"
-export DATABASE_PORT=5432
+export DATABASE_PORT=5434
 
 # LND/Bitcoin Core
 export LND_DIR=docker/.alice

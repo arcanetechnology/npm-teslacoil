@@ -7,6 +7,9 @@ test:
   services:
     # If you're updating the postgres image we're using, make sure you've pushed
     # this to the registry. Otherwise the tests won't run with the newest image!
+    # docker login registry.gitlab.com
+    #  docker build -t registry.gitlab.com/arcanecrypto/teslacoil/postgres docker/postgres/
+    #  docker push registry.gitlab.com/arcanecrypto/teslacoil/postgres
     - name: registry.gitlab.com/arcanecrypto/teslacoil/postgres
       # otherwise the host is name of the image
       alias: postgres
