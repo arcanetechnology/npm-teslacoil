@@ -1,11 +1,11 @@
 /* User and DB for running API locally */
-CREATE USER lpp;
-CREATE DATABASE lpp;
-GRANT ALL PRIVILEGES ON DATABASE lpp TO lpp;
+CREATE USER tlc;
+CREATE DATABASE tlc;
+GRANT ALL PRIVILEGES ON DATABASE tlc TO tlc;
 
 /* Test DBs and user */
-CREATE USER lpp_test;
-CREATE DATABASE lpp_payments;
-GRANT ALL PRIVILEGES ON DATABASE lpp_payments to lpp_test;
-CREATE DATABASE lpp_users;
-GRANT ALL PRIVILEGES ON DATABASE lpp_users to lpp_test;
+CREATE USER tlc_test;
+CREATE DATABASE tlc_payments;
+GRANT ALL PRIVILEGES ON DATABASE tlc_payments to tlc_test;
+CREATE DATABASE tlc_users;
+GRANT ALL PRIVILEGES ON DATABASE tlc_users to tlc_test;

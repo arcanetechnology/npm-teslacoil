@@ -1,4 +1,4 @@
-package main
+package tlc
 
 import (
 	"sync"

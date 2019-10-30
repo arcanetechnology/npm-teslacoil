@@ -1,4 +1,4 @@
-package main
+package tlc
 
 import (
 	"context"
@@ -73,7 +73,6 @@ func (s realHttpSender) Post(url, contentType string, reader io.Reader) (*http.R
 }
 
 func init() {
-
 	DatabaseUser = util.GetEnvOrFail("DATABASE_USER")
 	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
 	DatabaseName = util.GetEnvOrFail("DATABASE_NAME")
@@ -90,7 +89,6 @@ func init() {
 		Port:     DatabasePort,
 		Name:     DatabaseName,
 	}
-
 }
 
 const (
@@ -500,7 +498,8 @@ func askForConfirmation() bool {
 	}
 }
 
-func main() { //nolint:deadcode,unused
+// Main is true entry point for tlc
+func Main() error { //nolint:deadcode,unused
 	app := cli.NewApp()
 	app.Name = "teslacoil"
 	app.Usage = "Managing helper for developing lightning payment processor"
@@ -521,8 +520,8 @@ func main() { //nolint:deadcode,unused
 		logToFile := c.GlobalBool("logging.writetofile")
 		if logToFile {
 			logFile := c.GlobalString("logging.file")
-			if err := build.SetLogFile(logFile); err != nil {
-				return nil
+			if err = build.SetLogFile(logFile); err != nil {
+				return err
 			}
 			log.Info("Logging to file")
 		}
@@ -632,6 +631,8 @@ func main() { //nolint:deadcode,unused
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
 }
