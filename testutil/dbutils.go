@@ -12,11 +12,11 @@ import (
 // given argument is added to the name of the database
 func GetDatabaseConfig(name string) db.DatabaseConfig {
 	return db.DatabaseConfig{
-		User:     "lpp_test",
+		User:     "tlc_test",
 		Password: "password",
 		Port:     util.GetDatabasePort(),
 		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
-		Name:     "lpp_" + name,
+		Name:     "tlc_" + name,
 	}
 }
 
