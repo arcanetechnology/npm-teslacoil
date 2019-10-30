@@ -226,6 +226,23 @@ func TestGetTransactionsBothKinds(t *testing.T) {
 	assert.Len(t, response, incomingOffchainTxs+incomingOnchainTxs+outgoingOffchainTxs+outgoingOnchainTxs)
 }
 
+func TestGetTransactionsEmpty(t *testing.T) {
+	t.Parallel()
+	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 32),
+	})
+
+	req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+		AccessToken: token,
+		Path:        "/transactions",
+		Method:      "GET",
+	})
+
+	txs := h.AssertResponseOkWithJsonList(t, req)
+	assert.Len(t, txs, 0)
+}
+
 func TestGetTransactionsFiltering(t *testing.T) {
 	t.Parallel()
 	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
