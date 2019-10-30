@@ -1,11 +1,12 @@
-all: test build-tlc
+all: test build
 
 # If we're on a tag, binary name is tlc, else tlc-dev
 TLC := $(shell git describe --exact-match HEAD 2>/dev/null && echo tlc || echo tlc-dev)
 BINARIES := tlc tlc-dev
 
+.PHONY: build
 build:
-	go build -o ${TLC} main.go
+	go build -o ${TLC} ./cmd/tlc/main.go
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
@@ -20,18 +21,17 @@ start-db:
 start-regtest-alice: 
 	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 
 
-migrate-db-up: build start-db
+migrate-up: build start-db
 	./tlc-dev db up
 
-drop-db: build start-db
+drop: build start-db
 	./tlc-dev db drop --force
 
-dummy-data: build start-db migrate-db-up start-regtest-alice
+dummy-data: build start-db migrate-up start-regtest-alice
 	./tlc-dev --network regtest db dummy --force --only-once
 	docker-compose stop alice bitcoind
 
-
-clean: 
+clean:
 	rm -f ${BINARIES}
 
 install:
@@ -64,7 +64,7 @@ test-it:
 lint: 
 	golangci-lint run	
 
-test_verbose:
+test-verbose:
 	go test ./... -v
 
 nuke_postgres:
