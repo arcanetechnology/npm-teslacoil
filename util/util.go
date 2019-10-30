@@ -42,6 +42,32 @@ func GetEnvAsBool(env string) bool {
 	return parsed
 }
 
+// GetEnvAsInt gets the environment variable and parses it into an integer
+// if the env variable can't be parsed, it logs the error and exits the program
+func GetEnvAsInt(env string) int {
+	intStr := os.Getenv(env)
+	if len(intStr) == 0 {
+		log.Fatalf("Given environment variable (%s) is not set", env)
+	}
+	parsed, err := strconv.ParseInt(intStr, 10, 64)
+
+	if err != nil {
+		log.Fatalf("Given environment variable ("+
+			"%s) was not a valid bool: %s", env, intStr)
+	}
+
+	return int(parsed)
+}
+
+func GetEnvAsIntOrElse(env string, defaultValue int) int {
+	envVar := os.Getenv(env)
+	if len(envVar) == 0 {
+		return defaultValue
+	}
+
+	return GetEnvAsInt(env)
+}
+
 // GetEnvOrElse returns the value of the given environment
 // variable, or the provided default value if the env variable
 // does not exist

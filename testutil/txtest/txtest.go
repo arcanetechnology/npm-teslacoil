@@ -3,6 +3,7 @@ package txtest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -16,25 +17,35 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 )
 
-func genPreimage() []byte {
+// MockPreimage will create a random preimage
+func MockPreimage() []byte {
 	p := make([]byte, 32)
 	_, _ = rand.Read(p)
 	return p
 }
 
-func genTxid() string {
+// MockHash mocks a hashed preimage
+func MockHash(preimage []byte) []byte {
+	h := sha256.Sum256(preimage)
+	return h[:]
+}
+
+// MockTxid will create a random txid
+func MockTxid() string {
 	p := make([]byte, 32)
 	_, _ = rand.Read(p)
 	return hex.EncodeToString(p)
-
 }
 
-func genStatus() transactions.Status {
+// MockStatus will create a random status
+func MockStatus() transactions.Status {
 	s := []transactions.Status{transactions.FAILED, transactions.OPEN, transactions.SUCCEEDED}
 	return s[rand.Intn(3)]
 }
 
-func genMaybeString(fn func() string) *string {
+// MockMaybeString will sometimes return nil, and other times return a
+// string using the argument function
+func MockMaybeString(fn func() string) *string {
 	var res *string
 	if gofakeit.Bool() {
 		r := fn()
@@ -43,16 +54,21 @@ func genMaybeString(fn func() string) *string {
 	return res
 }
 
-func genDirection() transactions.Direction {
-	direction := transactions.OUTBOUND
-	if gofakeit.Bool() {
-		direction = transactions.INBOUND
+// MockDirection will create a random Direction
+func MockDirection() transactions.Direction {
+	if gofakeit.Int8()%2 == 0 {
+		return transactions.INBOUND
 	}
-	return direction
+
+	return transactions.OUTBOUND
 }
 
 func int64Between(min, max int64) int64 {
 	return rand.Int63n(max-min+1) + min
+}
+
+func positiveInt64() int64 {
+	return rand.Int63n(math.MaxInt64)
 }
 
 func GenOffchain(userID int) transactions.Offchain {
@@ -62,7 +78,7 @@ func GenOffchain(userID int) transactions.Offchain {
 	var settledAt *time.Time
 	var hashedPreimage []byte
 	if gofakeit.Bool() {
-		preimage = genPreimage()
+		preimage = MockPreimage()
 		now := time.Now()
 		start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
 		s := gofakeit.DateRange(start, now)
@@ -70,16 +86,16 @@ func GenOffchain(userID int) transactions.Offchain {
 		h := sha256.Sum256(hashedPreimage)
 		hashedPreimage = h[:]
 	} else {
-		hashedPreimage = genPreimage()
+		hashedPreimage = MockPreimage()
 	}
 
 	return transactions.Offchain{
 		UserID:          userID,
-		CallbackURL:     genMaybeString(gofakeit.URL),
-		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          int64(gofakeit.Number(100, 100000)),
-		Direction:       genDirection(),
-		Description: genMaybeString(func() string {
+		CallbackURL:     MockMaybeString(gofakeit.URL),
+		CustomerOrderId: MockMaybeString(gofakeit.Word),
+		Expiry:          positiveInt64(),
+		Direction:       MockDirection(),
+		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		PaymentRequest: "DO ME LATER",
@@ -87,11 +103,11 @@ func GenOffchain(userID int) transactions.Offchain {
 		HashedPreimage: hashedPreimage,
 		AmountMSat:     amountMSat,
 		SettledAt:      settledAt,
-		Memo: genMaybeString(func() string {
+		Memo: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 
-		Status: genStatus(),
+		Status: MockStatus(),
 	}
 }
 
@@ -103,7 +119,7 @@ func GenOnchain(userID int) transactions.Onchain {
 	var vout *int
 	var amountSat *int64
 	if gofakeit.Bool() {
-		t := genTxid() // do me later
+		t := MockTxid() // do me later
 		txid = &t
 		v := gofakeit.Number(0, 12)
 		vout = &v
@@ -134,13 +150,12 @@ func GenOnchain(userID int) transactions.Onchain {
 
 	return transactions.Onchain{
 		UserID:          userID,
-		CallbackURL:     genMaybeString(gofakeit.URL),
-		CustomerOrderId: genMaybeString(gofakeit.Word),
-		SettledAt:       settledAt,
+		CallbackURL:     MockMaybeString(gofakeit.URL),
+		CustomerOrderId: MockMaybeString(gofakeit.Word),
 		Expiry:          expiry,
-		Direction:       genDirection(),
+		Direction:       MockDirection(),
 		AmountSat:       amountSat,
-		Description: genMaybeString(func() string {
+		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		ConfirmedAtBlock: confirmedAtBlock,
@@ -148,7 +163,20 @@ func GenOnchain(userID int) transactions.Onchain {
 		Txid:             txid,
 		Vout:             vout,
 		ConfirmedAt:      confirmedAt,
+		SettledAt:        settledAt,
 	}
+}
+
+func InsertFakeOnchain(t *testing.T, db *db.DB, userID int) (transactions.Onchain, error) {
+	onchain := GenOnchain(userID)
+	onchain.Direction = MockDirection()
+	return transactions.InsertOnchain(db, onchain)
+}
+
+func InsertFakeOffchain(t *testing.T, db *db.DB, userID int) (transactions.Offchain, error) {
+	offchain := GenOffchain(userID)
+	offchain.Direction = MockDirection()
+	return transactions.InsertOffchain(db, offchain)
 }
 
 func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
@@ -210,7 +238,7 @@ func fundedOnchain(minAmountSats, userId int) transactions.Onchain {
 	sats := int64(gofakeit.Number(minAmountSats, btcutil.SatoshiPerBitcoin*10))
 	on.AmountSat = &sats
 
-	txid := genTxid()
+	txid := MockTxid()
 	on.Txid = &txid
 
 	vout := gofakeit.Number(0, 10)

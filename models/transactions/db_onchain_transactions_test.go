@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -97,7 +98,7 @@ func genOffchain(user users.User) Offchain {
 		UserID:          user.ID,
 		CallbackURL:     genMaybeString(gofakeit.URL),
 		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          int64(gofakeit.Number(1, 100000)),
+		Expiry:          int64(gofakeit.Number(0, math.MaxInt64-1)),
 		Direction:       genDirection(),
 		Description: genMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
@@ -137,7 +138,8 @@ func genOnchain(user users.User) Onchain {
 	var txid *string
 	var vout *int
 	var amountSat *int64
-	if gofakeit.Bool() {
+	// it is required to have a txid if either of the three is defined
+	if confirmedAt != nil || confirmedAtBlock != nil || settledAt != nil {
 		t := genTxid() // do me later
 		txid = &t
 		v := gofakeit.Number(0, 12)
@@ -441,7 +443,7 @@ func TestWithdrawOnChain(t *testing.T) {
 			user := CreateUserWithBalanceOrFail(t, testDB, test.balance)
 			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: testutil.MockTxid(),
+					Txid: genTxid(),
 				},
 			}
 			_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
@@ -471,7 +473,7 @@ func TestWithdrawOnChain(t *testing.T) {
 
 			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: testutil.MockTxid(),
+					Txid: genTxid(),
 				},
 			}
 			initial := gofakeit.Number(1337, maxSats)
@@ -500,7 +502,7 @@ func TestWithdrawOnChain(t *testing.T) {
 
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
-				Txid: testutil.MockTxid(),
+				Txid: genTxid(),
 			},
 		}
 		_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
@@ -515,7 +517,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		user := CreateUserWithBalanceOrFail(t, testDB, 500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
-				Txid: testutil.MockTxid(),
+				Txid: genTxid(),
 			},
 		}
 
@@ -531,7 +533,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		user := CreateUserWithBalanceOrFail(t, testDB, 500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
-				Txid: testutil.MockTxid(),
+				Txid: genTxid(),
 			},
 		}
 		_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{

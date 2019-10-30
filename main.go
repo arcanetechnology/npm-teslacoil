@@ -1,4 +1,4 @@
-package teslacoil
+package main
 
 import (
 	"context"
@@ -78,6 +78,8 @@ func init() {
 	DatabasePassword = util.GetEnvOrFail("DATABASE_PASSWORD")
 	DatabaseName = util.GetEnvOrFail("DATABASE_NAME")
 	DatabaseHost = util.GetEnvOrElse("DATABASE_HOST", "localhost")
+	DatabasePort = util.GetEnvAsIntOrElse("DATABASE_PORT", 5434)
+
 	GinMode = util.GetEnvOrElse("GIN_MODE", "debug")
 	SendgridApiKey = util.GetEnvOrFail("SENDGRID_API_KEY")
 
@@ -174,7 +176,7 @@ var (
 				log.Warn("No RSA JWT key password given")
 			}
 
-			if err := auth.SetRawJwtPrivateKey(jwtPrivateKeyBytes, []byte(jwtPrivateKeyPass)); err != nil {
+			if err = auth.SetRawJwtPrivateKey(jwtPrivateKeyBytes, []byte(jwtPrivateKeyPass)); err != nil {
 				return err
 			}
 			log.Info("Set JWT signing key")
@@ -455,7 +457,7 @@ var (
 					if err != nil {
 						return pkgerrors.Wrap(err, "could not connect to lnd")
 					}
-					return FillWithDummyData(database, lncli, c.Bool("only-once"))
+					return fillWithDummyData(database, lncli, c.Bool("only-once"))
 				},
 			},
 		},
@@ -500,7 +502,7 @@ func askForConfirmation() bool {
 
 func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
-	app.Name = "lpp"
+	app.Name = "teslacoil"
 	app.Usage = "Managing helper for developing lightning payment processor"
 	app.EnableBashCompletion = true
 	// have log levels be set for all commands/subcommands

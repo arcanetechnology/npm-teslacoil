@@ -5,7 +5,7 @@ LPP := $(shell git describe --exact-match HEAD 2>/dev/null && echo lpp || echo l
 BINARIES := lpp lpp-dev
 
 build-lpp:
-	go build -o ${LPP} ./main.go
+	go build -o ${LPP} main.go
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
@@ -72,6 +72,3 @@ nuke_postgres:
 	docker-compose rm --force --stop -v db
 	docker volume rm teslacoil_postgres
 	docker-compose up --detach
-
-backup_db:
-	pg_dump teslacoil > /home/admin/teslacoil-backups/$(shell date --iso=date).backup
