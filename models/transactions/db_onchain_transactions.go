@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -37,14 +38,8 @@ var (
 type Direction string
 
 func (d Direction) MarshalText() (text []byte, err error) {
-	switch d {
-	case INBOUND:
-		return []byte("inbound"), nil
-	case OUTBOUND:
-		return []byte("outbound"), nil
-	default:
-		return nil, fmt.Errorf("unknown transaction direction: %s", d)
-	}
+	lower := strings.ToLower(string(d))
+	return []byte(lower), nil
 }
 
 var _ encoding.TextMarshaler = INBOUND
@@ -53,16 +48,8 @@ var _ encoding.TextMarshaler = INBOUND
 type Status string
 
 func (s Status) MarshalText() (text []byte, err error) {
-	switch s {
-	case SUCCEEDED:
-		return []byte("succeeded"), nil
-	case FAILED:
-		return []byte("failed"), nil
-	case OPEN:
-		return []byte("open"), nil
-	default:
-		return nil, fmt.Errorf("unknown transaction status: %s", s)
-	}
+	lower := strings.ToLower(string(s))
+	return []byte(lower), nil
 }
 
 var _ encoding.TextMarshaler = SUCCEEDED
