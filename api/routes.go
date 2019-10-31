@@ -165,7 +165,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
 
 	// Start a goroutine for handling the newly added/settled invoices.
-	go transactions.InvoiceStatusListener(invoiceUpdatesCh, db, callbacks)
+	go transactions.InvoiceListener(invoiceUpdatesCh, db, callbacks)
 
 	r := RestServer{
 		Router:      g,
