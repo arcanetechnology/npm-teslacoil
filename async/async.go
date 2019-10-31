@@ -10,7 +10,6 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-
 // WaitTimeout waits for the waitgroup for the specified max timeout.
 // Returns true if waiting timed out.
 // Cribbed from https://stackoverflow.com/a/32843750/10359642
@@ -28,10 +27,10 @@ func WaitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 	}
 }
 
-// Retry retries the given function until it doesn't fail. It doubles the
+// RetryBackoff retries the given function until it doesn't fail. It doubles the
 // period between attempts each time.
 // Cribbed from https://upgear.io/blog/simple-golang-retry-function/
-func Retry(attempts int, sleep time.Duration, fn func() error) error {
+func RetryBackoff(attempts int, sleep time.Duration, fn func() error) error {
 	start := time.Now()
 	if err := innerRetry(attempts, sleep, fn); err != nil {
 		end := time.Now()
