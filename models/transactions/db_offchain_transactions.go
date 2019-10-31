@@ -335,7 +335,7 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	//  Should we add a new field to the db, e.g. overpaidAmount? and give it
 	//  to them every month? Keep it ourself?
 	if invoice.AmtPaidMsat != offchainInvoice.AmountMSat {
-		log.Warnf("amout paid not equal to expected amount. expected %q milli sats to be paid, however %q milli sats was paid",
+		log.Warnf("amount paid not equal to expected amount. expected (%d) milli sats to be paid, however (%d) milli sats was paid",
 			offchainInvoice.AmountMSat, invoice.AmtPaidMsat)
 	}
 	offchainInvoice.AmountMSat = invoice.AmtPaidMsat

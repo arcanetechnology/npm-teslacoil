@@ -444,7 +444,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		assert.NotNil(t, updated.SettledAt)
 	})
 
-	t.Run("not settle an invoice", func(t *testing.T) {
+	t.Run("not settle an OPEN invoice", func(t *testing.T) {
 		t.Parallel()
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
@@ -456,12 +456,11 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		invoice := lnrpc.Invoice{
 			PaymentRequest: offchainTx.PaymentRequest,
-			State:          lnrpc.Invoice_SETTLED,
+			State:          lnrpc.Invoice_OPEN,
 		}
 
-		updated, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
-		require.NoError(t, err)
-		assert.Nil(t, updated.SettledAt)
+		_, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
+		require.EqualErrorf(t, err, transactions.ErrExpectedSettledStatus.Error(), "")
 	})
 
 	t.Run("callback URL should be called", func(t *testing.T) {

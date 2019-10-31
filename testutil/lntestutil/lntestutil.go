@@ -37,7 +37,7 @@ func GetRandomLightningMockClient() LightningMockClient {
 			RHash:          doubleHash(invoicePreimage),
 			RPreimage:      invoicePreimage,
 			Expiry:         1337,
-			Settled:        true,
+			State:          lnrpc.Invoice_SETTLED,
 			Value:          int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		},
 		SendPaymentSyncResponse: lnrpc.SendResponse{

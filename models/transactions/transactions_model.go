@@ -296,7 +296,7 @@ type OffchainStatus string
 const (
 	Offchain_CREATED   OffchainStatus = "CREATED"
 	Offchain_SENT      OffchainStatus = "SENT"
-	Offchain_COMPLETED OffchainStatus = "CONFIRMED"
+	Offchain_COMPLETED OffchainStatus = "COMPLETED"
 	Offchain_FLOPPED   OffchainStatus = "FLOPPED"
 )
 
