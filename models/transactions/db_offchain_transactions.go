@@ -24,11 +24,13 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 )
 
+var log = logrus.New()
+
 var (
 	ErrCouldNotGetByID            = errors.New("could not get payment by ID")
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
-	ErrExpectedOpenStatus         = errors.New("expected invoice status to be OPEN")
-	ErrExpectedSettledStatus      = errors.New("expected invoice status to be SETTLED")
+	ErrExpectedOpenStatus         = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_OPEN)])
+	ErrExpectedSettledStatus      = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_SETTLED)])
 )
 
 // CreateInvoice is used to Create an Invoice without a memo
@@ -255,7 +257,7 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 		log.WithField("hash", hex.EncodeToString(invoice.RHash)).
 			Info("received invoice on invoice status listener")
 
-		var offchain *Offchain
+		var offchain Offchain
 		var err error
 		switch invoice.State {
 		case lnrpc.Invoice_OPEN: // created, not yet confirmed paid
@@ -290,10 +292,10 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 // and update the state in the database
 // invoices whose status is not settled is rejected and an error is returned
 func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
-	sender HttpPoster) (*Offchain, error) {
+	sender HttpPoster) (Offchain, error) {
 
 	if invoice.State != lnrpc.Invoice_SETTLED {
-		return nil, ErrExpectedSettledStatus
+		return Offchain{}, ErrExpectedSettledStatus
 	}
 
 	log.WithFields(logrus.Fields{
@@ -313,7 +315,7 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 		invoice.PaymentRequest); err != nil {
 		log.WithError(err).WithField("paymentRequest",
 			invoice.PaymentRequest).Error("Could not read TX from DB")
-		return nil, errors.Wrapf(err,
+		return Offchain{}, errors.Wrapf(err,
 			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
 			invoice.PaymentRequest,
 		)
@@ -321,7 +323,7 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 
 	offchainInvoice, err := selectTx.ToOffchain()
 	if err != nil {
-		return nil, err
+		return Offchain{}, err
 	}
 
 	now := time.Now()
@@ -335,8 +337,10 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	//  Should we add a new field to the db, e.g. overpaidAmount? and give it
 	//  to them every month? Keep it ourself?
 	if invoice.AmtPaidMsat != offchainInvoice.AmountMSat {
-		log.Warnf("amount paid not equal to expected amount. expected (%d) milli sats to be paid, however (%d) milli sats was paid",
-			offchainInvoice.AmountMSat, invoice.AmtPaidMsat)
+		log.WithFields(logrus.Fields{
+			"expected": offchainInvoice.AmountMSat,
+			"paid":     invoice.AmtPaidMsat,
+		}).Warn("amount paid not equal to expected amount")
 	}
 	offchainInvoice.AmountMSat = invoice.AmtPaidMsat
 
@@ -347,21 +351,21 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 
 	rows, err := database.NamedQuery(updateOffchainTxQuery, &updatedTx)
 	if err != nil {
-		return nil, err
+		return Offchain{}, err
 	}
 	defer rows.Close()
 
 	if !rows.Next() {
-		return nil, fmt.Errorf("could not update offchain TX: %w", sql.ErrNoRows)
+		return Offchain{}, fmt.Errorf("could not update offchain TX: %w", sql.ErrNoRows)
 	}
 	var tx Transaction
 	if err = rows.StructScan(&tx); err != nil {
-		return nil, fmt.Errorf("could not read TX from DB: %w", err)
+		return Offchain{}, fmt.Errorf("could not read TX from DB: %w", err)
 	}
 
 	inserted, err := tx.ToOffchain()
 	if err != nil {
-		return nil, fmt.Errorf("could not convert TX to offchain TX: %w", err)
+		return Offchain{}, fmt.Errorf("could not convert TX to offchain TX: %w", err)
 	}
 
 	// call the callback URL(if exists)
@@ -375,7 +379,7 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 		log.WithField("id", offchainInvoice.ID).Debug("invoice did not have callback URL")
 	}
 
-	return &inserted, nil
+	return inserted, nil
 }
 
 // CallbackBody is the shape of the body we send to a specified payment callback

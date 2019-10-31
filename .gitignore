@@ -5,7 +5,6 @@ logs/
 .idea/teslacoil.iml
 .idea/idea
 .idea/saveactions_settings.xml
-.idea/watcherTasks.xml
 
 # Local node directories
 .alice/

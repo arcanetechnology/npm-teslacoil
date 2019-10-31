@@ -31,6 +31,7 @@ var (
 
 // InsertOnchain inserts the given onchain TX into the DB
 func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
+
 	converted := onchain.ToTransaction()
 	tx, err := insertTransaction(db, converted)
 	if err != nil {
@@ -90,14 +91,15 @@ func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) 
 		LIMIT $2
 		OFFSET $3`
 
-	var transactions []Transaction
+	// we need to initialize this variable because an empty SELECT will not update `transactions`
+	transactions := []Transaction{}
 	err := d.Select(&transactions, query, userID, limit, offset)
 	if err != nil {
 		log.WithError(err).WithFields(logrus.Fields{
-			"limit":   limit,
-			"offset":  offset,
-			"usuerId": userID,
-		}).Error("Could not get transactions")
+			"limit":  limit,
+			"offset": offset,
+			"userID": userID,
+		}).Error("could not get transactions")
 		return transactions, err
 	}
 

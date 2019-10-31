@@ -325,8 +325,6 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 	})
 
 	t.Run("Send out a password verification email for an existing user", func(t *testing.T) {
-		t.Parallel()
-
 		// we need a new email sender here to record the amount of emails
 		// sent correctly
 		emailClient := mock.GetMockSendGridClient()

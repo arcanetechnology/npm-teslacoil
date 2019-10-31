@@ -293,11 +293,17 @@ var _ encoding.TextMarshaler = INBOUND
 // OffchainStatus is the status of a offchain transaction
 type OffchainStatus string
 
+// OffchainStatus constants are used for mapping lnd's invoice/payment states
+// to our internal states
 const (
-	Offchain_CREATED   OffchainStatus = "CREATED"
-	Offchain_SENT      OffchainStatus = "SENT"
+	// Offchain_CREATED is used to represent to Invoice_OPEN
+	Offchain_CREATED OffchainStatus = "CREATED"
+	// Offchain_SENT is used to represent Payment_IN_FLIGHT
+	Offchain_SENT OffchainStatus = "SENT"
+	// Offchain_COMPLETED is used to represent Invoice_SETTLED or Payment_SUCCEEDED
 	Offchain_COMPLETED OffchainStatus = "COMPLETED"
-	Offchain_FLOPPED   OffchainStatus = "FLOPPED"
+	// Offchain_FLOPPED is used to represent Payment_FAILED
+	Offchain_FLOPPED OffchainStatus = "FLOPPED"
 )
 
 var _ encoding.TextMarshaler = Offchain_COMPLETED
@@ -305,7 +311,7 @@ var _ encoding.TextMarshaler = Offchain_COMPLETED
 // InvoiceStateToTeslaState maps lnd's InvoiceState to our OffchainStatus
 // InvoiceState are states for invoices belonging to our node, created
 // using lncli.AddInvoice()
-// Example usage: status := InvoiceStateToTeslaState[invoice.Status]
+// Example usage: status := InvoiceStateToTeslaState[invoice.State]
 var InvoiceStateToTeslaState = map[lnrpc.Invoice_InvoiceState]OffchainStatus{
 	lnrpc.Invoice_OPEN:    Offchain_CREATED,
 	lnrpc.Invoice_SETTLED: Offchain_COMPLETED,
@@ -313,7 +319,7 @@ var InvoiceStateToTeslaState = map[lnrpc.Invoice_InvoiceState]OffchainStatus{
 
 // PaymentStateToTeslaState maps lnd's PaymentStatus to our OffchainStatus
 // PaymentStatus are states of payments, e.g: outbound payments (lncli.SendPayment())
-// Example usage: status := PaymentStateToTeslaState[payment.status]
+// Example usage: status := PaymentStateToTeslaState[payment.Status]
 var PaymentStateToTeslaState = map[lnrpc.Payment_PaymentStatus]OffchainStatus{
 	lnrpc.Payment_UNKNOWN:   Offchain_CREATED,
 	lnrpc.Payment_IN_FLIGHT: Offchain_SENT,
