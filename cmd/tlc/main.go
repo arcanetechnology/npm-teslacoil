@@ -542,7 +542,8 @@ func main() { //nolint:deadcode,unused
 			TLSCertPath:  c.GlobalString("tlscertpath"),
 			MacaroonPath: c.GlobalString("macaroonpath"),
 			Network:      network,
-			RPCServer:    c.GlobalString("lndrpcserver"),
+			RPCHost:      c.GlobalString("lndrpchost"),
+			RPCPort:      c.GlobalInt("lndrpcport"),
 		}
 
 		return nil
