@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -49,6 +50,7 @@ type User struct {
 	BalanceSats *int64 `db:"-"`
 }
 
+// SQL related constants
 const (
 	// returningFromUsersTable is a SQL snippet that returns all the rows needed
 	// to scan a user struct
@@ -57,6 +59,11 @@ const (
 	// get a full fledged user struct
 	selectFromUsersTable = "SELECT id, email, has_verified_email, hashed_password, totp_secret, confirmed_totp_secret, updated_at, first_name, last_name"
 
+	uniqueEmailForeignKey = "users_email_key"
+)
+
+// Exported constants
+const (
 	// PasswordResetTokenDuration is how long our password reset tokens are valid
 	PasswordResetTokenDuration = 1 * time.Hour
 	// EmailVerificationTokenDuration is how long our email verification tokens are valid
@@ -72,12 +79,16 @@ var (
 	// Secret key used for verifying emails
 	// TODO: Make this secure :-)
 	emailVerificationSecretKey = []byte("assume we have a different long and also random secret key here")
+)
 
-	// custom errors for this package
-	Err2faAlreadyEnabled           = errors.New("user already has 2FA credentials")
-	Err2faNotEnabled               = errors.New("user does not have 2FA enabled")
-	ErrInvalidTotpCode             = errors.New("invalid TOTP code")
-	ErrEmailMustBeUnique           = errors.New("users_email_key")
+// Exported errors
+var (
+	Err2faAlreadyEnabled = errors.New("user already has 2FA credentials")
+	Err2faNotEnabled     = errors.New("user does not have 2FA enabled")
+	ErrInvalidTotpCode   = errors.New("invalid TOTP code")
+
+	// ErrEmailMustBeUnique is used to signify that an already existing user has the desired email
+	ErrEmailMustBeUnique           = errors.New("user emails must be unique")
 	ErrHashedPasswordMustBeDefined = errors.New(
 		"property HashedPassword on user must be defined")
 	ErrEmailMustBeDefined = errors.New(
@@ -305,32 +316,17 @@ func (u User) ChangePassword(db *db.DB, newPassword string) (User, error) {
 		return User{}, errors.Wrap(err, "could not hash new password")
 	}
 
-	tx := db.MustBegin()
 	// UPDATE user with new password
 	query := `UPDATE users SET hashed_password = $1 WHERE id = $2 ` + returningFromUsersTable
-	rows, err := tx.Query(query, hash, u.ID)
+	rows, err := db.Query(query, hash, u.ID)
 	if err != nil {
-		if txErr := tx.Rollback(); txErr != nil {
-			return User{}, errors.Wrap(err, txErr.Error())
-		}
 		return User{}, errors.Wrap(err, "could not update user password")
 	}
 
 	// read updated user from db
 	user, err := scanUser(rows)
 	if err != nil {
-		if txErr := tx.Rollback(); txErr != nil {
-			return User{}, errors.Wrap(err, txErr.Error())
-		}
 		return User{}, errors.Wrap(err, "could not scan user when changing password")
-	}
-
-	// commit changes
-	if err = tx.Commit(); err != nil {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return User{}, errors.Wrap(err, rollbackErr.Error())
-		}
-		return User{}, err
 	}
 
 	return user, nil
@@ -623,6 +619,9 @@ first_name, last_name)
 
 	rows, err := i.NamedQuery(userCreateQuery, user)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Constraint == uniqueEmailForeignKey {
+			err = ErrEmailMustBeUnique
+		}
 		return User{}, fmt.Errorf("could not insert user: %w", err)
 	}
 
