@@ -1,4 +1,4 @@
-package main
+package dummy
 
 import (
 	"sync"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/brianvoe/gofakeit"
@@ -14,8 +15,10 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
 
-// FillWithDummyData populates the database with dummy data
-func fillWithDummyData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) error {
+var log = build.Log
+
+// FillWithData populates the database with dummy data
+func FillWithData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) error {
 	log.WithField("onlyOnce", onlyOnce).Info("Populating DB with dummy data")
 	gofakeit.Seed(time.Now().UnixNano())
 

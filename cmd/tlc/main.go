@@ -27,6 +27,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/dummy"
 	"gitlab.com/arcanecrypto/teslacoil/email"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/util"
@@ -455,7 +456,7 @@ var (
 					if err != nil {
 						return pkgerrors.Wrap(err, "could not connect to lnd")
 					}
-					return fillWithDummyData(database, lncli, c.Bool("only-once"))
+					return dummy.FillWithData(database, lncli, c.Bool("only-once"))
 				},
 			},
 		},
