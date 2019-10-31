@@ -41,7 +41,6 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmidd
 
 	users := server.Group("")
 	users.Use(authmiddleware)
-	users.GET("/users", getAllUsers())
 	users.GET("/user", getUser())
 	users.PUT("/user", updateUser())
 }
@@ -53,20 +52,6 @@ type Response struct {
 	BalanceSats int64   `json:"balanceSats"`
 	Firstname   *string `json:"firstName"`
 	Lastname    *string `json:"lastName"`
-}
-
-// getAllUsers is a GET request that returns all the users in the database
-// TODO: Restrict this to only the admin user
-func getAllUsers() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		allUsers, err := users.GetAll(database)
-		if err != nil {
-			log.WithError(err).Error("could not get all users")
-			_ = c.Error(err)
-			return
-		}
-		c.JSONP(200, allUsers)
-	}
 }
 
 // updateUser takes in a JSON body with three optional fields (email, firstname,

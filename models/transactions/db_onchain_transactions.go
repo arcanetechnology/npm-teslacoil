@@ -17,7 +17,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
-	pkgErrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -28,7 +27,7 @@ var log = build.Log
 
 var (
 	ErrNonPositiveAmount = errors.New("cannot send non-positiv amount")
-	ErrTxHasTxid         = pkgErrors.New("transaction already has txid, cant overwrite")
+	ErrTxHasTxid         = errors.New("transaction already has txid, cant overwrite")
 
 	// ErrBalanceTooLow means the user tried to withdraw too much money
 	ErrBalanceTooLow = errors.New("balance is too low")
@@ -77,7 +76,7 @@ const (
 	OPEN      Status = "OPEN"
 )
 
-// TODO verify invariants?
+// InsertOnchain inserts the given onchain TX into the DB
 func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 	converted := onchain.ToTransaction()
 	tx, err := insertTransaction(db, converted)
@@ -96,7 +95,7 @@ func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 	return insertedOnchain, nil
 }
 
-// TODO verify invariants?
+// InsertOffchain inserts the given offchain TX into the DB
 func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 	tx, err := insertTransaction(db, offchain.ToTransaction())
 	if err != nil {
@@ -346,11 +345,18 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 			}
 
 			if rawTx.Confirmations >= confirmationLimit {
-				log.Infof("tx %s:%d has %d confirmations", *onchain.Txid, *onchain.Vout, rawTx.Confirmations)
+				log.WithFields(logrus.Fields{
+					"txid":          onchain.Txid,
+					"vout":          onchain.Vout,
+					"confirmations": rawTx.Confirmations,
+				}).Info("tx is confirmed")
 
 				if len(rawTx.Vout) < *onchain.Vout {
 					// something really weird has happened, the transaction changed? we saved it wrong?
-					log.Panic("saved transaction outpoint is greater than the number of outputs, check the logic")
+					log.WithFields(logrus.Fields{
+						"rawTx.Vout":   rawTx.Vout,
+						"onchain.Vout": onchain.Vout,
+					}).Panic("saved transaction outpoint is greater than the number of outputs, check the logic")
 				}
 
 				var output btcjson.Vout
@@ -539,7 +545,7 @@ func NewDepositWithMoney(db *db.DB, args WithMoneyArgs) (Onchain, error) {
 
 	transaction, err := InsertOnchain(db, txToInsert)
 	if err != nil {
-		return Onchain{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
+		return Onchain{}, fmt.Errorf("could not insert new inbound transaction: %w", err)
 	}
 
 	return transaction, nil
@@ -556,7 +562,7 @@ func NewDepositWithDescription(db *db.DB, lncli lnrpc.LightningClient, userID in
 	})
 
 	if err != nil {
-		return Onchain{}, pkgErrors.Wrap(err, "lncli could not create NewAddress")
+		return Onchain{}, fmt.Errorf("lncli could not create new address: %w", err)
 	}
 
 	txToInsert := Onchain{
@@ -571,7 +577,7 @@ func NewDepositWithDescription(db *db.DB, lncli lnrpc.LightningClient, userID in
 
 	transaction, err := InsertOnchain(db, txToInsert)
 	if err != nil {
-		return Onchain{}, pkgErrors.Wrap(err, "could not insert new inbound transaction")
+		return Onchain{}, fmt.Errorf("could not insert new inbound transaction: %w", err)
 	}
 
 	return transaction, nil
@@ -603,6 +609,6 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forc
 		// we found a deposit
 		return deposit.ToOnchain()
 	default:
-		return Onchain{}, pkgErrors.Wrap(err, "db.Get in GetOrCreateDeposit could not find a deposit")
+		return Onchain{}, fmt.Errorf("db.Get in GetOrCreateDeposit could not find a deposit: %w", err)
 	}
 }

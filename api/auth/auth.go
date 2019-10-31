@@ -22,6 +22,14 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 )
 
+const (
+	// Header is the name of the header we check for authentication details
+	Header = "Authorization"
+	// userIdVariable is the Gin variable we store the authenticated user ID
+	// as
+	userIdVariable = "user-id"
+)
+
 var (
 	log = build.Log
 )
@@ -38,7 +46,7 @@ var (
 	jwtPublicKey  *rsa.PublicKey
 )
 
-// SetJwtPrivateKey takes in a PEM encoded RSA private key, and set the JWT signing
+// SetRawJwtPrivateKey takes in a PEM encoded RSA private key, and set the JWT signing
 // key used in this package to it. Password may be empty.
 func SetRawJwtPrivateKey(key, password []byte) (err error) {
 
@@ -75,16 +83,8 @@ func SetJwtPrivateKey(key *rsa.PrivateKey) {
 	jwtPrivateKey, jwtPublicKey = key, &key.PublicKey
 }
 
-const (
-	// Header is the name of the header we check for authentication details
-	Header = "Authorization"
-	// UserIdVariable is the Gin variable we store the authenticated user ID
-	// as
-	UserIdVariable = "user-id"
-)
-
-// JWTClaims is the common form for our JWTs
-type JWTClaims struct {
+// jwtClaims is the common form for our JWTs
+type jwtClaims struct {
 	Email  string `json:"email"`
 	UserID int    `json:"user_id"`
 	jwt.StandardClaims
@@ -129,7 +129,7 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 			return
 		}
 
-		c.Set(UserIdVariable, userID)
+		c.Set(userIdVariable, userID)
 
 	}
 }
@@ -163,7 +163,7 @@ func authenticateJWT(c *gin.Context) (int, error) {
 	// Here we extract the token from the header
 	tokenString := c.GetHeader(Header)
 
-	_, claims, err := ParseBearerJwt(tokenString)
+	_, claims, err := parseBearerJwt(tokenString)
 	if err != nil {
 		var validationError *jwt.ValidationError
 		if errors.As(err, &validationError) {
@@ -193,7 +193,7 @@ func authenticateJWT(c *gin.Context) (int, error) {
 	return claims.UserID, nil
 }
 
-func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.Token, *JWTClaims, error) {
+func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.Token, *jwtClaims, error) {
 	claims := jwt.MapClaims{}
 
 	// Remove 'Bearer ' from tokenString. It is fine to do it this way because
@@ -243,7 +243,7 @@ func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.T
 		return nil, nil, fmt.Errorf("invalid token, could not extract user_id from claim")
 	}
 
-	jwtClaims := &JWTClaims{
+	jwtClaims := &jwtClaims{
 		Email:  email,
 		UserID: int(id),
 	}
@@ -251,10 +251,10 @@ func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.T
 	return token, jwtClaims, nil
 }
 
-// ParseBearerJwt parses a string representation of a JWT and validates
+// parseBearerJwt parses a string representation of a JWT and validates
 // it is signed by us. It returns the token and the extracted claims.
 // If anything goes wrong, an error with a descriptive reason is returned.
-func ParseBearerJwt(tokenString string) (*jwt.Token, *JWTClaims, error) {
+func parseBearerJwt(tokenString string) (*jwt.Token, *jwtClaims, error) {
 	if jwtPublicKey == nil {
 		log.Panic(ErrJwtKeyHasNotBeenSet)
 	}
@@ -280,7 +280,7 @@ func createJwt(args createJwtArgs) (string, error) {
 	expiresAt := args.now().Add(5 * time.Hour).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS512,
-		&JWTClaims{
+		&jwtClaims{
 			Email:  args.email,
 			UserID: args.id,
 			StandardClaims: jwt.StandardClaims{
@@ -324,15 +324,15 @@ func CreateJwt(email string, id int) (string, error) {
 // method can safely be called by all endpoints that use the authentication
 // middleware.
 func GetUserIdOrReject(c *gin.Context) (int, bool) {
-	id, exists := c.Get(UserIdVariable)
+	id, exists := c.Get(userIdVariable)
 	if !exists {
-		msg := "user ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable"
+		const msg = "user ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable"
 		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
 		return -1, false
 	}
 	idInt, ok := id.(int)
 	if !ok {
-		msg := "User ID was not an int! This means our authentication middleware did something bad."
+		const msg = "user ID was not an int! This means our authentication middleware did something bad"
 		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
 		return -1, false
 	}

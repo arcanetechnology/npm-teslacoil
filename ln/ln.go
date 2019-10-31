@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"gopkg.in/macaroon.v2"
@@ -108,19 +108,19 @@ func NewLNDClient(options LightningConfig) (
 
 	tlsCreds, err := credentials.NewClientTLSFromFile(cfg.TLSCertPath, "")
 	if err != nil {
-		err = errors.Wrap(err, "Cannot get node tls credentials")
+		err = fmt.Errorf("cannot get node tls credentials: %w", err)
 		return nil, err
 	}
 
 	macaroonBytes, err := ioutil.ReadFile(cfg.MacaroonPath)
 	if err != nil {
-		err = errors.Wrap(err, "Cannot read macaroon file")
+		err = fmt.Errorf("cannot read macaroon file: %w", err)
 		return nil, err
 	}
 
 	mac := &macaroon.Macaroon{}
 	if err = mac.UnmarshalBinary(macaroonBytes); err != nil {
-		err = errors.Wrap(err, "Cannot unmarshal macaroon")
+		err = fmt.Errorf("cannot unmarshal macaroon: %w", err)
 		return nil, err
 	}
 
@@ -139,7 +139,7 @@ func NewLNDClient(options LightningConfig) (
 
 	conn, err := grpc.DialContext(withTimeout, cfg.RPCServer, opts...)
 	if err != nil {
-		err = errors.Wrap(err, "cannot dial to lnd")
+		err = fmt.Errorf("cannot dial to lnd: %w", err)
 		return nil, err
 	}
 	client := lnrpc.NewLightningClient(conn)
@@ -184,7 +184,7 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	log.Tracef("Adding invoice: %+v", invoiceData)
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
-		err = errors.Wrap(err, "could not add invoice using lncli.AddInvoice()")
+		err = fmt.Errorf("could not add invoice: %w", err)
 		return nil, err
 	}
 	log.Tracef("Added invoice: %+v", *inv)
@@ -193,13 +193,14 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 		RHash: inv.RHash,
 	})
 	if err != nil {
-		err = errors.Wrap(err,
-			"could not lookup invoice using lncli.LookupInvoice()")
+		err = fmt.Errorf("could not lookup invoice: %w", err)
 		return nil, err
 	}
 
-	log.Debugf("added invoice %s with hash %s",
-		inv.PaymentRequest, hex.EncodeToString(inv.RHash))
+	log.WithFields(logrus.Fields{
+		"invoice": inv.PaymentRequest,
+		"hash":    hex.EncodeToString(inv.RHash),
+	}).Debug("added invoice")
 
 	return invoice, nil
 }

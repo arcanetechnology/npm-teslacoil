@@ -302,8 +302,7 @@ func TestOffchain_MarkAsFailed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, transactions.FAILED, paid.Status)
 
-	// hm, what are we going to require here? Are failed invoices settled?
-	// assert.Nil(t, paid.SettledAt)
+	assert.Nil(t, paid.SettledAt)
 }
 
 func TestPayInvoice(t *testing.T) {

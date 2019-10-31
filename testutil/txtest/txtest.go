@@ -79,14 +79,18 @@ func GenOffchain(userID int) transactions.Offchain {
 	var hashedPreimage []byte
 	if gofakeit.Bool() {
 		preimage = MockPreimage()
-		now := time.Now()
-		start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
-		s := gofakeit.DateRange(start, now)
-		settledAt = &s
 		h := sha256.Sum256(hashedPreimage)
 		hashedPreimage = h[:]
 	} else {
 		hashedPreimage = MockPreimage()
+	}
+
+	status := MockStatus()
+	if status == transactions.SUCCEEDED {
+		now := time.Now()
+		start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
+		s := gofakeit.DateRange(start, now)
+		settledAt = &s
 	}
 
 	return transactions.Offchain{
@@ -107,7 +111,7 @@ func GenOffchain(userID int) transactions.Offchain {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 
-		Status: MockStatus(),
+		Status: status,
 	}
 }
 

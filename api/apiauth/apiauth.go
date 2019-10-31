@@ -1,11 +1,8 @@
 package apiauth
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/base64"
 	"errors"
-	"image/png"
 	"net/http"
 
 	"github.com/dchest/passwordreset"
@@ -43,7 +40,6 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmidd
 
 	authGroup.Use(authmiddleware)
 
-	// 2FA methods
 	authGroup.POST("2fa", enable2fa())
 	authGroup.PUT("2fa", confirm2fa())
 	authGroup.DELETE("2fa", delete2fa())
@@ -162,8 +158,7 @@ func changePassword() gin.HandlerFunc {
 
 		user, err := users.GetByID(database, userID)
 		if err != nil {
-			log.WithError(err).Errorf(
-				"could not get user by ID when changing password")
+			log.WithError(err).Error("could not get user by ID when changing password")
 			_ = c.Error(err)
 			return
 		}
@@ -227,7 +222,7 @@ func resetPassword() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, gin.H{"message": "Password reset successfully"})
+		c.Status(http.StatusOK)
 	}
 }
 
@@ -259,7 +254,7 @@ func sendPasswordResetEmail() gin.HandlerFunc {
 			return
 		}
 
-		resetToken, err := users.GetPasswordResetToken(database, user.Email)
+		resetToken, err := users.NewPasswordResetToken(database, user.Email)
 		if err != nil {
 			_ = c.Error(err)
 			return
@@ -281,8 +276,7 @@ func sendPasswordResetEmail() gin.HandlerFunc {
 // a new endpoint.
 func enable2fa() gin.HandlerFunc {
 	type enable2faResponse struct {
-		TotpSecret string `json:"totpSecret"`
-		Base64QR   string `json:"base64QrCode"`
+		TotpSecret string `json:"secret"`
 	}
 	return func(c *gin.Context) {
 		userID, ok := auth.GetUserIdOrReject(c)
@@ -304,25 +298,8 @@ func enable2fa() gin.HandlerFunc {
 			return
 		}
 
-		img, err := key.Image(200, 200)
-		if err != nil {
-			log.Errorf("could not decode TOTP secret to image: %v", err)
-			_ = c.Error(err)
-			return
-		}
-
-		var imgBuf bytes.Buffer
-		if err := png.Encode(&imgBuf, img); err != nil {
-			log.Errorf("could not encode TOTP secret image to base64: %v", err)
-			_ = c.Error(err)
-			return
-		}
-
-		base64Image := base64.StdEncoding.EncodeToString(imgBuf.Bytes())
-
 		response := enable2faResponse{
 			TotpSecret: key.Secret(),
-			Base64QR:   base64Image,
 		}
 		c.JSONP(http.StatusOK, response)
 
@@ -443,7 +420,7 @@ func refreshToken() gin.HandlerFunc {
 			return
 		}
 
-		res := &refreshTokenResponse{
+		res := refreshTokenResponse{
 			AccessToken: tokenString,
 		}
 

@@ -356,7 +356,7 @@ func TestResetPasswordRoute(t *testing.T) {
 	t.Run("should not be able to reset to a weak password", func(t *testing.T) {
 		t.Parallel()
 		badPass := "12345678"
-		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		token, err := users.NewPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsgf(t, "Could not get password reset token: %v", err)
 		}
@@ -373,7 +373,7 @@ func TestResetPasswordRoute(t *testing.T) {
 
 	t.Run("Reset the password by using the correct token", func(t *testing.T) {
 		t.Parallel()
-		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		token, err := users.NewPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
 		}
@@ -412,7 +412,7 @@ func TestResetPasswordRoute(t *testing.T) {
 
 	t.Run("Should not be able to reset the password twice", func(t *testing.T) {
 		t.Parallel()
-		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		token, err := users.NewPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
 		}

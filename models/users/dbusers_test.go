@@ -330,13 +330,13 @@ func TestGetPasswordResetToken(t *testing.T) {
 
 	t.Run("Get a token for an existing user", func(t *testing.T) {
 		user := createUserOrFail(t)
-		_, err := users.GetPasswordResetToken(testDB, user.Email)
+		_, err := users.NewPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
 	})
 	t.Run("Fail to get a token for an non-existing user", func(t *testing.T) {
-		_, err := users.GetPasswordResetToken(testDB, gofakeit.Email())
+		_, err := users.NewPasswordResetToken(testDB, gofakeit.Email())
 		if err == nil {
 			testutil.FatalMsg(t, "Was able to get a token from a non existing user!")
 		}
@@ -350,7 +350,7 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 	user := createUserOrFail(t)
 
 	t.Run("Verify a token we created", func(t *testing.T) {
-		token, err := users.GetPasswordResetToken(testDB, user.Email)
+		token, err := users.NewPasswordResetToken(testDB, user.Email)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
