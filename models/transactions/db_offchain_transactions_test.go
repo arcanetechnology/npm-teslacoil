@@ -469,7 +469,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		// for the callback to be executed, we need to create an API key for the
 		// current user. this is because the callback body is hashed with the
 		// users API key
-		if _, _, err := apikeys.New(testDB, u.ID); err != nil {
+		if _, _, err := apikeys.New(testDB, u.ID, apikeys.AllPermissions); err != nil {
 			require.NoError(t, err)
 		}
 

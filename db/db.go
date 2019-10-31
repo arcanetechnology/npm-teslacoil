@@ -156,6 +156,11 @@ type Getter interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 }
 
+// Selecter can select from a DB
+type Selecter interface {
+	Select(dest interface{}, query string, args ...interface{}) error
+}
+
 // Inserter can insert into a database
 type Inserter interface {
 	NamedQuery(query string, arg interface{}) (*sqlx.Rows, error)

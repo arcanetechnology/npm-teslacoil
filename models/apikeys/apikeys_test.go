@@ -1,8 +1,11 @@
 package apikeys_test
 
 import (
-	"flag"
+	"crypto/sha256"
+	"database/sql"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
@@ -24,20 +27,22 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	gofakeit.Seed(0)
 	build.SetLogLevel(logrus.ErrorLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
-	flag.Parse()
 	result := m.Run()
 
 	os.Exit(result)
 }
 
 func TestNew(t *testing.T) {
+	t.Parallel()
+	user := userstestutil.CreateUserOrFail(t, testDB)
 	t.Run("creating an api key should work", func(t *testing.T) {
-		user := userstestutil.CreateUserOrFail(t, testDB)
-		rawKey, key, err := apikeys.New(testDB, user.ID)
+		t.Parallel()
+		rawKey, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -47,21 +52,40 @@ func TestNew(t *testing.T) {
 			testutil.FatalMsg(t, err)
 		}
 
-		testutil.AssertEqual(t, key, found)
+		assert := assert.New(t)
+		assert.Equal(key, found)
+		assert.True(strings.HasSuffix(rawKey.String(), key.LastLetters))
+		assert.True(found.Permissions.EditAccount)
+		assert.True(found.Permissions.SendTransaction)
+		assert.True(found.Permissions.ReadWallet)
+		assert.True(found.Permissions.CreateInvoice)
+	})
+
+	t.Run("creating an API key with no permissions should fail", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{})
+		assert.Error(t, err)
+	})
+
+	t.Run("creating an API key with permissions should work", func(t *testing.T) {
+		t.Parallel()
+		perm := apikeys.RandomPermissionSet()
+		_, key, err := apikeys.New(testDB, user.ID, perm)
+		require.NoError(t, err)
+		assert.Equal(t, key.Permissions, perm)
 	})
 
 	t.Run("creating an api key with no related user should not work", func(t *testing.T) {
-		user := users.User{
-			ID: 123798123,
-		}
-
-		_, _, err := apikeys.New(testDB, user.ID)
+		t.Parallel()
+		_, _, err := apikeys.New(testDB, 99999999, apikeys.AllPermissions)
 		if err == nil {
 			testutil.FatalMsg(t, "Created an API key with no corresponding user")
 		}
 	})
 
 	t.Run("getting an non-existing key should not work", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := apikeys.Get(testDB, uuid.Must(uuid.FromString(gofakeit.UUID())))
 		if err == nil {
 			testutil.FatalMsg(t, "Was able to find non existant key!")
@@ -70,28 +94,36 @@ func TestNew(t *testing.T) {
 }
 
 func TestGetByUserId(t *testing.T) {
-	user, err := users.Create(testDB, users.CreateUserArgs{
-		Email:    gofakeit.Email(),
-		Password: gofakeit.Password(true, true, true, true, true, 32),
+	t.Parallel()
+	t.Run("find created API keys", func(t *testing.T) {
+		t.Parallel()
+		user, err := users.Create(testDB, users.CreateUserArgs{
+			Email:    gofakeit.Email(),
+			Password: gofakeit.Password(true, true, true, true, true, 32),
+		})
+		require.NoError(t, err)
+
+		zero, err := apikeys.GetByUserId(testDB, user.ID)
+		require.NoError(t, err)
+		assert.Len(t, zero, 0)
+
+		perm := apikeys.RandomPermissionSet()
+		_, _, err = apikeys.New(testDB, user.ID, perm)
+		require.NoError(t, err)
+
+		one, err := apikeys.GetByUserId(testDB, user.ID)
+		require.NoError(t, err)
+		assert.Len(t, one, 1)
+		assert.Equal(t, perm, one[0].Permissions)
+
+		two, err := apikeys.GetByUserId(testDB, user.ID)
+		require.NoError(t, err)
+		assert.Len(t, two, 1)
+		assert.Equal(t, perm, two[0].Permissions)
 	})
-	require.NoError(t, err)
-
-	zero, err := apikeys.GetByUserId(testDB, user.ID)
-	require.NoError(t, err)
-	assert.Len(t, zero, 0)
-
-	_, _, err = apikeys.New(testDB, user.ID)
-	require.NoError(t, err)
-
-	one, err := apikeys.GetByUserId(testDB, user.ID)
-	require.NoError(t, err)
-	assert.Len(t, one, 1)
-
-	two, err := apikeys.GetByUserId(testDB, user.ID)
-	require.NoError(t, err)
-	assert.Len(t, two, 1)
 
 	t.Run("Get empty list of keys for new user", func(t *testing.T) {
+		t.Parallel()
 		otherUser, err := users.Create(testDB, users.CreateUserArgs{
 			Email:    gofakeit.Email(),
 			Password: gofakeit.Password(true, true, true, true, true, 32),
@@ -102,4 +134,46 @@ func TestGetByUserId(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, keys, 0)
 	})
+}
+
+func TestGetByHash(t *testing.T) {
+	t.Parallel()
+
+	t.Run("get an existing key", func(t *testing.T) {
+		t.Parallel()
+		user := userstestutil.CreateUserOrFail(t, testDB)
+		_, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+		require.NoError(t, err)
+
+		found, err := apikeys.GetByHash(testDB, user.ID, key.HashedKey)
+		require.NoError(t, err)
+
+		assert.Equal(t, key, found)
+	})
+
+	t.Run("not get another users key", func(t *testing.T) {
+		t.Parallel()
+		user := userstestutil.CreateUserOrFail(t, testDB)
+		otherUser := userstestutil.CreateUserOrFail(t, testDB)
+		_, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+		require.NoError(t, err)
+
+		_, err = apikeys.GetByHash(testDB, otherUser.ID, key.HashedKey)
+		assert.True(t, errors.Is(err, sql.ErrNoRows), err)
+
+	})
+
+	t.Run("not find a non-existant key", func(t *testing.T) {
+		u := uuid.NewV4()
+		hasher := sha256.New()
+		// according to godoc, this operation never fails
+		_, _ = hasher.Write(u.Bytes())
+		hashedKey := hasher.Sum(nil)
+
+		user := userstestutil.CreateUserOrFail(t, testDB)
+
+		_, err := apikeys.GetByHash(testDB, user.ID, hashedKey)
+		assert.Error(t, err)
+	})
+
 }
