@@ -1,4 +1,4 @@
-package transactions
+package transactions_test
 
 import (
 	"crypto/sha256"
@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"github.com/brianvoe/gofakeit"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
@@ -26,10 +28,6 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
-
-func init() {
-	gofakeit.Seed(0)
-}
 
 var (
 	SamplePreimage = func() []byte {
@@ -68,7 +66,7 @@ func TestNewOffchainTx(t *testing.T) {
 		orderId     string
 
 		lndInvoice lnrpc.Invoice
-		want       Offchain
+		want       transactions.Offchain
 	}{
 		{
 			memo:        firstMemo,
@@ -83,15 +81,15 @@ func TestNewOffchainTx(t *testing.T) {
 				Expiry:         1337,
 				Settled:        false,
 			},
-			want: Offchain{
+			want: transactions.Offchain{
 				UserID:         user.ID,
 				PaymentRequest: payReq1,
 				AmountMSat:     amount1 * 1000,
 				HashedPreimage: SampleHash[:],
 				Memo:           &firstMemo,
 				Description:    &description,
-				Status:         OPEN,
-				Direction:      INBOUND,
+				Status:         transactions.OPEN,
+				Direction:      transactions.INBOUND,
 			},
 		},
 		{
@@ -107,15 +105,15 @@ func TestNewOffchainTx(t *testing.T) {
 				Expiry:         1337,
 				Settled:        false,
 			},
-			want: Offchain{
+			want: transactions.Offchain{
 				UserID:         user.ID,
 				AmountMSat:     amount2 * 1000,
 				HashedPreimage: SampleHash[:],
 				PaymentRequest: payReq2,
 				Memo:           &firstMemo,
 				Description:    &description,
-				Status:         OPEN,
-				Direction:      INBOUND,
+				Status:         transactions.OPEN,
+				Direction:      transactions.INBOUND,
 			},
 		},
 		{
@@ -132,15 +130,15 @@ func TestNewOffchainTx(t *testing.T) {
 				Expiry:         1337,
 				Settled:        false,
 			},
-			want: Offchain{
+			want: transactions.Offchain{
 				UserID:          user.ID,
 				AmountMSat:      amount3 * 1000,
 				Memo:            &firstMemo,
 				HashedPreimage:  SampleHash[:],
 				PaymentRequest:  payReq3,
 				Description:     &description,
-				Status:          OPEN,
-				Direction:       INBOUND,
+				Status:          transactions.OPEN,
+				Direction:       transactions.INBOUND,
 				CustomerOrderId: &customerOrderId,
 			},
 		},
@@ -156,7 +154,7 @@ func TestNewOffchainTx(t *testing.T) {
 				InvoiceResponse: tt.lndInvoice,
 			}
 
-			offchainTx, err := NewOffchain(testDB, mockLNcli, NewOffchainOpts{
+			offchainTx, err := transactions.NewOffchain(testDB, mockLNcli, transactions.NewOffchainOpts{
 				UserID:      tt.want.UserID,
 				AmountSat:   tt.amountSat,
 				Memo:        tt.memo,
@@ -187,7 +185,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without customer order id", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -198,7 +196,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with customer order id", func(t *testing.T) {
 		t.Parallel()
 		order := gofakeit.Word()
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			OrderId:   order,
@@ -210,7 +208,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without description", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -221,7 +219,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with description", func(t *testing.T) {
 		t.Parallel()
 		desc := gofakeit.Sentence(gofakeit.Number(1, 12))
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Description: desc,
@@ -233,7 +231,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without memo", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -244,7 +242,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with memo", func(t *testing.T) {
 		t.Parallel()
 		memo := gofakeit.Sentence(gofakeit.Number(1, 12))
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Memo:      memo,
@@ -256,7 +254,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without callbackURL", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -267,7 +265,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with callbackURL", func(t *testing.T) {
 		t.Parallel()
 		url := gofakeit.URL()
-		offchain, err := NewOffchain(testDB, lntestutil.GetLightningMockClient(), NewOffchainOpts{
+		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			CallbackURL: url,
@@ -281,14 +279,14 @@ func TestNewOffchainTx(t *testing.T) {
 func TestOffchain_MarkAsPaid(t *testing.T) {
 	t.Parallel()
 	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
-	tx := genOffchain(user)
-	inserted, err := InsertOffchain(testDB, tx)
+	tx := txtest.GenOffchain(user.ID)
+	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
 	settlement := time.Now()
 	paid, err := inserted.MarkAsPaid(testDB, settlement)
 	require.NoError(t, err)
-	assert.Equal(t, SUCCEEDED, paid.Status)
+	assert.Equal(t, transactions.SUCCEEDED, paid.Status)
 	require.NotNil(t, paid.SettledAt)
 	assert.WithinDuration(t, settlement, *paid.SettledAt, time.Second)
 }
@@ -296,13 +294,13 @@ func TestOffchain_MarkAsPaid(t *testing.T) {
 func TestOffchain_MarkAsFailed(t *testing.T) {
 	t.Parallel()
 	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
-	tx := genOffchain(user)
-	inserted, err := InsertOffchain(testDB, tx)
+	tx := txtest.GenOffchain(user.ID)
+	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
 	paid, err := inserted.MarkAsFailed(testDB)
 	require.NoError(t, err)
-	assert.Equal(t, FAILED, paid.Status)
+	assert.Equal(t, transactions.FAILED, paid.Status)
 
 	// hm, what are we going to require here? Are failed invoices settled?
 	// assert.Nil(t, paid.SettledAt)
@@ -334,7 +332,7 @@ func TestPayInvoice(t *testing.T) {
 		balancePrePayment, err := balance.ForUser(testDB, user.ID)
 		require.NoError(t, err)
 
-		_, err = PayInvoice(
+		_, err = transactions.PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
 		require.NoError(t, err)
 
@@ -364,9 +362,9 @@ func TestPayInvoice(t *testing.T) {
 			},
 		}
 
-		_, err := PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
-		if errors.Is(err, ErrBalanceTooLow) {
-			assert.Equal(t, err, ErrBalanceTooLow)
+		_, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
+		if errors.Is(err, transactions.ErrBalanceTooLow) {
+			assert.Equal(t, err, transactions.ErrBalanceTooLow)
 		}
 
 	})
@@ -385,9 +383,9 @@ func TestPayInvoice(t *testing.T) {
 			},
 		}
 
-		_, err := PayInvoice(
+		_, err := transactions.PayInvoice(
 			testDB, &mockLNcli, user.ID, paymentRequest)
-		if !errors.Is(err, Err0AmountInvoiceNotSupported) {
+		if !errors.Is(err, transactions.Err0AmountInvoiceNotSupported) {
 			testutil.FailMsgf(t, "expected Err0AmountInvoiceNotSupported but got error %v", err)
 		}
 
@@ -408,10 +406,10 @@ func TestPayInvoice(t *testing.T) {
 			},
 		}
 
-		got, err := PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
+		got, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
 		require.NoError(t, err)
 
-		assert.Equal(t, SUCCEEDED, got.Status)
+		assert.Equal(t, transactions.SUCCEEDED, got.Status)
 		assert.NotNil(t, got.SettledAt)
 		assert.WithinDuration(t, *got.SettledAt, time.Now(), time.Second)
 	})
@@ -426,7 +424,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, NewOffchainOpts{
+		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, transactions.NewOffchainOpts{
 			UserID:    u.ID,
 			AmountSat: mockInvoice.Value,
 		})
@@ -436,7 +434,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			Settled:        true,
 		}
 
-		updated, err := UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		updated, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
 		require.NoError(t, err)
 		assert.NotNil(t, updated.SettledAt)
 	})
@@ -446,7 +444,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, NewOffchainOpts{
+		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, transactions.NewOffchainOpts{
 			UserID:    u.ID,
 			AmountSat: mockInvoice.Value,
 		})
@@ -456,7 +454,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			Settled:        false,
 		}
 
-		updated, err := UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		updated, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
 		require.NoError(t, err)
 		assert.Nil(t, updated.SettledAt)
 	})
@@ -474,7 +472,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetRandomLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, NewOffchainOpts{
+		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, transactions.NewOffchainOpts{
 			UserID:      u.ID,
 			AmountSat:   mockInvoice.Value,
 			CallbackURL: gofakeit.URL(),
@@ -486,7 +484,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			Settled:        true,
 		}
 
-		_, err := UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		_, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
 		require.NoError(t, err)
 
 		checkPostSent := func() bool {
@@ -503,7 +501,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		lnMock := lntestutil.GetLightningMockClient()
 		httpPoster := testutil.GetMockHttpPoster()
 		mockInvoice, _ := ln.AddInvoice(lnMock, lnrpc.Invoice{})
-		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, NewOffchainOpts{
+		offchainTx := CreateNewOffchainTxOrFail(t, testDB, lnMock, transactions.NewOffchainOpts{
 			UserID:      u.ID,
 			AmountSat:   mockInvoice.Value,
 			CallbackURL: "https://example.com",
@@ -514,7 +512,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 			Settled:        false,
 		}
 
-		_, err := UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		_, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
 		if err != nil {
 			testutil.FatalMsgf(t,
 				"should be able to UpdateInvoiceStatus. Error:  %+v\n",
@@ -539,43 +537,41 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 	user := CreateUserOrFail(t, testDB)
 
 	t.Run("expiry field", func(t *testing.T) {
-		offchainTx := Offchain{
+		offchainTx := transactions.Offchain{
 			UserID:         user.ID,
 			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
 			Expiry:         1,
-			Direction:      Direction("INBOUND"),
-			Status:         Status("OPEN"),
+			Direction:      transactions.INBOUND,
+			Status:         transactions.OPEN,
 			AmountMSat:     100000,
 		}
 
-		offchainTx, err := InsertOffchain(testDB, offchainTx)
+		offchainTx, err := transactions.InsertOffchain(testDB, offchainTx)
 		require.NoError(t, err)
 
 		// Sleep for expiry to check if expired property is set
 		// correctly. expired should be true
 		time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
 
-		withFields := offchainTx.withAdditionalFields()
-
-		assert.True(t, withFields.Expired)
-		assert.Equal(t, withFields.ExpiresAt, offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
+		assert.True(t, offchainTx.IsExpired())
+		assert.Equal(t, offchainTx.ExpiresAt(), offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
 	})
 
-	invoices := []Offchain{
-		Offchain{
+	invoices := []transactions.Offchain{
+		transactions.Offchain{
 			UserID:         user.ID,
 			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
 			Expiry:         3600,
-			Direction:      Direction("INBOUND"),
-			Status:         Status("OPEN"),
+			Direction:      transactions.INBOUND,
+			Status:         transactions.OPEN,
 			AmountMSat:     100000,
 		},
-		Offchain{
+		transactions.Offchain{
 			UserID:         user.ID,
 			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
 			Expiry:         2,
-			Direction:      Direction("INBOUND"),
-			Status:         Status("OPEN"),
+			Direction:      transactions.INBOUND,
+			Status:         transactions.OPEN,
 			AmountMSat:     100000,
 		},
 	}
@@ -583,58 +579,59 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 	for _, invoice := range invoices {
 		t.Run(fmt.Sprintf("payment with expiry %d should not be expired", invoice.Expiry),
 			func(t *testing.T) {
-				payment, err := InsertOffchain(testDB, invoice)
+				payment, err := transactions.InsertOffchain(testDB, invoice)
 				require.NoError(t, err)
-				assert.False(t, payment.withAdditionalFields().Expired)
+				assert.False(t, payment.IsExpired())
 			})
 	}
 }
 
-/*
-func assertOffchainTxsAreEqual(t *testing.T, got, want Offchain) {
-	t.Helper()
-	testutil.AssertEqual(t, got.UserID, want.UserID, "userID")
-	testutil.AssertEqual(t, got.AmountSat, want.AmountSat, "amountSat")
-	testutil.AssertEqual(t, got.AmountMSat, want.AmountMSat, "amountMSat")
-
-	testutil.AssertMsg(t, (got.Preimage == nil) == (want.Preimage == nil), "Preimage was nil and not nil")
-	if got.Preimage != nil {
-		testutil.AssertEqual(t, got.Preimage, want.Preimage)
-	}
-	testutil.AssertEqual(t, got.HashedPreimage, want.HashedPreimage, "hashedPreimage")
-
-	testutil.AssertMsg(t, (got.Memo == nil) == (want.Memo == nil), "Memo was nil and not nil")
-	if got.Memo != nil {
-		testutil.AssertEqual(t, *got.Memo, *want.Memo)
-	}
-
-	testutil.AssertMsg(t, (got.Description == nil) == (want.Description == nil), "Description was nil and not nil")
-	if got.Description != nil {
-		testutil.AssertEqual(t, *got.Description, *want.Description)
-	}
-
-	testutil.AssertEqual(t, got.Status, want.Status, "status")
-	testutil.AssertEqual(t, got.Direction, want.Direction, "direction")
-
-	testutil.AssertMsg(t, (got.CallbackURL == nil) == (want.CallbackURL == nil), "CallbackURL was nil and not nil")
-	if got.CallbackURL != nil {
-		testutil.AssertEqual(t, *got.CallbackURL, *want.CallbackURL)
-	}
-
-	testutil.AssertMsg(t, (got.CustomerOrderId == nil) == (want.CustomerOrderId == nil), "CustomerOrderId was nil and not nil")
-	if got.CustomerOrderId != nil {
-		testutil.AssertEqual(t, *got.CustomerOrderId, *want.CustomerOrderId)
-	}
-}
-*/
-
 // CreateNewOffchainTxOrFail creates a new offchain or fail
 func CreateNewOffchainTxOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
-	opts NewOffchainOpts) Offchain {
-	payment, err := NewOffchain(db, ln, opts)
+	opts transactions.NewOffchainOpts) transactions.Offchain {
+	payment, err := transactions.NewOffchain(db, ln, opts)
 	if err != nil {
 		testutil.FatalMsg(t,
 			pkgErrors.Wrap(err, "wasn't able to create new payment"))
 	}
 	return payment
+}
+
+func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
+	u, err := users.Create(db, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 32),
+	})
+	require.NoError(t, err)
+
+	return u
+}
+
+// CreateUserWithBalanceOrFail creates a user with an initial balance
+func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User {
+	u := CreateUserOrFail(t, db)
+
+	block := gofakeit.Number(0, 600000)
+	txid := txtest.MockTxid()
+	vout := 0
+	settledAt := gofakeit.Date()
+	confirmedAt := gofakeit.Date()
+	_, err := transactions.InsertOnchain(db, transactions.Onchain{
+		UserID:           u.ID,
+		Direction:        transactions.INBOUND,
+		AmountSat:        &sats,
+		ConfirmedAtBlock: &block,
+		Address:          "THIS IS AN ADDRESS",
+		Txid:             &txid,
+		Vout:             &vout,
+		SettledAt:        &settledAt,
+		ConfirmedAt:      &confirmedAt,
+	})
+	require.NoError(t, err)
+
+	bal, err := balance.ForUser(db, u.ID)
+	require.NoError(t, err)
+	require.Equal(t, bal.Sats(), sats)
+
+	return u
 }

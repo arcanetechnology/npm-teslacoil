@@ -16,13 +16,11 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
@@ -32,16 +30,9 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
-var testDB *db.DB
 var log = build.Log
 
 func TestMain(m *testing.M) {
-	gofakeit.Seed(0)
-
-	build.SetLogLevel(logrus.DebugLevel)
-	conf := testutil.GetDatabaseConfig("tx_integration")
-	testDB = testutil.InitDatabase(conf)
-
 	code := m.Run()
 
 	if err := nodetestutil.CleanupNodes(); err != nil {
@@ -97,7 +88,7 @@ func TestEverything(t *testing.T) {
 			channel := make(chan *lnrpc.Invoice)
 			go transactions.InvoiceStatusListener(channel, testDB, poster)
 
-			inserted := transactions.CreateNewOffchainTxOrFail(t, testDB, lnd, transactions.NewOffchainOpts{
+			inserted := CreateNewOffchainTxOrFail(t, testDB, lnd, transactions.NewOffchainOpts{
 				UserID:      user.ID,
 				AmountSat:   int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 				CallbackURL: gofakeit.URL(),
