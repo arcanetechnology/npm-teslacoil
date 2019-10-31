@@ -29,7 +29,7 @@ make serve-testnet
 
 ## DB management etc.
 
-Run `lpp db` to see options.
+Run `tlc db` to see options.
 
 ## Testing
 
@@ -69,7 +69,7 @@ So, all error logging occurs in the top level package.
 ### Fish
 
 ```shell
-ln -sf $PWD/contrib/lpp.fish $HOME/.config/fish/completions/lpp.fish
+ln -sf $PWD/contrib/tlc.fish $HOME/.config/fish/completions/tlc.fish
 ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
 ```
 

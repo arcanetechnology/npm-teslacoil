@@ -134,6 +134,12 @@ func GinLoggingMiddleWare(logger loggerEntryWithFields, level logrus.Level) gin.
 		end := time.Now()
 		latency := end.Sub(start)
 
-		withFields.WithField("latency", latency).Log(level, "Gin request")
+		withFields = withFields.WithField("latency", latency)
+		status := c.Writer.Status()
+		requestLevel := level
+		if status >= 300 {
+			requestLevel = logrus.ErrorLevel
+		}
+		withFields.Logf(requestLevel, "HTTP %s %s: %d", c.Request.Method, path, status)
 	}
 }

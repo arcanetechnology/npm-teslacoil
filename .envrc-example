@@ -1,16 +1,15 @@
 # Postgres database
-export DATABASE_USER="lpp"
+export DATABASE_USER="tlc"
 export DATABASE_PASSWORD="password"
-export DATABASE_NAME="lpp"
-export DATABASE_PORT=5432
+export DATABASE_NAME="tlc"
+export DATABASE_PORT=5434
 
 # LND/Bitcoin Core
 export LND_DIR=docker/.alice
 
 export BITCOIN_NETWORK=regtest
-
-export RPCPASS=devpass
-export RPCUSER=devuser
+export ZMQPUBRAWBLOCK_PORT=24123
+export ZMQPUBRAWTX_PORT=24123
 
 # Docker
 export uid=1001 # This should be your user ID: `id -u`
@@ -21,5 +20,4 @@ export GO111MODULE=on
 # Gin automatically checks for this variable, and sets MODE accordingly
 export GIN_MODE=debug
 
-# Sendgrid - for sending emails
 export SENDGRID_API_KEY=<this is in 1Password>

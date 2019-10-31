@@ -1,11 +1,12 @@
-all: test build-lpp
+all: test build
 
-# If we're on a tag, binary name is lpp, else lpp-dev
-LPP := $(shell git describe --exact-match HEAD 2>/dev/null && echo lpp || echo lpp-dev)
-BINARIES := lpp lpp-dev
+# If we're on a tag, binary name is tlc, else tlc-dev
+TLC := $(shell git describe --exact-match HEAD 2>/dev/null && echo tlc || echo tlc-dev)
+BINARIES := tlc tlc-dev
 
-build-lpp:
-	go build -o ${LPP} ./cmd/lpp
+.PHONY: build
+build:
+	go build -o ${TLC} ./cmd/tlc/main.go
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
@@ -20,18 +21,17 @@ start-db:
 start-regtest-alice: 
 	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 
 
-migrate-db-up: build-lpp start-db
-	./lpp-dev db up
+migrate-up: build start-db
+	./tlc-dev db up
 
-drop-db: build-lpp start-db
-	./lpp-dev db drop --force
+drop: build start-db
+	./tlc-dev db drop --force
 
-dummy-data: build-lpp start-db migrate-db-up start-regtest-alice
-	./lpp-dev --network regtest db dummy --force --only-once
+dummy-data: build start-db migrate-up start-regtest-alice
+	./tlc-dev --network regtest db dummy --force --only-once
 	docker-compose stop alice bitcoind
 
-
-clean: 
+clean:
 	rm -f ${BINARIES}
 
 install:
@@ -45,10 +45,10 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-serve: dummy-data build-lpp 
+serve: dummy-data build
 	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
 
-serve-testnet: dummy-data build-lpp 
+serve-testnet: dummy-data build
 	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
 test-only: 
@@ -64,7 +64,7 @@ test-it:
 lint: 
 	golangci-lint run	
 
-test_verbose:
+test-verbose:
 	go test ./... -v
 
 nuke_postgres:

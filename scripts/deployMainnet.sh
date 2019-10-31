@@ -2,6 +2,6 @@
 
 exe() { echo "\$ $@" ; "$@" ; }
 
-exe lpp db up
-exe sudo systemctl stop teslacoil.service
-exe sudo systemctl start teslacoil.service
+exe tlc db up
+exe sudo systemctl stop tlc.service
+exe sudo systemctl start tlc.service

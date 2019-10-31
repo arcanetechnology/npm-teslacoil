@@ -4,7 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
+	"github.com/stretchr/testify/assert"
+	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -14,6 +15,14 @@ type badJson struct{}
 
 func (s badJson) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	if _, err := response.Write([]byte(`-----`)); err != nil {
+		panic(err)
+	}
+}
+
+type nullJson struct{}
+
+func (n nullJson) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if _, err := response.Write([]byte(`null`)); err != nil {
 		panic(err)
 	}
 }
@@ -91,6 +100,18 @@ func TestTestHarness_AssertResponseOkWithJsonList(t *testing.T) {
 			Method: "GET",
 		})
 		h.AssertResponseOkWithJsonList(t, req)
+	})
+
+	t.Run("fail with null list", func(t *testing.T) {
+		server := nullJson{}
+		h := NewTestHarness(server, emptyDb)
+		req := GetRequest(t, RequestArgs{
+			Path:   "/ping",
+			Method: "GET",
+		})
+		test := testing.T{}
+		h.AssertResponseOkWithJsonList(&test, req)
+		assert.True(t, test.Failed())
 	})
 
 	t.Run(`fail with invalid JSON`, func(t *testing.T) {

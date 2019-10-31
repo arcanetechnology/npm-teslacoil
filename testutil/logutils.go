@@ -7,6 +7,7 @@ output.
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -35,8 +36,15 @@ type LogWriter struct {
 	Level logrus.Level
 }
 
+var lndDateRegex = regexp.MustCompile(`^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d\d\d`)
+
 func (p LogWriter) Write(data []byte) (n int, err error) {
-	log.Logf(p.Level, "[%s] %s", p.Label, string(data))
+	logLine := string(data)
+	if lndDateRegex.MatchString(logLine) {
+		logLine = logLine[24:]
+	}
+
+	log.Logf(p.Level, "[%s] %s", p.Label, logLine)
 	return len(data), nil
 }
 
@@ -76,6 +84,11 @@ func FailMsgf(t *testing.T, format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	t.Errorf("\t%s%s\t error: %s%s", red, cross, message, reset)
 	t.Fail()
+}
+
+func FailError(t *testing.T, message string, err error) {
+	t.Helper()
+	t.Errorf("\t%s%s\t %s: \terr: %s%s", red, cross, message, err, reset)
 }
 
 // DescribeTest logs the name of test with a green checkmark

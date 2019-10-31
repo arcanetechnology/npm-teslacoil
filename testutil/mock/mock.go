@@ -3,9 +3,10 @@ package mock
 import (
 	"sync"
 
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/email"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 )
 
 var _ email.Sender = &mockSendGridClient{}
@@ -19,7 +20,7 @@ type mockSendGridClient struct {
 
 func (mock *mockSendGridClient) SendPasswordReset(user users.User, token string) error {
 	mock.Mutex.Lock()
-	log.WithField("email", user.Email).Info("Sending password verification email")
+	log.WithField("email", user.Email).Info("MOCK: Sending password verification email")
 	mock.sentPasswordMails += 1
 	mock.Mutex.Unlock()
 	return nil
@@ -27,7 +28,7 @@ func (mock *mockSendGridClient) SendPasswordReset(user users.User, token string)
 
 func (mock *mockSendGridClient) SendEmailVerification(user users.User, token string) error {
 	mock.Mutex.Lock()
-	log.WithField("email", user.Email).Info("Sending email verification email")
+	log.WithField("email", user.Email).Info("MOCK: Sending email verification email")
 	mock.sentVerificationMails += 1
 	mock.Mutex.Unlock()
 	return nil

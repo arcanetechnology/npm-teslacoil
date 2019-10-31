@@ -13,6 +13,6 @@ node_0/
 node_1/
 
 # compiled binaries
-lpp
-lpp-dev
-!lpp/
+tlc
+tlc-dev
+!tlc/

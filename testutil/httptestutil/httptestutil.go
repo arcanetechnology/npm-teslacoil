@@ -15,15 +15,19 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
+
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/teslacoil/internal/apierr"
-	"gitlab.com/arcanecrypto/teslacoil/internal/auth"
-	"gitlab.com/arcanecrypto/teslacoil/internal/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -231,12 +235,20 @@ func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Requ
 // AssertResponseNotOkWithCode checks that the given request results in the
 // given HTTP status code. It returns the response to the request.
 func (harness *TestHarness) AssertResponseNotOkWithCode(t *testing.T, request *http.Request, code int) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
-	testutil.AssertMsgf(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
+	require.Truef(t, code >= 100 && code <= 500, "Given code (%d) is not a valid HTTP code", code)
 	t.Helper()
 
+	reqBody, err := ioutil.ReadAll(request.Body)
+	require.NoError(t, err)
+
+	request.Body = ioutil.NopCloser(bytes.NewReader(reqBody))
+
 	response, error := harness.AssertResponseNotOk(t, request)
-	testutil.AssertMsgf(t, response.Code == code,
-		"Expected code (%d) does not match with found code (%d)", code, response.Code)
+	resBody := response.Body.String()
+	if resBody == "" {
+		resBody = "empty body"
+	}
+	require.Equalf(t, code, response.Code, "%s %s: Request: %s. Response: %s", request.Method, request.URL.Path, reqBody, resBody)
 	return response, error
 }
 
@@ -268,6 +280,7 @@ func (harness *TestHarness) AssertResponseOkWithJsonList(t *testing.T, request *
 
 	var destination []map[string]interface{}
 	harness.AssertResponseOKWithStruct(t, request, &destination)
+	assert.NotNil(t, destination, "Did not receive JSON list, but null")
 
 	return destination
 

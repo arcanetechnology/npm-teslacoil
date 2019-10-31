@@ -1,7 +1,0 @@
-package users
-
-import (
-	"gitlab.com/arcanecrypto/teslacoil/build"
-)
-
-var log = build.Log

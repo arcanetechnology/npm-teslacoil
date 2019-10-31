@@ -31,7 +31,6 @@ func GetMockHttpPoster() *mockHttpPoster {
 func (m *mockHttpPoster) Post(url, contentType string, reader io.Reader) (*http.Response, error) {
 	m.Lock()
 	m.sentPostRequests += 1
-	m.Unlock()
 
 	log.WithField("url", url).Info("Mock HTTP poster POSTing")
 
@@ -40,6 +39,7 @@ func (m *mockHttpPoster) Post(url, contentType string, reader io.Reader) (*http.
 		return nil, err
 	}
 	m.sentBodies = append(m.sentBodies, body)
+	m.Unlock()
 
 	return &http.Response{
 		StatusCode: 200,
@@ -52,16 +52,6 @@ func (m *mockHttpPoster) GetSentPostRequests() int {
 
 func (m *mockHttpPoster) GetSentPostRequest(index int) []byte {
 	return m.sentBodies[index]
-}
-
-func MockTxid() string {
-	var letters = []rune("abcdef1234567890")
-
-	b := make([]rune, 64)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
 }
 
 func MockStringOfLength(n int) string {
@@ -90,7 +80,7 @@ func GetPortOrFail(t *testing.T) int {
 	if err != nil {
 		return GetPortOrFail(t)
 	}
-	if err := listener.Close(); err != nil {
+	if err = listener.Close(); err != nil {
 		FatalMsgf(t, "Couldn't close port: %sl", err)
 	}
 	return port

@@ -7,6 +7,9 @@ test:
   services:
     # If you're updating the postgres image we're using, make sure you've pushed
     # this to the registry. Otherwise the tests won't run with the newest image!
+    # docker login registry.gitlab.com
+    #  docker build -t registry.gitlab.com/arcanecrypto/teslacoil/postgres docker/postgres/
+    #  docker push registry.gitlab.com/arcanecrypto/teslacoil/postgres
     - name: registry.gitlab.com/arcanecrypto/teslacoil/postgres
       # otherwise the host is name of the image
       alias: postgres
@@ -26,15 +29,9 @@ test:
     - mkdir -p .binaries
     - export PATH=$PWD/.binaries/:$PATH
 
-    # download lnd
-    - export LND_SUFFIX=lnd-linux-386-v0.7.1-beta
-    - export LND_URL=https://github.com/lightningnetwork/lnd/releases/download/v0.7.1-beta/$LND_SUFFIX.tar.gz 
-
-    # download bitcoind
-    - "[[ -f .binaries/lnd ]] || (curl -L $LND_URL | tar xvz $LND_SUFFIX/lnd --strip-components 1 && mv lnd .binaries/)"
-    - export BITCOIND_URL=https://bitcoincore.org/bin/bitcoin-core-0.18.1/bitcoin-0.18.1-x86_64-linux-gnu.tar.gz
-    - export BITCOIND_FILE=bitcoin-0.18.1/bin/bitcoind
-    - "[[ -f .binaries/bitcoind ]] || (curl -L $BITCOIND_URL | tar xvz $BITCOIND_FILE --strip-components 2 && mv bitcoind .binaries/)"
+    # download binaries into newly created binaries directory
+    - ./scripts/download-lnd.sh
+    - ./scripts/download-bitcoind.sh
 
     # cache things properly
     - mkdir -p $CI_PROJECT_DIR/.cache

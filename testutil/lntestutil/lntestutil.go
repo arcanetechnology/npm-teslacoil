@@ -11,7 +11,7 @@ import (
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/ln"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -36,6 +36,7 @@ func GetRandomLightningMockClient() LightningMockClient {
 			PaymentRequest: fmt.Sprintf("SomePayRequest%d", gofakeit.Number(0, 10000)),
 			RHash:          doubleHash(invoicePreimage),
 			RPreimage:      invoicePreimage,
+			Expiry:         1337,
 			Settled:        true,
 			Value:          int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		},
@@ -47,6 +48,9 @@ func GetRandomLightningMockClient() LightningMockClient {
 			PaymentHash: hex.EncodeToString(doubleHash(decodePayReqPreimage)),
 			NumSatoshis: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Description: "HelloPayment",
+		},
+		SendCoinsResponse: lnrpc.SendCoinsResponse{
+			Txid: "0c10119609137327c72fe605452375c40727871bd18dad18db16da649e9bdcc1",
 		},
 	}
 }
@@ -73,6 +77,7 @@ func GetLightningMockClient() LightningMockClient {
 			PaymentRequest: "SomePayRequest1",
 			RHash:          SampleHash[:],
 			RPreimage:      SamplePreimage,
+			Expiry:         1337,
 			Settled:        true,
 			Value:          int64(271),
 		},

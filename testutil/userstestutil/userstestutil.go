@@ -4,13 +4,15 @@ import (
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
-	"gitlab.com/arcanecrypto/teslacoil/internal/platform/db"
-	"gitlab.com/arcanecrypto/teslacoil/internal/users"
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
+	"github.com/stretchr/testify/require"
+	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+	"gitlab.com/arcanecrypto/teslacoil/models/users"
 )
 
 // CreateUserOrFail creates a user with a random email and password. The
-// method also verifies the users email.
+// method also verifies the users email and adds an API key.
 func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
 	passwordLen := gofakeit.Number(8, 32)
 	password := gofakeit.Password(true, true, true, true, true, passwordLen)
@@ -18,27 +20,22 @@ func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
 }
 
 // CreateUserOrFailWithPassword creates a user with a random email and the
-// given password. The method also verifies the users email.
+// given password. The method also verifies the users email and adds an API key.
 func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) users.User {
 	u, err := users.Create(db, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: password,
 	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
-			t.Name(), err)
-	}
+	require.NoError(t, err)
 
 	token, err := users.GetEmailVerificationToken(db, u.Email)
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not get email verification token: %v", err)
-	}
+	require.NoError(t, err)
 
 	verified, err := users.VerifyEmail(db, token)
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not verify email: %v", verified)
-	}
+	require.NoError(t, err)
+
+	_, _, err = apikeys.New(db, u.ID)
+	require.NoError(t, err)
 
 	return verified
 }
@@ -47,27 +44,17 @@ func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) user
 func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, balance int) users.User {
 	u := CreateUserOrFail(t, db)
 
-	return IncreaseBalanceOrFail(t, db, u, balance)
-}
-
-// IncreaseBalanceOrFail increases the balance of the given user
-func IncreaseBalanceOrFail(t *testing.T, db *db.DB, user users.User, balance int) users.User {
-
-	tx := db.MustBegin()
-	user, err := users.IncreaseBalance(tx, users.ChangeBalance{
-		UserID:    user.ID,
-		AmountSat: int64(balance),
-	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"[%s] could not increase balance by %d for user %d: %+v", t.Name(),
-			balance, user.ID, err)
+	settled := gofakeit.Date()
+	offchain := transactions.Offchain{
+		UserID:     u.ID,
+		AmountMSat: int64(balance) * 1000,
+		Direction:  transactions.INBOUND,
+		Expiry:     1337,
+		Status:     transactions.SUCCEEDED,
+		SettledAt:  &settled,
 	}
-	err = tx.Commit()
-	if err != nil {
-		testutil.FatalMsg(t, "could not commit tx")
-	}
+	_, err := transactions.InsertOffchain(db, offchain)
+	require.NoError(t, err)
 
-	testutil.AssertEqual(t, user.Balance, balance)
-	return user
+	return u
 }
