@@ -1,10 +1,8 @@
-package transactions
+package transactions_test
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -17,9 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/models/users"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -37,180 +36,19 @@ var (
 	testnetAddress = "tb1q40gzxjcamcny49st7m8lyz9rtmssjgfefc33at"
 )
 
-func genPreimage() []byte {
-	p := make([]byte, 32)
-	_, _ = rand.Read(p)
-	return p
-}
-
-func genTxid() string {
-	p := make([]byte, 32)
-	_, _ = rand.Read(p)
-	return hex.EncodeToString(p)
-
-}
-
-func genStatus() Status {
-	s := []Status{FAILED, OPEN, SUCCEEDED}
-	return s[rand.Intn(3)]
-}
-
-func genMaybeString(fn func() string) *string {
-	var res *string
-	if gofakeit.Bool() {
-		r := fn()
-		res = &r
-	}
-	return res
-}
-
-func genDirection() Direction {
-	direction := OUTBOUND
-	if gofakeit.Bool() {
-		direction = INBOUND
-	}
-	return direction
-}
-
-func int64Between(min, max int64) int64 {
-	return rand.Int63n(max-min+1) + min
-}
-
-func genOffchain(user users.User) Offchain {
-	amountMSat := rand.Int63n(ln.MaxAmountMsatPerInvoice)
-
-	var preimage []byte
-	var settledAt *time.Time
-	var hashedPreimage []byte
-	if gofakeit.Bool() {
-		preimage = genPreimage()
-		now := time.Now()
-		start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
-		s := gofakeit.DateRange(start, now)
-		settledAt = &s
-		h := sha256.Sum256(hashedPreimage)
-		hashedPreimage = h[:]
-	} else {
-		hashedPreimage = genPreimage()
-	}
-
-	return Offchain{
-		UserID:          user.ID,
-		CallbackURL:     genMaybeString(gofakeit.URL),
-		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          int64(gofakeit.Number(0, math.MaxInt64-1)),
-		Direction:       genDirection(),
-		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(1, 10))
-		}),
-		PaymentRequest: "DO ME LATER",
-		Preimage:       preimage,
-		HashedPreimage: hashedPreimage,
-		AmountMSat:     amountMSat,
-		SettledAt:      settledAt,
-		Memo: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(1, 10))
-		}),
-
-		Status: genStatus(),
-	}
-}
-
-func genOnchain(user users.User) Onchain {
-	now := time.Now()
-	start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
-
-	var settledAt *time.Time
-	if gofakeit.Bool() {
-		s := gofakeit.DateRange(start, now)
-		settledAt = &s
-	}
-
-	var confirmedAtBlock *int
-	var confirmedAt *time.Time
-	if gofakeit.Bool() {
-		cA := gofakeit.DateRange(start, now)
-		confirmedAt = &cA
-		c := gofakeit.Number(1, 1000000)
-		confirmedAtBlock = &c
-	}
-
-	var txid *string
-	var vout *int
-	var amountSat *int64
-	// it is required to have a txid if either of the three is defined
-	if confirmedAt != nil || confirmedAtBlock != nil || settledAt != nil {
-		t := genTxid() // do me later
-		txid = &t
-		v := gofakeit.Number(0, 12)
-		vout = &v
-		a := int64Between(0, btcutil.MaxSatoshi)
-		amountSat = &a
-	}
-
-	var expiry *int64
-	if gofakeit.Bool() {
-		e := int64(gofakeit.Number(1, 100000000))
-		expiry = &e
-	}
-
-	return Onchain{
-		UserID:          user.ID,
-		CallbackURL:     genMaybeString(gofakeit.URL),
-		CustomerOrderId: genMaybeString(gofakeit.Word),
-		Expiry:          expiry,
-		Direction:       genDirection(),
-		AmountSat:       amountSat,
-		Description: genMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(1, 10))
-		}),
-		ConfirmedAtBlock: confirmedAtBlock,
-		Address:          "DO ME LATER",
-		Txid:             txid,
-		Vout:             vout,
-		ConfirmedAt:      confirmedAt,
-		SettledAt:        settledAt,
-	}
-}
-
-// CreateUserWithBalanceOrFail creates a user with an initial balance
-func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User {
-	u := CreateUserOrFail(t, db)
-
-	block := gofakeit.Number(0, 600000)
-	txid := genTxid()
-	vout := 0
-	settledAt := gofakeit.Date()
-	confirmedAt := gofakeit.Date()
-	_, err := InsertOnchain(db, Onchain{
-		UserID:           u.ID,
-		Direction:        INBOUND,
-		AmountSat:        &sats,
-		ConfirmedAtBlock: &block,
-		Address:          "THIS IS AN ADDRESS",
-		Txid:             &txid,
-		Vout:             &vout,
-		SettledAt:        &settledAt,
-		ConfirmedAt:      &confirmedAt,
-	})
-	require.NoError(t, err)
-
-	bal, err := balance.ForUser(db, u.ID)
-	require.NoError(t, err)
-	require.Equal(t, bal.Sats(), sats)
-
-	return u
+func init() {
+	gofakeit.Seed(0)
 }
 
 func TestInsertOnchainTransaction(t *testing.T) {
 	t.Parallel()
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 	for i := 0; i < 20; i++ {
 		t.Run("inserting arbitrary onchain "+strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			onchain := genOnchain(user)
+			onchain := txtest.GenOnchain(user.ID)
 
-			inserted, err := InsertOnchain(testDB, onchain)
+			inserted, err := transactions.InsertOnchain(testDB, onchain)
 			if err != nil {
 				testutil.FatalMsg(t, err)
 			}
@@ -239,7 +77,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 				testutil.FatalMsg(t, diff)
 			}
 
-			foundTx, err := GetTransactionByID(testDB, inserted.ID, user.ID)
+			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
 			if err != nil {
 				testutil.FatalMsg(t, err)
 			}
@@ -254,7 +92,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 				testutil.FatalMsg(t, diff)
 			}
 
-			allTXs, err := GetAllTransactions(testDB, user.ID)
+			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
 			if err != nil {
 				testutil.FatalMsg(t, err)
 			}
@@ -278,13 +116,13 @@ func TestInsertOnchainTransaction(t *testing.T) {
 
 func TestInsertOffchainTransaction(t *testing.T) {
 	t.Parallel()
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 	for i := 0; i < 20; i++ {
 		t.Run("inserting arbitrary offchain "+strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			offchain := genOffchain(user)
+			offchain := txtest.GenOffchain(user.ID)
 
-			inserted, err := InsertOffchain(testDB, offchain)
+			inserted, err := transactions.InsertOffchain(testDB, offchain)
 			if err != nil {
 				testutil.FatalMsg(t, err)
 			}
@@ -307,7 +145,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 				testutil.FatalMsg(t, diff)
 			}
 
-			foundTx, err := GetTransactionByID(testDB, inserted.ID, user.ID)
+			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
 			if err != nil {
 				testutil.FatalMsg(t, err)
 			}
@@ -322,7 +160,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 				testutil.FatalMsg(t, diff)
 			}
 
-			allTXs, err := GetAllTransactions(testDB, user.ID)
+			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
 			if err != nil {
 				testutil.FatalMsg(t, err)
 			}
@@ -347,7 +185,6 @@ func TestInsertOffchainTransaction(t *testing.T) {
 
 func TestGetTransactionByID(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	const email1 = "email1@example.com"
 	const password1 = "password1"
@@ -358,36 +195,36 @@ func TestGetTransactionByID(t *testing.T) {
 	amount2 := rand.Int63n(ln.MaxAmountMsatPerInvoice)
 	address2 := gofakeit.Word()
 
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	foo := "foo"
 	testCases := []struct {
 		email          string
 		password       string
-		expectedResult Transaction
+		expectedResult transactions.Transaction
 	}{
 		{
 
 			email1,
 			password1,
-			Transaction{
+			transactions.Transaction{
 				UserID:      user.ID,
 				AmountMSat:  &amount1,
 				Address:     &address1,
 				Description: &foo,
-				Direction:   INBOUND,
+				Direction:   transactions.INBOUND,
 			},
 		},
 		{
 
 			email2,
 			password2,
-			Transaction{
+			transactions.Transaction{
 				UserID:      user.ID,
 				AmountMSat:  &amount2,
 				Address:     &address2,
 				Description: &foo,
-				Direction:   INBOUND,
+				Direction:   transactions.INBOUND,
 			},
 		},
 	}
@@ -397,15 +234,28 @@ func TestGetTransactionByID(t *testing.T) {
 			func(t *testing.T) {
 				t.Parallel()
 
-				transaction, err := insertTransaction(testDB, test.expectedResult)
-				require.NoError(t, err)
+				var transaction transactions.Transaction
+				if onchain, err := test.expectedResult.ToOnchain(); err == nil {
+					inserted, err := transactions.InsertOnchain(testDB, onchain)
+					require.NoError(t, err)
+					transaction = inserted.ToTransaction()
+				} else if offchain, err := test.expectedResult.ToOffchain(); err == nil {
+					inserted, err := transactions.InsertOffchain(testDB, offchain)
+					require.NoError(t, err)
+					transaction = inserted.ToTransaction()
+				} else {
+					require.FailNow(t, "Not onchain nor offchain", test.expectedResult)
+				}
 
-				transaction, err = GetTransactionByID(testDB, transaction.ID, test.expectedResult.UserID)
+				transaction, err := transactions.GetTransactionByID(testDB, transaction.ID, test.expectedResult.UserID)
 				require.NoError(t, err)
 
 				test.expectedResult.ID = transaction.ID
 				assert.Equal(t, transaction.Address, test.expectedResult.Address)
-				assert.Equal(t, transaction.AmountMSat, test.expectedResult.AmountMSat)
+				if test.expectedResult.AmountMSat != nil {
+					require.NotNil(t, transaction.AmountMSat)
+					assert.InDelta(t, *transaction.AmountMSat, *test.expectedResult.AmountMSat, 1000)
+				}
 				assert.Equal(t, transaction.Direction, test.expectedResult.Direction)
 				assert.Equal(t, transaction.Description, test.expectedResult.Description)
 				assert.Equal(t, transaction.UserID, test.expectedResult.UserID)
@@ -443,10 +293,10 @@ func TestWithdrawOnChain(t *testing.T) {
 			user := CreateUserWithBalanceOrFail(t, testDB, test.balance)
 			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: genTxid(),
+					Txid: txtest.MockTxid(),
 				},
 			}
-			_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+			_, err := transactions.WithdrawOnChain(testDB, mockLNcli, mockBitcoin, transactions.WithdrawOnChainArgs{
 				UserID:    user.ID,
 				AmountSat: test.amountSat,
 				Address:   testnetAddress,
@@ -458,11 +308,6 @@ func TestWithdrawOnChain(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, int64(0), bal.MilliSats())
 
-			// TODO: Test this creates transactions for the right amount
-			// t.Run("withdrew the right amount", func(t *testing.T) {
-			// Look up the txid on-chain, and check the amount
-			// fmt.Println("txid: ", txid)
-			// })
 		}
 	})
 
@@ -473,14 +318,14 @@ func TestWithdrawOnChain(t *testing.T) {
 
 			mockLNcli := lntestutil.LightningMockClient{
 				SendCoinsResponse: lnrpc.SendCoinsResponse{
-					Txid: genTxid(),
+					Txid: txtest.MockTxid(),
 				},
 			}
 			initial := gofakeit.Number(1337, maxSats)
 			user := CreateUserWithBalanceOrFail(t, testDB, int64(initial))
 
 			withdrawAmount := gofakeit.Number(1, initial)
-			_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+			_, err := transactions.WithdrawOnChain(testDB, mockLNcli, mockBitcoin, transactions.WithdrawOnChainArgs{
 				UserID:    user.ID,
 				AmountSat: int64(withdrawAmount),
 				Address:   "fooooooo",
@@ -502,47 +347,47 @@ func TestWithdrawOnChain(t *testing.T) {
 
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
-				Txid: genTxid(),
+				Txid: txtest.MockTxid(),
 			},
 		}
-		_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+		_, err := transactions.WithdrawOnChain(testDB, mockLNcli, mockBitcoin, transactions.WithdrawOnChainArgs{
 			UserID:    user.ID,
 			AmountSat: 5000,
 			Address:   testnetAddress,
 		})
 
-		assert.Equal(t, err, ErrBalanceTooLow)
+		assert.Equal(t, err, transactions.ErrBalanceTooLow)
 	})
 	t.Run("withdraw negative amount fails", func(t *testing.T) {
 		user := CreateUserWithBalanceOrFail(t, testDB, 500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
-				Txid: genTxid(),
+				Txid: txtest.MockTxid(),
 			},
 		}
 
-		_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+		_, err := transactions.WithdrawOnChain(testDB, mockLNcli, mockBitcoin, transactions.WithdrawOnChainArgs{
 			UserID:    user.ID,
 			AmountSat: -5000,
 			Address:   testnetAddress,
 		})
 
-		assert.Equal(t, err, ErrNonPositiveAmount)
+		assert.Equal(t, err, transactions.ErrNonPositiveAmount)
 	})
 	t.Run("withdraw 0 amount fails", func(t *testing.T) {
 		user := CreateUserWithBalanceOrFail(t, testDB, 500)
 		mockLNcli := lntestutil.LightningMockClient{
 			SendCoinsResponse: lnrpc.SendCoinsResponse{
-				Txid: genTxid(),
+				Txid: txtest.MockTxid(),
 			},
 		}
-		_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+		_, err := transactions.WithdrawOnChain(testDB, mockLNcli, mockBitcoin, transactions.WithdrawOnChainArgs{
 			UserID:    user.ID,
 			AmountSat: 0,
 			Address:   testnetAddress,
 		})
 
-		assert.Equal(t, err, ErrNonPositiveAmount)
+		assert.Equal(t, err, transactions.ErrNonPositiveAmount)
 	})
 
 	t.Run("inserting bad txid fails", func(t *testing.T) {
@@ -553,7 +398,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		}
 		user := CreateUserWithBalanceOrFail(t, testDB, 10000)
 
-		_, err := WithdrawOnChain(testDB, mockLNcli, mockBitcoin, WithdrawOnChainArgs{
+		_, err := transactions.WithdrawOnChain(testDB, mockLNcli, mockBitcoin, transactions.WithdrawOnChainArgs{
 			UserID:    user.ID,
 			AmountSat: 5000,
 			Address:   testnetAddress,
@@ -566,7 +411,7 @@ func TestWithdrawOnChain(t *testing.T) {
 
 func TestOnchain_AddReceivedMoney(t *testing.T) {
 	t.Parallel()
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
 	t.Run("should fail to save negative amount", func(t *testing.T) {
 		t.Parallel()
@@ -606,7 +451,7 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 			testutil.FatalMsgf(t, "SaveTxToTransaction(): %+v", err)
 		}
 
-		found, err := GetTransactionByID(testDB, transaction.ID, transaction.UserID)
+		found, err := transactions.GetTransactionByID(testDB, transaction.ID, transaction.UserID)
 		if err != nil {
 			testutil.FatalMsgf(t, "should be able to GetTransactionByID: %+v", err)
 		}
@@ -656,7 +501,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 
 	t.Run("should fail to mark a TX as confirmed if it hasn't received any money", func(t *testing.T) {
 		t.Parallel()
-		user := CreateUserOrFail(t, testDB)
+		user := userstestutil.CreateUserOrFail(t, testDB)
 		transaction := CreateOnChainOrFail(t, user.ID)
 
 		const confHeight = 100
@@ -666,7 +511,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 	})
 
 	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
-		user := CreateUserOrFail(t, testDB)
+		user := userstestutil.CreateUserOrFail(t, testDB)
 		transaction := CreateOnChainOrFail(t, user.ID)
 
 		spent, err := transaction.PersistReceivedMoney(testDB,
@@ -684,7 +529,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 			testutil.FatalMsgf(t, "could not mark as confirmed: %+v", err)
 		}
 
-		found, err := GetTransactionByID(testDB, confirmed.ID, user.ID)
+		found, err := transactions.GetTransactionByID(testDB, confirmed.ID, user.ID)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -720,7 +565,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 }
 
 func TestNewDepositWithMoney(t *testing.T) {
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 	const expectedAddr = "mw3gPvWixiiShySrr87igcSubQc9TPqUGV"
 	const scriptPubkey = "76a914aa59828a194ddef9d1d4244000f0d3636c1bb78888ac"
 	spkBytes, err := hex.DecodeString(scriptPubkey)
@@ -731,7 +576,7 @@ func TestNewDepositWithMoney(t *testing.T) {
 	tx := wire.NewMsgTx(0)
 	tx.AddTxOut(out)
 
-	onchain, err := NewDepositWithMoney(testDB, WithMoneyArgs{
+	onchain, err := transactions.NewDepositWithMoney(testDB, transactions.WithMoneyArgs{
 		Tx:          tx,
 		OutputIndex: 0,
 		UserID:      user.ID,
@@ -752,7 +597,7 @@ func TestNewDepositWithMoney(t *testing.T) {
 
 	assert.Equal(t, user.ID, onchain.UserID)
 
-	foundTx, err := GetOnchainByID(testDB, onchain.ID, user.ID)
+	foundTx, err := transactions.GetOnchainByID(testDB, onchain.ID, user.ID)
 	require.NoError(t, err)
 
 	assert.Nil(t, foundTx.ConfirmedAt)
@@ -761,9 +606,9 @@ func TestNewDepositWithMoney(t *testing.T) {
 
 func TestNewDeposit(t *testing.T) {
 	mockLn := lntestutil.GetLightningMockClient()
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 
-	onchain, err := NewDeposit(testDB, mockLn, user.ID)
+	onchain, err := transactions.NewDeposit(testDB, mockLn, user.ID)
 	require.NoError(t, err)
 
 	// this should have not money spent to it
@@ -778,10 +623,10 @@ func TestNewDeposit(t *testing.T) {
 
 func TestNewDepositWithDescription(t *testing.T) {
 	mockLn := lntestutil.GetLightningMockClient()
-	user := CreateUserOrFail(t, testDB)
+	user := userstestutil.CreateUserOrFail(t, testDB)
 	description := gofakeit.Sentence(gofakeit.Number(1, 12))
 
-	onchain, err := NewDepositWithDescription(testDB, mockLn, user.ID, description)
+	onchain, err := transactions.NewDepositWithDescription(testDB, mockLn, user.ID, description)
 	require.NoError(t, err)
 
 	// this should have not money spent to it
@@ -796,17 +641,17 @@ func TestNewDepositWithDescription(t *testing.T) {
 
 }
 
-func CreateOnChainOrFail(t *testing.T, userID int) Onchain {
+func CreateOnChainOrFail(t *testing.T, userID int) transactions.Onchain {
 
 	bar := "bar"
-	tx := Onchain{
+	tx := transactions.Onchain{
 		UserID:      userID,
 		Address:     "foo",
 		Description: &bar,
-		Direction:   INBOUND,
+		Direction:   transactions.INBOUND,
 	}
 
-	inserted, err := InsertOnchain(testDB, tx)
+	inserted, err := transactions.InsertOnchain(testDB, tx)
 
 	if err != nil {
 		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
@@ -814,13 +659,4 @@ func CreateOnChainOrFail(t *testing.T, userID int) Onchain {
 	}
 
 	return inserted
-}
-func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
-	u, err := users.Create(db, users.CreateUserArgs{
-		Email:    gofakeit.Email(),
-		Password: gofakeit.Password(true, true, true, true, true, 32),
-	})
-	require.NoError(t, err)
-
-	return u
 }

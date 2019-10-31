@@ -43,7 +43,7 @@ type Transaction struct {
 	// expiry, for example when a merchant gives an offer to the consumer, but only
 	// wants the offer to be valid for a certain time frame. On the other hand, a 
 	// TX that's a withdrawal from a merchant won't have this field set. 
-	Expiry    *int64    `db:"expiry"`
+	Expiry *int64 `db:"expiry"`
 
 	Direction Direction `db:"direction"`
 
@@ -263,6 +263,14 @@ func (o Offchain) withAdditionalFields() offchainWithDerived {
 	}
 }
 
+func (o Offchain) IsExpired() bool {
+	return o.withAdditionalFields().Expired
+}
+
+func (o Offchain) ExpiresAt() time.Time {
+	return o.withAdditionalFields().ExpiresAt
+}
+
 // MarkAsPaid marks the given payment request as paid at the given date
 func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions
@@ -407,7 +415,7 @@ type Onchain struct {
 	ConfirmedAtBlock *int       `json:"confirmedAtBlock,omitempty"`
 	ConfirmedAt      *time.Time `json:"confirmedAt,omitempty"`
 
-	AmountSat *int64  `json:"amountSat"`
+	AmountSat *int64  `json:"amountSat,omitempty"`
 	Address   string  `json:"address"`
 	Txid      *string `json:"txid,omitempty"`
 	Vout      *int    `json:"vout,omitempty"`

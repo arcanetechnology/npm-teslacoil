@@ -119,7 +119,7 @@ func GenOnchain(userID int) transactions.Onchain {
 	var vout *int
 	var amountSat *int64
 	if gofakeit.Bool() {
-		t := MockTxid() // do me later
+		t := MockTxid()
 		txid = &t
 		v := gofakeit.Number(0, 12)
 		vout = &v
