@@ -16,7 +16,7 @@ var log = build.Log
 
 func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
-	app.Name = "teslacoil"
+	app.Name = "tlc"
 	app.Usage = "Managing helper for developing lightning payment processor"
 	app.EnableBashCompletion = true
 	// have log levels be set for all commands/subcommands
