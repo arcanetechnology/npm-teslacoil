@@ -37,9 +37,14 @@ func MockTxid() string {
 	return hex.EncodeToString(p)
 }
 
-// MockStatus will create a random status
-func MockStatus() transactions.Status {
-	s := []transactions.Status{transactions.FAILED, transactions.OPEN, transactions.SUCCEEDED}
+// MockOffchainStatus will create a random status
+func MockOffchainStatus() transactions.OffchainStatus {
+	s := []transactions.OffchainStatus{
+		transactions.Offchain_CREATED,
+		transactions.Offchain_SENT,
+		transactions.Offchain_COMPLETED,
+		transactions.Offchain_FLOPPED,
+	}
 	return s[rand.Intn(3)]
 }
 
@@ -85,8 +90,8 @@ func GenOffchain(userID int) transactions.Offchain {
 		hashedPreimage = MockPreimage()
 	}
 
-	status := MockStatus()
-	if status == transactions.SUCCEEDED {
+	status := MockOffchainStatus()
+	if status == transactions.Offchain_COMPLETED {
 		now := time.Now()
 		start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
 		s := gofakeit.DateRange(start, now)
@@ -260,7 +265,7 @@ func fundedOnchain(minAmountSats, userId int) transactions.Onchain {
 func successfullOffchain(minAmountSats, userId int) transactions.Offchain {
 	off := GenOffchain(userId)
 
-	off.Status = transactions.SUCCEEDED
+	off.Status = transactions.Offchain_COMPLETED
 
 	s := gofakeit.Date()
 	off.SettledAt = &s

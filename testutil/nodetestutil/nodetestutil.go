@@ -152,7 +152,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
-		if _, err := bitcoind.GenerateToAddress(bitcoin, 110, addr); err != nil {
+		if _, err = bitcoind.GenerateToAddress(bitcoin, 110, addr); err != nil {
 			testutil.FatalMsg(t, errors.Wrap(err, "could not generate to address"))
 		}
 	}()
@@ -215,7 +215,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 			Pubkey: lnd2Info.IdentityPubkey,
 			Host:   fmt.Sprintf("127.0.0.1:%d", lndConf2.P2pPort),
 		}
-		_, err := lnd1.ConnectPeer(context.Background(), &lnrpc.ConnectPeerRequest{
+		_, err = lnd1.ConnectPeer(context.Background(), &lnrpc.ConnectPeerRequest{
 			Addr: &lnAddress,
 		})
 		return err
@@ -242,7 +242,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return nil
 
 	}
-	if err := async.RetryNoBackoff(10, time.Millisecond*200, isSyncedToChain); err != nil {
+	if err = async.RetryNoBackoff(10, time.Millisecond*200, isSyncedToChain); err != nil {
 		testutil.FailMsg(t, err)
 		return
 	}
@@ -259,13 +259,13 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 		return err
 	}
 
-	if err := async.RetryNoBackoff(30, 100*time.Millisecond, openchannel); err != nil {
+	if err = async.RetryNoBackoff(30, 100*time.Millisecond, openchannel); err != nil {
 		testutil.FailMsgf(t, "could not open channel %v", err)
 		return
 	}
 
 	// we generate to address to be able to confirm the channel we created
-	if _, err := bitcoind.GenerateToAddress(bitcoin, 6, lnd1Address); err != nil {
+	if _, err = bitcoind.GenerateToAddress(bitcoin, 6, lnd1Address); err != nil {
 		testutil.FailMsg(t, errors.Wrap(err, "could not confirm channel"))
 		return
 	}
@@ -411,7 +411,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	cmd.Stdout = testutil.LogWriter{Label: label, Level: logrus.DebugLevel}
 
 	log.Debugf("Executing command: %s", strings.Join(cmd.Args, " "))
-	if err := cmd.Start(); err != nil {
+	if err = cmd.Start(); err != nil {
 		testutil.FailMsgf(t, "Could not start lnd: %v", err)
 		return nil
 	}
@@ -423,13 +423,13 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	// by looking at logs it appears we connect immediately after this file is created
 	backupFile := filepath.Join(lndConfig.LndDir, "data", "chain", "bitcoin", lndConfig.Network.Name, "channel.backup")
 	isReady := func() error {
-		if _, err := os.Stat(certFile); err != nil {
+		if _, err = os.Stat(certFile); err != nil {
 			return err
 		}
-		if _, err := os.Stat(lndConfig.MacaroonPath); err != nil {
+		if _, err = os.Stat(lndConfig.MacaroonPath); err != nil {
 			return err
 		}
-		if _, err := os.Stat(backupFile); err != nil {
+		if _, err = os.Stat(backupFile); err != nil {
 			return err
 		}
 
@@ -442,7 +442,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		timeout = time.Millisecond * 500
 		attempts = 40
 	}
-	if err := async.RetryNoBackoff(attempts, timeout, isReady); err != nil {
+	if err = async.RetryNoBackoff(attempts, timeout, isReady); err != nil {
 		assert.NotNil(t, err)
 		return nil
 	}
@@ -452,7 +452,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		lnd, err = ln.NewLNDClient(lndConfig)
 		return err
 	}
-	if err := async.RetryNoBackoff(retryAttempts, retrySleepDuration, getLnd); err != nil {
+	if err = async.RetryNoBackoff(retryAttempts, retrySleepDuration, getLnd); err != nil {
 		testutil.FailMsgf(t, "could not get lnd with config: %s: %v", lndConfig, err)
 		return nil
 	}
@@ -460,11 +460,11 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	cleanup := nodeCleaner{}
 	cleanup.clean = func() error {
 		cleanup.hasBeenCleaned = true
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		if err = syscall.Kill(pid, syscall.SIGTERM); err != nil {
 			return errors.Wrap(err, "couldn't kill lnd process")
 		}
 		negativeGetInfo := func() error {
-			_, err := lnd.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+			_, err = lnd.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
 			if err == nil {
 				return errors.New("was able to getinfo from client")
 			}
@@ -472,12 +472,12 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		}
 
 		// await lnd shutdown
-		if err := async.Retry(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
+		if err = async.RetryBackoff(retryAttempts, retrySleepDuration, negativeGetInfo); err != nil {
 			return err
 		}
 		log.Debug("Stopped lnd process")
 
-		if err := os.RemoveAll(lndConfig.LndDir); err != nil {
+		if err = os.RemoveAll(lndConfig.LndDir); err != nil {
 			return errors.Wrapf(err, "could not delete lnd tmp directory %s", lndConfig.LndDir)
 		}
 		log.Debugf("Deleted lnd tmp directory %s", lndConfig.LndDir)
@@ -524,7 +524,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 	// pass bitcoind output to test log, wrapepd with a label
 	cmd.Stderr = testutil.LogWriter{Label: "bitcoind", Level: logrus.ErrorLevel}
 	cmd.Stdout = testutil.LogWriter{Label: "bitcoind", Level: logrus.DebugLevel}
-	if err := cmd.Run(); err != nil {
+	if err = cmd.Run(); err != nil {
 		testutil.FailMsgf(t, "Could not start bitcoind: %v", err)
 		return nil
 	}
@@ -532,10 +532,10 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 	pidFile := filepath.Join(tempDir, "regtest", "bitcoind.pid")
 
 	readPidFile := func() error {
-		_, err := os.Stat(pidFile)
+		_, err = os.Stat(pidFile)
 		return err
 	}
-	if err := async.RetryNoBackoff(retryAttempts, retrySleepDuration, readPidFile); err != nil {
+	if err = async.RetryNoBackoff(retryAttempts, retrySleepDuration, readPidFile); err != nil {
 		testutil.FailMsgf(t, "Could not read bitcoind pid file")
 		return nil
 	}
@@ -558,7 +558,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 	client := bitcoindtestutil.GetBitcoindClientOrFail(t, conf)
 
 	// await bitcoind startup
-	if err := async.Retry(retryAttempts, retrySleepDuration, client.Ping); err != nil {
+	if err = async.RetryBackoff(retryAttempts, retrySleepDuration, client.Ping); err != nil {
 		testutil.FailMsgf(t, "Could not communicate with bitcoind")
 		return nil
 	}
@@ -566,12 +566,12 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 	cleaner := nodeCleaner{}
 	cleaner.clean = func() error {
 		cleaner.hasBeenCleaned = true
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		if err = syscall.Kill(pid, syscall.SIGTERM); err != nil {
 			return errors.Wrap(err, "couldn't kill bitcoind process")
 		}
 
 		negativePing := func() error {
-			err := client.Ping()
+			err = client.Ping()
 			if err == nil {
 				return errors.New("was able to ping client")
 			}
@@ -579,12 +579,12 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		}
 
 		// await bitcoind shutdown
-		if err := async.Retry(retryAttempts, retrySleepDuration, negativePing); err != nil {
+		if err = async.RetryBackoff(retryAttempts, retrySleepDuration, negativePing); err != nil {
 			return fmt.Errorf("could communicate with stopped bitcoind")
 		}
 
 		log.Debug("Stopped bitcoind process")
-		if err := os.RemoveAll(tempDir); err != nil {
+		if err = os.RemoveAll(tempDir); err != nil {
 			return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
 		}
 		log.Debugf("Deleted bitcoind tmp directory %s", tempDir)

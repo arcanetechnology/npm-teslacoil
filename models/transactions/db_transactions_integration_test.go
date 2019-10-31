@@ -81,12 +81,12 @@ func TestEverything(t *testing.T) {
 			require.Error(t, err, inv)
 		})
 
-		t.Run("InvoiceStatusListener should pick up a paid invoice and POST to the callback URL", func(t *testing.T) {
+		t.Run("InvoiceListener should pick up a paid invoice and POST to the callback URL", func(t *testing.T) {
 			t.Parallel()
 			poster := testutil.GetMockHttpPoster()
 			user := userstestutil.CreateUserOrFail(t, testDB)
 			channel := make(chan *lnrpc.Invoice)
-			go transactions.InvoiceStatusListener(channel, testDB, poster)
+			go transactions.InvoiceListener(channel, testDB, poster)
 
 			inserted := CreateNewOffchainTxOrFail(t, testDB, lnd, transactions.NewOffchainOpts{
 				UserID:      user.ID,
@@ -121,7 +121,7 @@ func TestEverything(t *testing.T) {
 			fetchedTx, err := transactions.GetOffchainByID(testDB, inserted.ID, user.ID)
 			require.NoError(t, err)
 			assert.NotNil(t, fetchedTx.SettledAt)
-			assert.Equal(t, transactions.SUCCEEDED, fetchedTx.Status)
+			assert.Equal(t, transactions.Offchain_COMPLETED, fetchedTx.Status)
 
 		})
 

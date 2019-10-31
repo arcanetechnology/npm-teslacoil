@@ -552,7 +552,7 @@ func TestWithBalance(t *testing.T) {
 			tx := txtest.InsertFakeIncomingOffchainOrFail(t,
 				testDB, user.ID)
 
-			if tx.Status == transactions.SUCCEEDED && tx.SettledAt != nil {
+			if tx.Status == transactions.Offchain_COMPLETED && tx.SettledAt != nil {
 				txAmountMilliSat += tx.AmountMSat
 			}
 		}

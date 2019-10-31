@@ -2,11 +2,14 @@ package transactions
 
 import (
 	"database/sql"
+	"encoding"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/lightningnetwork/lnd/lnrpc"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"gitlab.com/arcanecrypto/teslacoil/db"
@@ -39,10 +42,10 @@ type Transaction struct {
 	CustomerOrderId *string `db:"customer_order_id"`
 
 	// Expiry is the associated expiry time for a TX, if any. An offchain TX always
-	// has an expiry, the one encoded into the invoice. An onchain TX may have an 
+	// has an expiry, the one encoded into the invoice. An onchain TX may have an
 	// expiry, for example when a merchant gives an offer to the consumer, but only
-	// wants the offer to be valid for a certain time frame. On the other hand, a 
-	// TX that's a withdrawal from a merchant won't have this field set. 
+	// wants the offer to be valid for a certain time frame. On the other hand, a
+	// TX that's a withdrawal from a merchant won't have this field set.
 	Expiry *int64 `db:"expiry"`
 
 	Direction Direction `db:"direction"`
@@ -65,12 +68,12 @@ type Transaction struct {
 	ConfirmedAt      *time.Time `db:"confirmed_at"`
 
 	// offchain fields
-	PaymentRequest *string    `db:"payment_request"`
-	Preimage       *[]byte    `db:"preimage"`
-	HashedPreimage *[]byte    `db:"hashed_preimage"`
-	SettledAt      *time.Time `db:"settled_at"` // If defined, it means the  invoice is settled
-	Memo           *string    `db:"memo"`
-	Status         *Status    `db:"invoice_status"`
+	PaymentRequest *string         `db:"payment_request"`
+	Preimage       *[]byte         `db:"preimage"`
+	HashedPreimage *[]byte         `db:"hashed_preimage"`
+	SettledAt      *time.Time      `db:"settled_at"` // If defined, it means the  invoice is settled
+	Memo           *string         `db:"memo"`
+	Status         *OffchainStatus `db:"invoice_status"`
 }
 
 // MarshalJSON is added to make sure that we never serialize raw Transactions
@@ -210,14 +213,14 @@ type Offchain struct {
 
 	Expiry int64 `json:"-"`
 
-	AmountMSat     int64     `json:"amountMSat"`
-	Description    *string   `json:"description,omitempty"`
-	Direction      Direction `json:"direction"`
-	HashedPreimage []byte    `json:"hash"`
-	PaymentRequest string    `json:"paymentRequest"`
-	Preimage       []byte    `json:"preimage"`
-	Memo           *string   `json:"memo,omitempty"`
-	Status         Status    `json:"status"`
+	AmountMSat     int64          `json:"amountMSat"`
+	Description    *string        `json:"description,omitempty"`
+	Direction      Direction      `json:"direction"`
+	HashedPreimage []byte         `json:"hash"`
+	PaymentRequest string         `json:"paymentRequest"`
+	Preimage       []byte         `json:"preimage"`
+	Memo           *string        `json:"memo,omitempty"`
+	Status         OffchainStatus `json:"status"`
 
 	SettledAt *time.Time `json:"settledAt,omitempty"` // If defined, it means the  invoice is settled
 	CreatedAt time.Time  `json:"createdAt"`
@@ -271,6 +274,59 @@ func (o Offchain) ExpiresAt() time.Time {
 	return o.withAdditionalFields().ExpiresAt
 }
 
+// Direction is the direction of a transaction, seen from the users perspective
+type Direction string
+
+const (
+	INBOUND  Direction = "INBOUND"
+	OUTBOUND Direction = "OUTBOUND"
+)
+
+// MarshalText overrides the MarshalText function in the json package
+func (d Direction) MarshalText() (text []byte, err error) {
+	lower := strings.ToLower(string(d))
+	return []byte(lower), nil
+}
+
+var _ encoding.TextMarshaler = INBOUND
+
+// OffchainStatus is the status of a offchain transaction
+type OffchainStatus string
+
+const (
+	Offchain_CREATED   OffchainStatus = "CREATED"
+	Offchain_SENT      OffchainStatus = "SENT"
+	Offchain_COMPLETED OffchainStatus = "CONFIRMED"
+	Offchain_FLOPPED   OffchainStatus = "FLOPPED"
+)
+
+var _ encoding.TextMarshaler = Offchain_COMPLETED
+
+// InvoiceStateToTeslaState maps lnd's InvoiceState to our OffchainStatus
+// InvoiceState are states for invoices belonging to our node, created
+// using lncli.AddInvoice()
+// Example usage: status := InvoiceStateToTeslaState[invoice.Status]
+var InvoiceStateToTeslaState = map[lnrpc.Invoice_InvoiceState]OffchainStatus{
+	lnrpc.Invoice_OPEN:    Offchain_CREATED,
+	lnrpc.Invoice_SETTLED: Offchain_COMPLETED,
+}
+
+// PaymentStateToTeslaState maps lnd's PaymentStatus to our OffchainStatus
+// PaymentStatus are states of payments, e.g: outbound payments (lncli.SendPayment())
+// Example usage: status := PaymentStateToTeslaState[payment.status]
+var PaymentStateToTeslaState = map[lnrpc.Payment_PaymentStatus]OffchainStatus{
+	lnrpc.Payment_UNKNOWN:   Offchain_CREATED,
+	lnrpc.Payment_IN_FLIGHT: Offchain_SENT,
+	lnrpc.Payment_SUCCEEDED: Offchain_COMPLETED,
+	lnrpc.Payment_FAILED:    Offchain_FLOPPED,
+}
+
+// MarshalText overrides the MarshalText function in the json package
+func (s OffchainStatus) MarshalText() (text []byte, err error) {
+	lower := strings.ToLower(string(s))
+	return []byte(lower), nil
+}
+
 // MarkAsPaid marks the given payment request as paid at the given date
 func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions
@@ -280,7 +336,7 @@ func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error)
 	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
 
 	o.SettledAt = &paidAt
-	o.Status = SUCCEEDED
+	o.Status = Offchain_COMPLETED
 	tx := o.ToTransaction()
 	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
@@ -293,7 +349,7 @@ func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error)
 	}
 
 	var updated Transaction
-	if err := rows.StructScan(&updated); err != nil {
+	if err = rows.StructScan(&updated); err != nil {
 		return Offchain{}, err
 	}
 
@@ -305,15 +361,15 @@ func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error)
 	return updatedOffchain, nil
 }
 
-// MarkAsFailed marks the transaction as failed
-func (o Offchain) MarkAsFailed(db db.Inserter) (Offchain, error) {
+// MarkAsFlopped marks the transaction as failed
+func (o Offchain) MarkAsFlopped(db db.Inserter) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions 
 		SET invoice_status = :invoice_status
 		WHERE id = :id ` + txReturningSql
 
 	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
 
-	o.Status = FAILED
+	o.Status = Offchain_FLOPPED
 	tx := o.ToTransaction()
 	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {

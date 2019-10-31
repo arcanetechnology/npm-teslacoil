@@ -88,7 +88,7 @@ func TestNewOffchainTx(t *testing.T) {
 				HashedPreimage: SampleHash[:],
 				Memo:           &firstMemo,
 				Description:    &description,
-				Status:         transactions.OPEN,
+				Status:         transactions.Offchain_CREATED,
 				Direction:      transactions.INBOUND,
 			},
 		},
@@ -112,7 +112,7 @@ func TestNewOffchainTx(t *testing.T) {
 				PaymentRequest: payReq2,
 				Memo:           &firstMemo,
 				Description:    &description,
-				Status:         transactions.OPEN,
+				Status:         transactions.Offchain_CREATED,
 				Direction:      transactions.INBOUND,
 			},
 		},
@@ -137,7 +137,7 @@ func TestNewOffchainTx(t *testing.T) {
 				HashedPreimage:  SampleHash[:],
 				PaymentRequest:  payReq3,
 				Description:     &description,
-				Status:          transactions.OPEN,
+				Status:          transactions.Offchain_CREATED,
 				Direction:       transactions.INBOUND,
 				CustomerOrderId: &customerOrderId,
 			},
@@ -286,27 +286,27 @@ func TestOffchain_MarkAsPaid(t *testing.T) {
 	settlement := time.Now()
 	paid, err := inserted.MarkAsPaid(testDB, settlement)
 	require.NoError(t, err)
-	assert.Equal(t, transactions.SUCCEEDED, paid.Status)
+	assert.Equal(t, transactions.Offchain_COMPLETED, paid.Status)
 	require.NotNil(t, paid.SettledAt)
 	assert.WithinDuration(t, settlement, *paid.SettledAt, time.Second)
 }
 
-func TestOffchain_MarkAsFailed(t *testing.T) {
+func TestOffchain_MarkAsFlopped(t *testing.T) {
 	t.Parallel()
 	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
 
 	var tx transactions.Offchain
 	// it only makes sense to mark open TXs as failed
-	for tx.Status != transactions.OPEN {
+	for tx.Status != transactions.Offchain_CREATED {
 		tx = txtest.GenOffchain(user.ID)
 	}
 
 	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
-	paid, err := inserted.MarkAsFailed(testDB)
+	paid, err := inserted.MarkAsFlopped(testDB)
 	require.NoError(t, err)
-	assert.Equal(t, transactions.FAILED, paid.Status)
+	assert.Equal(t, transactions.Offchain_FLOPPED, paid.Status)
 
 	assert.Nil(t, paid.SettledAt)
 }
@@ -414,7 +414,7 @@ func TestPayInvoice(t *testing.T) {
 		got, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
 		require.NoError(t, err)
 
-		assert.Equal(t, transactions.SUCCEEDED, got.Status)
+		assert.Equal(t, transactions.Offchain_COMPLETED, got.Status)
 		assert.NotNil(t, got.SettledAt)
 		assert.WithinDuration(t, *got.SettledAt, time.Now(), time.Second)
 	})
@@ -436,10 +436,10 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		invoice := lnrpc.Invoice{
 			PaymentRequest: offchainTx.PaymentRequest,
-			Settled:        true,
+			State:          lnrpc.Invoice_SETTLED,
 		}
 
-		updated, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		updated, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
 		require.NoError(t, err)
 		assert.NotNil(t, updated.SettledAt)
 	})
@@ -456,10 +456,10 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		invoice := lnrpc.Invoice{
 			PaymentRequest: offchainTx.PaymentRequest,
-			Settled:        false,
+			State:          lnrpc.Invoice_SETTLED,
 		}
 
-		updated, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		updated, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
 		require.NoError(t, err)
 		assert.Nil(t, updated.SettledAt)
 	})
@@ -486,10 +486,10 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		invoice := lnrpc.Invoice{
 			PaymentRequest: offchainTx.PaymentRequest,
-			Settled:        true,
+			State:          lnrpc.Invoice_SETTLED,
 		}
 
-		_, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
+		_, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
 		require.NoError(t, err)
 
 		checkPostSent := func() bool {
@@ -514,14 +514,14 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		invoice := lnrpc.Invoice{
 			PaymentRequest: offchainTx.PaymentRequest,
-			Settled:        false,
+			State:          lnrpc.Invoice_OPEN,
 		}
 
-		_, err := transactions.UpdateInvoiceStatus(invoice, testDB, httpPoster)
-		if err != nil {
+		_, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
+		if !errors.Is(err, transactions.ErrExpectedSettledStatus) {
 			testutil.FatalMsgf(t,
-				"should be able to UpdateInvoiceStatus. Error:  %+v\n",
-				err)
+				"expected error %v but got %v",
+				transactions.ErrExpectedSettledStatus, err)
 		}
 
 		checkPostSent := func() bool {
@@ -530,7 +530,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		// emails are sent in go-routing, so can't assume they're sent fast
 		// enough for test to pick up
-		if err := async.Await(4,
+		if err = async.Await(4,
 			time.Millisecond*20, checkPostSent); err == nil {
 			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled offchainTx")
 		}
@@ -547,7 +547,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
 			Expiry:         1,
 			Direction:      transactions.INBOUND,
-			Status:         transactions.OPEN,
+			Status:         transactions.Offchain_CREATED,
 			AmountMSat:     100000,
 		}
 
@@ -563,26 +563,26 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 	})
 
 	invoices := []transactions.Offchain{
-		transactions.Offchain{
+		{
 			UserID:         user.ID,
 			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
 			Expiry:         3600,
 			Direction:      transactions.INBOUND,
-			Status:         transactions.OPEN,
+			Status:         transactions.Offchain_CREATED,
 			AmountMSat:     100000,
 		},
-		transactions.Offchain{
+		{
 			UserID:         user.ID,
 			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
 			Expiry:         2,
 			Direction:      transactions.INBOUND,
-			Status:         transactions.OPEN,
+			Status:         transactions.Offchain_CREATED,
 			AmountMSat:     100000,
 		},
 	}
 
 	for _, invoice := range invoices {
-		t.Run(fmt.Sprintf("payment with expiry %d should not be expired", invoice.Expiry),
+		t.Run(fmt.Sprintf("invoice with expiry %d should not be expired", invoice.Expiry),
 			func(t *testing.T) {
 				payment, err := transactions.InsertOffchain(testDB, invoice)
 				require.NoError(t, err)
