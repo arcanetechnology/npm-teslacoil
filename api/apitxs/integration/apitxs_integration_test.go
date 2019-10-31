@@ -49,13 +49,8 @@ func TestCreateInvoiceRoute(t *testing.T) {
 			bitcoind.TeslacoilBitcoindMockClient{},
 			testutil.GetMockHttpPoster(),
 			conf)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
+		require.NoError(t, err)
 		h := httptestutil.NewTestHarness(app.Router, testDB)
-
-		testutil.DescribeTest(t)
 
 		password := gofakeit.Password(true, true, true, true, true, 32)
 		accessToken, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
@@ -64,7 +59,6 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		})
 
 		t.Run("Create an invoice without memo and description", func(t *testing.T) {
-			testutil.DescribeTest(t)
 
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 
@@ -85,7 +79,6 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		})
 
 		t.Run("Create an invoice with memo and description", func(t *testing.T) {
-			testutil.DescribeTest(t)
 
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 
@@ -114,7 +107,6 @@ func TestCreateInvoiceRoute(t *testing.T) {
 }
 
 func TestPayInvoice(t *testing.T) {
-	testutil.DescribeTest(t)
 
 	nodetestutil.RunWithBitcoindAndLndPair(t, func(lnd1 lnrpc.LightningClient, lnd2 lnrpc.LightningClient, bitcoind bitcoind.TeslacoilBitcoind) {
 		app, err := api.NewApp(testDB,
@@ -123,10 +115,7 @@ func TestPayInvoice(t *testing.T) {
 			bitcoind,
 			testutil.GetMockHttpPoster(),
 			conf)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-
+		require.NoError(t, err)
 		h := httptestutil.NewTestHarness(app.Router, testDB)
 
 		password := gofakeit.Password(true, true, true, true, true, 32)
@@ -135,20 +124,14 @@ func TestPayInvoice(t *testing.T) {
 			Password: password,
 		})
 		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 50000000)
-		// it takes time to propagate the confirmed balance to the lnd nodes,
-		// therefore we sleep for 500 milliseconds
-		//time.Sleep(500 * time.Millisecond)
 
 		t.Run("can send payment", func(t *testing.T) {
-			testutil.DescribeTest(t)
 
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 			paymentRequest, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
 				Value: int64(amountSat),
 			})
-			if err != nil {
-				testutil.FatalMsgf(t, "could not create invoice: %v", err)
-			}
+			require.NoError(t, err)
 
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
@@ -183,10 +166,7 @@ func TestPayInvoice(t *testing.T) {
 			paymentRequest, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
 				Value: int64(amountSat),
 			})
-			if err != nil {
-				testutil.FatalMsgf(t, "could not create invoice: %v", err)
-			}
-
+			require.NoError(t, err)
 			description := gofakeit.HipsterSentence(5)
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{

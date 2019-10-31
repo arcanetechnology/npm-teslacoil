@@ -59,7 +59,7 @@ func TestCreateJWT(t *testing.T) {
 		testutil.FatalMsg(t, err)
 	}
 
-	parsed, claims, err := ParseBearerJwt(token)
+	parsed, claims, err := parseBearerJwt(token)
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
@@ -85,7 +85,7 @@ func TestParseBearerJwt(t *testing.T) {
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
-		_, _, err = ParseBearerJwt(token)
+		_, _, err = parseBearerJwt(token)
 		testutil.AssertEqual(t, err, rsa.ErrVerification)
 	})
 

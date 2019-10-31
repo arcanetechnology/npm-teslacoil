@@ -36,6 +36,8 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
+var log = build.Log
+
 // Config is the configuration for our API. Currently it just sets the
 // log level.
 type Config struct {
@@ -55,18 +57,16 @@ type RestServer struct {
 	EmailSender email.Sender
 }
 
-func getCorsConfig() cors.Config {
-	return cors.Config{
-		AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000", "https://testnet.teslacoil.io"},
-		AllowMethods: []string{
-			http.MethodPut, http.MethodGet,
-			http.MethodPost, http.MethodPatch,
-			http.MethodDelete,
-		},
-		AllowHeaders: []string{
-			"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
-			"Authorization"},
-	}
+var corsConfig = cors.Config{
+	AllowOrigins: []string{"https://teslacoil.io", "http://127.0.0.1:3000", "https://testnet.teslacoil.io"},
+	AllowMethods: []string{
+		http.MethodPut, http.MethodGet,
+		http.MethodPost, http.MethodPatch,
+		http.MethodDelete,
+	},
+	AllowHeaders: []string{
+		"Accept", "Access-Control-Allow-Origin", "Content-Type", "Referer",
+		"Authorization"},
 }
 
 // getGinEngine creates a new Gin engine, and applies middlewares used by
@@ -84,7 +84,6 @@ func getGinEngine(config Config) *gin.Engine {
 		config.LogLevel))
 
 	log.Debug("Applying CORS middleware")
-	corsConfig := getCorsConfig()
 	engine.Use(cors.New(corsConfig))
 
 	log.Debug("Applying error handler middleware")

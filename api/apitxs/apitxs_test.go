@@ -378,10 +378,8 @@ func TestNewDeposit(t *testing.T) {
 				description),
 		})
 
-		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, req, &trans)
-		testutil.AssertNotEqual(t, trans.Description, nil)
-		testutil.AssertEqual(t, *trans.Description, description)
+		tx := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, tx["description"], description)
 	})
 
 	t.Run("can create new deposit without description", func(t *testing.T) {
@@ -395,15 +393,13 @@ func TestNewDeposit(t *testing.T) {
 				true),
 		})
 
-		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, req, &trans)
-		testutil.AssertEqual(t, trans.Description, nil)
+		tx := h.AssertResponseOkWithJson(t, req)
+		assert.Nil(t, tx["description"])
 
 	})
 }
 
 func TestCreateInvoice(t *testing.T) {
-	testutil.DescribeTest(t)
 
 	randomMockClient := lntestutil.GetRandomLightningMockClient()
 	app, _ := api.NewApp(testDB, randomMockClient, mockSendGridClient,
@@ -418,7 +414,6 @@ func TestCreateInvoice(t *testing.T) {
 	})
 
 	t.Run("Not create an invoice with non-positive amount ", func(t *testing.T) {
-		testutil.DescribeTest(t)
 
 		// gofakeit panics with too low value here...
 		// https://github.com/brianvoe/gofakeit/issues/56
@@ -438,7 +433,6 @@ func TestCreateInvoice(t *testing.T) {
 	})
 
 	t.Run("Not create an invoice with too large amount", func(t *testing.T) {
-		testutil.DescribeTest(t)
 
 		amountSat := gofakeit.Number(ln.MaxAmountSatPerInvoice, math.MaxInt64)
 

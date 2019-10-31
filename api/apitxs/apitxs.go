@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -126,10 +125,6 @@ func getTransactionByID() gin.HandlerFunc {
 // to an on-chain address
 // TODO: verify dust limits
 func withdrawOnChain() gin.HandlerFunc {
-	type withdrawResponse struct {
-		transactions.Onchain
-	}
-
 	return func(c *gin.Context) {
 		userID, ok := auth.GetUserIdOrReject(c)
 		if !ok {
@@ -154,9 +149,7 @@ func withdrawOnChain() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, withdrawResponse{
-			Onchain: onchain,
-		})
+		c.JSONP(http.StatusOK, onchain)
 	}
 
 }
@@ -169,15 +162,6 @@ func newDeposit() gin.HandlerFunc {
 		ForceNewAddress bool `json:"forceNewAddress"`
 		// A personal description for the transaction
 		Description string `json:"description"`
-	}
-
-	type response struct {
-		ID          int                    `json:"id"`
-		Address     string                 `json:"address"`
-		Direction   transactions.Direction `json:"direction"`
-		Description *string                `json:"description"`
-		Confirmed   bool                   `json:"confirmed"`
-		CreatedAt   time.Time              `json:"createdAt"`
 	}
 
 	return func(c *gin.Context) {
@@ -198,21 +182,12 @@ func newDeposit() gin.HandlerFunc {
 			_ = c.Error(err)
 			return
 		}
-		res := response{
-			ID:          transaction.ID,
-			Address:     transaction.Address,
-			Direction:   transactions.INBOUND,
-			Description: transaction.Description,
-			Confirmed:   false,
-			CreatedAt:   transaction.CreatedAt,
-		}
-		c.JSONP(http.StatusOK, res)
+
+		c.JSONP(http.StatusOK, transaction)
 	}
 }
 
-// createInvoice creates a new invoice
 func createInvoice() gin.HandlerFunc {
-	// createInvoiceRequest is a deposit
 	type createInvoiceRequest struct {
 		AmountSat   int64  `json:"amountSat" binding:"required,gt=0,lte=4294967"`
 		Memo        string `json:"memo" binding:"max=256"`
@@ -255,10 +230,7 @@ func createInvoice() gin.HandlerFunc {
 	}
 }
 
-// payInvoice pays a valid invoice on behalf of a user
 func payInvoice() gin.HandlerFunc {
-	// PayInvoiceRequest is the required and optional fields for initiating a
-	// withdrawal.
 	type payInvoiceRequest struct {
 		PaymentRequest string `json:"paymentRequest" binding:"required,paymentrequest"`
 		Description    string `json:"description"`
@@ -275,7 +247,6 @@ func payInvoice() gin.HandlerFunc {
 			return
 		}
 
-		// Pays an invoice from userid found in authorization header.
 		t, err := transactions.PayInvoiceWithDescription(database, lncli, userID,
 			req.PaymentRequest, req.Description)
 		if err != nil {

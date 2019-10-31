@@ -275,10 +275,10 @@ func VerifyEmail(db *db.DB, token string) (User, error) {
 
 }
 
-// GetPasswordResetToken creates a valid password reset token for the
+// NewPasswordResetToken creates a valid password reset token for the
 // user corresponding to the given email, if such an user exists. This
 // token can later be used to send a reset password request to the API.
-func GetPasswordResetToken(db *db.DB, email string) (string, error) {
+func NewPasswordResetToken(db *db.DB, email string) (string, error) {
 	user, err := GetByEmail(db, email)
 	if err != nil {
 		return "", err
