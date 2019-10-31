@@ -294,7 +294,13 @@ func TestOffchain_MarkAsPaid(t *testing.T) {
 func TestOffchain_MarkAsFailed(t *testing.T) {
 	t.Parallel()
 	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
-	tx := txtest.GenOffchain(user.ID)
+
+	var tx transactions.Offchain
+	// it only makes sense to mark open TXs as failed
+	for tx.Status != transactions.OPEN {
+		tx = txtest.GenOffchain(user.ID)
+	}
+
 	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
