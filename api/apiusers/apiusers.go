@@ -116,6 +116,8 @@ func updateUser() gin.HandlerFunc {
 		updatedBalance, err := balance.ForUser(database, updated.ID)
 		if err != nil {
 			log.WithError(err).Error("could not get balance for user")
+			_ = c.Error(err)
+			return
 		}
 
 		response := Response{
@@ -125,8 +127,6 @@ func updateUser() gin.HandlerFunc {
 			Firstname:   updated.Firstname,
 			Lastname:    updated.Lastname,
 		}
-
-		log.Infof("update user result: %+v", response)
 
 		c.JSONP(http.StatusOK, response)
 	}
@@ -230,6 +230,8 @@ func getUser() gin.HandlerFunc {
 		if err != nil {
 			log.WithError(err).WithField("userID",
 				user.ID).Error("could not get balance")
+			_ = c.Error(err)
+			return
 		}
 
 		res := Response{
@@ -275,11 +277,11 @@ func createUser() gin.HandlerFunc {
 			LastName:  req.LastName,
 		})
 		if err != nil {
-			log.WithError(err).Error("could not create user")
-			if errors.As(err, &users.ErrEmailMustBeUnique) {
+			if errors.Is(err, users.ErrEmailMustBeUnique) {
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrUserAlreadyExists)
 				return
 			}
+			log.WithError(err).Error("could not create user")
 			_ = c.Error(err)
 			return
 		}
