@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"runtime"
 	"strings"
@@ -22,11 +23,18 @@ func GetDatabaseConfig(name string) db.DatabaseConfig {
 	basePath := splitPath[0]
 
 	migrations := path.Join("file:", path.Clean(basePath), "db", "migrations")
+
+	port := 5434 // we have Postgres running in a docker container exposed on 5434
+	host := "localhost"
+	if os.Getenv("CI") != "" {
+		port = 5432 // but on CI it's running on the default port
+		host = "postgres"
+	}
 	return db.DatabaseConfig{
 		User:           "tlc_test",
 		Password:       "password",
-		Port:           5434, // we have Postgres running in a docker container exposed on 5434
-		Host:           "localhost",
+		Port:           port,
+		Host:           host,
 		Name:           "tlc_" + name,
 		MigrationsPath: migrations,
 	}
