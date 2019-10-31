@@ -76,6 +76,11 @@ var (
 		code: "ERR_INVALID_JSON",
 	}
 
+	errBodyRequired = apiError{
+		err:  errors.New("JSON body required"),
+		code: "ERR_BODY_REQUIRED",
+	}
+
 	// ErrUnknownError means we don't know exactly what went wrong
 	ErrUnknownError = apiError{
 		err:  errors.New("something went wrong"),
@@ -242,10 +247,15 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		// Check for JSON parsing errors
 		for _, err := range c.Errors {
 			var syntaxErr *json.SyntaxError
-			if errors.Is(err.Err, io.EOF) || errors.As(err.Err, &syntaxErr) {
+			if errors.Is(err.Err, io.EOF) {
+				response.ErrorField.Code = errBodyRequired.code
+				response.ErrorField.Message = errBodyRequired.err.Error()
+				c.JSON(http.StatusBadRequest, response)
+				return
+			} else if errors.As(err.Err, &syntaxErr) {
 				response.ErrorField.Code = errInvalidJson.code
 				response.ErrorField.Message = errInvalidJson.err.Error()
-				c.JSON(httpCode, response)
+				c.JSON(http.StatusBadRequest, response)
 				return
 			}
 		}

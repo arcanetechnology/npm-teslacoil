@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +43,7 @@ func setupRouter(middleware gin.HandlerFunc) *gin.Engine {
 		}
 		c.Status(200)
 	})
-	r.GET("/json", func(c *gin.Context) {
+	r.POST("/body", func(c *gin.Context) {
 		var req Request
 		if c.BindJSON(&req) != nil {
 			return
@@ -78,18 +79,9 @@ func assertErrorResponseOk(t *testing.T, w *httptest.ResponseRecorder, expectedF
 func TestJsonValidation(t *testing.T) {
 	t.Parallel()
 	t.Run("reject bad JSON body request", func(t *testing.T) {
-		t.Run("empty body", func(t *testing.T) {
-			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/json", emptyBody)
-			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
-			err := assertErrorResponseOk(t, w, 0)
-			testutil.AssertMsg(t, err.ErrorField.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.ErrorField.Code, errInvalidJson.code)
-		})
 		t.Run("Invalid JSON", func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/json",
+			req := httptest.NewRequest("POST", "/body",
 				bytes.NewBuffer([]byte(`{[{"foo": 2 }]`))) // missing }
 			router.ServeHTTP(w, req)
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
@@ -100,7 +92,7 @@ func TestJsonValidation(t *testing.T) {
 
 		t.Run("no parameters", func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/json", bytes.NewBuffer([]byte(`{}`)))
+			req := httptest.NewRequest("POST", "/body", bytes.NewBuffer([]byte(`{}`)))
 			router.ServeHTTP(w, req)
 			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
 			err := assertErrorResponseOk(t, w, 2)
@@ -120,7 +112,7 @@ func TestJsonValidation(t *testing.T) {
 
 		t.Run("just foo", func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/json", bytes.NewBuffer([]byte(`
+			req := httptest.NewRequest("POST", "/body", bytes.NewBuffer([]byte(`
 			{
 				"foo": 1
 			}
@@ -139,7 +131,7 @@ func TestJsonValidation(t *testing.T) {
 		})
 		t.Run("just bar", func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("GET", "/json", bytes.NewBuffer([]byte(`
+			req := httptest.NewRequest("POST", "/body", bytes.NewBuffer([]byte(`
 			{
 				"bar": "bazz"
 			}
@@ -158,8 +150,8 @@ func TestJsonValidation(t *testing.T) {
 
 	t.Run("accept good JSON request", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest("GET",
-			"/json",
+		req := httptest.NewRequest("POST",
+			"/body",
 			bytes.NewBuffer([]byte(`
 			{
 				"foo": 1238,
@@ -255,4 +247,14 @@ func TestPublicError(t *testing.T) {
 
 	err := assertErrorResponseOk(t, w, 0)
 	testutil.AssertEqual(t, err.ErrorField.Code, publicError.code)
+}
+
+func TestBodyRequired(t *testing.T) {
+	t.Parallel()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/body", emptyBody)
+	router.ServeHTTP(w, req)
+	assert.Equal(t, w.Code, http.StatusBadRequest)
+	err := assertErrorResponseOk(t, w, 0)
+	assert.True(t, errors.Is(err, errBodyRequired), err)
 }
