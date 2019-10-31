@@ -390,6 +390,12 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 		Path:        "/apikey",
 		Method:      "POST",
 		AccessToken: token,
+		Body: `{
+			"readWallet": true,
+			"createInvoice": true,
+			"sendTransaction": true,
+			"editAccount": true
+		}`,
 	})
 	apiKeyJson := harness.AssertResponseOkWithJson(t, apiKeyRequest)
 	apiKeyPath := "key"
