@@ -213,9 +213,10 @@ var Db = []cli.Flag{
 		Value: "localhost",
 	},
 	cli.IntFlag{
-		Name:  "db.port",
-		Usage: "Database port",
-		Value: 5434,
+		Name:   "db.port",
+		Usage:  "Database port",
+		Value:  5434,
+		EnvVar: "DATABASE_PORT",
 	},
 	cli.StringFlag{
 		Name:      "db.migrationspath",
