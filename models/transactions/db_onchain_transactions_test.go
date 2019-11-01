@@ -49,24 +49,23 @@ func TestInsertOnchainTransaction(t *testing.T) {
 			onchain := txtest.GenOnchain(user.ID)
 
 			inserted, err := transactions.InsertOnchain(testDB, onchain)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err, onchain)
 
 			onchain.CreatedAt = inserted.CreatedAt
 			onchain.UpdatedAt = inserted.UpdatedAt
 			if onchain.SettledAt != nil {
-				if onchain.SettledAt.Sub(*inserted.SettledAt) > time.Millisecond*500 {
-					testutil.AssertEqual(t, *onchain.SettledAt, *inserted.SettledAt)
-				}
+				assert.WithinDuration(t, *onchain.SettledAt, *inserted.SettledAt, time.Millisecond*300)
 				onchain.SettledAt = inserted.SettledAt
 			}
 
 			if onchain.ConfirmedAt != nil {
-				if onchain.ConfirmedAt.Sub(*inserted.ConfirmedAt) > time.Millisecond*500 {
-					testutil.AssertEqual(t, *onchain.ConfirmedAt, *inserted.ConfirmedAt)
-				}
+				assert.WithinDuration(t, *onchain.ConfirmedAt, *inserted.ConfirmedAt, time.Millisecond*500)
 				onchain.ConfirmedAt = inserted.ConfirmedAt
+			}
+
+			if onchain.ReceivedMoneyAt != nil {
+				assert.WithinDuration(t, *onchain.ReceivedMoneyAt, *inserted.ReceivedMoneyAt, time.Millisecond*100)
+				onchain.ReceivedMoneyAt = inserted.ReceivedMoneyAt
 			}
 
 			// ID should be created by DB for us
@@ -550,6 +549,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 		transaction.AmountSat = spent.AmountSat
 		transaction.Txid = spent.Txid
 		transaction.Vout = spent.Vout
+		transaction.ReceivedMoneyAt = spent.ReceivedMoneyAt
 
 		// we confirmed the TX
 		transaction.ConfirmedAtBlock = confirmed.ConfirmedAtBlock

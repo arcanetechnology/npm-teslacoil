@@ -86,6 +86,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetTransaction(t *testing.T) {
+	t.Parallel()
 	token, userId := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
@@ -94,6 +95,7 @@ func TestGetTransaction(t *testing.T) {
 	ids := createFakeDeposits(t, 3, token)
 
 	t.Run("reject request with bad ID parameter", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transaction/foobar",
@@ -103,6 +105,7 @@ func TestGetTransaction(t *testing.T) {
 	})
 
 	t.Run("not find non-existant TX", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        "/transaction/99999",
@@ -112,6 +115,7 @@ func TestGetTransaction(t *testing.T) {
 	})
 
 	t.Run("not find TX for other user", func(t *testing.T) {
+		t.Parallel()
 		otherUser := userstestutil.CreateUserOrFail(t, testDB)
 		txForOtherUser := txtest.InsertFakeIncomingOrFail(t, testDB, otherUser.ID)
 
@@ -125,6 +129,7 @@ func TestGetTransaction(t *testing.T) {
 	})
 
 	t.Run("can get transaction by ID", func(t *testing.T) {
+		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
 			Path:        fmt.Sprintf("/transaction/%d", ids[0]),
@@ -138,6 +143,7 @@ func TestGetTransaction(t *testing.T) {
 	})
 
 	t.Run("can get an offchain TX by ID", func(t *testing.T) {
+		t.Parallel()
 		tx := txtest.InsertFakeOffChainOrFail(t, testDB, userId)
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -152,6 +158,7 @@ func TestGetTransaction(t *testing.T) {
 	})
 
 	t.Run("can get an onchain TX by ID", func(t *testing.T) {
+		t.Parallel()
 		tx := txtest.InsertFakeOnChainOrFail(t, testDB, userId)
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -164,8 +171,37 @@ func TestGetTransaction(t *testing.T) {
 		assert.Equal(t, float64(tx.UserID), res["userId"])
 		assert.Equal(t, "blockchain", res["type"])
 	})
-}
 
+	t.Run("can get a onchain TX with funds", func(t *testing.T) {
+		t.Parallel()
+
+		tx := getOnchainWithMoney(userId)
+		inserted, err := transactions.InsertOnchain(testDB, tx)
+		require.NoError(t, err)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transaction/%d", inserted.ID),
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, float64(*inserted.AmountSat), res["amountSat"])
+		assert.Equal(t, float64(*inserted.Vout), res["vout"])
+		assert.Equal(t, *inserted.Txid, res["txid"])
+		const layout = "2006-01-02T15:04:05.000000Z"
+		foundTime, err := time.Parse(layout, res["createdAt"].(string))
+		require.NoError(t, err)
+
+		assert.WithinDuration(t, *inserted.ReceivedMoneyAt, foundTime, time.Millisecond*100)
+	})
+}
+func getOnchainWithMoney(userId int) transactions.Onchain {
+	tx := txtest.GenOnchain(userId)
+	if tx.Txid == nil {
+		return getOnchainWithMoney(userId)
+	}
+	return tx
+}
 func TestGetTransactionsBothKinds(t *testing.T) {
 	t.Parallel()
 

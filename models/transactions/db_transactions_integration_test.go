@@ -313,9 +313,11 @@ func TestEverything(t *testing.T) {
 			require.NotNil(t, foundTx.Txid)
 			require.NotNil(t, foundTx.AmountSat)
 			require.NotNil(t, foundTx.Vout)
+			require.NotNil(t, foundTx.ReceivedMoneyAt)
 
 			assert.Equal(t, int64(sats), *foundTx.AmountSat)
 			assert.Equal(t, txid.String(), *foundTx.Txid)
+			assert.WithinDuration(t, time.Now(), *foundTx.ReceivedMoneyAt, time.Millisecond*300)
 		})
 	})
 }
