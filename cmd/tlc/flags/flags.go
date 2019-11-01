@@ -202,9 +202,11 @@ var Db = []cli.Flag{
 		Required: true,
 	},
 	cli.StringFlag{
-		Name:  "db.name",
-		Usage: "Database name",
-		Value: "tlc",
+		Name:     "db.name",
+		Usage:    "Database name",
+		Value:    "tlc",
+		EnvVar:   "DATABASE_NAME",
+		Required: true,
 	},
 	cli.StringFlag{
 		Name:  "db.host",
