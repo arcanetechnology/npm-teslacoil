@@ -46,7 +46,7 @@ func (d *DB) getMigrate() (migrate.Migrate, error) {
 func (d *DB) MigrationStatus() (MigrationStatus, error) {
 	m, err := d.getMigrate()
 	if err != nil {
-		log.WithError(err).Error("could not get migration instance")
+		log.WithError(err).Error("ms: could not get migration instance")
 		return MigrationStatus{}, err
 	}
 
@@ -72,7 +72,7 @@ func (d *DB) MigrateUp() error {
 	log.WithField("migrationsPath", d.MigrationsPath).Info("Migrating up")
 	m, err := d.getMigrate()
 	if err != nil {
-		log.WithError(err).Error("could not get migration instance")
+		log.WithError(err).Error("mu: could not get migration instance")
 		return err
 	}
 
@@ -94,7 +94,7 @@ func (d *DB) MigrateUp() error {
 func (d *DB) MigrateDown(steps int) error {
 	m, err := d.getMigrate()
 	if err != nil {
-		log.WithError(err).Error("could not get migration instance")
+		log.WithError(err).Error("md: could not get migration instance")
 		return err
 	}
 
@@ -142,7 +142,7 @@ func (d *DB) CreateMigration(migrationText string) error {
 func (d *DB) ForceVersion(version int) error {
 	m, err := d.getMigrate()
 	if err != nil {
-		log.WithError(err).Error("could not get migration instance")
+		log.WithError(err).Error("fv: could not get migration instance")
 		return err
 	}
 
@@ -160,7 +160,7 @@ func (d *DB) ForceVersion(version int) error {
 func (d *DB) MigrateToVersion(version uint) error {
 	m, err := d.getMigrate()
 	if err != nil {
-		log.WithError(err).Error("could not get migration instance")
+		log.WithError(err).Error("mtv: could not get migration instance")
 		return err
 	}
 

@@ -66,10 +66,10 @@ func Open(conf DatabaseConfig) (*DB, error) {
 	}
 
 	log.WithFields(logrus.Fields{
-		"host":           databaseHostWithPort,
-		"user":           conf.User,
-		"database":       conf.Name,
 		"migrationsPath": conf.MigrationsPath,
+		"user":           conf.User,
+		"host":           databaseHostWithPort,
+		"database":       conf.Name,
 	}).Info("Opened connection to DB")
 
 	return &DB{
