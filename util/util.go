@@ -9,10 +9,22 @@ import (
 	"strconv"
 )
 
-const defaultPostgresPort = 5434
+const defaultPostgresPort = 5432
 
-// GetDatabasePort the `DATABASE_PORT` env var, falls back to 5434
+// GetDatabasePort the `DATABASE_PORT` env var, falls back to 5432
 func GetDatabasePort() int {
+
+	if databasePortStr := os.Getenv("DATABASE_PORT"); databasePortStr != "" {
+		databasePort, err := strconv.Atoi(databasePortStr)
+
+		if err != nil {
+			log.Fatalf("given database port (%s) is not a valid int", databasePortStr)
+
+		}
+
+		return databasePort
+
+	}
 	return defaultPostgresPort
 }
 
