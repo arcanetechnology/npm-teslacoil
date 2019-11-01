@@ -52,6 +52,38 @@ func Db() cli.Command {
 				},
 			},
 			{
+				Name:    "forceversion",
+				Aliases: []string{"fv"},
+				Usage:   "forceversion `version` sets the database version",
+				Flags: []cli.Flag{
+					cli.IntFlag{
+						Name:     "version",
+						Required: true,
+						Usage:    "version number to apply, must be an earlier version than current",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					conf := flags.ReadDbConf(c)
+					database, err := db.Open(conf)
+					if err != nil {
+						return err
+					}
+					defer func() {
+						if dbErr := database.Close(); dbErr != nil {
+							err = dbErr
+						}
+					}()
+					version := c.Int("version")
+
+					err = database.SetVersion(version)
+					if err != nil {
+						return err
+					}
+					log.WithField("version", version).Info("forced database version")
+					return nil
+				},
+			},
+			{
 				Name:    "up",
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
@@ -100,7 +132,6 @@ func Db() cli.Command {
 				Aliases: []string{"nm"},
 				Usage:   "newmigration `NAME`, creates new migration file",
 				Action: func(c *cli.Context) (err error) {
-
 					conf := flags.ReadDbConf(c)
 					database, err := db.Open(conf)
 					if err != nil {

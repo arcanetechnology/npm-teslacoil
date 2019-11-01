@@ -94,7 +94,7 @@ func ReadLnConf(c *cli.Context) (ln.LightningConfig, error) {
 	}, nil
 }
 
-// ReadBitcoindConfig reads the approriate flags for constructing a bitcoind configuration
+// ReadBitcoindConf reads the approriate flags for constructing a bitcoind configuration
 func ReadBitcoindConf(c *cli.Context) (bitcoind.Config, error) {
 
 	network, err := readNetwork(c)
@@ -202,11 +202,10 @@ var Db = []cli.Flag{
 		Required: true,
 	},
 	cli.StringFlag{
-		Name:     "db.name",
-		Usage:    "Database name",
-		Value:    "tlc",
-		EnvVar:   "DATABASE_NAME",
-		Required: true,
+		Name:   "db.name",
+		Usage:  "Database name",
+		Value:  "tlc",
+		EnvVar: "DATABASE_NAME",
 	},
 	cli.StringFlag{
 		Name:  "db.host",

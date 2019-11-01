@@ -18,40 +18,48 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-type migrationStatus struct {
+type MigrationStatus struct {
 	Dirty   bool
 	Version uint
 }
 
-// MigrationStatus returns the migrations verison number and dirtyness
-func (d *DB) MigrationStatus() (migrationStatus, error) {
-
+func (d *DB) getMigrate() (migrate.Migrate, error) {
 	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
-		return migrationStatus{}, err
+		return migrate.Migrate{}, err
 	}
 	m, err := migrate.NewWithDatabaseInstance(
 		d.MigrationsPath,
 		"postgres",
 		driver,
 	)
-
 	if err != nil {
-		return migrationStatus{}, err
+		return migrate.Migrate{}, err
+	}
+
+	return *m, nil
+}
+
+// MigrationStatus returns the migrations verison number and dirtyness
+func (d *DB) MigrationStatus() (MigrationStatus, error) {
+	m, err := d.getMigrate()
+	if err != nil {
+		log.WithError(err).Error("could not get migration instance")
+		return MigrationStatus{}, err
 	}
 
 	version, dirty, err := m.Version()
 	if err != nil {
 		// ErrNilVersion indicates no migrations have been applied at all
 		if errors.Is(err, migrate.ErrNilVersion) {
-			return migrationStatus{
+			return MigrationStatus{
 				Dirty:   true,
 				Version: 0,
 			}, nil
 		}
-		return migrationStatus{}, fmt.Errorf("could not get migration version: %w", err)
+		return MigrationStatus{}, fmt.Errorf("could not get migration version: %w", err)
 	}
-	return migrationStatus{
+	return MigrationStatus{
 		Dirty:   dirty,
 		Version: version,
 	}, nil
@@ -60,18 +68,9 @@ func (d *DB) MigrationStatus() (migrationStatus, error) {
 // MigrateUp Migrates everything up
 func (d *DB) MigrateUp() error {
 	log.WithField("migrationsPath", d.MigrationsPath).Info("Migrating up")
-	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
+	m, err := d.getMigrate()
 	if err != nil {
-		log.WithError(err).Error("Could not get Postgres instance")
-		return err
-	}
-	m, err := migrate.NewWithDatabaseInstance(
-		d.MigrationsPath,
-		"postgres",
-		driver,
-	)
-	if err != nil {
-		log.WithError(err).Error("Could not get migration instance")
+		log.WithError(err).Error("could not get migration instance")
 		return err
 	}
 
@@ -91,17 +90,9 @@ func (d *DB) MigrateUp() error {
 
 // MigrateDown migrates down
 func (d *DB) MigrateDown(steps int) error {
-	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
+	m, err := d.getMigrate()
 	if err != nil {
-		return err
-	}
-	m, err := migrate.NewWithDatabaseInstance(
-		d.MigrationsPath,
-		"postgres",
-		driver,
-	)
-
-	if err != nil {
+		log.WithError(err).Error("could not get migration instance")
 		return err
 	}
 
@@ -139,5 +130,21 @@ func (d *DB) CreateMigration(migrationText string) error {
 	if err := newMigrationFile(fileNameDown); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (d *DB) SetVersion(version int) error {
+	m, err := d.getMigrate()
+	if err != nil {
+		log.WithError(err).Error("could not get migration instance")
+		return err
+	}
+
+	err = m.Force(version)
+	if err != nil {
+		log.WithError(err).WithField("version", version).Error("could not set version")
+		return err
+	}
+
 	return nil
 }
