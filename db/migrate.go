@@ -3,8 +3,10 @@ package db
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,7 +135,11 @@ func (d *DB) CreateMigration(migrationText string) error {
 	return nil
 }
 
-func (d *DB) SetVersion(version int) error {
+// ForceVersion sets the migration version. It does not check any
+// currently active version in database. It resets the dirty state to false.
+// typically used if a migration failed, and you know which version the database
+// is currently in
+func (d *DB) ForceVersion(version int) error {
 	m, err := d.getMigrate()
 	if err != nil {
 		log.WithError(err).Error("could not get migration instance")
@@ -147,4 +153,55 @@ func (d *DB) SetVersion(version int) error {
 	}
 
 	return nil
+}
+
+// MigrateToVersion looks at the currently active migration version, then
+// migrates either up or down to the specified version.
+func (d *DB) MigrateToVersion(version uint) error {
+	m, err := d.getMigrate()
+	if err != nil {
+		log.WithError(err).Error("could not get migration instance")
+		return err
+	}
+
+	err = m.Migrate(version)
+	if err != nil {
+		log.WithError(err).WithField("version", version).Error("could not migrate to version")
+		return err
+	}
+
+	return nil
+}
+
+type MigrationFile struct {
+	Version     int
+	Description string
+}
+
+func (d *DB) ListVersions() []MigrationFile {
+	dir := d.MigrationsPath[5:]
+
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.WithError(err).WithField("migrationspath", dir).
+			Error("could not open migrationspath directory")
+	}
+
+	var migFiles []MigrationFile
+	for _, file := range files {
+		versionDesc := strings.SplitN(file.Name(), "_", 2)
+		version, err := strconv.ParseInt(versionDesc[0], 10, 64)
+		if err != nil {
+			log.WithError(err).WithField("version", versionDesc[0]).
+				Fatal("could not parse version")
+		}
+		description := strings.Split(versionDesc[1], ".")[0]
+
+		migFiles = append(migFiles, MigrationFile{
+			Version:     int(version),
+			Description: description,
+		})
+	}
+
+	return migFiles
 }

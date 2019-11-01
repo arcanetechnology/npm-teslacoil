@@ -215,7 +215,7 @@ var Db = []cli.Flag{
 	cli.IntFlag{
 		Name:  "db.port",
 		Usage: "Database port",
-		Value: 5432,
+		Value: 5434,
 	},
 	cli.StringFlag{
 		Name:      "db.migrationspath",
