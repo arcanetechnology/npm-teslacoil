@@ -4,7 +4,7 @@ go 1.13
 
 require (
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
-	github.com/btcsuite/btcd v0.0.0-20190926002857-ba530c4abb35
+	github.com/btcsuite/btcd v0.20.0-beta
 	github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
 	github.com/dchest/authcookie v0.0.0-20190824115100-f900d2294c8e // indirect
 	github.com/dchest/passwordreset v0.0.0-20190826080013-4518b1f41006
@@ -20,7 +20,7 @@ require (
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lib/pq v1.2.0
 	github.com/lightninglabs/gozmq v0.0.0-20190710231225-cea2a031735d
-	github.com/lightningnetwork/lnd v0.8.0-beta-rc2
+	github.com/lightningnetwork/lnd v0.8.0-beta-rc3
 	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d
 	github.com/pkg/errors v0.8.1
