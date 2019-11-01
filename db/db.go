@@ -1,41 +1,16 @@
 package db
 
 import (
+	"fmt"
 	"net/url"
-	"path"
-	"runtime"
 	"strconv"
-	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
-
-var (
-	// MigrationsPath is the migration path
-	MigrationsPath string
-)
-
-func init() {
-	// This is abstracted into a function because calling it directly inside
-	// creates the wrong path
-	setMigrationsPath()
-}
-
-func setMigrationsPath() {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		log.Fatal("Could not find path to migrations files")
-	}
-
-	splitPath := strings.SplitAfter(filename, "db")
-	basePath := splitPath[0]
-
-	MigrationsPath = path.Join(path.Clean(basePath), "migrations")
-
-}
 
 // DatabaseConfig has all the values we need to connect to a DB
 type DatabaseConfig struct {
@@ -46,11 +21,15 @@ type DatabaseConfig struct {
 	Port     int
 	// The name of the DB to connect to
 	Name string
+
+	// MigrationsPath is where our migrations are located
+	MigrationsPath string
 }
 
 // DB is our local DB struct
 type DB struct {
 	*sqlx.DB
+	MigrationsPath string
 }
 
 // Open fetched the database credentials from environment variables
@@ -86,21 +65,29 @@ func Open(conf DatabaseConfig) (*DB, error) {
 		)
 	}
 
-	log.Infof("opened connection to DB at %s", databaseHostWithPort)
+	log.WithFields(logrus.Fields{
+		"host":           databaseHostWithPort,
+		"user":           conf.User,
+		"database":       conf.Name,
+		"migrationsPath": conf.MigrationsPath,
+	}).Info("Opened connection to DB")
 
-	return &DB{d}, nil
+	return &DB{
+		DB:             d,
+		MigrationsPath: conf.MigrationsPath,
+	}, nil
 }
 
 // MigrateOrReset applies migrations to the DB. If already applied, drops
 // the db first, then applies migrations
-func (d *DB) MigrateOrReset(conf DatabaseConfig) error {
-	err := d.MigrateUp(path.Join("file://", MigrationsPath))
+func (d *DB) MigrateOrReset() error {
+	err := d.MigrateUp()
 
 	if err != nil {
 		log.WithError(err).Error("Error when migrating or resetting")
 		if err.Error() == "no change" {
 			log.Info("Resetting")
-			return d.Reset(conf)
+			return d.Reset()
 		}
 		log.Error(err)
 		return errors.Wrapf(err,
@@ -113,26 +100,21 @@ func (d *DB) MigrateOrReset(conf DatabaseConfig) error {
 }
 
 // Teardown drops the database, removing all data and schemas
-func (d *DB) Teardown(conf DatabaseConfig) error {
-	err := d.Drop(path.Join("file://", MigrationsPath))
+func (d *DB) Teardown() error {
+	err := d.Drop()
 	if err != nil {
-		return errors.Wrapf(err,
-			"teardownTestDB cannot connect to database %s with user %s at %s",
-			conf.Name,
-			conf.User,
-			conf.Host,
-		)
+		return fmt.Errorf("cannot teardown DB: %w", err)
 	}
 
 	return nil
 }
 
 // Reset first drops the DB, then applies migrations
-func (d *DB) Reset(conf DatabaseConfig) error {
-	if err := d.Teardown(conf); err != nil {
+func (d *DB) Reset() error {
+	if err := d.Teardown(); err != nil {
 		return err
 	}
-	if err := d.MigrateOrReset(conf); err != nil {
+	if err := d.MigrateOrReset(); err != nil {
 		return err
 	}
 
@@ -140,19 +122,19 @@ func (d *DB) Reset(conf DatabaseConfig) error {
 }
 
 // Drop drops the existing database
-func (d *DB) Drop(migrationsPath string) error {
+func (d *DB) Drop() error {
 	driver, err := postgres.WithInstance(d.DB.DB, &postgres.Config{})
 	if err != nil {
 		return err
 	}
 
 	migrator, err := migrate.NewWithDatabaseInstance(
-		migrationsPath,
+		d.MigrationsPath,
 		"postgres",
 		driver,
 	)
 	if err != nil {
-		log.Error(err)
+		log.WithError(err).Error("Could not get migrator")
 		return err
 	}
 

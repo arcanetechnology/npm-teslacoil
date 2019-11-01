@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/gin-gonic/gin/binding"
@@ -230,7 +229,7 @@ func (r *RestServer) registerAdminRoutes() {
 			return
 		}
 
-		migrationStatus, err := r.db.MigrationStatus(path.Join("file://", db.MigrationsPath))
+		migrationStatus, err := r.db.MigrationStatus()
 		if err != nil {
 			_ = c.Error(err)
 			return

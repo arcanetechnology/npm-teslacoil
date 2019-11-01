@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/grpc"
@@ -53,17 +53,10 @@ type LightningConfig struct {
 	// lnd
 	MacaroonPath string
 	Network      chaincfg.Params
-	RPCServer    string
+	RPCHost      string
 	RPCPort      int
 	// P2pPort is the port lnd listens to peer connections on
 	P2pPort int
-}
-
-func configDefaultLndDir() string {
-	if len(os.Getenv("LND_DIR")) != 0 {
-		return os.Getenv("LND_DIR")
-	}
-	return btcutil.AppDataDir("lnd", false)
 }
 
 // DefaultRelativeMacaroonPath extracts the macaroon path using a specific network
@@ -81,11 +74,6 @@ const (
 	DefaultRpcPort   = "10009"
 )
 
-var (
-	// DefaultLndDir is the default location of .lnd
-	DefaultLndDir = configDefaultLndDir()
-)
-
 // NewLNDClient opens a new connection to LND and returns the client
 func NewLNDClient(options LightningConfig) (
 	lnrpc.LightningClient, error) {
@@ -94,7 +82,8 @@ func NewLNDClient(options LightningConfig) (
 		TLSCertPath:  cleanAndExpandPath(options.TLSCertPath),
 		MacaroonPath: cleanAndExpandPath(options.MacaroonPath),
 		Network:      options.Network,
-		RPCServer:    options.RPCServer,
+		RPCHost:      options.RPCHost,
+		RPCPort:      options.RPCPort,
 	}
 
 	if cfg.TLSCertPath == "" {
@@ -134,17 +123,33 @@ func NewLNDClient(options LightningConfig) (
 	withTimeout, cancel := context.WithTimeout(backgroundContext, 5*time.Second)
 	defer cancel()
 
-	log.Infof("Connecting to LND with lnddir=%s, tlsCertPath=%s, macaroonPath=%s, network=%s, rpcServer=%s",
-		cfg.LndDir, cfg.TLSCertPath, cfg.MacaroonPath, cfg.Network.Name, cfg.RPCServer)
+	// grpc is having trouble connecting to host names that haven't been translated
+	addrs, err := net.LookupHost(cfg.RPCHost)
+	if err != nil {
+		return nil, fmt.Errorf("could not lookup host %q: %w", cfg.RPCHost, err)
+	}
+	translatedAddress := addrs[0] // there's always at least one element here if no err
 
-	conn, err := grpc.DialContext(withTimeout, cfg.RPCServer, opts...)
+	log.WithFields(logrus.Fields{
+		"certpath":     cfg.TLSCertPath,
+		"macaroonpath": cfg.MacaroonPath,
+		"network":      cfg.Network.Name,
+		"rpchost":      cfg.RPCHost,
+		"rpcport":      cfg.RPCPort,
+		"rpcaddr":      translatedAddress,
+	}).Info("Connecting to LND")
+
+	conn, err := grpc.DialContext(withTimeout, fmt.Sprintf("%s:%d", translatedAddress, cfg.RPCPort), opts...)
 	if err != nil {
 		err = fmt.Errorf("cannot dial to lnd: %w", err)
 		return nil, err
 	}
 	client := lnrpc.NewLightningClient(conn)
 
-	log.Infof("opened connection to lnd on %s", cfg.RPCServer)
+	log.WithFields(logrus.Fields{
+		"rpchost": cfg.RPCHost,
+		"rpcport": cfg.RPCPort,
+	}).Info("opened connection to LND")
 
 	return client, nil
 }
@@ -233,13 +238,14 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
 }
 
 func (l LightningConfig) String() string {
-	str := fmt.Sprintf("LndDir: %s\n", l.LndDir)
-	str += fmt.Sprintf("TLSCertPath: %s\n", l.TLSCertPath)
-	str += fmt.Sprintf("MacaroonPath: %s\n", l.MacaroonPath)
-	str += fmt.Sprintf("Network: %s\n", l.Network.Name)
-	str += fmt.Sprintf("RPCServer: %s\n", l.RPCServer)
-
-	return str
+	return strings.Join([]string{
+		fmt.Sprintf("LndDir: %s", l.LndDir),
+		fmt.Sprintf("TLSCertPath: %s", l.TLSCertPath),
+		fmt.Sprintf("MacaroonPath: %s", l.MacaroonPath),
+		fmt.Sprintf("Network: %s", l.Network.Name),
+		fmt.Sprintf("RPCHost: %s", l.RPCHost),
+		fmt.Sprintf("RPCPort: %d", l.RPCPort),
+	}, ", ")
 }
 
 const (

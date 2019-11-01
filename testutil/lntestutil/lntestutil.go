@@ -107,10 +107,10 @@ func GetLightingConfig(t *testing.T) ln.LightningConfig {
 		testutil.FatalMsgf(t, "Could not create temp lnd dir: %v", err)
 	}
 	return ln.LightningConfig{
-		LndDir:    tempDir,
-		Network:   chaincfg.RegressionNetParams,
-		RPCServer: fmt.Sprintf("localhost:%d", port),
-		RPCPort:   port,
-		P2pPort:   testutil.GetPortOrFail(t),
+		LndDir:  tempDir,
+		Network: chaincfg.RegressionNetParams,
+		RPCHost: "localhost",
+		RPCPort: port,
+		P2pPort: testutil.GetPortOrFail(t),
 	}
 }

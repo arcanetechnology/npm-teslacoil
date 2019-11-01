@@ -354,8 +354,8 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	require.NoError(t, err)
 	require.Contains(t, string(version[:len(version)-1]), "lnd version 0.8", "You need to have the latest version of LND installed!")
 
-	if lndConfig.RPCServer == "" {
-		testutil.FailMsg(t, "lndConfig.RPCServer needs to be set, was empty")
+	if lndConfig.RPCHost == "" {
+		testutil.FatalMsg(t, "lndConfig.RPCHost needs to be set, was empty")
 		return nil
 	}
 	if lndConfig.LndDir == "" {
@@ -390,7 +390,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		"--tlscertpath=" + lndConfig.TLSCertPath,
 		"--tlskeypath=" + lndConfig.TLSKeyPath,
 		"--adminmacaroonpath=" + lndConfig.MacaroonPath,
-		"--rpclisten=" + lndConfig.RPCServer,
+		fmt.Sprintf("--rpclisten=%s:%d", lndConfig.RPCHost, lndConfig.RPCPort),
 		fmt.Sprintf("--listen=%d", lndConfig.P2pPort),
 		fmt.Sprintf("--restlisten=%d", testutil.GetPortOrFail(t)),
 		"--bitcoind.rpcuser=" + bitcoindConfig.User,

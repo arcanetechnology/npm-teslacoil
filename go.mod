@@ -31,11 +31,10 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.3.0
 	github.com/ugorji/go v1.1.7 // indirect
-	github.com/urfave/cli v1.18.0
+	github.com/urfave/cli v1.22.1
 	golang.org/x/crypto v0.0.0-20190829043050-9756ffdc2472
 	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297 // indirect
 	google.golang.org/grpc v1.20.1
 	gopkg.in/go-playground/validator.v8 v8.18.2
 	gopkg.in/macaroon.v2 v2.1.0
-	gopkg.in/urfave/cli.v1 v1.20.0
 )

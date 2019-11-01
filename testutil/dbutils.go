@@ -2,21 +2,41 @@ package testutil
 
 import (
 	"fmt"
+	"os"
+	"path"
+	"runtime"
+	"strings"
 
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/util"
 )
 
 // GetDatabaseConfig returns a DB config suitable for testing purposes. The
 // given argument is added to the name of the database
 func GetDatabaseConfig(name string) db.DatabaseConfig {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatal("Could not find path to migrations files")
+	}
+
+	splitPath := strings.Split(filename, "testutil")
+	basePath := splitPath[0]
+
+	migrations := path.Join("file:", path.Clean(basePath), "db", "migrations")
+
+	port := 5434 // we have Postgres running in a docker container exposed on 5434
+	host := "localhost"
+	if os.Getenv("CI") != "" {
+		port = 5432 // but on CI it's running on the default port
+		host = "postgres"
+	}
 	return db.DatabaseConfig{
-		User:     "tlc_test",
-		Password: "password",
-		Port:     util.GetDatabasePort(),
-		Host:     util.GetEnvOrElse("DATABASE_HOST", "localhost"),
-		Name:     "tlc_" + name,
+		User:           "tlc_test",
+		Password:       "password",
+		Port:           port,
+		Host:           host,
+		Name:           "tlc_" + name,
+		MigrationsPath: migrations,
 	}
 }
 
@@ -87,12 +107,12 @@ func InitDatabase(config db.DatabaseConfig) *db.DB {
 		log.Fatalf("could not create test DB with config %+v: %v", config, err)
 	}
 
-	if err = testDB.Teardown(config); err != nil {
-		log.Fatalf("could not tear down test DB with config %+v: %v", config, err)
+	if err = testDB.Teardown(); err != nil {
+		log.Fatalf("could not tear down test DB: %v", err)
 	}
 
-	if err = testDB.MigrateOrReset(config); err != nil {
-		log.Fatalf("could not create test DB with config %+v: %v", config, err)
+	if err = testDB.MigrateOrReset(); err != nil {
+		log.Fatalf("could not create test database: %v", err)
 	}
 
 	return testDB

@@ -21,15 +21,8 @@ start-db:
 start-regtest-alice: 
 	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 
 
-migrate-up: build start-db
-	./tlc-dev db up
-
 drop: build start-db
 	./tlc-dev db drop --force
-
-dummy-data: build start-db migrate-up start-regtest-alice
-	./tlc-dev --network regtest db dummy --force --only-once
-	docker-compose stop alice bitcoind
 
 clean:
 	rm -f ${BINARIES}
@@ -45,10 +38,10 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-serve: dummy-data build
+serve: start-db build
 	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
 
-serve-testnet: dummy-data build
+serve-testnet: start-db build
 	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
 
 test-only: 
