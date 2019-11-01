@@ -31,14 +31,17 @@ func GetRandomLightningMockClient() LightningMockClient {
 		return again[:]
 	}
 
+	value := int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice))
+
 	return LightningMockClient{
 		InvoiceResponse: lnrpc.Invoice{
 			PaymentRequest: fmt.Sprintf("SomePayRequest%d", gofakeit.Number(0, 10000)),
 			RHash:          doubleHash(invoicePreimage),
 			RPreimage:      invoicePreimage,
 			Expiry:         1337,
-			Settled:        true,
-			Value:          int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
+			State:          lnrpc.Invoice_SETTLED,
+			Value:          value,
+			AmtPaidMsat:    value * 1000,
 		},
 		SendPaymentSyncResponse: lnrpc.SendResponse{
 			PaymentPreimage: paymentResponsePreimage,

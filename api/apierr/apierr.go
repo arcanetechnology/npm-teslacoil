@@ -253,8 +253,8 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		// public errors are errors that can be shown to the end user
 		publicErrors := c.Errors.ByType(gin.ErrorTypePublic)
 		if len(publicErrors) > 0 {
-			// we only take the last one because our error format only has space for one error. 
-			// as of writing, we immediately return from all places where we send a public error, 
+			// we only take the last one because our error format only has space for one error.
+			// as of writing, we immediately return from all places where we send a public error,
 			// so this shouldn't really matter
 			err := publicErrors.Last()
 			if apiErr, ok := err.Err.(apiError); ok {

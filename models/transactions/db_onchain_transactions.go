@@ -3,11 +3,9 @@ package transactions
 import (
 	"context"
 	"database/sql"
-	"encoding"
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -20,11 +18,8 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
-
-var log = build.Log
 
 var (
 	ErrNonPositiveAmount = errors.New("cannot send non-positiv amount")
@@ -34,37 +29,9 @@ var (
 	ErrBalanceTooLow = errors.New("balance is too low")
 )
 
-// Direction is the direction of a transaction, seen from the users perspective
-type Direction string
-
-func (d Direction) MarshalText() (text []byte, err error) {
-	lower := strings.ToLower(string(d))
-	return []byte(lower), nil
-}
-
-var _ encoding.TextMarshaler = INBOUND
-
-// Status is the status of a lightning payment
-type Status string
-
-func (s Status) MarshalText() (text []byte, err error) {
-	lower := strings.ToLower(string(s))
-	return []byte(lower), nil
-}
-
-var _ encoding.TextMarshaler = SUCCEEDED
-
-const (
-	INBOUND  Direction = "INBOUND"
-	OUTBOUND Direction = "OUTBOUND"
-
-	SUCCEEDED Status = "SUCCEEDED"
-	FAILED    Status = "FAILED"
-	OPEN      Status = "OPEN"
-)
-
 // InsertOnchain inserts the given onchain TX into the DB
 func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
+
 	converted := onchain.ToTransaction()
 	tx, err := insertTransaction(db, converted)
 	if err != nil {
@@ -76,6 +43,7 @@ func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 	}
 	// update the sats field
 	if tx.AmountMSat != nil {
+		// TODO: math.Round() ? math.Floor()?
 		sats := *tx.AmountMSat / 1000
 		insertedOnchain.AmountSat = &sats
 	}
@@ -99,17 +67,11 @@ func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 	}
 
 	return insertedOffchain, nil
-
 }
 
 // GetAllTransactions selects all the transactions for a user
 func GetAllTransactions(d *db.DB, userID int) ([]Transaction, error) {
 	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, 0)
-}
-
-// GetAllTransactionsLimit selects `limit` transactions for a user without an offset
-func GetAllTransactionsLimit(d *db.DB, userID int, limit int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(d, userID, limit, 0)
 }
 
 // GetAllTransactionsOffset selects all transactions for a given user with an `offset`
@@ -129,14 +91,15 @@ func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) 
 		LIMIT $2
 		OFFSET $3`
 
+	// we need to initialize this variable because an empty SELECT will not update `transactions`
 	transactions := []Transaction{}
 	err := d.Select(&transactions, query, userID, limit, offset)
 	if err != nil {
 		log.WithError(err).WithFields(logrus.Fields{
-			"limit":   limit,
-			"offset":  offset,
-			"usuerId": userID,
-		}).Error("Could not get transactions")
+			"limit":  limit,
+			"offset": offset,
+			"userID": userID,
+		}).Error("could not get transactions")
 		return transactions, err
 	}
 

@@ -568,7 +568,7 @@ func TestCreateInvoice(t *testing.T) {
 					apiKey = key
 				}
 
-				_, err = transactions.UpdateInvoiceStatus(*mockInvoice, testDB, mockHttpPoster)
+				_, err = transactions.HandleSettledInvoice(*mockInvoice, testDB, mockHttpPoster)
 				require.NoError(t, err)
 
 				checkPostSent := func() bool {

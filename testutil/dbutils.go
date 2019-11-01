@@ -80,19 +80,19 @@ func InitDatabase(config db.DatabaseConfig) *db.DB {
 	testDB, err := db.Open(config)
 
 	if err != nil {
-		log.Fatalf("Could not open test database: %+v\n", err)
+		log.Fatalf("could not open test DB with config %+v: %v", config, err)
 	}
 
 	if err = CreateIfNotExists(config); err != nil {
-		log.Fatalf("Could not create test DB: %v", err)
+		log.Fatalf("could not create test DB with config %+v: %v", config, err)
 	}
 
 	if err = testDB.Teardown(config); err != nil {
-		log.Fatalf("Could not tear down test DB: %v", err)
+		log.Fatalf("could not tear down test DB with config %+v: %v", config, err)
 	}
 
 	if err = testDB.MigrateOrReset(config); err != nil {
-		log.Fatalf("Could not create test database: %v", err)
+		log.Fatalf("could not create test DB with config %+v: %v", config, err)
 	}
 
 	return testDB

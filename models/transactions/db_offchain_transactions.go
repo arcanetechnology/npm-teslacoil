@@ -24,9 +24,13 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 )
 
+var log = logrus.New()
+
 var (
 	ErrCouldNotGetByID            = errors.New("could not get payment by ID")
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
+	ErrExpectedOpenStatus         = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_OPEN)])
+	ErrExpectedSettledStatus      = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_SETTLED)])
 )
 
 // CreateInvoice is used to Create an Invoice without a memo
@@ -57,7 +61,7 @@ func CreateInvoiceWithMemo(lncli ln.AddLookupInvoiceClient, amountSat int64,
 		lncli,
 		lnrpc.Invoice{
 			Memo:  memo,
-			Value: int64(amountSat),
+			Value: amountSat,
 		})
 	if err != nil {
 		err = errors.Wrap(err, "could not add invoice to lnd")
@@ -90,10 +94,9 @@ func (o NewOffchainOpts) toFields() logrus.Fields {
 }
 
 // NewOffchain creates a new payment by first creating an invoice
-// using lnd, then saving info returned from lnd to a new payment
-func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (Offchain, error) {
-	// We do not store the preimage until the payment is settled, to avoid the
-	// user getting the preimage before the invoice is settled
+// using lnd, then saving info returned from lnd to a new offchain tx
+func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (
+	Offchain, error) {
 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
 	if err != nil {
@@ -101,13 +104,15 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 		return Offchain{}, err
 	}
 
+	// We do not store the preimage until the payment is settled, to avoid the
+	// user getting the preimage before the invoice is settled
 	tx := Offchain{
 		UserID:         opts.UserID,
 		AmountMSat:     invoice.Value * 1000,
 		Expiry:         invoice.Expiry,
 		PaymentRequest: invoice.PaymentRequest,
 		HashedPreimage: invoice.RHash,
-		Status:         OPEN,
+		Status:         InvoiceStateToTeslaState[invoice.State],
 		Direction:      INBOUND,
 	}
 	if opts.Memo != "" {
@@ -144,6 +149,7 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 // Should the payment fail, we rollback all changes made to the DB
 func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 	paymentRequest string, description string) (Offchain, error) {
+
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
@@ -171,7 +177,7 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		PaymentRequest: paymentRequest,
 		HashedPreimage: hashedPreimage,
 		Expiry:         payreq.Expiry,
-		Status:         OPEN,
+		Status:         Offchain_CREATED,
 		Memo:           &payreq.Description,
 		Description:    &description,
 		Direction:      OUTBOUND,
@@ -199,7 +205,9 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return Offchain{}, ErrBalanceTooLow
 	}
 
-	// attempt to pay invoice
+	// TODO(bo): Add a websocket here, sending a message to the user that
+	//  the payment is initiated
+
 	paymentResponse, err := lncli.SendPaymentSync(
 		context.Background(), &lnrpc.SendRequest{
 			PaymentRequest: paymentRequest,
@@ -213,10 +221,10 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		"paymentError": paymentResponse.PaymentError,
 		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
 		"paymentRoute": paymentResponse.PaymentRoute,
-	}).Info("Tried sending payment")
+	}).Info("tried sending payment")
 
 	if paymentResponse.PaymentError != "" {
-		failed, err := payment.MarkAsFailed(db)
+		failed, err := payment.MarkAsFlopped(db)
 		if err != nil {
 			return Offchain{}, err
 		}
@@ -229,40 +237,75 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return Offchain{}, err
 	}
 
+	// TODO(bo): Add a websocket here, sending a message to the user that
+	//  the payment is completed
+
 	return paid, nil
 }
 
-// InvoiceStatusListener is
-func InvoiceStatusListener(invoiceUpdatesCh chan *lnrpc.Invoice,
+// InvoiceListener receives lnrpc.Invoices on a channel and handles them
+// according to their State
+func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 	database *db.DB, sender HttpPoster) {
 	for {
 		invoice := <-invoiceUpdatesCh
 		if invoice == nil {
-			log.Errorf("InvoiceStatusListener(): got invoice <nil> from invoiceUpdatesCh")
+			log.Errorf("got invoice <nil> from invoiceUpdatesCh")
 			return
 		}
-		hash := hex.EncodeToString(invoice.RHash)
-		log.WithField("hash",
-			hash,
-		).Info("Received invoice on invoice status listener")
-		updated, err := UpdateInvoiceStatus(*invoice, database, sender)
-		if err != nil {
-			log.WithError(err).Error("Error when updating invoice status")
-			// TODO: Here we need to handle the errors from UpdateInvoiceStatus
-		} else {
-			log.WithFields(logrus.Fields{"hash": hash,
-				"id":      updated.ID,
-				"settled": updated.SettledAt != nil},
-			).Info("Updated invoice status")
+
+		log.WithField("hash", hex.EncodeToString(invoice.RHash)).
+			Info("received invoice on invoice status listener")
+
+		var offchain Offchain
+		var err error
+		switch invoice.State {
+		case lnrpc.Invoice_OPEN: // created, not yet confirmed paid
+			log.WithField("paymentRequest", invoice.PaymentRequest).
+				Tracef("no action required for an OPEN invoice, logic handled in NewOffchain()")
+
+		case lnrpc.Invoice_SETTLED: // deposit success!
+			offchain, err = HandleSettledInvoice(*invoice, database, sender)
+
+		case lnrpc.Invoice_CANCELED | lnrpc.Invoice_ACCEPTED: // hold invoices
+			// we panic because somewhere in our code we used lncli.AddHoldInvoice(),
+			// but we're not ready for that yet
+			log.Panicf("hold invoices are not implemented yet")
+		default:
+			log.WithField("invoice", invoice).Error("invoice has unknown state")
 		}
+		if err != nil {
+			log.WithError(err).Error("could not update invoice status")
+			continue
+		}
+
+		log.WithFields(logrus.Fields{
+			"hash":   hex.EncodeToString(offchain.HashedPreimage),
+			"id":     offchain.ID,
+			"status": offchain.Status,
+		},
+		).Info("updated invoice status")
 	}
 }
 
-// UpdateInvoiceStatus receives messages from lnd's SubscribeInvoices
-// (newly added/settled invoices). If received payment was successful, updates
-// the payment stored in our DB.
-func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender HttpPoster) (
-	Offchain, error) {
+// HandleSettledInvoice allows you (at any point in time) to send in an invoice
+// and update the state in the database
+// invoices whose status is not settled is rejected and an error is returned
+func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
+	sender HttpPoster) (Offchain, error) {
+
+	if invoice.State != lnrpc.Invoice_SETTLED {
+		return Offchain{}, ErrExpectedSettledStatus
+	}
+
+	log.WithFields(logrus.Fields{
+		"paymentRequest":  invoice.PaymentRequest,
+		"amtPaidMilliSat": invoice.AmtPaidMsat,
+		"addIndex":        invoice.AddIndex,
+		"hash":            hex.EncodeToString(invoice.RHash),
+	}).Info("updating status of SETTLED invoice")
+
+	// select transactions
 	tQuery := "SELECT * FROM transactions WHERE payment_request=$1"
 
 	var selectTx Transaction
@@ -277,29 +320,31 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender
 			invoice.PaymentRequest,
 		)
 	}
-	payment, err := selectTx.ToOffchain()
+
+	offchainInvoice, err := selectTx.ToOffchain()
 	if err != nil {
 		return Offchain{}, err
 	}
 
-	log.WithFields(logrus.Fields{
-		"id": payment.ID,
-		// TODO: Settled is deprecated in lnd
-		"settled": invoice.Settled,
-	}).Debug("Updating invoice status of payment")
-
-	// TODO: Settled is deprecated in lnd
-	//  Figure out how to check whether an invoice is settled or not
-	if !invoice.Settled {
-		return Offchain{}, nil
-	}
-
 	now := time.Now()
-	payment.SettledAt = &now
-	payment.Status = SUCCEEDED
-	payment.Preimage = invoice.RPreimage
+	offchainInvoice.SettledAt = &now
+	offchainInvoice.Status = Offchain_COMPLETED
+	offchainInvoice.Preimage = invoice.RPreimage
 
-	updatedTx := payment.ToTransaction()
+	// TODO: In the lightning spec, it is allowed to pay up to 2x the invoice
+	//  amount (and the node should accept it). How do we make this clear to
+	//  the merchant? I imagine searching in amounts is pretty important
+	//  Should we add a new field to the db, e.g. overpaidAmount? and give it
+	//  to them every month? Keep it ourself?
+	if invoice.AmtPaidMsat != offchainInvoice.AmountMSat {
+		log.WithFields(logrus.Fields{
+			"expected": offchainInvoice.AmountMSat,
+			"paid":     invoice.AmtPaidMsat,
+		}).Warn("amount paid not equal to expected amount")
+	}
+	offchainInvoice.AmountMSat = invoice.AmtPaidMsat
+
+	updatedTx := offchainInvoice.ToTransaction()
 	updateOffchainTxQuery := `UPDATE transactions 
 		SET invoice_status = :invoice_status, settled_at = :settled_at, preimage = :preimage
 		WHERE hashed_preimage = :hashed_preimage ` + txReturningSql
@@ -323,6 +368,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender
 		return Offchain{}, fmt.Errorf("could not convert TX to offchain TX: %w", err)
 	}
 
+	// call the callback URL(if exists)
 	if inserted.CallbackURL != nil {
 		if err = postCallback(database, inserted, sender); err != nil {
 			// don't return here, we don't want this to fail the entire
@@ -330,7 +376,7 @@ func UpdateInvoiceStatus(invoice lnrpc.Invoice, database db.InsertGetter, sender
 			log.WithError(err).Error("Could not POST to callback URL")
 		}
 	} else {
-		log.WithField("id", payment.ID).Debug("Invoice did not have callback URL")
+		log.WithField("id", offchainInvoice.ID).Debug("invoice did not have callback URL")
 	}
 
 	return inserted, nil
@@ -395,7 +441,7 @@ func postCallback(database db.Getter, payment Offchain, sender HttpPoster) error
 				response = res
 				return err
 			}
-			err = async.Retry(5, time.Millisecond*1000, retry)
+			err = async.RetryBackoff(5, time.Millisecond*1000, retry)
 			if err != nil {
 				logger.WithError(err).Error("Error when POSTing callback")
 			} else {
