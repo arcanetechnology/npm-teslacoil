@@ -51,7 +51,7 @@ services:
         # prevents us from reading the files we need
         uid: $uid
         gid: $gid
-        LND_VERSION: '0.8.0-beta-rc2'
+        LND_VERSION: '0.8.0-beta-rc3'
     environment:
       - RPCUSER
       - RPCPASS

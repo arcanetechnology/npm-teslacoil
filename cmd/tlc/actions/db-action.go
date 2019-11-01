@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/urfave/cli"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -52,6 +53,96 @@ func Db() cli.Command {
 				},
 			},
 			{
+				Name:    "listversions",
+				Aliases: []string{"lv"},
+				Usage:   "listversion lists all the migration versions with their description",
+				Action: func(c *cli.Context) error {
+					conf := flags.ReadDbConf(c)
+					database, err := db.Open(conf)
+					if err != nil {
+						return err
+					}
+					defer func() {
+						if dbErr := database.Close(); dbErr != nil {
+							err = dbErr
+						}
+					}()
+					files := database.ListVersions()
+
+					var s []string
+					for _, file := range files {
+						s = append(s, fmt.Sprintf("version: %d - %s", file.Version, file.Description))
+					}
+
+					fmt.Println(strings.Join(s, "\n"))
+					return nil
+				},
+			},
+			{
+				Name:    "forceversion",
+				Aliases: []string{"fv"},
+				Usage:   "forceversion forces the database version, and resets the dirty state to false",
+				Flags: []cli.Flag{
+					cli.IntFlag{
+						Name:     "version",
+						Required: true,
+						Usage:    "version number you know the database is currently at",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					conf := flags.ReadDbConf(c)
+					database, err := db.Open(conf)
+					if err != nil {
+						return err
+					}
+					defer func() {
+						if dbErr := database.Close(); dbErr != nil {
+							err = dbErr
+						}
+					}()
+					version := c.Int("version")
+
+					err = database.ForceVersion(version)
+					if err != nil {
+						return err
+					}
+					log.WithField("version", version).Info("forced database version")
+					return nil
+				},
+			},
+			{
+				Name:    "migrateto",
+				Aliases: []string{"mt"},
+				Usage:   "migrateto looks at the currently active migration version, then migrates either up or down to the specified version",
+				Flags: []cli.Flag{
+					cli.IntFlag{
+						Name:     "version",
+						Required: true,
+						Usage:    "version to migrate to",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					conf := flags.ReadDbConf(c)
+					database, err := db.Open(conf)
+					if err != nil {
+						return err
+					}
+					defer func() {
+						if dbErr := database.Close(); dbErr != nil {
+							err = dbErr
+						}
+					}()
+					version := c.Uint("version")
+
+					err = database.MigrateToVersion(version)
+					if err != nil {
+						return err
+					}
+					log.WithField("version", version).Info("forced database version")
+					return nil
+				},
+			},
+			{
 				Name:    "up",
 				Aliases: []string{"mu"},
 				Usage:   "migrates the database up",
@@ -71,7 +162,8 @@ func Db() cli.Command {
 
 					return
 				},
-			}, {
+			},
+			{
 				Name:    "status",
 				Aliases: []string{"s"},
 				Usage:   "check migrations status and version number",
@@ -92,15 +184,15 @@ func Db() cli.Command {
 						return err
 					}
 
-					fmt.Printf("Migration version: %d. Is dirty: %t\n", status.Version, status.Dirty)
+					fmt.Printf("migration version: %d dirty: %t\n", status.Version, status.Dirty)
 					return nil
 				},
-			}, {
+			},
+			{
 				Name:    "newmigration",
 				Aliases: []string{"nm"},
 				Usage:   "newmigration `NAME`, creates new migration file",
 				Action: func(c *cli.Context) (err error) {
-
 					conf := flags.ReadDbConf(c)
 					database, err := db.Open(conf)
 					if err != nil {
@@ -120,7 +212,8 @@ func Db() cli.Command {
 
 					return database.CreateMigration(migrationText)
 				},
-			}, {
+			},
+			{
 				Name:    "drop",
 				Aliases: []string{"dr"},
 				Usage:   "drops the entire database.",
