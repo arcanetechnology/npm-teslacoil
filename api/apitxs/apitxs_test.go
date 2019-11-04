@@ -704,6 +704,34 @@ func TestWithdrawOnChain(t *testing.T) {
 		testutil.AssertEqual(t, apierr.ErrBalanceTooLow, err)
 
 	})
+
+	t.Run("fail to withdraw with bad API key permission", func(t *testing.T) {
+		t.Parallel()
+
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+
+		key, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{
+			ReadWallet:    true,
+			CreateInvoice: true,
+			EditAccount:   true,
+		})
+		require.NoError(t, err)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: key.String(),
+			Path:        "/withdraw",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+			"amountSat": %d,
+			"address": %q
+		}`, 1337, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
+		})
+
+		_, err = h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
+		assert.True(t, apierr.ErrBadApiKey.Is(err), err)
+
+	})
 }
 
 func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, description string) int {

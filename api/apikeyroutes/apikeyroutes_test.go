@@ -3,13 +3,13 @@ package apikeyroutes_test
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -134,7 +134,7 @@ func TestCreateApiKey(t *testing.T) {
 
 	t.Run("create an API key", func(t *testing.T) {
 		perm := apikeys.RandomPermissionSet()
-		bodyBytes, err := jsoniter.Marshal(perm)
+		bodyBytes, err := json.Marshal(perm)
 		body := string(bodyBytes)
 		require.NoError(t, err)
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -143,13 +143,13 @@ func TestCreateApiKey(t *testing.T) {
 			Method:      "POST",
 			Body:        body,
 		})
-		json := h.AssertResponseOkWithJson(t, req)
+		res := h.AssertResponseOkWithJson(t, req)
 
-		assert.NotNil(t, json["key"])
-		assert.Equal(t, perm.ReadWallet, json["readWallet"])
-		assert.Equal(t, perm.CreateInvoice, json["createInvoice"])
-		assert.Equal(t, perm.SendTransaction, json["sendTransaction"])
-		assert.Equal(t, perm.EditAccount, json["editAccount"])
+		assert.NotNil(t, res["key"])
+		assert.Equal(t, perm.ReadWallet, res["readWallet"])
+		assert.Equal(t, perm.CreateInvoice, res["createInvoice"])
+		assert.Equal(t, perm.SendTransaction, res["sendTransaction"])
+		assert.Equal(t, perm.EditAccount, res["editAccount"])
 
 		t.Run("creating a new key should yield a different one", func(t *testing.T) {
 
@@ -160,9 +160,9 @@ func TestCreateApiKey(t *testing.T) {
 				Body:        body,
 			})
 			newJson := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertNotEqual(t, json["key"], newJson["key"])
-			testutil.AssertEqual(t, json["userId"], newJson["userId"])
-			testutil.AssertNotEqual(t, json["userId"], nil)
+			assert.NotEqual(t, res["key"], newJson["key"])
+			assert.Equal(t, res["userId"], newJson["userId"])
+			assert.NotNil(t, res["userId"])
 		})
 	})
 }

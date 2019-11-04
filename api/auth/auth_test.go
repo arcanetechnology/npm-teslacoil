@@ -12,6 +12,8 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -49,6 +51,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestCreateJWT(t *testing.T) {
+	t.Parallel()
 	email := gofakeit.Email()
 	id := gofakeit.Number(
 		0,
@@ -63,12 +66,13 @@ func TestCreateJWT(t *testing.T) {
 	if err != nil {
 		testutil.FatalMsg(t, err)
 	}
-	testutil.AssertMsg(t, parsed.Valid, "Token was invalid")
-	testutil.AssertEqual(t, claims.UserID, id)
-	testutil.AssertEqual(t, claims.Email, email)
+	assert.True(t, parsed.Valid, "Token was invalid")
+	assert.Equal(t, claims.UserID, id)
+	assert.Equal(t, claims.Email, email)
 }
 
 func TestParseBearerJwt(t *testing.T) {
+	t.Parallel()
 	email := gofakeit.Email()
 	id := gofakeit.Number(
 		0,
@@ -82,11 +86,10 @@ func TestParseBearerJwt(t *testing.T) {
 			privateKey: wrongJwtPrivKey,
 		}
 		token, err := createJwt(args)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		_, _, err = parseBearerJwt(token)
-		testutil.AssertEqual(t, err, rsa.ErrVerification)
+		require.NotNil(t, err)
+		assert.Equal(t, err.Error(), rsa.ErrVerification.Error())
 	})
 
 	t.Run("Parsing a JWT with a bad key should not work", func(t *testing.T) {
@@ -106,10 +109,18 @@ func setupRouter(middleware gin.HandlerFunc) *gin.Engine {
 	r.GET("/ping", func(c *gin.Context) {
 		c.Status(200)
 	})
+	r.GET("/scope-test", func(c *gin.Context) {
+		_, ok := RequireScope(c, ReadWallet)
+		if !ok {
+			return
+		}
+		c.Status(200)
+	})
 	return r
 }
 
 func TestGetMiddleware(t *testing.T) {
+	t.Parallel()
 	middleware := GetMiddleware(testDB)
 	router := setupRouter(middleware)
 	emptyBody := bytes.NewBuffer([]byte(""))
@@ -168,7 +179,7 @@ func TestGetMiddleware(t *testing.T) {
 		}
 		req.Header.Add(Header, token)
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusUnauthorized)
+		assert.Equal(t, w.Code, http.StatusUnauthorized)
 
 	})
 
@@ -188,7 +199,7 @@ func TestGetMiddleware(t *testing.T) {
 		}
 		req.Header.Add(Header, token)
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusUnauthorized)
+		assert.Equal(t, w.Code, http.StatusUnauthorized)
 
 	})
 
@@ -201,7 +212,7 @@ func TestGetMiddleware(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, apiKey.String())
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusOK)
+		assert.Equal(t, w.Code, http.StatusOK)
 	})
 
 	t.Run("not authentiate with non-existant key", func(t *testing.T) {
@@ -210,7 +221,7 @@ func TestGetMiddleware(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, key)
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusUnauthorized)
+		assert.Equal(t, w.Code, http.StatusUnauthorized)
 	})
 
 	t.Run("not authenticate with malformed key", func(t *testing.T) {
@@ -218,6 +229,30 @@ func TestGetMiddleware(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, "api-key-in-here")
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+		assert.Equal(t, w.Code, http.StatusBadRequest)
+	})
+	t.Run("authenticate with scopes", func(t *testing.T) {
+		key, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{
+			CreateInvoice:   true,
+			SendTransaction: true,
+			EditAccount:     true,
+		})
+		require.NoError(t, err)
+		badW := httptest.NewRecorder()
+		badReq, _ := http.NewRequest("GET", "/scope-test", emptyBody)
+		badReq.Header.Add(Header, key.String())
+		router.ServeHTTP(badW, badReq)
+		assert.Equal(t, http.StatusUnauthorized, badW.Code)
+
+		otherKey, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{
+			ReadWallet: true,
+		})
+		require.NoError(t, err)
+		goodW := httptest.NewRecorder()
+		goodReq, _ := http.NewRequest("GET", "/scope-test", emptyBody)
+		goodReq.Header.Add(Header, otherKey.String())
+		router.ServeHTTP(goodW, goodReq)
+		assert.Equal(t, http.StatusOK, goodW.Code)
+
 	})
 }

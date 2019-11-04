@@ -54,7 +54,7 @@ func getByHash(c *gin.Context) {
 		Hash string `uri:"hash" binding:"required,hexadecimal"`
 	}
 
-	userId, ok := auth.GetUserIdOrReject(c)
+	userId, ok := auth.RequireScope(c, auth.ReadWallet)
 	if !ok {
 		return
 	}
@@ -88,7 +88,7 @@ func getByHash(c *gin.Context) {
 }
 
 func getAllForUser(c *gin.Context) {
-	id, ok := auth.GetUserIdOrReject(c)
+	id, ok := auth.RequireScope(c, auth.ReadWallet)
 	if !ok {
 		return
 	}
@@ -110,7 +110,7 @@ func createApiKey() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.ReadWallet)
 		if !ok {
 			return
 		}

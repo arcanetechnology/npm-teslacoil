@@ -13,11 +13,10 @@ import (
 	"strconv"
 	"unicode"
 
-	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
-
 	"github.com/gin-gonic/gin"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gopkg.in/go-playground/validator.v8"
 )
@@ -136,6 +135,11 @@ var (
 	ErrApiKeyNotFound = apiError{
 		err:  errors.New("API key not found"),
 		code: "ERR_API_KEY_NOT_FOUND",
+	}
+	// ErrBadApiKey means the given API key did not have the correct permissions
+	ErrBadApiKey = apiError{
+		err:  errors.New("the given API key does not have the correct permissions"),
+		code: "ERR_BAD_API_KEY",
 	}
 	//ErrMalformedJwt means the given JWT was malformed
 	ErrMalformedJwt = apiError{

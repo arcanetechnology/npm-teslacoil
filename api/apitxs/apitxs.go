@@ -61,7 +61,7 @@ func getAllTransactions() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.ReadWallet)
 		if !ok {
 			return
 		}
@@ -96,7 +96,7 @@ func getTransactionByID() gin.HandlerFunc {
 		ID int `uri:"id" binding:"required"`
 	}
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.ReadWallet)
 		if !ok {
 			return
 		}
@@ -126,7 +126,7 @@ func getTransactionByID() gin.HandlerFunc {
 // TODO: verify dust limits
 func withdrawOnChain() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.SendTransaction)
 		if !ok {
 			return
 		}
@@ -165,7 +165,7 @@ func newDeposit() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.CreateInvoice)
 		if !ok {
 			return
 		}
@@ -198,7 +198,7 @@ func createInvoice() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.CreateInvoice)
 
 		if !ok {
 			return
@@ -237,7 +237,7 @@ func payInvoice() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.SendTransaction)
 		if !ok {
 			return
 		}
