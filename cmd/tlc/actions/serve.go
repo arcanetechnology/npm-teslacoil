@@ -137,7 +137,7 @@ func Serve() cli.Command {
 						}
 					}
 
-					err := dummy.FillWithData(database, lncli, c.Bool("dummy.only-once"))
+					err := dummy.FillWithData(database, c.Bool("dummy.only-once"))
 					if err != nil {
 						return err
 					}

@@ -1,24 +1,30 @@
 package dummy
 
 import (
+	"errors"
+	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/brianvoe/gofakeit"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-
-	"github.com/brianvoe/gofakeit"
-	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/teslacoil/db"
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 )
 
 var log = build.Log
 
+func init() {
+	rand.Seed(time.Now().Unix())
+}
+
 // FillWithData populates the database with dummy data
-func FillWithData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) error {
+func FillWithData(d *db.DB, onlyOnce bool) error {
 	log.WithField("onlyOnce", onlyOnce).Info("Populating DB with dummy data")
 	gofakeit.Seed(time.Now().UnixNano())
 
@@ -49,71 +55,25 @@ func FillWithData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) error {
 
 		token, err := users.GetEmailVerificationToken(d, firstUser.Email)
 		if err != nil {
-			return errors.Wrap(err, "could not get email verification token")
+			return fmt.Errorf("could not get email verification token: %w", err)
 		}
 
 		verified, err := users.VerifyEmail(d, token)
 		if err != nil {
-			return errors.Wrap(err, "could not verify email")
+			return fmt.Errorf("could not verify email: %w", err)
 		}
 
-		if err = createPaymentsForUser(d, lncli, verified); err != nil {
-			return err
-		}
+		createTxsForUser(d, verified)
 	} else {
 		log.Debug("Not creating initial user")
 	}
 
 	userCount := 20
-	createUser := func(wg *sync.WaitGroup) {
-		defer wg.Done()
-
-		var first string
-		var last string
-		if gofakeit.Bool() {
-			first = gofakeit.FirstName()
-		}
-
-		if gofakeit.Bool() {
-			last = gofakeit.LastName()
-		}
-
-		user, err := users.Create(d, users.CreateUserArgs{
-			Email:     gofakeit.Email(),
-			Password:  gofakeit.Password(true, true, true, true, true, 32),
-			FirstName: &first,
-			LastName:  &last,
-		})
-		if err != nil {
-			log.WithError(err).Error("Could not create user")
-			return
-		}
-
-		token, err := users.GetEmailVerificationToken(d, user.Email)
-		if err != nil {
-			log.WithError(err).Error("Could not get email verification token")
-			return
-		}
-
-		verified, err := users.VerifyEmail(d, token)
-		if err != nil {
-			log.WithError(err).Error("Could not verify email")
-			return
-		}
-
-		log.WithField("userId", verified.ID).Debug("Generated user")
-
-		if err := createPaymentsForUser(d, lncli, verified); err != nil {
-			log.WithError(err).WithField("user", verified).Error("Could not create payments")
-			return
-		}
-		log.WithField("userId", verified.ID).Debug("Created payments for user")
-	}
 
 	var wg sync.WaitGroup
 	for u := 1; u <= userCount; u++ {
 		wg.Add(1)
-		go createUser(&wg)
+		go createUser(d, &wg)
 	}
 
 	wg.Wait()
@@ -122,58 +82,104 @@ func FillWithData(d *db.DB, lncli lnrpc.LightningClient, onlyOnce bool) error {
 	return nil
 }
 
-func createPaymentsForUser(db *db.DB, lncli lnrpc.LightningClient,
-	user users.User) error {
-	paymentCount := gofakeit.Number(0, 20)
+func createUser(d *db.DB, wg *sync.WaitGroup) {
+	var first string
+	var last string
+	if gofakeit.Bool() {
+		first = gofakeit.FirstName()
+	}
 
-	for p := 1; p <= paymentCount; p++ {
-		amountSat := gofakeit.Number(0, 4294967)
-		var description string
+	if gofakeit.Bool() {
+		last = gofakeit.LastName()
+	}
+
+	user, err := users.Create(d, users.CreateUserArgs{
+		Email:     gofakeit.Email(),
+		Password:  gofakeit.Password(true, true, true, true, true, 32),
+		FirstName: &first,
+		LastName:  &last,
+	})
+	if err != nil {
+		log.WithError(err).Error("Could not create user")
+		return
+	}
+
+	token, err := users.GetEmailVerificationToken(d, user.Email)
+	if err != nil {
+		log.WithError(err).Error("Could not get email verification token")
+		return
+	}
+
+	verified, err := users.VerifyEmail(d, token)
+	if err != nil {
+		log.WithError(err).Error("Could not verify email")
+		return
+	}
+
+	log.WithField("userId", verified.ID).Debug("Generated user")
+
+	go func() {
+		createTxsForUser(d, verified)
+		log.WithField("userId", verified.ID).Debug("Created payments for user")
+		wg.Done()
+	}()
+}
+
+const maxTxs = 40
+const minTxs = 20
+
+func genOffchain(user users.User) transactions.Offchain {
+	tx := txtest.GenOffchain(user.ID)
+	// we want a bias towards incoming TXs, so we end up with positive balance
+	if rand.Intn(10) > 2 && tx.Direction == transactions.OUTBOUND {
+		return genOffchain(user)
+	}
+	return tx
+}
+
+func genOnchain(user users.User) transactions.Onchain {
+	tx := txtest.GenOnchain(user.ID)
+	// we want a bias towards incoming TXs, so we end up with positive balance
+	if rand.Intn(10) > 2 && tx.Direction == transactions.OUTBOUND {
+		return genOnchain(user)
+	}
+	return tx
+
+}
+
+func createTxsForUser(db *db.DB, user users.User) {
+	txCount := gofakeit.Number(minTxs, maxTxs)
+
+	for p := 1; p <= txCount; p++ {
 		if gofakeit.Bool() {
-			desc := gofakeit.HipsterSentence(8)
-			description = desc
-		}
-
-		var memo string
-		if gofakeit.Bool() {
-			mem := gofakeit.HipsterSentence(6)
-			memo = mem
-		}
-
-		inv, err := transactions.NewOffchain(db, lncli, transactions.NewOffchainOpts{
-			UserID:      user.ID,
-			AmountSat:   int64(amountSat),
-			Memo:        memo,
-			Description: description,
-		})
-
-		if err != nil {
-			return err
-		}
-
-		log.Debugf("Generated invoice for user %d: %v", user.ID, inv)
-
-		if gofakeit.Bool() {
-
-			// 24 hours x 7 days x 12 weeks
-			const twelveWeeks = time.Hour * 24 * 7 * 12
-			twelveWeeksNanos := twelveWeeks.Nanoseconds()
-			nanos := gofakeit.Number(0, int(twelveWeeksNanos))
-			duration := time.Duration(nanos)
-			paidAt := inv.CreatedAt.Add(duration)
-
-			paid, err := inv.MarkAsPaid(db, paidAt)
-
+			off := genOffchain(user)
+			inserted, err := transactions.InsertOffchain(db, off)
 			if err != nil {
-				log.WithError(err).Debug("Could not mark invoice as paid")
-				return err
+				log.WithError(err).Error("Could not insert offchain dummy TX")
 			} else {
 				log.WithFields(logrus.Fields{
-					"settledAt": paid.SettledAt,
-					"userId":    paid.UserID,
-				}).Debug("Updated invoice for user")
+					"userId": user.ID,
+					"id":     inserted.ID,
+				}).Debug("Inserted dummy offchain TX")
+			}
+		} else {
+			on := genOnchain(user)
+			inserted, err := transactions.InsertOnchain(db, on)
+			if err != nil {
+				log.WithError(err).Error("Could not insert onchain dummy TX")
+			} else {
+				log.WithFields(logrus.Fields{
+					"userId": user.ID,
+					"id":     inserted.ID,
+				}).Debug("Inserted dummy on TX")
 			}
 		}
 	}
-	return nil
+
+	// verify that the user has positive balance, otherwise keep on chugging
+	// until we're positive
+	_, err := balance.ForUser(db, user.ID)
+	if errors.Is(err, balance.ErrUserHasNegativeBalance) {
+		createTxsForUser(db, user)
+	}
 }
