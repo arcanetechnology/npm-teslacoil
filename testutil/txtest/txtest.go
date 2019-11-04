@@ -294,7 +294,7 @@ func InsertFundedIncoming(t *testing.T, db db.Inserter, minAmountSats, userId in
 	tx := fundedIncoming(minAmountSats, userId)
 	if on, err := tx.ToOnchain(); err == nil {
 		inserted, err := transactions.InsertOnchain(db, on)
-		require.NoError(t, err)
+		require.NoError(t, err, on)
 		return inserted.ToTransaction()
 	}
 
