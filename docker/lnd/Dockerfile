@@ -1,6 +1,6 @@
 # This Dockerfile is based on the official LND Dockerfile by roasbeef
 
-FROM golang:1.12-alpine as builder
+FROM golang:1.13-alpine as builder
 
 # The version of LND to install
 ARG LND_VERSION
