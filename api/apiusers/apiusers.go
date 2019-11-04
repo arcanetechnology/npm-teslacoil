@@ -65,7 +65,7 @@ func updateUser() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.EditAccount)
 		if !ok {
 			return
 		}
@@ -199,7 +199,7 @@ func verifyEmail() gin.HandlerFunc {
 // the one specified in the body
 func getUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.ReadWallet)
 		if !ok {
 			return
 		}

@@ -598,7 +598,7 @@ func TestCreateInvoice(t *testing.T) {
 				if keys, err := apikeys.GetByUserId(testDB, user.ID); err == nil && len(keys) > 0 {
 					apiKey = keys[0]
 					// if not, try to create one, fail it if doesn't work
-				} else if _, key, err := apikeys.New(testDB, user.ID); err != nil {
+				} else if _, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions); err != nil {
 					testutil.FatalMsg(t, err)
 				} else {
 					apiKey = key
@@ -702,6 +702,34 @@ func TestWithdrawOnChain(t *testing.T) {
 
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 		testutil.AssertEqual(t, apierr.ErrBalanceTooLow, err)
+
+	})
+
+	t.Run("fail to withdraw with bad API key permission", func(t *testing.T) {
+		t.Parallel()
+
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+
+		key, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{
+			ReadWallet:    true,
+			CreateInvoice: true,
+			EditAccount:   true,
+		})
+		require.NoError(t, err)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: key.String(),
+			Path:        "/withdraw",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+			"amountSat": %d,
+			"address": %q
+		}`, 1337, "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"),
+		})
+
+		_, err = h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
+		assert.True(t, apierr.ErrBadApiKey.Is(err), err)
 
 	})
 }

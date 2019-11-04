@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ const (
 	// userIdVariable is the Gin variable we store the authenticated user ID
 	// as
 	userIdVariable = "user-id"
+	// permissionsVariable is the Gin variable we store the authenticated users
+	// permissons set under
+	permissionsVariable = "user-permissions"
 )
 
 var (
@@ -105,14 +109,21 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 		}
 		var userID int
 		var err error
+		var permissions apikeys.Permissions
 		if strings.HasPrefix(header, "Bearer ") {
 			userID, err = authenticateJWT(c)
+			if err != nil {
+				return
+			}
+			permissions = apikeys.AllPermissions
 		} else {
-			userID, err = authenticateApiKey(database, c)
-		}
-
-		if err != nil {
-			return
+			var key apikeys.Key
+			key, err = authenticateApiKey(database, c)
+			if err != nil {
+				return
+			}
+			permissions = key.Permissions
+			userID = key.UserID
 		}
 
 		// check that email is verified
@@ -129,6 +140,7 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 			return
 		}
 
+		c.Set(permissionsVariable, permissions)
 		c.Set(userIdVariable, userID)
 
 	}
@@ -138,21 +150,21 @@ func GetMiddleware(database *db.DB) func(c *gin.Context) {
 // header. If that doesn't succeed, it rejects the request. It returns the
 // user ID of the authenticated user. If an error is returned, the request is
 // responded to, and no further action is required.
-func authenticateApiKey(database *db.DB, c *gin.Context) (int, error) {
+func authenticateApiKey(database *db.DB, c *gin.Context) (apikeys.Key, error) {
 	uuidString := c.GetHeader(Header)
 	parsedUuid, err := uuid.FromString(uuidString)
 	if err != nil {
 		log.WithError(err).Error("Bad authorization header for API key")
 		apierr.Public(c, http.StatusBadRequest, apierr.ErrMalformedApiKey)
-		return 0, err
+		return apikeys.Key{}, err
 	}
 	key, err := apikeys.Get(database, parsedUuid)
 	if err != nil {
 		log.WithError(err).WithField("key", parsedUuid).Error("Couldn't get API key")
 		apierr.Public(c, http.StatusUnauthorized, apierr.ErrApiKeyNotFound)
-		return 0, err
+		return apikeys.Key{}, err
 	}
-	return key.UserID, nil
+	return key, nil
 }
 
 // authenticateJWT tries to extract and verify a JWT from the authorization
@@ -319,23 +331,106 @@ func CreateJwt(email string, id int) (string, error) {
 	})
 }
 
-// GetUserIdOrReject retrieves the user ID associated with this request. This
-// user ID should be set by the authentication middleware. This means that this
+// Info holds information needed to authenticate a user request
+type Info struct {
+	apikeys.Permissions
+	UserID int
+}
+
+// getInfoOrReject retrieves the authentication info associated with this request. This
+// info should be set by the authentication middleware. This means that this
 // method can safely be called by all endpoints that use the authentication
 // middleware.
-func GetUserIdOrReject(c *gin.Context) (int, bool) {
+func getInfoOrReject(c *gin.Context) (Info, bool) {
 	id, exists := c.Get(userIdVariable)
 	if !exists {
 		const msg = "user ID is not set in request! This is a serious error, and means our authentication middleware did not set the correct variable"
 		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
-		return -1, false
+		return Info{}, false
 	}
 	idInt, ok := id.(int)
 	if !ok {
 		const msg = "user ID was not an int! This means our authentication middleware did something bad"
 		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
-		return -1, false
+		return Info{}, false
 	}
 
-	return idInt, true
+	maybePermissions, exists := c.Get(permissionsVariable)
+	if !exists {
+		const msg = "permissions is not in request! This is a serious error, and means our authentication middleware did not set the correct variable"
+		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
+		return Info{}, false
+	}
+
+	permissions, ok := maybePermissions.(apikeys.Permissions)
+	if !ok {
+		const msg = "permissions was not apikeys.Permissions struct! This means our authentication middleware did something bad"
+		_ = c.AbortWithError(http.StatusInternalServerError, errors.New(msg))
+		return Info{}, false
+	}
+
+	return Info{
+		Permissions: permissions,
+		UserID:      idInt,
+	}, true
+}
+
+type Scope int
+
+func (s Scope) String() string {
+	switch s {
+	case ReadWallet:
+		return "ReadWallet"
+	case CreateInvoice:
+		return "CreateInvoice"
+	case EditAccount:
+		return "EditAccount"
+	case SendTransaction:
+		return "SendTransaction"
+	default:
+		return "UnknownScope:" + strconv.Itoa(int(s))
+	}
+}
+
+const (
+	// ReadWallet correponds to the ReadWallet permissions field
+	ReadWallet Scope = iota
+	// CreateInvoice correponds to the CreateInvoice permissions field
+	CreateInvoice
+	// EditAccount correponds to the EditAccount permissions field
+	EditAccount
+	// SendTransaction correponds to the SendTransaction permissions field
+	SendTransaction
+)
+
+// RequireScope extracts the authentication information associated with the given
+// request, and confirms the given scope against the one found in the request.
+// If the scope doesn't match, we reject the request, and no further action is
+// needed by the caller of this function.
+func RequireScope(c *gin.Context, scope Scope) (int, bool) {
+	info, ok := getInfoOrReject(c)
+	if !ok {
+		return 0, false
+	}
+
+	switch scope {
+	case ReadWallet:
+		if info.ReadWallet {
+			return info.UserID, true
+		}
+	case CreateInvoice:
+		if info.CreateInvoice {
+			return info.UserID, true
+		}
+	case EditAccount:
+		if info.EditAccount {
+			return info.UserID, true
+		}
+	case SendTransaction:
+		if info.SendTransaction {
+			return info.UserID, true
+		}
+	}
+	apierr.Public(c, http.StatusUnauthorized, apierr.ErrBadApiKey)
+	return 0, false
 }

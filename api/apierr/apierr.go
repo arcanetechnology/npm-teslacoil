@@ -13,11 +13,10 @@ import (
 	"strconv"
 	"unicode"
 
-	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
-
 	"github.com/gin-gonic/gin"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gopkg.in/go-playground/validator.v8"
 )
@@ -76,6 +75,11 @@ var (
 		code: "ERR_INVALID_JSON",
 	}
 
+	errBodyRequired = apiError{
+		err:  errors.New("JSON body required"),
+		code: "ERR_BODY_REQUIRED",
+	}
+
 	// ErrUnknownError means we don't know exactly what went wrong
 	ErrUnknownError = apiError{
 		err:  errors.New("something went wrong"),
@@ -131,6 +135,11 @@ var (
 	ErrApiKeyNotFound = apiError{
 		err:  errors.New("API key not found"),
 		code: "ERR_API_KEY_NOT_FOUND",
+	}
+	// ErrBadApiKey means the given API key did not have the correct permissions
+	ErrBadApiKey = apiError{
+		err:  errors.New("the given API key does not have the correct permissions"),
+		code: "ERR_BAD_API_KEY",
 	}
 	//ErrMalformedJwt means the given JWT was malformed
 	ErrMalformedJwt = apiError{
@@ -242,10 +251,15 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 		// Check for JSON parsing errors
 		for _, err := range c.Errors {
 			var syntaxErr *json.SyntaxError
-			if errors.Is(err.Err, io.EOF) || errors.As(err.Err, &syntaxErr) {
+			if errors.Is(err.Err, io.EOF) {
+				response.ErrorField.Code = errBodyRequired.code
+				response.ErrorField.Message = errBodyRequired.err.Error()
+				c.JSON(http.StatusBadRequest, response)
+				return
+			} else if errors.As(err.Err, &syntaxErr) {
 				response.ErrorField.Code = errInvalidJson.code
 				response.ErrorField.Message = errInvalidJson.err.Error()
-				c.JSON(httpCode, response)
+				c.JSON(http.StatusBadRequest, response)
 				return
 			}
 		}

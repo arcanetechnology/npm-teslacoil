@@ -146,7 +146,7 @@ func changePassword() gin.HandlerFunc {
 		RepeatedNewPassword string `json:"repeatedNewPassword" binding:"required,eqfield=NewPassword"`
 	}
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.EditAccount)
 		if !ok {
 			return
 		}
@@ -279,7 +279,7 @@ func enable2fa() gin.HandlerFunc {
 		TotpSecret string `json:"secret"`
 	}
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.EditAccount)
 		if !ok {
 			return
 		}
@@ -314,7 +314,7 @@ func confirm2fa() gin.HandlerFunc {
 		Code string `json:"code" binding:"required"`
 	}
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.EditAccount)
 		if !ok {
 			return
 		}
@@ -356,7 +356,7 @@ func delete2fa() gin.HandlerFunc {
 		Code string `json:"code" binding:"required"`
 	}
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.EditAccount)
 		if !ok {
 			return
 		}
@@ -402,7 +402,7 @@ func refreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// The JWT is already authenticated, but here we parse the JWT to
 		// extract the email as it is required to create a new JWT.
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.EditAccount)
 		if !ok {
 			return
 		}

@@ -7,15 +7,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin/binding"
-	uuid "github.com/satori/go.uuid"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
+	"gitlab.com/arcanecrypto/teslacoil/api/apikeyroutes"
 	"gitlab.com/arcanecrypto/teslacoil/api/apitxs"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiusers"
 	"gitlab.com/arcanecrypto/teslacoil/api/validation"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
-	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-	"gitlab.com/arcanecrypto/teslacoil/models/users"
 	"gopkg.in/go-playground/validator.v8"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -185,9 +183,9 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 
 	middleware := auth.GetMiddleware(r.db)
 
-	r.registerApiKeyRoutes()
 	r.registerAdminRoutes()
 
+	apikeyroutes.RegisterRoutes(r.Router, r.db, middleware)
 	apitxs.RegisterRoutes(r.Router, r.db, r.lncli, r.bitcoind, middleware)
 	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware)
 	apiauth.RegisterRoutes(r.Router, r.db, sender, middleware)
@@ -252,43 +250,4 @@ func (r *RestServer) registerAdminRoutes() {
 	}
 
 	r.Router.GET("/info", getInfo)
-}
-
-func (r *RestServer) registerApiKeyRoutes() {
-	keys := r.Router.Group("")
-	keys.Use(auth.GetMiddleware(r.db))
-	keys.POST("apikey", r.createApiKey())
-
-}
-func (r *RestServer) createApiKey() gin.HandlerFunc {
-	type createApiKeyResponse struct {
-		Key    uuid.UUID `json:"key"`
-		UserID int       `json:"userId"`
-	}
-
-	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
-		if !ok {
-			return
-		}
-
-		user, err := users.GetByID(r.db, userID)
-		if err != nil {
-			log.WithError(err).WithField("user", userID).Error("could not get user")
-			_ = c.Error(err)
-			return
-		}
-
-		rawKey, key, err := apikeys.New(r.db, user.ID)
-		if err != nil {
-			log.WithError(err).WithField("user", userID).Error("could not create API key")
-			_ = c.Error(err)
-			return
-		}
-
-		c.JSON(http.StatusCreated, createApiKeyResponse{
-			Key:    rawKey,
-			UserID: key.UserID,
-		})
-	}
 }
