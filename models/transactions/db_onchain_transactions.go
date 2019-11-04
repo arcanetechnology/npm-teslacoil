@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/btcsuite/btcd/btcjson"
@@ -51,62 +50,9 @@ func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 	return insertedOnchain, nil
 }
 
-// InsertOffchain inserts the given offchain TX into the DB
-func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
-	tx, err := insertTransaction(db, offchain.ToTransaction())
-	if err != nil {
-		return Offchain{}, err
-	}
-	insertedOffchain, err := tx.ToOffchain()
-	if err != nil {
-		return Offchain{}, fmt.Errorf("could not convert inserted TX to offchain TX: %w", err)
-	}
-
-	// if preimage is NULL in DB, default is empty slice and not null
-	if tx.Preimage != nil && len(*tx.Preimage) == 0 {
-		insertedOffchain.Preimage = nil
-	}
-
-	return insertedOffchain, nil
-}
-
-// GetAllTransactions selects all the transactions for a user
-func GetAllTransactions(d *db.DB, userID int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, 0)
-}
-
-// GetAllTransactionsOffset selects all transactions for a given user with an `offset`
-func GetAllTransactionsOffset(d *db.DB, userID int, offset int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, offset)
-}
-
-// GetAllTransactionsLimitOffset selects all transactions for a userID from the DB.
-func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) (
-	[]Transaction, error) {
-	// Using OFFSET is not ideal, but until we start seeing
-	// performance problems it's fine
-	query := `SELECT *
-		FROM transactions
-		WHERE user_id=$1
-		ORDER BY created_at
-		LIMIT $2
-		OFFSET $3`
-
-	// we need to initialize this variable because an empty SELECT will not update `transactions`
-	transactions := []Transaction{}
-	err := d.Select(&transactions, query, userID, limit, offset)
-	if err != nil {
-		log.WithError(err).WithFields(logrus.Fields{
-			"limit":  limit,
-			"offset": offset,
-			"userID": userID,
-		}).Error("could not get transactions")
-		return transactions, err
-	}
-
-	return transactions, nil
-}
-
+// GetOnchainByID retrieves a transaction with `ID` for `userID` .
+// if the transaction cannot be converted to an Onchain transaction
+// an error is returned
 func GetOnchainByID(d *db.DB, id int, userID int) (Onchain, error) {
 	tx, err := GetTransactionByID(d, id, userID)
 	if err != nil {
@@ -117,37 +63,6 @@ func GetOnchainByID(d *db.DB, id int, userID int) (Onchain, error) {
 		return Onchain{}, fmt.Errorf("requested TX was not onchain TX: %w", err)
 	}
 	return onchain, nil
-}
-
-func GetOffchainByID(d *db.DB, id int, userID int) (Offchain, error) {
-	tx, err := GetTransactionByID(d, id, userID)
-	if err != nil {
-		return Offchain{}, err
-	}
-	offchain, err := tx.ToOffchain()
-	if err != nil {
-		return Offchain{}, fmt.Errorf("requested TX was not offchain TX: %w", err)
-	}
-	return offchain, nil
-}
-
-// GetTransactionByID performs this query:
-// `SELECT * FROM transactions WHERE id=id AND user_id=userID`,
-// where id is the primary key of the table(autoincrementing)
-func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
-	if id < 0 || userID < 0 {
-		return Transaction{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
-	}
-
-	query := "SELECT * FROM transactions WHERE id=$1 AND user_id=$2 LIMIT 1"
-
-	var transaction Transaction
-	if err := d.Get(&transaction, query, id, userID); err != nil {
-		log.WithError(err).WithField("id", id).Error("Could not get transaction")
-		return transaction, fmt.Errorf("could not get transaction: %w", err)
-	}
-
-	return transaction, nil
 }
 
 // TxListener receives tx's from the zmqTxChannel and checks whether

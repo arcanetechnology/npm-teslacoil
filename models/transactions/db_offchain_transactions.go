@@ -33,6 +33,61 @@ var (
 	ErrExpectedSettledStatus      = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_SETTLED)])
 )
 
+// InsertOffchain inserts the given offchain TX into the DB
+func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
+	tx, err := insertTransaction(db, offchain.ToTransaction())
+	if err != nil {
+		return Offchain{}, err
+	}
+	insertedOffchain, err := tx.ToOffchain()
+	if err != nil {
+		return Offchain{}, fmt.Errorf("could not convert inserted TX to offchain TX: %w", err)
+	}
+
+	// if preimage is NULL in DB, default is empty slice and not null
+	if tx.Preimage != nil && len(*tx.Preimage) == 0 {
+		insertedOffchain.Preimage = nil
+	}
+
+	return insertedOffchain, nil
+}
+
+// GetOffchainByID retrieves a transaction with `ID` for `userID` .
+// if the transaction cannot be converted to an Offchain transaction
+// an error is returned
+func GetOffchainByID(db *db.DB, id int, userID int) (Offchain, error) {
+	tx, err := GetTransactionByID(db, id, userID)
+	if err != nil {
+		return Offchain{}, err
+	}
+	offchain, err := tx.ToOffchain()
+	if err != nil {
+		return Offchain{}, fmt.Errorf("requested TX was not offchain TX: %w", err)
+	}
+	return offchain, nil
+}
+
+// GetOffchainByPaymentRequest retrieves a Offchain transaction from the database
+// with the specified paymentRequest and userID
+func GetOffchainByPaymentRequest(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
+	query := "SELECT * FROM transactions WHERE user_id=$1 AND payment_request=$2"
+
+	var selectedTx Transaction
+	if err := db.Get(&selectedTx, query, userID, paymentRequest); err != nil {
+		log.WithError(err).WithField("paymentRequest",
+			paymentRequest).Error("could not get TX from DB")
+		return Offchain{}, err
+	}
+
+	offchain, err := selectedTx.ToOffchain()
+	if err != nil {
+		log.WithError(err).WithField("ID", offchain.ID).Error("could not convert to offchain")
+		return Offchain{}, err
+	}
+
+	return offchain, nil
+}
+
 // CreateInvoice is used to Create an Invoice without a memo
 func CreateInvoice(lncli ln.AddLookupInvoiceClient, amountSat int64) (
 	lnrpc.Invoice, error) {
@@ -144,6 +199,29 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 	return PayInvoiceWithDescription(d, lncli, userID, paymentRequest, "")
 }
 
+// paymentRequestBelongsToTeslacoilUser
+func paymentRequestBelongsToTeslacoilUser(db *db.DB, paymentRequest string) (bool, error) {
+	query := "SELECT * FROM transactions WHERE payment_request=$2"
+
+	var selectedTx Transaction
+	if err := db.Get(&selectedTx, query, paymentRequest); err != nil {
+		log.WithError(err).WithField("paymentRequest",
+			paymentRequest).Error("could not get TX from DB")
+
+		if err == sql.ErrNoRows {
+			return true, nil
+		}
+		return false, err
+	}
+
+	// did not find anything
+	if selectedTx.UserID == 0 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // PayInvoiceWithDescription first persists an outbound payment with the supplied invoice to
 // the database. Then attempts to pay the invoice using SendOffchainSync
 // Should the payment fail, we rollback all changes made to the DB
@@ -203,6 +281,16 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 			"requestedAmount": payreq.NumSatoshis,
 		}).Warn("User tried to pay invoice for more than their balance")
 		return Offchain{}, ErrBalanceTooLow
+	}
+
+	belongs, err := paymentRequestBelongsToTeslacoilUser(db, payment.PaymentRequest)
+	if err != nil {
+		log.WithError(err).Error("could not check whether payreq belongs to teslacoil user")
+		return Offchain{}, err
+	}
+	if belongs {
+		payment.InternalTransfer = true
+		return payment.MarkAsPaid(db, time.Now())
 	}
 
 	// TODO(bo): Add a websocket here, sending a message to the user that
