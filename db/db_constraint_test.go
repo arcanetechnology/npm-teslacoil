@@ -42,13 +42,14 @@ func TestTransactionsPositiveVout(t *testing.T) {
 	insertMockTransaction := func(vout int) error {
 		txid := txtest.MockTxid()
 		_, err := testDB.NamedExec(`
-		INSERT INTO transactions (direction, address, txid, vout)
-			VALUES (:direction, :address,:txid, :vout)`,
+		INSERT INTO transactions (direction, address, txid, vout, received_tx_at)
+			VALUES (:direction, :address,:txid, :vout, :received_tx_at)`,
 			map[string]interface{}{
-				"direction": txtest.MockDirection(),
-				"address":   address,
-				"txid":      txid,
-				"vout":      vout,
+				"direction":      txtest.MockDirection(),
+				"address":        address,
+				"txid":           txid,
+				"vout":           vout,
+				"received_tx_at": time.Now(),
 			},
 		)
 		return err
@@ -81,14 +82,15 @@ func TestTransactionsPositiveExpiry(t *testing.T) {
 	insertMockTransaction := func(expiry int) error {
 		txid := txtest.MockTxid()
 		_, err := testDB.NamedExec(`
-		INSERT INTO transactions (direction, address, txid, vout, expiry)
-			VALUES (:direction, :address,:txid, :vout, :expiry)`,
+		INSERT INTO transactions (direction, address, txid, vout, expiry, received_tx_at)
+			VALUES (:direction, :address,:txid, :vout, :expiry, :received_tx_at)`,
 			map[string]interface{}{
-				"direction": txtest.MockDirection(),
-				"address":   address,
-				"txid":      txid,
-				"vout":      0,
-				"expiry":    expiry,
+				"direction":      txtest.MockDirection(),
+				"address":        address,
+				"txid":           txid,
+				"vout":           0,
+				"expiry":         expiry,
+				"received_tx_at": gofakeit.Date(),
 			},
 		)
 		return err
@@ -118,13 +120,14 @@ func TestTransactionsPositiveExpiry(t *testing.T) {
 func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 	insertMockTransaction := func(txid string, vout int) error {
 		_, err := testDB.NamedExec(`
-		INSERT INTO transactions (direction, address, txid, vout)
-			VALUES (:direction, :address,:txid, :vout)`,
+		INSERT INTO transactions (direction, address, txid, vout, received_tx_at)
+			VALUES (:direction, :address,:txid, :vout, :received_tx_at)`,
 			map[string]interface{}{
-				"direction": txtest.MockDirection(),
-				"address":   address,
-				"txid":      txid,
-				"vout":      vout,
+				"direction":      txtest.MockDirection(),
+				"address":        address,
+				"txid":           txid,
+				"vout":           vout,
+				"received_tx_at": time.Now(),
 			},
 		)
 		return err
@@ -184,13 +187,14 @@ func TestTransactionsTxidAndVoutMustBeUnique(t *testing.T) {
 func TestTransactionsTxidLength(t *testing.T) {
 	insertMockTransaction := func(txid string) error {
 		_, err := testDB.NamedExec(`
-		INSERT INTO transactions (direction, address, txid, vout)
-			VALUES (:direction, :address,:txid, :vout)`,
+		INSERT INTO transactions (direction, address, txid, vout, received_tx_at)
+			VALUES (:direction, :address,:txid, :vout, :received_tx_at)`,
 			map[string]interface{}{
-				"direction": txtest.MockDirection(),
-				"address":   address,
-				"txid":      txid,
-				"vout":      0,
+				"direction":      txtest.MockDirection(),
+				"address":        address,
+				"txid":           txid,
+				"vout":           0,
+				"received_tx_at": time.Now(),
 			},
 		)
 		return err
@@ -221,7 +225,7 @@ func TestTransactionsTxidLength(t *testing.T) {
 }
 
 func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
-	insertMockTransaction := func(txid *string, confirmedAt *time.Time, confirmedAtBlock *int, settledAt *time.Time) error {
+	insertMockTransaction := func(txid *string, confirmedAt *time.Time, confirmedAtBlock *int, settledAt *time.Time, receivedAt *time.Time) error {
 		var vout *int
 		if txid != nil {
 			// to not kick of the txid_or_vout_cant_exist_alone constraint
@@ -230,8 +234,8 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 		}
 
 		_, err := testDB.NamedExec(`
-		INSERT INTO transactions (direction, address, txid, vout, confirmed_at, confirmed_at_block, settled_at)
-			VALUES (:direction, :address,:txid, :vout, :confirmed_at, :confirmed_at_block, :settled_at)`,
+		INSERT INTO transactions (direction, address, txid, vout, confirmed_at, confirmed_at_block, settled_at, received_tx_at)
+			VALUES (:direction, :address,:txid, :vout, :confirmed_at, :confirmed_at_block, :settled_at, :received_tx_at)`,
 			map[string]interface{}{
 				"direction":          txtest.MockDirection(),
 				"address":            address,
@@ -240,6 +244,7 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 				"confirmed_at":       confirmedAt,
 				"confirmed_at_block": confirmedAtBlock,
 				"settled_at":         settledAt,
+				"received_tx_at":     receivedAt,
 			},
 		)
 
@@ -250,7 +255,8 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 
 	t.Run("can insert transaction with confirmed_at and txid", func(t *testing.T) {
 		txid := txtest.MockTxid()
-		err := insertMockTransaction(&txid, &now, nil, nil)
+		received := gofakeit.Date()
+		err := insertMockTransaction(&txid, &now, nil, nil, &received)
 
 		assert.NoError(t, err)
 	})
@@ -258,20 +264,22 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 	t.Run("can insert transaction with confirmed_at_block and txid", func(t *testing.T) {
 		txid := txtest.MockTxid()
 		confirmedAtBlock := gofakeit.Number(100, 2000000)
-		err := insertMockTransaction(&txid, nil, &confirmedAtBlock, nil)
+		received := gofakeit.Date()
+		err := insertMockTransaction(&txid, nil, &confirmedAtBlock, nil, &received)
 
 		assert.NoError(t, err)
 	})
 
 	t.Run("can insert transaction with settled_at and txid", func(t *testing.T) {
 		txid := txtest.MockTxid()
-		err := insertMockTransaction(&txid, nil, nil, &now)
+		received := gofakeit.Date()
+		err := insertMockTransaction(&txid, nil, nil, &now, &received)
 
 		assert.NoError(t, err)
 	})
 
 	t.Run("can not be confirmed_at if txid is not present", func(t *testing.T) {
-		err := insertMockTransaction(nil, &now, nil, nil)
+		err := insertMockTransaction(nil, &now, nil, nil, nil)
 		assert.NotNil(t, err)
 
 		assert.Contains(t, err.Error(), ErrMustHaveTxidIfConfirmedAt.Error())
@@ -279,14 +287,14 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 
 	t.Run("can not be confirmed_at_block if txid is not present", func(t *testing.T) {
 		confirmedAtBlock := gofakeit.Number(100, 2000000)
-		err := insertMockTransaction(nil, nil, &confirmedAtBlock, nil)
+		err := insertMockTransaction(nil, nil, &confirmedAtBlock, nil, nil)
 		assert.NotNil(t, err)
 
 		assert.Contains(t, err.Error(), ErrMustHaveTxidIfConfirmedAtBlock.Error())
 	})
 
 	t.Run("can not be settled_at if txid is not present", func(t *testing.T) {
-		err := insertMockTransaction(nil, nil, nil, &now)
+		err := insertMockTransaction(nil, nil, nil, &now, nil)
 
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), ErrMustHaveTxidOrPaymentRequestIfSettledAt.Error())
@@ -294,15 +302,16 @@ func TestTransactionsOnchainMustHaveTxidIfConfirmedOrSettled(t *testing.T) {
 }
 
 func TestTransactionsTxidOrVoutCantExistAlone(t *testing.T) {
-	insertMockTransaction := func(txid *string, vout *int) error {
+	insertMockTransaction := func(txid *string, vout *int, receivedAt *time.Time) error {
 		_, err := testDB.NamedExec(`
-		INSERT INTO transactions (direction, address, txid, vout)
-			VALUES (:direction, :address,:txid, :vout)`,
+		INSERT INTO transactions (direction, address, txid, vout, received_tx_at)
+			VALUES (:direction, :address,:txid, :vout, :received_tx_at)`,
 			map[string]interface{}{
-				"direction": txtest.MockDirection(),
-				"address":   address,
-				"txid":      txid,
-				"vout":      vout,
+				"direction":      txtest.MockDirection(),
+				"address":        address,
+				"txid":           txid,
+				"vout":           vout,
+				"received_tx_at": receivedAt,
 			},
 		)
 		return err
@@ -311,15 +320,17 @@ func TestTransactionsTxidOrVoutCantExistAlone(t *testing.T) {
 	t.Run("can insert transaction with txid and vout", func(t *testing.T) {
 		txid := txtest.MockTxid()
 		vout := gofakeit.Number(0, math.MaxInt32)
+		received := gofakeit.Date()
 
-		err := insertMockTransaction(&txid, &vout)
+		err := insertMockTransaction(&txid, &vout, &received)
 		assert.NoError(t, err)
 	})
 
 	t.Run("can not insert transaction with just txid", func(t *testing.T) {
 		txid := txtest.MockTxid()
+		received := gofakeit.Date()
 
-		err := insertMockTransaction(&txid, nil)
+		err := insertMockTransaction(&txid, nil, &received)
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), ErrConstraintTxidOrVoutCantExistAlone.Error())
 	})
@@ -327,7 +338,7 @@ func TestTransactionsTxidOrVoutCantExistAlone(t *testing.T) {
 	t.Run("can not insert transaction with just vout", func(t *testing.T) {
 		vout := gofakeit.Number(0, math.MaxInt32)
 
-		err := insertMockTransaction(nil, &vout)
+		err := insertMockTransaction(nil, &vout, nil)
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), ErrConstraintTxidOrVoutCantExistAlone.Error())
 	})

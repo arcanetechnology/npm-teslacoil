@@ -127,13 +127,16 @@ func GenOnchain(userID int) transactions.Onchain {
 	var txid *string
 	var vout *int
 	var amountSat *int64
+	var receivedMoneyAt *time.Time
 	if gofakeit.Bool() {
 		t := MockTxid()
 		txid = &t
 		v := gofakeit.Number(0, 12)
 		vout = &v
-		a := int64Between(0, btcutil.MaxSatoshi)
+		a := int64Between(0, btcutil.SatoshiPerBitcoin)
 		amountSat = &a
+		r := gofakeit.Date()
+		receivedMoneyAt = &r
 	}
 
 	var confirmedAtBlock *int
@@ -164,6 +167,7 @@ func GenOnchain(userID int) transactions.Onchain {
 		Expiry:          expiry,
 		Direction:       MockDirection(),
 		AmountSat:       amountSat,
+		ReceivedMoneyAt: receivedMoneyAt,
 		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),

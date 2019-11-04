@@ -618,6 +618,7 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User
 	block := gofakeit.Number(0, 600000)
 	txid := txtest.MockTxid()
 	vout := 0
+	receivedAt := gofakeit.Date()
 	settledAt := gofakeit.Date()
 	confirmedAt := gofakeit.Date()
 	_, err := transactions.InsertOnchain(db, transactions.Onchain{
@@ -628,6 +629,7 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User
 		Address:          "THIS IS AN ADDRESS",
 		Txid:             &txid,
 		Vout:             &vout,
+		ReceivedMoneyAt:  &receivedAt,
 		SettledAt:        &settledAt,
 		ConfirmedAt:      &confirmedAt,
 	})

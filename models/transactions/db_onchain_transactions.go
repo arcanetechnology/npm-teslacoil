@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -429,13 +430,15 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		return Onchain{}, fmt.Errorf("could not find output for sent TX: %w", err)
 	}
 
+	receivedAt := time.Now()
 	txToInsert := Onchain{
-		UserID:    args.UserID,
-		Address:   args.Address,
-		AmountSat: &args.AmountSat,
-		Txid:      &txid,
-		Vout:      &vout,
-		Direction: OUTBOUND,
+		UserID:          args.UserID,
+		Address:         args.Address,
+		AmountSat:       &args.AmountSat,
+		ReceivedMoneyAt: &receivedAt,
+		Txid:            &txid,
+		Vout:            &vout,
+		Direction:       OUTBOUND,
 	}
 
 	if args.Description != "" {
@@ -484,13 +487,15 @@ func NewDepositWithMoney(db *db.DB, args WithMoneyArgs) (Onchain, error) {
 		return Onchain{}, err
 	}
 	txid := args.Tx.TxHash().String()
+	receivedAt := time.Now()
 	txToInsert := Onchain{
-		UserID:    args.UserID,
-		Direction: INBOUND,
-		AmountSat: &vout.Value,
-		Address:   address.EncodeAddress(),
-		Txid:      &txid,
-		Vout:      &args.OutputIndex,
+		UserID:          args.UserID,
+		Direction:       INBOUND,
+		AmountSat:       &vout.Value,
+		Address:         address.EncodeAddress(),
+		ReceivedMoneyAt: &receivedAt,
+		Txid:            &txid,
+		Vout:            &args.OutputIndex,
 	}
 
 	transaction, err := InsertOnchain(db, txToInsert)

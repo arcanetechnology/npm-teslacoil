@@ -64,6 +64,7 @@ type Transaction struct {
 	Address          *string    `db:"address"`
 	Txid             *string    `db:"txid"`
 	Vout             *int       `db:"vout"`
+	ReceivedMoneyAt  *time.Time `db:"received_tx_at"`
 	ConfirmedAtBlock *int       `db:"confirmed_at_block"`
 	ConfirmedAt      *time.Time `db:"confirmed_at"`
 
@@ -135,9 +136,10 @@ func (t Transaction) ToOnchain() (Onchain, error) {
 		ConfirmedAtBlock: t.ConfirmedAtBlock,
 		ConfirmedAt:      t.ConfirmedAt,
 
-		Address: *t.Address,
-		Txid:    t.Txid,
-		Vout:    t.Vout,
+		Address:         *t.Address,
+		Txid:            t.Txid,
+		ReceivedMoneyAt: t.ReceivedMoneyAt,
+		Vout:            t.Vout,
 
 		CreatedAt: t.CreatedAt,
 		UpdatedAt: t.UpdatedAt,
@@ -477,10 +479,13 @@ type Onchain struct {
 	ConfirmedAtBlock *int       `json:"confirmedAtBlock,omitempty"`
 	ConfirmedAt      *time.Time `json:"confirmedAt,omitempty"`
 
-	AmountSat *int64  `json:"amountSat,omitempty"`
-	Address   string  `json:"address"`
-	Txid      *string `json:"txid,omitempty"`
-	Vout      *int    `json:"vout,omitempty"`
+	Address string `json:"address"`
+	// The timestamp this TX got spent money to. We send it as createdAt when encoding
+	// to JSON, to match the format of offchain TXs.
+	ReceivedMoneyAt *time.Time `json:"createdAt,omitempty"`
+	AmountSat       *int64     `json:"amountSat,omitempty"`
+	Txid            *string    `json:"txid,omitempty"`
+	Vout            *int       `json:"vout,omitempty"`
 
 	CreatedAt time.Time  `json:"-"`
 	UpdatedAt time.Time  `json:"-"`
@@ -533,9 +538,10 @@ func (o Onchain) ToTransaction() Transaction {
 		// Preimage:         nil, // otherwise we get empty slice
 		// HashedPreimage:   nil, // otherwise we get empty slice
 
-		Address: &o.Address,
-		Txid:    o.Txid,
-		Vout:    o.Vout,
+		Address:         &o.Address,
+		Txid:            o.Txid,
+		Vout:            o.Vout,
+		ReceivedMoneyAt: o.ReceivedMoneyAt,
 
 		CreatedAt: o.CreatedAt,
 		UpdatedAt: o.UpdatedAt,
@@ -603,11 +609,14 @@ func (o Onchain) PersistReceivedMoney(db db.Inserter, txid chainhash.Hash, vout 
 	o.Txid = &txidStr
 	o.Vout = &vout
 	o.AmountSat = &amountSat
+	receivedAt := time.Now()
+	o.ReceivedMoneyAt = &receivedAt
 
 	tx := o.ToTransaction()
 
 	rows, err := db.NamedQuery(
-		`UPDATE transactions SET txid = :txid, vout = :vout, amount_milli_sat = :amount_milli_sat 
+		`UPDATE transactions SET txid = :txid, vout = :vout, amount_milli_sat = :amount_milli_sat,
+			received_tx_at = :received_tx_at
 			WHERE id = :id AND txid IS NULL AND vout IS NULL AND amount_milli_sat IS NULL `+txReturningSql,
 		&tx)
 	if err != nil {
@@ -669,17 +678,17 @@ func (o Onchain) String() string {
 }
 
 const txReturningSql = ` RETURNING id, user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
-	    confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
+	    confirmed_at_block, confirmed_at, address, txid, vout, received_tx_at, payment_request, preimage, 
 	    hashed_preimage, settled_at, memo, invoice_status, created_at, updated_at, deleted_at`
 
 func insertTransaction(db db.Inserter, t Transaction) (Transaction, error) {
 	createTransactionQuery := `
 	INSERT INTO transactions (user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, description, 
-	                          confirmed_at_block, confirmed_at, address, txid, vout, payment_request, preimage, 
-	                          hashed_preimage, settled_at, memo, invoice_status)
+	                          confirmed_at_block, confirmed_at, address, txid, vout, received_tx_at, payment_request, 
+	                          preimage, hashed_preimage, settled_at, memo, invoice_status)
 	VALUES (:user_id, :callback_url, :customer_order_id, :expiry, :direction, :amount_milli_sat, :description, 
-	        :confirmed_at_block, :confirmed_at, :address, :txid, :vout, :payment_request, :preimage, 
-	        :hashed_preimage, :settled_at, :memo, :invoice_status)` + txReturningSql
+	        :confirmed_at_block, :confirmed_at, :address, :txid, :vout, :received_tx_at, :payment_request, 
+	        :preimage, :hashed_preimage, :settled_at, :memo, :invoice_status)` + txReturningSql
 
 	rows, err := db.NamedQuery(createTransactionQuery, t)
 	if err != nil {
