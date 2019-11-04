@@ -72,11 +72,6 @@ func DefaultRelativeMacaroonPath(network chaincfg.Params) string {
 		"bitcoin", name, "admin.macaroon")
 }
 
-const (
-	DefaultRpcServer = "localhost:" + DefaultRpcPort
-	DefaultRpcPort   = "10009"
-)
-
 // NewLNDClient opens a new connection to LND and returns the client
 func NewLNDClient(options LightningConfig) (
 	lnrpc.LightningClient, error) {

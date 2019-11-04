@@ -25,11 +25,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 )
 
-const (
-	rpcAwaitAttempts = 5
-	rpcAwaitDuration = time.Second
-)
-
 type realHttpSender struct{}
 
 func (s realHttpSender) Post(url, contentType string, reader io.Reader) (*http.Response, error) {
@@ -161,7 +156,7 @@ func Serve() cli.Command {
 				log.WithFields(logrus.Fields{
 					"tls-cert-file": tlsCertFile,
 					"tls-key-file":  tlsKeyFile,
-				})
+				}).Info("starting router with TLS")
 
 				err = a.Router.RunTLS(address, tlsCertFile, tlsKeyFile)
 			} else {
