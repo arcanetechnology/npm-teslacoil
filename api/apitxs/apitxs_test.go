@@ -125,7 +125,6 @@ func TestGetTransaction(t *testing.T) {
 			Method:      "GET",
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
-
 	})
 
 	t.Run("can get transaction by ID", func(t *testing.T) {
@@ -195,13 +194,7 @@ func TestGetTransaction(t *testing.T) {
 		assert.WithinDuration(t, *inserted.ReceivedMoneyAt, foundTime, time.Millisecond*100)
 	})
 }
-func getOnchainWithMoney(userId int) transactions.Onchain {
-	tx := txtest.GenOnchain(userId)
-	if tx.Txid == nil {
-		return getOnchainWithMoney(userId)
-	}
-	return tx
-}
+
 func TestGetTransactionsBothKinds(t *testing.T) {
 	t.Parallel()
 
@@ -745,6 +738,37 @@ func TestWithdrawOnChain(t *testing.T) {
 	})
 }
 
+func TestGetOffchainByPaymentRequest(t *testing.T) {
+	t.Parallel()
+	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+		Email:    gofakeit.Email(),
+		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+
+	t.Run("non-existant payment request returns error", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/invoice/lnbcrt1pwuqjgwpp5aw67h6l0kw54a2v7syy6n0rd2a9vl6ftq5x3n53f4jy8g3du6n7qdqqcqzpgmjjkdzje99mehs3z239n4lmgpw4xkryzmjxqfssn926zulhs6el3hjzwe6hpzqkxsx6qnkslj3w9mdtfn5jknq4yuy7ddmw0sgtyl4gq39n2ng",
+			Method:      "GET",
+		})
+		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
+		assert.True(t, apierr.ErrTransactionNotFound.Is(err))
+	})
+	t.Run("bad payment request returns validation error", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/invoice/not-a-payment-request",
+			Method:      "GET",
+		})
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+
+	})
+}
+
 func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, description string) int {
 	req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 		AccessToken: accessToken,
@@ -776,4 +800,12 @@ func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {
 	var trans []transactions.Transaction
 	h.AssertResponseOKWithStruct(t, req, &trans)
 	assert.Equal(t, expected, len(trans))
+}
+
+func getOnchainWithMoney(userId int) transactions.Onchain {
+	tx := txtest.GenOnchain(userId)
+	if tx.Txid == nil {
+		return getOnchainWithMoney(userId)
+	}
+	return tx
 }

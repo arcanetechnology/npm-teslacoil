@@ -128,7 +128,6 @@ func TestPayInvoice(t *testing.T) {
 		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, initialBalance)
 
 		t.Run("can send payment", func(t *testing.T) {
-
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
 			paymentRequest, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
 				Value: int64(amountSat),

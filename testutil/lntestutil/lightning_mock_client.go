@@ -21,6 +21,7 @@ type LightningMockClient struct {
 	SendPaymentSyncResponse lnrpc.SendResponse
 	DecodePayReqResponse    lnrpc.PayReq
 	SendCoinsResponse       lnrpc.SendCoinsResponse
+	AddInvoiceResponse      lnrpc.AddInvoiceResponse
 }
 
 func (client LightningMockClient) ChannelAcceptor(ctx context.Context, opts ...grpc.CallOption) (lnrpc.Lightning_ChannelAcceptorClient, error) {
@@ -219,7 +220,7 @@ func (client LightningMockClient) NewAddress(ctx context.Context, in *lnrpc.NewA
 func (client LightningMockClient) AddInvoice(ctx context.Context,
 	in *lnrpc.Invoice, opts ...grpc.CallOption) (
 	*lnrpc.AddInvoiceResponse, error) {
-	return &lnrpc.AddInvoiceResponse{}, nil
+	return &client.AddInvoiceResponse, nil
 }
 
 func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {

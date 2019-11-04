@@ -314,7 +314,7 @@ func TestOffchain_MarkAsFlopped(t *testing.T) {
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 
-	amount := int64(gofakeit.Number(1, ln.MaxAmountMsatPerInvoice))
+	amount := int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice))
 
 	paymentRequest := "SomeOffchainRequest1"
 
@@ -373,6 +373,7 @@ func TestPayInvoice(t *testing.T) {
 		}
 
 	})
+
 	t.Run("paying invoice with 0 amount fails with Err0AmountInvoiceNotSupported", func(t *testing.T) {
 		t.Parallel()
 		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
@@ -417,6 +418,67 @@ func TestPayInvoice(t *testing.T) {
 		assert.Equal(t, transactions.Offchain_COMPLETED, got.Status)
 		assert.NotNil(t, got.SettledAt)
 		assert.WithinDuration(t, *got.SettledAt, time.Now(), time.Second)
+	})
+
+	t.Run("a user cannot pay an invoice they created", func(t *testing.T) {
+		t.Parallel()
+
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*3)
+		mockLNcli := lntestutil.LightningMockClient{
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: amount,
+				Expiry:      1000,
+			},
+			InvoiceResponse: lnrpc.Invoice{
+				PaymentRequest: "a payment request",
+			},
+		}
+
+		off, err := transactions.NewOffchain(testDB, &mockLNcli, transactions.NewOffchainOpts{
+			UserID:    user.ID,
+			AmountSat: int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice)),
+		})
+		assert.Nil(t, err)
+
+		paid, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, off.PaymentRequest)
+		assert.True(t, errors.Is(err, transactions.ErrCannotPayOwnInvoice))
+
+		assert.Equal(t, paid, transactions.Offchain{})
+	})
+	t.Run("internal transfer marks the transaction correctly", func(t *testing.T) {
+		t.Parallel()
+
+		payTo := CreateUserOrFail(t, testDB)
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*3)
+		mockLNcli := lntestutil.LightningMockClient{
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: amount,
+				Expiry:      1000,
+			},
+			InvoiceResponse: lnrpc.Invoice{
+				PaymentRequest: "a payment request",
+			},
+		}
+
+		off, err := transactions.NewOffchain(testDB, &mockLNcli, transactions.NewOffchainOpts{
+			UserID:    payTo.ID,
+			AmountSat: int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice)),
+		})
+		assert.Nil(t, err)
+
+		paid, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, off.PaymentRequest)
+		assert.Nil(t, err)
+
+		assert.Equal(t, true, paid.InternalTransfer)
+		assert.Equal(t, transactions.Offchain_COMPLETED, paid.Status)
+		assert.NotNil(t, paid.SettledAt)
+
+		// assert balance is decreased
+		updatedBalance, err := user.WithBalance(testDB)
+		assert.Nil(t, err)
+		assert.Equal(t, *user.BalanceSats-amount, *updatedBalance.BalanceSats)
 	})
 }
 
@@ -635,9 +697,9 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User
 	})
 	require.NoError(t, err)
 
-	bal, err := balance.ForUser(db, u.ID)
+	with, err := u.WithBalance(db)
 	require.NoError(t, err)
-	require.Equal(t, bal.Sats(), sats)
+	require.Equal(t, *with.BalanceSats, sats)
 
-	return u
+	return with
 }

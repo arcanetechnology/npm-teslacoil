@@ -31,6 +31,7 @@ var (
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
 	ErrExpectedOpenStatus         = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_OPEN)])
 	ErrExpectedSettledStatus      = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_SETTLED)])
+	ErrCannotPayOwnInvoice        = errors.New("cannot pay own invoice")
 )
 
 // InsertOffchain inserts the given offchain TX into the DB
@@ -199,27 +200,24 @@ func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
 	return PayInvoiceWithDescription(d, lncli, userID, paymentRequest, "")
 }
 
-// paymentRequestBelongsToTeslacoilUser
-func paymentRequestBelongsToTeslacoilUser(db *db.DB, paymentRequest string) (bool, error) {
-	query := "SELECT * FROM transactions WHERE payment_request=$2"
+// paymentRequestBelongsToTeslacoilUser checks whether a payment request belongs
+// to teslacoil by SELECTING from the db. Returns true if the payment belongs
+// to teslacoil, returns false if it does not belong to use
+func paymentRequestBelongsToTeslacoilUser(db *db.DB, paymentRequest string, userID int) (bool, error) {
+	query := "SELECT * FROM transactions WHERE payment_request=$1"
 
 	var selectedTx Transaction
-	if err := db.Get(&selectedTx, query, paymentRequest); err != nil {
+	err := db.Get(&selectedTx, query, paymentRequest)
+	if err != nil {
 		log.WithError(err).WithField("paymentRequest",
 			paymentRequest).Error("could not get TX from DB")
-
-		if err == sql.ErrNoRows {
-			return true, nil
-		}
 		return false, err
 	}
-
-	// did not find anything
-	if selectedTx.UserID == 0 {
-		return true, nil
+	if selectedTx.UserID == userID {
+		return false, ErrCannotPayOwnInvoice
 	}
 
-	return false, nil
+	return true, nil
 }
 
 // PayInvoiceWithDescription first persists an outbound payment with the supplied invoice to
@@ -283,7 +281,7 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return Offchain{}, ErrBalanceTooLow
 	}
 
-	belongs, err := paymentRequestBelongsToTeslacoilUser(db, payment.PaymentRequest)
+	belongs, err := paymentRequestBelongsToTeslacoilUser(db, payment.PaymentRequest, payment.UserID)
 	if err != nil {
 		log.WithError(err).Error("could not check whether payreq belongs to teslacoil user")
 		return Offchain{}, err
