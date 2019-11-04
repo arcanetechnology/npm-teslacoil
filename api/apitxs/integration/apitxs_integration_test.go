@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/btcsuite/btcutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/api"
@@ -123,7 +124,8 @@ func TestPayInvoice(t *testing.T) {
 			Email:    gofakeit.Email(),
 			Password: password,
 		})
-		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, 50000000)
+		const initialBalance = 5 * btcutil.SatoshiPerBitcoin
+		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, initialBalance)
 
 		t.Run("can send payment", func(t *testing.T) {
 
@@ -180,15 +182,11 @@ func TestPayInvoice(t *testing.T) {
 				})
 
 			res := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertMsg(t, res["description"] != nil, "Description was empty")
-
+			require.NotNil(t, res["description"])
 		})
 
 		t.Run("sending invoice with bad path does not decrease users balance", func(t *testing.T) {
-			user, err := users.GetByID(testDB, userID)
-			require.NoError(t, err)
-
-			prepaymentBalance, err := balance.ForUser(testDB, user.ID)
+			prepaymentBalance, err := balance.ForUser(testDB, userID)
 			require.NoError(t, err)
 
 			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
@@ -212,10 +210,7 @@ func TestPayInvoice(t *testing.T) {
 
 			_, _ = h.AssertResponseNotOk(t, req)
 
-			user, err = users.GetByID(testDB, userID)
-			require.NoError(t, err)
-
-			postpaymentBalance, err := balance.ForUser(testDB, user.ID)
+			postpaymentBalance, err := balance.ForUser(testDB, userID)
 			assert.Equal(t, prepaymentBalance, postpaymentBalance)
 		})
 	})

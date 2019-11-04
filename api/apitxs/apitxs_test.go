@@ -629,6 +629,16 @@ func TestCreateInvoice(t *testing.T) {
 	})
 }
 
+func getTx(minAmountSat int64, userId int) transactions.Offchain {
+	tx := txtest.GenOffchain(userId)
+	if tx.Direction != transactions.INBOUND ||
+		tx.Status != transactions.Offchain_COMPLETED ||
+		tx.AmountMSat/1000 < minAmountSat {
+		return getTx(minAmountSat, userId)
+	}
+	return tx
+}
+
 func TestWithdrawOnChain(t *testing.T) {
 	t.Parallel()
 
@@ -638,8 +648,9 @@ func TestWithdrawOnChain(t *testing.T) {
 
 		pass := gofakeit.Password(true, true, true, true, true, 32)
 		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
-		tx := txtest.InsertFundedIncoming(t, testDB, withdrawAmount, user.ID)
-		require.NotNil(t, tx.AmountMSat)
+		tx := getTx(withdrawAmount, user.ID)
+		_, err := transactions.InsertOffchain(testDB, tx)
+		require.NoError(t, err)
 
 		bal, err := balance.ForUser(testDB, user.ID)
 		require.NoError(t, err)
@@ -674,7 +685,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		})
 
 		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
-		expectedBalance := (*tx.AmountMSat / 1000) - withdrawAmount
+		expectedBalance := (tx.AmountMSat / 1000) - withdrawAmount
 
 		testutil.AssertEqual(t, expectedBalance, balanceRes["balanceSats"])
 	})
