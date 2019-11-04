@@ -11,6 +11,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
+	"gitlab.com/arcanecrypto/teslacoil/async"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
@@ -205,7 +209,31 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 		network:    conf.Network,
 	}
 
+	if err = awaitBitcoind(conn); err != nil {
+		return nil, err
+	}
+
+	log.WithFields(logrus.Fields{
+		"network": conf.Network.Name,
+		"host":    conf.RpcHost,
+		"port":    conf.RpcPort,
+	}).Info("opened connection to bitcoind")
+
 	return conn, nil
+}
+
+// awaitBitcoind tries to get a RPC response from bitcoind, returning an error
+// if that isn't possible within a set of attempts
+func awaitBitcoind(btc *Conn) error {
+	retry := func() bool {
+		_, err := btc.Btcctl().GetBlockChainInfo()
+		if err != nil {
+			wrapped := fmt.Errorf("awaitBitcoind: %w", err)
+			log.WithError(wrapped).Debug("getblockchaininfo failed")
+		}
+		return err == nil
+	}
+	return async.Await(5, time.Second, retry, "couldn't reach bitcoind")
 }
 
 // StartZmq attempts to establish a ZMQ connection to a bitcoind node. If

@@ -8,9 +8,12 @@ import (
 	"net"
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"gitlab.com/arcanecrypto/teslacoil/async"
 
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -77,6 +80,12 @@ const (
 // NewLNDClient opens a new connection to LND and returns the client
 func NewLNDClient(options LightningConfig) (
 	lnrpc.LightningClient, error) {
+
+	// no reason to attempt to connect if macaroon does not exist yet
+	if err := awaitLndMacaroonFile(options); err != nil {
+		return nil, err
+	}
+
 	cfg := LightningConfig{
 		LndDir:       options.LndDir,
 		TLSCertPath:  cleanAndExpandPath(options.TLSCertPath),
@@ -146,12 +155,44 @@ func NewLNDClient(options LightningConfig) (
 	}
 	client := lnrpc.NewLightningClient(conn)
 
+	// we did not successfully open a connection if we can't query GetInfo
+	// no point in returning a bad client
+	if err = awaitLnd(client); err != nil {
+		return nil, err
+	}
+
 	log.WithFields(logrus.Fields{
 		"rpchost": cfg.RPCHost,
 		"rpcport": cfg.RPCPort,
 	}).Info("opened connection to LND")
 
 	return client, nil
+}
+
+// awaitLnd tries to get a RPC response from lnd, returning an error
+// if that isn't possible within a set of attempts
+func awaitLnd(lncli lnrpc.LightningClient) error {
+	retry := func() bool {
+		_, err := lncli.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+		return err == nil
+	}
+	return async.Await(5, time.Second, retry, "couldn't reach lnd")
+}
+
+// awaitLndMacaroonFile waits for the creation of the macaroon file in the given
+// configuration
+func awaitLndMacaroonFile(config LightningConfig) error {
+	macaroonPath := config.MacaroonPath
+	if macaroonPath == "" {
+		macaroonPath = path.Join(config.LndDir,
+			DefaultRelativeMacaroonPath(config.Network))
+	}
+	retry := func() bool {
+		_, err := os.Stat(macaroonPath)
+		return err == nil
+	}
+	return async.Await(5, time.Second,
+		retry, fmt.Sprintf("couldn't read macaroon file %q", macaroonPath))
 }
 
 // cleanAndExpandPath expands environment variables and leading ~ in the
