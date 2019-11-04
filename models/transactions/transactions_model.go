@@ -661,6 +661,9 @@ func (o Onchain) String() string {
 	if o.Txid != nil {
 		fragments = append(fragments, fmt.Sprintf("Txid: %s", *o.Txid))
 	}
+	if o.ReceivedMoneyAt != nil {
+		fragments = append(fragments, fmt.Sprintf("ReceivedMoneyAt: %s", *o.ReceivedMoneyAt))
+	}
 	if o.Vout != nil {
 		fragments = append(fragments, fmt.Sprintf("Vout: %d", *o.Vout))
 	}

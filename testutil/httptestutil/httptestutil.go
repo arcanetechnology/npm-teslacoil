@@ -425,15 +425,14 @@ func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.C
 }
 
 func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient,
-	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int) {
+	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int64) {
 
 	getDepositAddr := GetAuthRequest(t, AuthRequestArgs{
 		AccessToken: accessToken,
 		Path:        "/deposit",
 		Method:      "POST",
 		Body: fmt.Sprintf(`{
-			"forceNewAddress": %t,
-			"description": ""
+			"forceNewAddress": %t
 		}`, false),
 	})
 
@@ -446,15 +445,11 @@ func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningC
 
 	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
 		Addr:   r.Address,
-		Amount: int64(amount),
+		Amount: amount,
 	})
-	if err != nil {
-		testutil.FatalMsgf(t, "could not send coins to %s: %v", r.Address, err)
-	}
+	require.NoError(t, err)
 
 	// confirm it
 	_, err = bitcoin.Btcctl().Generate(7)
-	if err != nil {
-		testutil.FatalMsgf(t, "could not generate coins: %v", err)
-	}
+	require.NoError(t, err)
 }
