@@ -28,6 +28,8 @@ var (
 	bitcoin  bitcoind.TeslacoilBitcoind
 )
 
+// RegisterRoutes applies the authMiddleware to this packages routes
+// and registers routes on the gin Engine parameter
 func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 	bitcoind bitcoind.TeslacoilBitcoind, authmiddleware gin.HandlerFunc) {
 	// assign the services given
@@ -50,6 +52,7 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 	// offchain transactions
 	transaction.POST("/invoices/create", createInvoice())
 	transaction.POST("/invoices/pay", payInvoice())
+	transaction.GET("/invoice/:paymentrequest", getOffchainByPaymentRequest())
 }
 
 // getAllTransactions finds all payments for the given user. Takes two URL
@@ -116,7 +119,7 @@ func getTransactionByID() gin.HandlerFunc {
 			return
 		}
 
-		// Return the user when it is found and no errors where encountered
+		// Return the transaction when it is found and no errors where encountered
 		c.JSONP(http.StatusOK, t)
 	}
 }
@@ -283,6 +286,38 @@ func payInvoice() gin.HandlerFunc {
 				}).WithError(origErr).Error("Could not pay invoice")
 
 			}()
+			_ = c.Error(err)
+			return
+		}
+
+		c.JSONP(http.StatusOK, t)
+	}
+}
+
+// getOffchainByPaymentRequest takes in a paymentrequest path parameter,
+// and fetches that from the DB
+func getOffchainByPaymentRequest() gin.HandlerFunc {
+	type request struct {
+		PaymentRequest string `uri:"paymentrequest" binding:"required,paymentrequest"`
+	}
+
+	return func(c *gin.Context) {
+		userID, ok := auth.GetUserIdOrReject(c)
+		if !ok {
+			return
+		}
+
+		var req request
+		if c.BindUri(&req) != nil {
+			return
+		}
+
+		t, err := transactions.GetOffchainByPaymentRequest(database, req.PaymentRequest, userID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				apierr.Public(c, http.StatusNotFound, apierr.ErrTransactionNotFound)
+				return
+			}
 			_ = c.Error(err)
 			return
 		}
