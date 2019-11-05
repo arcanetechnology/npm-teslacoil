@@ -256,6 +256,7 @@ func payInvoice() gin.HandlerFunc {
 		if err != nil {
 			if errors.Is(err, transactions.ErrCannotPayOwnInvoice) {
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrCannotPayOwnInvoice)
+				return
 			}
 			_ = c.Error(err)
 			return

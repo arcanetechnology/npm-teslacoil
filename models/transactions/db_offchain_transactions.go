@@ -19,6 +19,7 @@ import (
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
+
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
@@ -276,8 +277,10 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, callbacker 
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
 	if err != nil {
-		return Offchain{}, fmt.Errorf("%w: %w", ErrCouldNotDecodePayReq, err)
+		return Offchain{}, fmt.Errorf("%v: %w", ErrCouldNotDecodePayReq, err)
 	}
+
+	log.Infof("payreq: %+v", payreq)
 
 	if payreq.NumSatoshis == 0 {
 		log.WithFields(logrus.Fields{

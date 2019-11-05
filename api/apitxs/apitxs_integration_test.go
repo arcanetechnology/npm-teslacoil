@@ -247,7 +247,7 @@ func TestPayInvoice(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, prePaymentBalance.Sats()+amount, postPaymentBalance.Sats())
-			assert.True(t, res["internalTransfer"] == true)
+			assert.True(t, res["internalTransfer"].(bool))
 		})
 
 		t.Run("paying own invoice returns specific error", func(t *testing.T) {

@@ -11,16 +11,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"github.com/brianvoe/gofakeit"
+
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgErrors "github.com/pkg/errors"
+
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -423,7 +426,7 @@ func TestPayInvoice(t *testing.T) {
 	t.Run("a user cannot pay an invoice they created", func(t *testing.T) {
 		t.Parallel()
 
-		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*3)
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*5)
 		mockLNcli := lntestutil.LightningMockClient{
 			DecodePayReqResponse: lnrpc.PayReq{
 				PaymentHash: SampleHashHex,
@@ -431,20 +434,23 @@ func TestPayInvoice(t *testing.T) {
 				Expiry:      1000,
 			},
 			InvoiceResponse: lnrpc.Invoice{
-				PaymentRequest: "a payment request",
+				PaymentRequest: paymentRequest,
 			},
 		}
+
+		fmt.Printf("user: %+v", user)
 
 		off, err := transactions.CreateTeslacoilInvoice(testDB, &mockLNcli, transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice)),
 		})
 		assert.Nil(t, err)
+		assert.Equal(t, paymentRequest, off.PaymentRequest)
 
 		paid, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, off.PaymentRequest)
 		assert.True(t, errors.Is(err, transactions.ErrCannotPayOwnInvoice))
 
-		assert.Equal(t, paid, transactions.Offchain{})
+		assert.Equal(t, transactions.Offchain{}, paid)
 	})
 	t.Run("internal transfer marks the transaction correctly", func(t *testing.T) {
 		t.Parallel()
@@ -617,7 +623,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 
 		// Sleep for expiry to check if expired property is set
 		// correctly. expired should be true
-		time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
+		time.Sleep(time.Second + time.Second*time.Duration(offchainTx.Expiry))
 
 		assert.True(t, offchainTx.IsExpired())
 		assert.Equal(t, offchainTx.ExpiresAt(), offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
