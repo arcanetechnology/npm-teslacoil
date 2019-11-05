@@ -79,12 +79,15 @@ func ForUser(db *db.DB, userID int) (Balance, error) {
 	return balance, nil
 }
 
+// IncomingForUser calculates the users incoming balance.
+// A offchain payment is included if invoice_status == 'COMPLETED' and settled_at is defined
+// A onchain transaction is included if confirmed_at is defined
 func IncomingForUser(db *db.DB, userID int) (Balance, error) {
 	var res balanceResult
 	query := `SELECT COALESCE(SUM(amount_milli_sat), 0) AS balance FROM transactions 
 		WHERE direction = 'INBOUND' AND user_id=$1 AND (
-		    (settled_at IS NOT NULL OR confirmed_at IS NOT NULL) AND
-			(invoice_status = 'COMPLETED' OR txid IS NOT NULL) -- only check for invoices that are confirmed paid
+		    (settled_at IS NOT NULL AND invoice_status = 'COMPLETED') OR
+		    (confirmed_at IS NOT NULL) -- only check for invoices that are confirmed paid
 		)`
 	if err := db.Get(&res, query, userID); err != nil {
 		return 0, err

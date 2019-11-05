@@ -67,7 +67,9 @@ func TestIncomingForUser(t *testing.T) {
 			user := userstestutil.CreateUserOrFail(t, testDB)
 			var expected balance.Balance
 			tx := txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
-			expected += calcNewBalance(t, tx.ToTransaction())
+			if tx.ConfirmedAt != nil {
+				expected += calcNewBalance(t, tx.ToTransaction())
+			}
 
 			bal, err := balance.IncomingForUser(testDB, user.ID)
 			require.NoError(t, err)
@@ -96,26 +98,38 @@ func TestIncomingForUser(t *testing.T) {
 			assert.Equal(t, expectedBalance, preTxGeneration)
 
 			tx := txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
-			expectedBalance += calcNewBalance(t, tx.ToTransaction())
+			if tx.ConfirmedAt != nil {
+				expectedBalance += calcNewBalance(t, tx.ToTransaction())
+			}
 
 			tx = txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
-			expectedBalance += calcNewBalance(t, tx.ToTransaction())
+			if tx.ConfirmedAt != nil {
+				expectedBalance += calcNewBalance(t, tx.ToTransaction())
+			}
 
 			tx = txtest.InsertFakeIncomingOnchainorFail(t, testDB, user.ID)
-			expectedBalance += calcNewBalance(t, tx.ToTransaction())
+			if tx.ConfirmedAt != nil {
+				expectedBalance += calcNewBalance(t, tx.ToTransaction())
+			}
 
 			postOnchain, err := balance.IncomingForUser(testDB, user.ID)
 			require.NoError(t, err)
 			assert.Equal(t, postOnchain, expectedBalance)
 
 			offchain := txtest.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
-			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
+			if offchain.Status == transactions.Offchain_COMPLETED {
+				expectedBalance += calcNewBalance(t, offchain.ToTransaction())
+			}
 
 			offchain = txtest.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
-			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
+			if offchain.Status == transactions.Offchain_COMPLETED {
+				expectedBalance += calcNewBalance(t, offchain.ToTransaction())
+			}
 
 			offchain = txtest.InsertFakeIncomingOffchainOrFail(t, testDB, user.ID)
-			expectedBalance += calcNewBalance(t, offchain.ToTransaction())
+			if offchain.Status == transactions.Offchain_COMPLETED {
+				expectedBalance += calcNewBalance(t, offchain.ToTransaction())
+			}
 
 			postOffchain, err := balance.IncomingForUser(testDB, user.ID)
 			require.NoError(t, err)
