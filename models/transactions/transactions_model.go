@@ -225,7 +225,7 @@ type Offchain struct {
 	Expiry int64 `json:"-"`
 
 	AmountMSat       int64          `json:"amountMSat"`
-	InternalTransfer bool           `db:"internal_transfer"`
+	InternalTransfer bool           `json:"internalTransfer"`
 	Description      *string        `json:"description,omitempty"`
 	Direction        Direction      `json:"direction"`
 	HashedPreimage   []byte         `json:"hash"`
@@ -346,8 +346,9 @@ func (s OffchainStatus) MarshalText() (text []byte, err error) {
 	return []byte(lower), nil
 }
 
-// MarkAsPaid marks the given payment request as paid at the given date
-func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error) {
+// MarkAsCompleted marks the given payment request as paid at the given date
+func (o Offchain) MarkAsCompleted(db db.InsertGetter, paidAt time.Time, callbacker HttpPoster) (
+	Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions
 		SET internal_transfer = :internal_transfer, settled_at = :settled_at, invoice_status = :invoice_status
 		WHERE id = :id ` + txReturningSql
@@ -359,9 +360,10 @@ func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error)
 	tx := o.ToTransaction()
 	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
-		log.WithError(err).Error("Couldn't mark invoice as paid")
+		log.WithError(err).Error("couldnt mark invoice as paid")
 		return Offchain{}, err
 	}
+	defer rows.Close()
 
 	if !rows.Next() {
 		return Offchain{}, fmt.Errorf("could not mark invoice as paid: %w", sql.ErrNoRows)
@@ -375,6 +377,17 @@ func (o Offchain) MarkAsPaid(db db.Inserter, paidAt time.Time) (Offchain, error)
 	updatedOffchain, err := updated.ToOffchain()
 	if err != nil {
 		return Offchain{}, err
+	}
+
+	// call the callback URL(if exists)
+	if updatedOffchain.CallbackURL != nil {
+		if err = postCallback(db, updatedOffchain, callbacker); err != nil {
+			// don't return here, we don't want this to fail the entire
+			// operation
+			log.WithError(err).Error("Could not POST to callback URL")
+		}
+	} else {
+		log.WithField("id", updatedOffchain.ID).Debug("invoice did not have callback URL")
 	}
 
 	return updatedOffchain, nil
@@ -478,7 +491,7 @@ type Onchain struct {
 
 	Direction Direction `json:"direction"`
 
-	InternalTransfer bool `db:"internal_transfer"`
+	InternalTransfer bool `json:"internalTransfer"`
 
 	Description *string `json:"description,omitempty"`
 

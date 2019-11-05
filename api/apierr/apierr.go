@@ -50,7 +50,6 @@ var (
 		err:  errors.New("email is not verified"),
 		code: "ERR_EMAIL_NOT_VERIFIED",
 	}
-
 	// ErrUserAlreadyExists means the user already exists
 	ErrUserAlreadyExists = apiError{
 		err:  errors.New("user already exists"),
@@ -61,61 +60,51 @@ var (
 		err:  errors.New("no user with the given email and password exists"),
 		code: "ERR_NO_SUCH_USER",
 	}
-
 	// ErrBalanceTooLow means the user tried to spend or withdraw more money than
 	// they had available
 	ErrBalanceTooLow = apiError{
 		err:  transactions.ErrBalanceTooLow,
 		code: "ERR_BALANCE_TOO_LOW",
 	}
-
 	// errInvalidJson means we got sent invalid JSON
 	errInvalidJson = apiError{
 		err:  errors.New("invalid JSON"),
 		code: "ERR_INVALID_JSON",
 	}
-
 	errBodyRequired = apiError{
 		err:  errors.New("JSON body required"),
 		code: "ERR_BODY_REQUIRED",
 	}
-
 	// ErrUnknownError means we don't know exactly what went wrong
 	ErrUnknownError = apiError{
 		err:  errors.New("something went wrong"),
 		code: "ERR_UNKNOWN_ERROR",
 	}
-
 	// ErrRouteNotFound means the requested HTTP route wasn't found
 	ErrRouteNotFound = apiError{
 		err:  errors.New("route not found"),
 		code: "ERR_ROUTE_NOT_FOUND",
 	}
-
 	// ErrMissingAuthHeader means the HTTP request had an empty auth header
 	ErrMissingAuthHeader = apiError{
 		err:  errors.New("missing authentication header"),
 		code: "ERR_MISSING_AUTH_HEADER",
 	}
-
 	//ErrIncorrectPassword means we were given an invalid password
 	ErrIncorrectPassword = apiError{
 		err:  errors.New("incorrect password"),
 		code: "ERR_INCORRECT_PASSWORD",
 	}
-
 	//Err2faNotEnabled means the user hasn't enabled 2FA
 	Err2faNotEnabled = apiError{
 		err:  errors.New("2FA is not enabled"),
 		code: "ERR_2FA_NOT_ENABLED",
 	}
-
 	//Err2faAlreadyEnabled means the user already has enabled 2FA
 	Err2faAlreadyEnabled = apiError{
 		err:  errors.New("2FA is already enabled"),
 		code: "ERR_2FA_ALREADY_ENABLED",
 	}
-
 	// ErrInvalidTotpCode means the given TOTP code was not on a valid format
 	ErrInvalidTotpCode = apiError{
 		err:  errors.New("invalid TOTP code format"),
@@ -166,13 +155,11 @@ var (
 		err:  errors.New("missing TOTP code"),
 		code: "ERR_MISSING_TOTP_CODE",
 	}
-
 	// ErrBadTotpCode means the given TOTP code did not match up with the expected one
 	ErrBadTotpCode = apiError{
 		err:  errors.New("bad TOTP code"),
 		code: "ERR_BAD_TOTP_CODE",
 	}
-
 	// ErrRequestValidationFailed means the user gave us an invalid request, either
 	// in JSON, URL or query format
 	ErrRequestValidationFailed = apiError{
@@ -188,6 +175,12 @@ var (
 	ErrTransactionNotFound = apiError{
 		err:  errors.New("transaction not found"),
 		code: "ERR_TRANSACTION_NOT_FOUND",
+	}
+	// ErrCannotPayOwnInvoice is returned from PayInvoice() and means the
+	// user tried to pay an invoice he/she created
+	ErrCannotPayOwnInvoice = apiError{
+		err:  transactions.ErrCannotPayOwnInvoice,
+		code: "ERR_CANNOT_PAY_OWN_INVOICE",
 	}
 )
 
