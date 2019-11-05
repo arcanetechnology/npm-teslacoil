@@ -1,6 +1,7 @@
 .envrc
 .systemd-variables
 logs/
+coverage.html
 .idea/dataSources.xml
 .idea/teslacoil.iml
 .idea/idea

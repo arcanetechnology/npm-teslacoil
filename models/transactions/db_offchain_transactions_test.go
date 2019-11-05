@@ -11,16 +11,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"github.com/brianvoe/gofakeit"
+
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	pkgErrors "github.com/pkg/errors"
+
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
@@ -154,7 +157,7 @@ func TestNewOffchainTx(t *testing.T) {
 				InvoiceResponse: tt.lndInvoice,
 			}
 
-			offchainTx, err := transactions.NewOffchain(testDB, mockLNcli, transactions.NewOffchainOpts{
+			offchainTx, err := transactions.CreateTeslacoilInvoice(testDB, mockLNcli, transactions.NewOffchainOpts{
 				UserID:      tt.want.UserID,
 				AmountSat:   tt.amountSat,
 				Memo:        tt.memo,
@@ -185,7 +188,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without customer order id", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -196,7 +199,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with customer order id", func(t *testing.T) {
 		t.Parallel()
 		order := gofakeit.Word()
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			OrderId:   order,
@@ -208,7 +211,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without description", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -219,7 +222,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with description", func(t *testing.T) {
 		t.Parallel()
 		desc := gofakeit.Sentence(gofakeit.Number(1, 12))
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Description: desc,
@@ -231,7 +234,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without memo", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -242,7 +245,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with memo", func(t *testing.T) {
 		t.Parallel()
 		memo := gofakeit.Sentence(gofakeit.Number(1, 12))
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Memo:      memo,
@@ -254,7 +257,7 @@ func TestNewOffchainTx(t *testing.T) {
 
 	t.Run("offchain TX without callbackURL", func(t *testing.T) {
 		t.Parallel()
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 		})
@@ -265,7 +268,7 @@ func TestNewOffchainTx(t *testing.T) {
 	t.Run("offchain TX with callbackURL", func(t *testing.T) {
 		t.Parallel()
 		url := gofakeit.URL()
-		offchain, err := transactions.NewOffchain(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
+		offchain, err := transactions.CreateTeslacoilInvoice(testDB, lntestutil.GetLightningMockClient(), transactions.NewOffchainOpts{
 			UserID:      user.ID,
 			AmountSat:   int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			CallbackURL: url,
@@ -284,7 +287,7 @@ func TestOffchain_MarkAsPaid(t *testing.T) {
 	require.NoError(t, err)
 
 	settlement := time.Now()
-	paid, err := inserted.MarkAsPaid(testDB, settlement)
+	paid, err := inserted.MarkAsCompleted(testDB, settlement, nil)
 	require.NoError(t, err)
 	assert.Equal(t, transactions.Offchain_COMPLETED, paid.Status)
 	require.NotNil(t, paid.SettledAt)
@@ -314,7 +317,7 @@ func TestOffchain_MarkAsFlopped(t *testing.T) {
 func TestPayInvoice(t *testing.T) {
 	t.Parallel()
 
-	amount := int64(gofakeit.Number(1, ln.MaxAmountMsatPerInvoice))
+	amount := int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice))
 
 	paymentRequest := "SomeOffchainRequest1"
 
@@ -338,7 +341,7 @@ func TestPayInvoice(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = transactions.PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
+			testDB, &mockLNcli, nil, user.ID, paymentRequest)
 		require.NoError(t, err)
 
 		_, err = users.GetByID(testDB, user.ID)
@@ -367,12 +370,13 @@ func TestPayInvoice(t *testing.T) {
 			},
 		}
 
-		_, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
+		_, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, paymentRequest)
 		if errors.Is(err, transactions.ErrBalanceTooLow) {
 			assert.Equal(t, err, transactions.ErrBalanceTooLow)
 		}
 
 	})
+
 	t.Run("paying invoice with 0 amount fails with Err0AmountInvoiceNotSupported", func(t *testing.T) {
 		t.Parallel()
 		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
@@ -389,7 +393,7 @@ func TestPayInvoice(t *testing.T) {
 		}
 
 		_, err := transactions.PayInvoice(
-			testDB, &mockLNcli, user.ID, paymentRequest)
+			testDB, &mockLNcli, nil, user.ID, paymentRequest)
 		if !errors.Is(err, transactions.Err0AmountInvoiceNotSupported) {
 			testutil.FailMsgf(t, "expected Err0AmountInvoiceNotSupported but got error %v", err)
 		}
@@ -411,12 +415,76 @@ func TestPayInvoice(t *testing.T) {
 			},
 		}
 
-		got, err := transactions.PayInvoice(testDB, &mockLNcli, user.ID, paymentRequest)
+		got, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, paymentRequest)
 		require.NoError(t, err)
 
 		assert.Equal(t, transactions.Offchain_COMPLETED, got.Status)
 		assert.NotNil(t, got.SettledAt)
 		assert.WithinDuration(t, *got.SettledAt, time.Now(), time.Second)
+	})
+
+	t.Run("a user cannot pay an invoice they created", func(t *testing.T) {
+		t.Parallel()
+
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*5)
+		mockLNcli := lntestutil.LightningMockClient{
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: amount,
+				Expiry:      1000,
+			},
+			InvoiceResponse: lnrpc.Invoice{
+				PaymentRequest: paymentRequest,
+			},
+		}
+
+		fmt.Printf("user: %+v", user)
+
+		off, err := transactions.CreateTeslacoilInvoice(testDB, &mockLNcli, transactions.NewOffchainOpts{
+			UserID:    user.ID,
+			AmountSat: int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice)),
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, paymentRequest, off.PaymentRequest)
+
+		paid, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, off.PaymentRequest)
+		assert.True(t, errors.Is(err, transactions.ErrCannotPayOwnInvoice))
+
+		assert.Equal(t, transactions.Offchain{}, paid)
+	})
+	t.Run("internal transfer marks the transaction correctly", func(t *testing.T) {
+		t.Parallel()
+
+		payTo := CreateUserOrFail(t, testDB)
+		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*3)
+		mockLNcli := lntestutil.LightningMockClient{
+			DecodePayReqResponse: lnrpc.PayReq{
+				PaymentHash: SampleHashHex,
+				NumSatoshis: amount,
+				Expiry:      1000,
+			},
+			InvoiceResponse: lnrpc.Invoice{
+				PaymentRequest: "a payment request",
+			},
+		}
+
+		off, err := transactions.CreateTeslacoilInvoice(testDB, &mockLNcli, transactions.NewOffchainOpts{
+			UserID:    payTo.ID,
+			AmountSat: int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice)),
+		})
+		assert.NoError(t, err)
+
+		paid, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, off.PaymentRequest)
+		assert.NoError(t, err)
+
+		assert.Equal(t, true, paid.InternalTransfer)
+		assert.Equal(t, transactions.Offchain_COMPLETED, paid.Status)
+		assert.NotNil(t, paid.SettledAt)
+
+		// assert balance is decreased
+		updatedBalance, err := user.WithBalance(testDB)
+		assert.NoError(t, err)
+		assert.Equal(t, *user.BalanceSats-amount, *updatedBalance.BalanceSats)
 	})
 }
 
@@ -555,7 +623,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 
 		// Sleep for expiry to check if expired property is set
 		// correctly. expired should be true
-		time.Sleep(time.Second * time.Duration(offchainTx.Expiry))
+		time.Sleep(time.Second + time.Second*time.Duration(offchainTx.Expiry))
 
 		assert.True(t, offchainTx.IsExpired())
 		assert.Equal(t, offchainTx.ExpiresAt(), offchainTx.CreatedAt.Add(time.Second*time.Duration(offchainTx.Expiry)))
@@ -593,7 +661,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 // CreateNewOffchainTxOrFail creates a new offchain or fail
 func CreateNewOffchainTxOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
 	opts transactions.NewOffchainOpts) transactions.Offchain {
-	payment, err := transactions.NewOffchain(db, ln, opts)
+	payment, err := transactions.CreateTeslacoilInvoice(db, ln, opts)
 	if err != nil {
 		testutil.FatalMsg(t,
 			pkgErrors.Wrap(err, "wasn't able to create new payment"))
@@ -635,9 +703,9 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User
 	})
 	require.NoError(t, err)
 
-	bal, err := balance.ForUser(db, u.ID)
+	with, err := u.WithBalance(db)
 	require.NoError(t, err)
-	require.Equal(t, bal.Sats(), sats)
+	require.Equal(t, *with.BalanceSats, sats)
 
-	return u
+	return with
 }

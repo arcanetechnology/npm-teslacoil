@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,8 +18,8 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
@@ -31,7 +32,64 @@ var (
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")
 	ErrExpectedOpenStatus         = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_OPEN)])
 	ErrExpectedSettledStatus      = fmt.Errorf("expected invoice status to be %s", lnrpc.Invoice_InvoiceState_name[int32(lnrpc.Invoice_SETTLED)])
+	ErrCannotPayOwnInvoice        = errors.New("cannot pay own invoice")
+	ErrCouldNotDecodePayReq       = errors.New("could not decode payment request")
 )
+
+// InsertOffchain inserts the given offchain TX into the DB
+func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
+	tx, err := insertTransaction(db, offchain.ToTransaction())
+	if err != nil {
+		return Offchain{}, err
+	}
+	insertedOffchain, err := tx.ToOffchain()
+	if err != nil {
+		return Offchain{}, fmt.Errorf("could not convert inserted TX to offchain TX: %w", err)
+	}
+
+	// if preimage is NULL in DB, default is empty slice and not null
+	if tx.Preimage != nil && len(*tx.Preimage) == 0 {
+		insertedOffchain.Preimage = nil
+	}
+
+	return insertedOffchain, nil
+}
+
+// GetOffchainByID retrieves a transaction with `ID` for `userID` .
+// if the transaction cannot be converted to an Offchain transaction
+// an error is returned
+func GetOffchainByID(db *db.DB, id int, userID int) (Offchain, error) {
+	tx, err := GetTransactionByID(db, id, userID)
+	if err != nil {
+		return Offchain{}, err
+	}
+	offchain, err := tx.ToOffchain()
+	if err != nil {
+		return Offchain{}, fmt.Errorf("requested TX was not offchain TX: %w", err)
+	}
+	return offchain, nil
+}
+
+// GetOffchainByPaymentRequest retrieves a Offchain transaction from the database
+// with the specified paymentRequest and userID
+func GetOffchainByPaymentRequest(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
+	query := "SELECT * FROM transactions WHERE user_id=$1 AND payment_request=$2"
+
+	var selectedTx Transaction
+	if err := db.Get(&selectedTx, query, userID, paymentRequest); err != nil {
+		log.WithError(err).WithField("paymentRequest",
+			paymentRequest).Error("could not get TX from DB")
+		return Offchain{}, err
+	}
+
+	offchain, err := selectedTx.ToOffchain()
+	if err != nil {
+		log.WithError(err).WithField("ID", offchain.ID).Error("could not convert to offchain")
+		return Offchain{}, err
+	}
+
+	return offchain, nil
+}
 
 // CreateInvoice is used to Create an Invoice without a memo
 func CreateInvoice(lncli ln.AddLookupInvoiceClient, amountSat int64) (
@@ -64,7 +122,7 @@ func CreateInvoiceWithMemo(lncli ln.AddLookupInvoiceClient, amountSat int64,
 			Value: amountSat,
 		})
 	if err != nil {
-		err = errors.Wrap(err, "could not add invoice to lnd")
+		err = fmt.Errorf("could not add invoice to lnd: %w", err)
 		log.Error(err)
 		return lnrpc.Invoice{}, err
 	}
@@ -93,9 +151,9 @@ func (o NewOffchainOpts) toFields() logrus.Fields {
 	}
 }
 
-// NewOffchain creates a new payment by first creating an invoice
-// using lnd, then saving info returned from lnd to a new offchain tx
-func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (
+// CreateTeslacoilInvoice creates a new lightning invoice by first creating an
+// invoice using lnd, then saving info returned from lnd to a new offchain tx
+func CreateTeslacoilInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (
 	Offchain, error) {
 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
@@ -138,25 +196,91 @@ func NewOffchain(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts
 	return inserted, nil
 }
 
+// paymentRequestBelongsToTeslacoilUser checks whether a payment request belongs
+// to teslacoil by SELECTING INBOUND transactions from the db. Returns the INBOUND
+// offchain transaction if it exists
+func paymentRequestBelongsToTeslacoilUser(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
+	query := "SELECT * FROM transactions WHERE payment_request=$1 AND direction = $2"
+
+	var selectedTx Transaction
+	err := db.Get(&selectedTx, query, paymentRequest, INBOUND)
+	if err != nil {
+		log.WithError(err).WithField("paymentRequest",
+			paymentRequest).Error("could not get TX from DB")
+		return Offchain{}, err
+	}
+	log.Tracef("found %+v", selectedTx)
+
+	if selectedTx.UserID == userID {
+		return Offchain{}, ErrCannotPayOwnInvoice
+	}
+
+	offchain, err := selectedTx.ToOffchain()
+	if err != nil {
+		return Offchain{}, err
+	}
+
+	return offchain, nil
+}
+
+func sendOffchain(db *db.DB, lncli ln.DecodeSendClient, callbacker HttpPoster, payment Offchain) (Offchain, error) {
+	// TODO(bo): Add a websocket here, sending a message to the user that
+	//  the payment is initiated
+
+	paymentResponse, err := lncli.SendPaymentSync(
+		context.Background(), &lnrpc.SendRequest{
+			PaymentRequest: payment.PaymentRequest,
+		})
+	if err != nil {
+		return Offchain{}, fmt.Errorf("could not send offchain TX: %w", err)
+	}
+
+	log.WithFields(logrus.Fields{
+		"paymentError": paymentResponse.PaymentError,
+		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
+		"paymentRoute": paymentResponse.PaymentRoute,
+	}).Info("tried sending payment")
+
+	if paymentResponse.PaymentError != "" {
+		failed, err := payment.MarkAsFlopped(db)
+		if err != nil {
+			return Offchain{}, err
+		}
+
+		return failed, errors.New(paymentResponse.PaymentError)
+	}
+
+	paid, err := payment.MarkAsCompleted(db, time.Now(), callbacker)
+	if err != nil {
+		return Offchain{}, err
+	}
+
+	// TODO(bo): Add a websocket here, sending a message to the user that
+	//  the payment is completed
+
+	return paid, nil
+}
+
 // PayInvoice is used to Pay an invoice without a description
-func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, userID int,
+func PayInvoice(d *db.DB, lncli ln.DecodeSendClient, callbacker HttpPoster, userID int,
 	paymentRequest string) (Offchain, error) {
-	return PayInvoiceWithDescription(d, lncli, userID, paymentRequest, "")
+	return PayInvoiceWithDescription(d, lncli, callbacker, userID, paymentRequest, "")
 }
 
 // PayInvoiceWithDescription first persists an outbound payment with the supplied invoice to
 // the database. Then attempts to pay the invoice using SendOffchainSync
 // Should the payment fail, we rollback all changes made to the DB
-func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
-	paymentRequest string, description string) (Offchain, error) {
+func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, callbacker HttpPoster,
+	userID int, paymentRequest string, description string) (Offchain, error) {
 
 	payreq, err := lncli.DecodePayReq(
 		context.Background(),
 		&lnrpc.PayReqString{PayReq: paymentRequest})
-
 	if err != nil {
-		return Offchain{}, err
+		return Offchain{}, fmt.Errorf("%v: %w", ErrCouldNotDecodePayReq, err)
 	}
+
+	log.Infof("payreq: %+v", payreq)
 
 	if payreq.NumSatoshis == 0 {
 		log.WithFields(logrus.Fields{
@@ -205,48 +329,42 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, userID int,
 		return Offchain{}, ErrBalanceTooLow
 	}
 
-	// TODO(bo): Add a websocket here, sending a message to the user that
-	//  the payment is initiated
+	inboundTransaction, err := paymentRequestBelongsToTeslacoilUser(db, payment.PaymentRequest, payment.UserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sendOffchain(db, lncli, callbacker, payment)
+	} else if err != nil {
+		if !errors.Is(err, ErrCannotPayOwnInvoice) {
+			log.WithError(err).Error("could not check whether payreq belongs to teslacoil user")
+		}
+		return Offchain{}, err
+	} else {
+		payment.InternalTransfer = true
+		paidAt := time.Now()
 
-	paymentResponse, err := lncli.SendPaymentSync(
-		context.Background(), &lnrpc.SendRequest{
-			PaymentRequest: paymentRequest,
-		})
-	if err != nil {
-		log.WithError(err).Error("Could not send offchain TX")
-		return Offchain{}, fmt.Errorf("could not send offchain TX: %w", err)
-	}
-
-	log.WithFields(logrus.Fields{
-		"paymentError": paymentResponse.PaymentError,
-		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
-		"paymentRoute": paymentResponse.PaymentRoute,
-	}).Info("tried sending payment")
-
-	if paymentResponse.PaymentError != "" {
-		failed, err := payment.MarkAsFlopped(db)
+		tx := db.MustBegin()
+		payment, err = payment.MarkAsCompleted(tx, paidAt, callbacker)
 		if err != nil {
+			_ = tx.Rollback()
 			return Offchain{}, err
 		}
 
-		return failed, errors.New(paymentResponse.PaymentError)
+		_, err = inboundTransaction.MarkAsCompleted(tx, paidAt, callbacker)
+		if err != nil {
+			_ = tx.Rollback()
+			return Offchain{}, err
+		}
+		if err = tx.Commit(); err != nil {
+			return Offchain{}, err
+		}
+
+		return payment, nil
 	}
-
-	paid, err := payment.MarkAsPaid(db, time.Now())
-	if err != nil {
-		return Offchain{}, err
-	}
-
-	// TODO(bo): Add a websocket here, sending a message to the user that
-	//  the payment is completed
-
-	return paid, nil
 }
 
 // InvoiceListener receives lnrpc.Invoices on a channel and handles them
 // according to their State
 func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
-	database *db.DB, sender HttpPoster) {
+	database *db.DB, callbacker HttpPoster) {
 	for {
 		invoice := <-invoiceUpdatesCh
 		if invoice == nil {
@@ -257,15 +375,24 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 		log.WithField("hash", hex.EncodeToString(invoice.RHash)).
 			Info("received invoice on invoice status listener")
 
-		var offchain Offchain
-		var err error
 		switch invoice.State {
 		case lnrpc.Invoice_OPEN: // created, not yet confirmed paid
 			log.WithField("paymentRequest", invoice.PaymentRequest).
-				Tracef("no action required for an OPEN invoice, logic handled in NewOffchain()")
+				Tracef("no action required for an OPEN invoice, logic handled in CreateTeslacoilInvoice")
 
 		case lnrpc.Invoice_SETTLED: // deposit success!
-			offchain, err = HandleSettledInvoice(*invoice, database, sender)
+			offchain, err := HandleSettledInvoice(*invoice, database, callbacker)
+			if err != nil {
+				log.WithError(err).Error("could not handle settled invoice")
+				continue
+			}
+
+			log.WithFields(logrus.Fields{
+				"hash":   hex.EncodeToString(offchain.HashedPreimage),
+				"id":     offchain.ID,
+				"status": offchain.Status,
+			},
+			).Info("updated invoice status")
 
 		case lnrpc.Invoice_CANCELED | lnrpc.Invoice_ACCEPTED: // hold invoices
 			// we panic because somewhere in our code we used lncli.AddHoldInvoice(),
@@ -274,17 +401,6 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 		default:
 			log.WithField("invoice", invoice).Error("invoice has unknown state")
 		}
-		if err != nil {
-			log.WithError(err).Error("could not update invoice status")
-			continue
-		}
-
-		log.WithFields(logrus.Fields{
-			"hash":   hex.EncodeToString(offchain.HashedPreimage),
-			"id":     offchain.ID,
-			"status": offchain.Status,
-		},
-		).Info("updated invoice status")
 	}
 }
 
@@ -292,7 +408,7 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 // and update the state in the database
 // invoices whose status is not settled is rejected and an error is returned
 func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
-	sender HttpPoster) (Offchain, error) {
+	callbacker HttpPoster) (Offchain, error) {
 
 	if invoice.State != lnrpc.Invoice_SETTLED {
 		return Offchain{}, ErrExpectedSettledStatus
@@ -309,16 +425,13 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	tQuery := "SELECT * FROM transactions WHERE payment_request=$1"
 
 	var selectTx Transaction
-	if err := database.Get(
-		&selectTx,
-		tQuery,
+	if err := database.Get(&selectTx, tQuery,
 		invoice.PaymentRequest); err != nil {
+
 		log.WithError(err).WithField("paymentRequest",
 			invoice.PaymentRequest).Error("Could not read TX from DB")
-		return Offchain{}, errors.Wrapf(err,
-			"UpdateInvoiceStatus->database.Get(&payment, query, %+v)",
-			invoice.PaymentRequest,
-		)
+		return Offchain{}, fmt.Errorf("could not read TX from DB: %w", err)
+
 	}
 
 	offchainInvoice, err := selectTx.ToOffchain()
@@ -370,14 +483,16 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 
 	// call the callback URL(if exists)
 	if inserted.CallbackURL != nil {
-		if err = postCallback(database, inserted, sender); err != nil {
+		if err = postCallback(database, inserted, callbacker); err != nil {
 			// don't return here, we don't want this to fail the entire
 			// operation
 			log.WithError(err).Error("Could not POST to callback URL")
 		}
 	} else {
-		log.WithField("id", offchainInvoice.ID).Debug("invoice did not have callback URL")
+		log.WithField("id", inserted.ID).Debug("invoice did not have callback URL")
 	}
+
+	log.Tracef("invoice is settled: %+v", inserted)
 
 	return inserted, nil
 }
@@ -402,7 +517,7 @@ type CallbackBody struct {
 // .createHmac("sha256", hashedKey)
 // .update(payment.id.toString())
 // .digest("hex");
-func postCallback(database db.Getter, payment Offchain, sender HttpPoster) error {
+func postCallback(database db.Getter, payment Offchain, callbacker HttpPoster) error {
 	if payment.CallbackURL == nil {
 		return errors.New("callback URL was nil")
 	}
@@ -436,7 +551,7 @@ func postCallback(database db.Getter, payment Offchain, sender HttpPoster) error
 			})
 			var response *http.Response
 			retry := func() error {
-				res, err := sender.Post(*payment.CallbackURL, "application/json",
+				res, err := callbacker.Post(*payment.CallbackURL, "application/json",
 					bytes.NewReader(paymentBytes))
 				response = res
 				return err

@@ -3,14 +3,12 @@
 package apitxs
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -26,14 +24,19 @@ var (
 	database *db.DB
 	lncli    lnrpc.LightningClient
 	bitcoin  bitcoind.TeslacoilBitcoind
+	sender   transactions.HttpPoster
 )
 
+// RegisterRoutes applies the authMiddleware to this packages routes
+// and registers routes on the gin Engine parameter
 func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
-	bitcoind bitcoind.TeslacoilBitcoind, authmiddleware gin.HandlerFunc) {
+	bitcoind bitcoind.TeslacoilBitcoind, poster transactions.HttpPoster,
+	authmiddleware gin.HandlerFunc) {
 	// assign the services given
 	database = db
 	lncli = lnd
 	bitcoin = bitcoind
+	sender = poster
 
 	transaction := server.Group("")
 
@@ -50,6 +53,7 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 	// offchain transactions
 	transaction.POST("/invoices/create", createInvoice())
 	transaction.POST("/invoices/pay", payInvoice())
+	transaction.GET("/invoice/:paymentrequest", getOffchainByPaymentRequest())
 }
 
 // getAllTransactions finds all payments for the given user. Takes two URL
@@ -116,7 +120,7 @@ func getTransactionByID() gin.HandlerFunc {
 			return
 		}
 
-		// Return the user when it is found and no errors where encountered
+		// Return the transaction when it is found and no errors where encountered
 		c.JSONP(http.StatusOK, t)
 	}
 }
@@ -210,7 +214,7 @@ func createInvoice() gin.HandlerFunc {
 		}
 
 		// TODO: rename this function to something like `NewLightningPayment` or `NewLightningInvoice`
-		t, err := transactions.NewOffchain(
+		t, err := transactions.CreateTeslacoilInvoice(
 			database, lncli, transactions.NewOffchainOpts{
 				UserID:      userID,
 				AmountSat:   req.AmountSat,
@@ -247,42 +251,45 @@ func payInvoice() gin.HandlerFunc {
 			return
 		}
 
-		t, err := transactions.PayInvoiceWithDescription(database, lncli, userID,
-			req.PaymentRequest, req.Description)
+		t, err := transactions.PayInvoiceWithDescription(database, lncli, sender,
+			userID, req.PaymentRequest, req.Description)
 		if err != nil {
-			// investigate details around failure
-			go func() {
-				origErr := err
-				decoded, err := lncli.DecodePayReq(context.Background(), &lnrpc.PayReqString{
-					PayReq: req.PaymentRequest,
-				})
-				if err != nil {
-					log.WithError(err).Error("Could not decode payment request")
-					return
-				}
+			if errors.Is(err, transactions.ErrCannotPayOwnInvoice) {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrCannotPayOwnInvoice)
+				return
+			}
+			_ = c.Error(err)
+			return
+		}
 
-				channels, err := lncli.ListChannels(context.Background(), &lnrpc.ListChannelsRequest{
-					ActiveOnly: true,
-				})
-				if err != nil {
-					log.WithError(err).Error("Could not list active channels")
-					return
-				}
+		c.JSONP(http.StatusOK, t)
+	}
+}
 
-				balance, err := lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
-				if err != nil {
-					log.WithError(err).Error("Could not get channel balance")
-				}
+// getOffchainByPaymentRequest takes in a paymentrequest path parameter,
+// and fetches that from the DB
+func getOffchainByPaymentRequest() gin.HandlerFunc {
+	type request struct {
+		PaymentRequest string `uri:"paymentrequest" binding:"required,paymentrequest"`
+	}
 
-				log.WithFields(logrus.Fields{
-					"destination":    decoded.Destination,
-					"amountSat":      decoded.NumSatoshis,
-					"activeChannels": len(channels.Channels),
-					"channelBalance": balance.Balance,
-					"routeHints":     decoded.RouteHints,
-				}).WithError(origErr).Error("Could not pay invoice")
+	return func(c *gin.Context) {
+		userID, ok := auth.RequireScope(c, auth.ReadWallet)
+		if !ok {
+			return
+		}
 
-			}()
+		var req request
+		if c.BindUri(&req) != nil {
+			return
+		}
+
+		t, err := transactions.GetOffchainByPaymentRequest(database, req.PaymentRequest, userID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				apierr.Public(c, http.StatusNotFound, apierr.ErrTransactionNotFound)
+				return
+			}
 			_ = c.Error(err)
 			return
 		}

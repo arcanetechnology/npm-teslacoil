@@ -186,7 +186,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	r.registerAdminRoutes()
 
 	apikeyroutes.RegisterRoutes(r.Router, r.db, middleware)
-	apitxs.RegisterRoutes(r.Router, r.db, r.lncli, r.bitcoind, middleware)
+	apitxs.RegisterRoutes(r.Router, r.db, r.lncli, r.bitcoind, callbacks, middleware)
 	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware)
 	apiauth.RegisterRoutes(r.Router, r.db, sender, middleware)
 

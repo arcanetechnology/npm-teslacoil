@@ -133,6 +133,11 @@ func NewLNDClient(options LightningConfig) (
 		return nil, fmt.Errorf("could not lookup host %q: %w", cfg.RPCHost, err)
 	}
 	translatedAddress := addrs[0] // there's always at least one element here if no err
+	if cfg.RPCHost == "localhost" {
+		// instead of looping through addrs and finding the ipv4 address,
+		// we just hardcode localhost
+		translatedAddress = "127.0.0.1"
+	}
 
 	log.WithFields(logrus.Fields{
 		"certpath":     cfg.TLSCertPath,
@@ -222,13 +227,13 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	*lnrpc.Invoice, error) {
 	ctx := context.Background()
 
-	log.Tracef("Adding invoice: %+v", invoiceData)
+	log.Tracef("adding invoice: %+v", invoiceData)
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
 		err = fmt.Errorf("could not add invoice: %w", err)
 		return nil, err
 	}
-	log.Tracef("Added invoice: %+v", *inv)
+	log.Tracef("added invoice: %+v", *inv)
 
 	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
 		RHash: inv.RHash,
