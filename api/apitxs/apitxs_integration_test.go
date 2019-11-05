@@ -1,6 +1,6 @@
 //+build integration
 
-package apitxs_integration_test
+package apitxs_test
 
 import (
 	"context"
@@ -9,6 +9,13 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
+
+	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/sirupsen/logrus"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/api"
@@ -16,23 +23,14 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
 
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/brianvoe/gofakeit"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
-)
-
-var (
-	databaseConfig = testutil.GetDatabaseConfig("api_txs_integration")
-	testDB         *db.DB
-	conf           = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
 )
 
 func init() {
@@ -40,6 +38,8 @@ func init() {
 	// this probably shouldn't matter, as the conn.
 	// closes when the process exits anyway
 	testDB = testutil.InitDatabase(databaseConfig)
+	databaseConfig = testutil.GetDatabaseConfig("api_txs_integration")
+	conf = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
 }
 
 func TestCreateInvoiceRoute(t *testing.T) {
@@ -61,7 +61,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 		t.Run("Create an invoice without memo and description", func(t *testing.T) {
 
-			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
+			amountSat := fakeInvoiceAmount()
 
 			req := httptestutil.GetAuthRequest(t,
 				httptestutil.AuthRequestArgs{
@@ -81,7 +81,7 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 		t.Run("Create an invoice with memo and description", func(t *testing.T) {
 
-			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
+			amountSat := fakeInvoiceAmount()
 
 			memo := gofakeit.Sentence(gofakeit.Number(1, 20))
 			description := gofakeit.Sentence(gofakeit.Number(1, 20))
@@ -117,7 +117,7 @@ func TestPayInvoice(t *testing.T) {
 			testutil.GetMockHttpPoster(),
 			conf)
 		require.NoError(t, err)
-		h := httptestutil.NewTestHarness(app.Router, testDB)
+		h = httptestutil.NewTestHarness(app.Router, testDB)
 
 		password := gofakeit.Password(true, true, true, true, true, 32)
 		accessToken, userID := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
@@ -128,9 +128,9 @@ func TestPayInvoice(t *testing.T) {
 		h.GiveUserBalance(t, lnd1, bitcoind, accessToken, initialBalance)
 
 		t.Run("can send payment", func(t *testing.T) {
-			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
+			amountSat := fakeInvoiceAmount()
 			paymentRequest, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
-				Value: int64(amountSat),
+				Value: amountSat,
 			})
 			require.NoError(t, err)
 
@@ -163,9 +163,9 @@ func TestPayInvoice(t *testing.T) {
 		})
 
 		t.Run("can set description", func(t *testing.T) {
-			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
+			amountSat := fakeInvoiceAmount()
 			paymentRequest, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
-				Value: int64(amountSat),
+				Value: amountSat,
 			})
 			require.NoError(t, err)
 			description := gofakeit.HipsterSentence(5)
@@ -188,10 +188,10 @@ func TestPayInvoice(t *testing.T) {
 			prepaymentBalance, err := balance.ForUser(testDB, userID)
 			require.NoError(t, err)
 
-			amountSat := gofakeit.Number(0, ln.MaxAmountSatPerInvoice)
+			amountSat := fakeInvoiceAmount()
 
 			paymentRequest, err := lnd1.AddInvoice(context.Background(), &lnrpc.Invoice{
-				Value: int64(amountSat),
+				Value: amountSat,
 			})
 			require.NoError(t, err)
 
@@ -212,5 +212,68 @@ func TestPayInvoice(t *testing.T) {
 			postpaymentBalance, err := balance.ForUser(testDB, userID)
 			assert.Equal(t, prepaymentBalance, postpaymentBalance)
 		})
+
+		t.Run("paying invoice of other teslacoil users results in internal transfer", func(t *testing.T) {
+			t.Parallel()
+			_, recipientUserID := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+				Email:    gofakeit.Email(),
+				Password: password,
+			})
+			amount := fakeInvoiceAmount()
+
+			offchain, err := transactions.CreateTeslacoilInvoice(testDB, lnd1, transactions.NewOffchainOpts{
+				UserID:    recipientUserID,
+				AmountSat: amount,
+			})
+			assert.NoError(t, err)
+
+			prePaymentBalance, err := balance.ForUser(testDB, recipientUserID)
+			assert.NoError(t, err)
+
+			req := httptestutil.GetAuthRequest(t,
+				httptestutil.AuthRequestArgs{
+					AccessToken: accessToken,
+					Path:        "/invoices/pay",
+					Method:      "POST",
+					Body: fmt.Sprintf(`{
+					"paymentRequest": %q
+				}`, offchain.PaymentRequest),
+				})
+
+			res := h.AssertResponseOkWithJson(t, req)
+
+			fmt.Println(res)
+			postPaymentBalance, err := balance.ForUser(testDB, recipientUserID)
+			assert.NoError(t, err)
+
+			assert.Equal(t, prePaymentBalance.Sats()+amount, postPaymentBalance.Sats())
+			assert.True(t, res["internalTransfer"] == true)
+		})
+
+		t.Run("paying own invoice returns specific error", func(t *testing.T) {
+			t.Parallel()
+			offchain, err := transactions.CreateTeslacoilInvoice(testDB, lnd1, transactions.NewOffchainOpts{
+				UserID:    userID,
+				AmountSat: 5000,
+			})
+			assert.NoError(t, err)
+
+			req := httptestutil.GetAuthRequest(t,
+				httptestutil.AuthRequestArgs{
+					AccessToken: accessToken,
+					Path:        "/invoices/pay",
+					Method:      "POST",
+					Body: fmt.Sprintf(`{
+					"paymentRequest": %q
+				}`, offchain.PaymentRequest),
+				})
+
+			_, err_ := h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+			assert.True(t, apierr.ErrCannotPayOwnInvoice.Is(err_))
+		})
 	})
+}
+
+func fakeInvoiceAmount() int64 {
+	return int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice))
 }

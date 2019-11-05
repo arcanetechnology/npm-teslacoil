@@ -273,7 +273,7 @@ func getOffchainByPaymentRequest() gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		userID, ok := auth.GetUserIdOrReject(c)
+		userID, ok := auth.RequireScope(c, auth.ReadWallet)
 		if !ok {
 			return
 		}

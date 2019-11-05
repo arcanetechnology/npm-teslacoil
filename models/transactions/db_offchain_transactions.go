@@ -342,11 +342,13 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, callbacker 
 		payment, err = payment.MarkAsCompleted(tx, paidAt, callbacker)
 		if err != nil {
 			_ = tx.Rollback()
+			return Offchain{}, err
 		}
 
 		_, err = inboundTransaction.MarkAsCompleted(tx, paidAt, callbacker)
 		if err != nil {
 			_ = tx.Rollback()
+			return Offchain{}, err
 		}
 		if err = tx.Commit(); err != nil {
 			return Offchain{}, err
