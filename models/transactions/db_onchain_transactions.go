@@ -115,7 +115,7 @@ func TxListener(db *db.DB, zmqRawTxCh chan *wire.MsgTx, chainCfg chaincfg.Params
 			for i, transaction := range result {
 				onchain, err := transaction.ToOnchain()
 				if err != nil {
-					break
+					continue
 				}
 
 				updated, err := onchain.PersistReceivedMoney(db, txHash, vout, amountSat)
@@ -126,9 +126,9 @@ func TxListener(db *db.DB, zmqRawTxCh chan *wire.MsgTx, chainCfg chaincfg.Params
 					// transactions
 					log.WithFields(logrus.Fields{
 						"address":   updated.Address,
-						"txid":      updated.Txid,
-						"vout":      updated.Vout,
-						"amountSat": updated.AmountSat,
+						"txid":      *updated.Txid,
+						"vout":      *updated.Vout,
+						"amountSat": *updated.AmountSat,
 						"userId":    updated.UserID,
 					}).Info("Added received money to onchain TX")
 				case i == len(result)-1:
@@ -144,8 +144,8 @@ func TxListener(db *db.DB, zmqRawTxCh chan *wire.MsgTx, chainCfg chaincfg.Params
 					if err != nil {
 						log.WithError(err).WithFields(logrus.Fields{
 							"userId": transaction.UserID,
-							"txid":   transaction.Txid,
-							"vout":   transaction.Vout,
+							"txid":   *transaction.Txid,
+							"vout":   *transaction.Vout,
 						}).Error("Could not credit new deposit with money")
 					} else {
 						log.WithFields(logrus.Fields{
@@ -212,8 +212,8 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 
 			if rawTx.Confirmations >= confirmationLimit {
 				log.WithFields(logrus.Fields{
-					"txid":          onchain.Txid,
-					"vout":          onchain.Vout,
+					"txid":          *onchain.Txid,
+					"vout":          *onchain.Vout,
 					"confirmations": rawTx.Confirmations,
 				}).Info("tx is confirmed")
 
@@ -221,7 +221,7 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 					// something really weird has happened, the transaction changed? we saved it wrong?
 					log.WithFields(logrus.Fields{
 						"rawTx.Vout":   rawTx.Vout,
-						"onchain.Vout": onchain.Vout,
+						"onchain.Vout": *onchain.Vout,
 					}).Panic("saved transaction outpoint is greater than the number of outputs, check the logic")
 				}
 
@@ -250,8 +250,8 @@ func BlockListener(db *db.DB, bitcoindRpc bitcoind.RpcClient, ch chan *wire.MsgB
 					log.WithError(err).Error("could not mark transaction as confirmed")
 				} else {
 					log.WithFields(logrus.Fields{
-						"txid":   onchain.Txid,
-						"vout":   onchain.Vout,
+						"txid":   *onchain.Txid,
+						"vout":   *onchain.Vout,
 						"userId": onchain.UserID,
 					}).Info("Marked transaction as confirmed")
 				}

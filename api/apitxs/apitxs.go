@@ -3,14 +3,12 @@
 package apitxs
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -26,16 +24,19 @@ var (
 	database *db.DB
 	lncli    lnrpc.LightningClient
 	bitcoin  bitcoind.TeslacoilBitcoind
+	sender   transactions.HttpPoster
 )
 
 // RegisterRoutes applies the authMiddleware to this packages routes
 // and registers routes on the gin Engine parameter
 func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
-	bitcoind bitcoind.TeslacoilBitcoind, authmiddleware gin.HandlerFunc) {
+	bitcoind bitcoind.TeslacoilBitcoind, poster transactions.HttpPoster,
+	authmiddleware gin.HandlerFunc) {
 	// assign the services given
 	database = db
 	lncli = lnd
 	bitcoin = bitcoind
+	sender = poster
 
 	transaction := server.Group("")
 
@@ -213,7 +214,7 @@ func createInvoice() gin.HandlerFunc {
 		}
 
 		// TODO: rename this function to something like `NewLightningPayment` or `NewLightningInvoice`
-		t, err := transactions.NewOffchain(
+		t, err := transactions.CreateTeslacoilInvoice(
 			database, lncli, transactions.NewOffchainOpts{
 				UserID:      userID,
 				AmountSat:   req.AmountSat,
@@ -250,42 +251,12 @@ func payInvoice() gin.HandlerFunc {
 			return
 		}
 
-		t, err := transactions.PayInvoiceWithDescription(database, lncli, userID,
-			req.PaymentRequest, req.Description)
+		t, err := transactions.PayInvoiceWithDescription(database, lncli, sender,
+			userID, req.PaymentRequest, req.Description)
 		if err != nil {
-			// investigate details around failure
-			go func() {
-				origErr := err
-				decoded, err := lncli.DecodePayReq(context.Background(), &lnrpc.PayReqString{
-					PayReq: req.PaymentRequest,
-				})
-				if err != nil {
-					log.WithError(err).Error("Could not decode payment request")
-					return
-				}
-
-				channels, err := lncli.ListChannels(context.Background(), &lnrpc.ListChannelsRequest{
-					ActiveOnly: true,
-				})
-				if err != nil {
-					log.WithError(err).Error("Could not list active channels")
-					return
-				}
-
-				balance, err := lncli.ChannelBalance(context.Background(), &lnrpc.ChannelBalanceRequest{})
-				if err != nil {
-					log.WithError(err).Error("Could not get channel balance")
-				}
-
-				log.WithFields(logrus.Fields{
-					"destination":    decoded.Destination,
-					"amountSat":      decoded.NumSatoshis,
-					"activeChannels": len(channels.Channels),
-					"channelBalance": balance.Balance,
-					"routeHints":     decoded.RouteHints,
-				}).WithError(origErr).Error("Could not pay invoice")
-
-			}()
+			if errors.Is(err, transactions.ErrCannotPayOwnInvoice) {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrCannotPayOwnInvoice)
+			}
 			_ = c.Error(err)
 			return
 		}
