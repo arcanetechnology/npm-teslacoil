@@ -242,7 +242,6 @@ func TestPayInvoice(t *testing.T) {
 
 			res := h.AssertResponseOkWithJson(t, req)
 
-			fmt.Println(res)
 			postPaymentBalance, err := balance.ForUser(testDB, recipientUserID)
 			assert.NoError(t, err)
 

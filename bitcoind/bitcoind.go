@@ -261,26 +261,34 @@ func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
 
 	txHash, err := chainhash.NewHashFromStr(txid)
 	if err != nil {
-		return -1, errors.Wrapf(err, "newhashfromstr(%s)", txHash)
+		return -1, fmt.Errorf("could not convert txid to hash: %w", err)
 	}
 
 	transactionResult, err := c.Btcctl().GetRawTransactionVerbose(txHash)
 	if err != nil {
-		return -1, errors.Wrapf(err, "getrawtransaction %s", txHash)
+		return -1, fmt.Errorf("could not get raw transaction from txhash: %w", err)
 	}
 
+	vout := -1
 	for _, tx := range transactionResult.Vout {
 
 		amount := math.Round(btcutil.SatoshiPerBitcoin * tx.Value)
-		log.Tracef("found output with amount %f", amount)
+		log.Tracef("found output with amountSat %f", amount)
 
-		if amount == float64(amountSat) {
-			return int(tx.N), nil
+		if amount == float64(amountSat) && vout != -1 {
+			return -1, fmt.Errorf("found multiple outputs with amount %d", amountSat)
 		}
 
+		if amount == float64(amountSat) && vout == -1 {
+			vout = int(tx.N)
+		}
 	}
 
-	return -1, fmt.Errorf("did not find output with amount %d", amountSat)
+	if vout == -1 {
+		return -1, fmt.Errorf("did not find output with amount %d", amountSat)
+	}
+
+	return vout, nil
 }
 
 // blockEventHandler reads raw blocks events from the ZMQ block socket and

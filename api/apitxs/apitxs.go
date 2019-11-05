@@ -43,8 +43,8 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 	transaction.Use(authmiddleware)
 
 	// common
-	transaction.GET("/transactions", getAllTransactions())
-	transaction.GET("/transaction/:id", getTransactionByID())
+	transaction.GET("/transactions/all", getAllTransactions())
+	transaction.GET("/transactions/get/:id", getTransactionByID())
 
 	// onchain transactions
 	transaction.POST("/withdraw", withdrawOnChain())
@@ -53,7 +53,7 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 	// offchain transactions
 	transaction.POST("/invoices/create", createInvoice())
 	transaction.POST("/invoices/pay", payInvoice())
-	transaction.GET("/invoice/:paymentrequest", getOffchainByPaymentRequest())
+	transaction.GET("/invoices/get/:paymentrequest", getOffchainByPaymentRequest())
 }
 
 // getAllTransactions finds all payments for the given user. Takes two URL

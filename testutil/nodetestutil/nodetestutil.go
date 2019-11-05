@@ -303,6 +303,9 @@ func RunWithBitcoindAndLnd(t *testing.T, giveInitialBalance bool, test func(lnd 
 
 		address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
 
+		_, err = bitcoindtestutil.GenerateToSelf(10, bitcoin)
+		assert.NoError(t, err)
+
 		_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
 		if err != nil {
 			testutil.FailMsgf(t, "could not generate to address")
