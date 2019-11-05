@@ -564,7 +564,6 @@ func TestCreateInvoice(t *testing.T) {
 	})
 
 	t.Run("create an invoice with a valid callback URL", func(t *testing.T) {
-		t.Parallel()
 		mockInvoice, _ := ln.AddInvoice(randomMockClient, lnrpc.Invoice{})
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
@@ -580,7 +579,6 @@ func TestCreateInvoice(t *testing.T) {
 
 		t.Run("receive a POST to the given URL when paying the invoice",
 			func(t *testing.T) {
-				t.Parallel()
 				user, err := users.GetByEmail(testDB, email)
 				if err != nil {
 					testutil.FatalMsg(t, err)

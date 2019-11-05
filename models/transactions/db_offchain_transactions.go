@@ -422,13 +422,13 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	tQuery := "SELECT * FROM transactions WHERE payment_request=$1"
 
 	var selectTx Transaction
-	if err := database.Get(
-		&selectTx,
-		tQuery,
+	if err := database.Get(&selectTx, tQuery,
 		invoice.PaymentRequest); err != nil {
+
 		log.WithError(err).WithField("paymentRequest",
 			invoice.PaymentRequest).Error("Could not read TX from DB")
 		return Offchain{}, fmt.Errorf("could not read TX from DB: %w", err)
+
 	}
 
 	offchainInvoice, err := selectTx.ToOffchain()
@@ -489,7 +489,7 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 		log.WithField("id", inserted.ID).Debug("invoice did not have callback URL")
 	}
 
-	log.Infof("invoice is settled: %+v", inserted)
+	log.Tracef("invoice is settled: %+v", inserted)
 
 	return inserted, nil
 }
