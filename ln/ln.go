@@ -133,6 +133,11 @@ func NewLNDClient(options LightningConfig) (
 		return nil, fmt.Errorf("could not lookup host %q: %w", cfg.RPCHost, err)
 	}
 	translatedAddress := addrs[0] // there's always at least one element here if no err
+	if cfg.RPCHost == "localhost" {
+		// instead of looping through addrs and finding the ipv4 address,
+		// we just hardcode localhost
+		translatedAddress = "127.0.0.1"
+	}
 
 	log.WithFields(logrus.Fields{
 		"certpath":     cfg.TLSCertPath,
