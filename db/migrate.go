@@ -174,7 +174,7 @@ func (d *DB) MigrateToVersion(version uint) error {
 }
 
 type MigrationFile struct {
-	Version     int
+	Version     uint
 	Description string
 }
 
@@ -198,7 +198,7 @@ func (d *DB) ListVersions() []MigrationFile {
 		description := strings.Split(versionDesc[1], ".")[0]
 
 		migFiles = append(migFiles, MigrationFile{
-			Version:     int(version),
+			Version:     uint(version),
 			Description: description,
 		})
 	}
