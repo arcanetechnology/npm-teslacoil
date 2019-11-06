@@ -103,10 +103,14 @@ func getAllForUser(c *gin.Context) {
 }
 
 func createApiKey() gin.HandlerFunc {
-	type createApiKeyResponse struct {
-		Key    uuid.UUID `json:"key"`
-		UserID int       `json:"userId"`
+	type response struct {
+		RawKey uuid.UUID `json:"key"`
+		apikeys.Key
+	}
+
+	type request struct {
 		apikeys.Permissions
+		Description string `json:"description"`
 	}
 
 	return func(c *gin.Context) {
@@ -115,22 +119,21 @@ func createApiKey() gin.HandlerFunc {
 			return
 		}
 
-		var perm apikeys.Permissions
-		if c.BindJSON(&perm) != nil {
+		var req request
+		if c.BindJSON(&req) != nil {
 			return
 		}
 
-		rawKey, key, err := apikeys.New(database, userID, perm)
+		rawKey, key, err := apikeys.New(database, userID, req.Permissions, req.Description)
 		if err != nil {
 			log.WithError(err).WithField("user", userID).Error("could not create API key")
 			_ = c.Error(err)
 			return
 		}
 
-		c.JSON(http.StatusCreated, createApiKeyResponse{
-			Key:         rawKey,
-			UserID:      key.UserID,
-			Permissions: key.Permissions,
+		c.JSON(http.StatusCreated, response{
+			RawKey: rawKey,
+			Key:    key,
 		})
 	}
 }

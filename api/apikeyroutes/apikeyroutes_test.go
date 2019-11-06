@@ -60,7 +60,7 @@ func TestGetByHash(t *testing.T) {
 	t.Parallel()
 
 	user := userstestutil.CreateUserOrFail(t, testDB)
-	rawKey, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+	rawKey, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, "")
 	require.NoError(t, err)
 	log.WithFields(logrus.Fields{
 		"hash":   hex.EncodeToString(key.HashedKey),
@@ -132,7 +132,23 @@ func TestCreateApiKey(t *testing.T) {
 		Password: password,
 	})
 
-	t.Run("create an API key", func(t *testing.T) {
+	t.Run("create an API key with description", func(t *testing.T) {
+		t.Parallel()
+		desc := gofakeit.Sentence(10)
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/apikey",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+				"readWallet": true,
+				"description": %q
+			}`, desc),
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, desc, res["description"])
+	})
+
+	t.Run("create an API key without description", func(t *testing.T) {
 		perm := apikeys.RandomPermissionSet()
 		bodyBytes, err := json.Marshal(perm)
 		body := string(bodyBytes)
@@ -145,11 +161,23 @@ func TestCreateApiKey(t *testing.T) {
 		})
 		res := h.AssertResponseOkWithJson(t, req)
 
-		assert.NotNil(t, res["key"])
+		require.NotNil(t, res["key"])
+
+		assert.Contains(t, res["key"], res["lastLetters"])
+		assert.NotNil(t, res["hashedKey"])
+
+		require.NotNil(t, res["createdAt"])
+
+		const layout = "2006-01-02T15:04:05.000000Z"
+		createdAt, err := time.Parse(layout, res["createdAt"].(string))
+		require.NoError(t, err)
+		assert.WithinDuration(t, time.Now(), createdAt, time.Second)
+
 		assert.Equal(t, perm.ReadWallet, res["readWallet"])
 		assert.Equal(t, perm.CreateInvoice, res["createInvoice"])
 		assert.Equal(t, perm.SendTransaction, res["sendTransaction"])
 		assert.Equal(t, perm.EditAccount, res["editAccount"])
+		assert.Nil(t, res["description"])
 
 		t.Run("creating a new key should yield a different one", func(t *testing.T) {
 

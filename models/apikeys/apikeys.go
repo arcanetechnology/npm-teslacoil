@@ -23,6 +23,7 @@ type Key struct {
 	HashedKey   []byte     `db:"hashed_key" json:"hashedKey"`
 	LastLetters string     `db:"last_letters" json:"lastLetters"`
 	UserID      int        `db:"user_id" json:"userId"`
+	Description string     `db:"description" json:"description,omitempty"`
 	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
 	UpdatedAt   time.Time  `db:"updated_at" json:"-"`
 	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
@@ -68,7 +69,7 @@ func (p Permissions) IsEmpty() bool {
 // New creates a new API key for the given user. It returns both the inserted
 // DB struct as well as the raw API key. It's not possible to retrieve the raw
 // API key at a later point in time.
-func New(d db.Inserter, userId int, permissions Permissions) (key uuid.UUID, apiKey Key, err error) {
+func New(d db.Inserter, userId int, permissions Permissions, description string) (key uuid.UUID, apiKey Key, err error) {
 	if permissions.IsEmpty() {
 		err = errors.New("API key cannot have zero permissions")
 		return
@@ -87,14 +88,17 @@ func New(d db.Inserter, userId int, permissions Permissions) (key uuid.UUID, api
 		LastLetters: keyStr[len(keyStr)-4:],
 		UserID:      userId,
 		Permissions: permissions,
+		Description: description,
 	}
 	query := `
 	INSERT INTO api_keys (hashed_key, user_id, last_letters, read_wallet, 
-	                      send_transaction, edit_account, create_invoice)
+	                      send_transaction, edit_account, create_invoice,
+	                      description)
 	VALUES (:hashed_key, :user_id, :last_letters, :read_wallet, 
-	        :send_transaction, :edit_account, :create_invoice) 
+	        :send_transaction, :edit_account, :create_invoice,
+	        :description) 
 	RETURNING hashed_key, user_id, last_letters, read_wallet, send_transaction, 
-	    edit_account, create_invoice, created_at, updated_at, deleted_at`
+	    edit_account, create_invoice, created_at, updated_at, deleted_at, description`
 	rows, err := d.NamedQuery(query, apiKey)
 	if err != nil {
 		err = fmt.Errorf("could not insert API key: %w", err)

@@ -204,7 +204,7 @@ func TestGetMiddleware(t *testing.T) {
 	})
 
 	t.Run("authentiate with API key", func(t *testing.T) {
-		apiKey, _, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+		apiKey, _, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, "")
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -236,7 +236,7 @@ func TestGetMiddleware(t *testing.T) {
 			CreateInvoice:   true,
 			SendTransaction: true,
 			EditAccount:     true,
-		})
+		}, "")
 		require.NoError(t, err)
 		badW := httptest.NewRecorder()
 		badReq, _ := http.NewRequest("GET", "/scope-test", emptyBody)
@@ -246,7 +246,7 @@ func TestGetMiddleware(t *testing.T) {
 
 		otherKey, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{
 			ReadWallet: true,
-		})
+		}, "")
 		require.NoError(t, err)
 		goodW := httptest.NewRecorder()
 		goodReq, _ := http.NewRequest("GET", "/scope-test", emptyBody)

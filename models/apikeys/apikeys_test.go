@@ -42,7 +42,8 @@ func TestNew(t *testing.T) {
 	user := userstestutil.CreateUserOrFail(t, testDB)
 	t.Run("creating an api key should work", func(t *testing.T) {
 		t.Parallel()
-		rawKey, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+		desc := gofakeit.Sentence(10)
+		rawKey, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, desc)
 		if err != nil {
 			testutil.FatalMsg(t, err)
 		}
@@ -59,25 +60,26 @@ func TestNew(t *testing.T) {
 		assert.True(found.Permissions.SendTransaction)
 		assert.True(found.Permissions.ReadWallet)
 		assert.True(found.Permissions.CreateInvoice)
+		assert.Equal(desc, found.Description)
 	})
 
 	t.Run("creating an API key with no permissions should fail", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{})
+		_, _, err := apikeys.New(testDB, user.ID, apikeys.Permissions{}, "")
 		assert.Error(t, err)
 	})
 
 	t.Run("creating an API key with permissions should work", func(t *testing.T) {
 		t.Parallel()
 		perm := apikeys.RandomPermissionSet()
-		_, key, err := apikeys.New(testDB, user.ID, perm)
+		_, key, err := apikeys.New(testDB, user.ID, perm, "")
 		require.NoError(t, err)
 		assert.Equal(t, key.Permissions, perm)
 	})
 
 	t.Run("creating an api key with no related user should not work", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := apikeys.New(testDB, 99999999, apikeys.AllPermissions)
+		_, _, err := apikeys.New(testDB, 99999999, apikeys.AllPermissions, "")
 		if err == nil {
 			testutil.FatalMsg(t, "Created an API key with no corresponding user")
 		}
@@ -108,7 +110,7 @@ func TestGetByUserId(t *testing.T) {
 		assert.Len(t, zero, 0)
 
 		perm := apikeys.RandomPermissionSet()
-		_, _, err = apikeys.New(testDB, user.ID, perm)
+		_, _, err = apikeys.New(testDB, user.ID, perm, "")
 		require.NoError(t, err)
 
 		one, err := apikeys.GetByUserId(testDB, user.ID)
@@ -142,7 +144,7 @@ func TestGetByHash(t *testing.T) {
 	t.Run("get an existing key", func(t *testing.T) {
 		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		_, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+		_, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, "")
 		require.NoError(t, err)
 
 		found, err := apikeys.GetByHash(testDB, user.ID, key.HashedKey)
@@ -155,7 +157,7 @@ func TestGetByHash(t *testing.T) {
 		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
 		otherUser := userstestutil.CreateUserOrFail(t, testDB)
-		_, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions)
+		_, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, "")
 		require.NoError(t, err)
 
 		_, err = apikeys.GetByHash(testDB, otherUser.ID, key.HashedKey)
