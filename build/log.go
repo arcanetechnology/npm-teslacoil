@@ -101,6 +101,13 @@ func GinLoggingMiddleWare(logger loggerEntryWithFields, level logrus.Level) gin.
 		// restore the original buffer so it can be read later
 		c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 
+		if c.Request.URL != nil {
+			query := c.Request.URL.Query()
+			if len(query) > 0 {
+				withFields = withFields.WithField("query", query)
+			}
+		}
+
 		// if the body is non-empty, add it
 		if len(bodyBytes) != 0 {
 			withFields = withFields.WithField("body", string(bodyBytes))
