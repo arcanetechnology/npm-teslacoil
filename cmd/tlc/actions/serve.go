@@ -88,8 +88,16 @@ func Serve() cli.Command {
 				return fmt.Errorf("could not query DB migration status: %w", err)
 			}
 			if c.Bool("db.migrateup") {
-				if !status.Dirty {
-					log.Debug("No migrations needed")
+				migrations := database.ListVersions()
+				var isNewest bool
+				if len(migrations) > 0 {
+					isNewest = migrations[len(migrations)-1].Version < status.Version
+				}
+				if isNewest {
+					log.WithFields(logrus.Fields{
+						"dirty":   status.Dirty,
+						"version": status.Version,
+					}).Debug("No migrations needed")
 				} else if err = database.MigrateUp(); err != nil {
 					return err
 				}
