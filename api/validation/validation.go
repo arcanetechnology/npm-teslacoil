@@ -3,6 +3,7 @@
 package validation
 
 import (
+	"encoding/base64"
 	"reflect"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -25,27 +26,28 @@ var log = build.Log
 // 3 -> less than 10^8 seconds
 // 4 -> more than 10^8 seconds
 const (
-	RequiredValidationScore = 3
+	requiredValidationScore = 3
 	password                = "password"
 	paymentrequest          = "paymentrequest"
+	urlbase64               = "urlbase64"
 )
 
-// IsValidPassword checks if a password is strong enough.
-func IsValidPassword(
-	v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
-	field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
+// isValidPassword checks if a password is strong enough.
+func isValidPassword(
+	_ *validator.Validate, _ reflect.Value, _ reflect.Value,
+	field reflect.Value, _ reflect.Type, _ reflect.Kind, _ string) bool {
 	stringVal := field.String()
 
 	// custom wordlist that password is checked against
 	// TODO: could put username, bitcoin terms etc into here?
-	inputs := []string{}
+	var inputs []string
 
 	strength := zxcvbn.PasswordStrength(stringVal, inputs)
-	return strength.Score >= RequiredValidationScore
+	return strength.Score >= requiredValidationScore
 }
 
-// IsValidPaymentRequest checks if a payment request is valid per the configured network
-func IsValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
+// isValidPaymentRequest checks if a payment request is valid per the configured network
+func isValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
 	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
 		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
 
@@ -60,9 +62,17 @@ func IsValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
 	}
 }
 
-// RegisterValidator registers a validator in our validation engine with the
+func isValidUrlBase64(
+	_ *validator.Validate, _ reflect.Value, _ reflect.Value,
+	field reflect.Value, _ reflect.Type, _ reflect.Kind, _ string) bool {
+	stringVal := field.String()
+	_, err := base64.URLEncoding.DecodeString(stringVal)
+	return err == nil
+}
+
+// registerValidator registers a validator in our validation engine with the
 // given name.
-func RegisterValidator(engine *validator.Validate, name string, function validator.Func) error {
+func registerValidator(engine *validator.Validate, name string, function validator.Func) error {
 	err := engine.RegisterValidation(name, function)
 	if err != nil {
 		return errors.Wrapf(err, "could not register %q validation", name)
@@ -80,17 +90,21 @@ func RegisterAllValidators(engine *validator.Validate, chainCfg chaincfg.Params)
 	}
 	validators := []Validator{{
 		Name:     password,
-		Function: IsValidPassword,
+		Function: isValidPassword,
 	},
 		{
 			Name:     paymentrequest,
-			Function: IsValidPaymentRequest(chainCfg),
+			Function: isValidPaymentRequest(chainCfg),
+		},
+		{
+			Name:     urlbase64,
+			Function: isValidUrlBase64,
 		},
 	}
 	names := make([]string, len(validators))
 	for i, elem := range validators {
 		names[i] = elem.Name
-		if err := RegisterValidator(engine, elem.Name, elem.Function); err != nil {
+		if err := registerValidator(engine, elem.Name, elem.Function); err != nil {
 			log.Fatalf("Fatal error during validation registration: %s", err)
 		}
 	}

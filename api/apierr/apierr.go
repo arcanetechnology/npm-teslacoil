@@ -355,6 +355,16 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 			var message string
 			var code string
 			switch validationErr.Tag {
+			case "hexadecimal|base64":
+				fallthrough
+			case "base64|hexadecimal":
+				message = fmt.Sprintf("%q must be valid hexadecimal or standard encoded base64", field)
+				code = validationErr.Tag
+			case "hexadecimal|urlbase64":
+				fallthrough
+			case "urlbase64|hexadecimal":
+				message = fmt.Sprintf("%q must be valid hexadecimal or URL encoded base64", field)
+				code = validationErr.Tag
 			case "required":
 				message = fmt.Sprintf("%q is required", field)
 				code = "required"
