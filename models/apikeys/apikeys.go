@@ -123,6 +123,35 @@ func New(d db.Inserter, userId int, permissions Permissions, description string)
 	return key, inserted, nil
 }
 
+// Delete deletes the API key associated with the given user ID and hash, if
+// such a key exists
+func Delete(d *db.DB, userId int, hash []byte) (Key, error) {
+	del := time.Now()
+	key := Key{
+		UserID:    userId,
+		DeletedAt: &del,
+		HashedKey: hash,
+	}
+	query := `UPDATE api_keys 
+		SET deleted_at = :deleted_at 
+		WHERE user_id = :user_id AND hashed_key = :hashed_key
+		RETURNING *`
+	rows, err := d.NamedQuery(query, key)
+	if err != nil {
+		return Key{}, err
+	}
+	if !rows.Next() {
+		return Key{}, fmt.Errorf("couldn't delete API key: %w", sql.ErrNoRows)
+	}
+
+	var res Key
+	if err := rows.StructScan(&res); err != nil {
+		return Key{}, err
+	}
+
+	return res, nil
+}
+
 // Get retrieves the API key in our DB that matches the given UUID, if such
 // a key exists.
 func Get(d *db.DB, key uuid.UUID) (Key, error) {
@@ -164,7 +193,10 @@ func GetByHash(d db.Getter, userId int, hash []byte) (Key, error) {
 // GetByUserId gets all API keys associated with the given user ID
 func GetByUserId(d db.Selecter, userId int) ([]Key, error) {
 	query := `SELECT * FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL`
-	var keys []Key
+
+	// we want to explicitly return empty list and not null, for JSON serialization purposes
+	// noinspection ALL
+	keys := []Key{}
 	if err := d.Select(&keys, query, userId); err != nil {
 		if origerrors.Is(err, sql.ErrNoRows) {
 			return []Key{}, nil

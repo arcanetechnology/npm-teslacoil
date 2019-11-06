@@ -182,6 +182,11 @@ var (
 		err:  transactions.ErrCannotPayOwnInvoice,
 		code: "ERR_CANNOT_PAY_OWN_INVOICE",
 	}
+	// ErrApiKeyNeedPermissons means the user tried to create an API key with zero permissions
+	ErrApiKeyNeedPermissons = apiError{
+		err:  errors.New("API key cannot have zero permissions"),
+		code: "ERR_API_KEY_NEED_PERMISSIONS",
+	}
 )
 
 // decapitalize makes the first element of a string lowercase
