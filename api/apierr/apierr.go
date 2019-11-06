@@ -187,6 +187,12 @@ var (
 		err:  errors.New("API key cannot have zero permissions"),
 		code: "ERR_API_KEY_NEED_PERMISSIONS",
 	}
+	// ErrNotYetOpenForBusiness is a temporary error that is returned from
+	// the createUser endpoint indicating the email is not in the whitelist
+	ErrNotYetOpenForBusiness = apiError{
+		err:  errors.New("signing up is not supported yet"),
+		code: "ERR_SIGN_UPS_NOT_SUPPORTED_YET",
+	}
 )
 
 // decapitalize makes the first element of a string lowercase

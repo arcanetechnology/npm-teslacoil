@@ -236,13 +236,7 @@ func getUser() gin.HandlerFunc {
 
 func emailInWhitelist(email string) bool {
 	whitelist := []string{
-		"jonatan.raknes@middelborg.no",
-		"jr@arcanecrypto.no",
-		"kristian.lundkvist@middelborg.no",
-		"wh@tigerstaden.com",
-		"morten@kleingroup.no",
-		"fabian@kleingroup.no",
-		"ks@tigerstaden.com",
+		// add friends and family here
 		"bojalbor@gmail.com",
 	}
 	email = strings.ToLower(email)
@@ -251,6 +245,22 @@ func emailInWhitelist(email string) bool {
 		if whitelistedEmail == email {
 			return true
 		}
+	}
+
+	if strings.HasSuffix(email, "arcane.no") {
+		return true
+	}
+	if strings.HasSuffix(email, "arcanecrypto.no") {
+		return true
+	}
+	if strings.HasSuffix(email, "tigerstaden.com") {
+		return true
+	}
+	if strings.HasSuffix(email, "middelborg.no") {
+		return true
+	}
+	if strings.HasSuffix(email, "kleingroup.no") {
+		return true
 	}
 
 	return false
@@ -279,7 +289,8 @@ func createUser() gin.HandlerFunc {
 
 		if os.Getenv(gin.EnvGinMode) == gin.ReleaseMode {
 			if !emailInWhitelist(req.Email) {
-				_ = c.Error(errors.New("sign ups are not supported yet"))
+				apierr.Public(c, http.StatusForbidden, apierr.ErrNotYetOpenForBusiness)
+				return
 			}
 		}
 
