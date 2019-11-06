@@ -23,6 +23,7 @@ type Key struct {
 	HashedKey   []byte     `db:"hashed_key" json:"hashedKey"`
 	LastLetters string     `db:"last_letters" json:"lastLetters"`
 	UserID      int        `db:"user_id" json:"userId"`
+	Description string     `db:"description" json:"description,omitempty"`
 	CreatedAt   time.Time  `db:"created_at" json:"createdAt"`
 	UpdatedAt   time.Time  `db:"updated_at" json:"-"`
 	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
@@ -68,7 +69,7 @@ func (p Permissions) IsEmpty() bool {
 // New creates a new API key for the given user. It returns both the inserted
 // DB struct as well as the raw API key. It's not possible to retrieve the raw
 // API key at a later point in time.
-func New(d db.Inserter, userId int, permissions Permissions) (key uuid.UUID, apiKey Key, err error) {
+func New(d db.Inserter, userId int, permissions Permissions, description string) (key uuid.UUID, apiKey Key, err error) {
 	if permissions.IsEmpty() {
 		err = errors.New("API key cannot have zero permissions")
 		return
@@ -87,14 +88,17 @@ func New(d db.Inserter, userId int, permissions Permissions) (key uuid.UUID, api
 		LastLetters: keyStr[len(keyStr)-4:],
 		UserID:      userId,
 		Permissions: permissions,
+		Description: description,
 	}
 	query := `
 	INSERT INTO api_keys (hashed_key, user_id, last_letters, read_wallet, 
-	                      send_transaction, edit_account, create_invoice)
+	                      send_transaction, edit_account, create_invoice,
+	                      description)
 	VALUES (:hashed_key, :user_id, :last_letters, :read_wallet, 
-	        :send_transaction, :edit_account, :create_invoice) 
+	        :send_transaction, :edit_account, :create_invoice,
+	        :description) 
 	RETURNING hashed_key, user_id, last_letters, read_wallet, send_transaction, 
-	    edit_account, create_invoice, created_at, updated_at, deleted_at`
+	    edit_account, create_invoice, created_at, updated_at, deleted_at, description`
 	rows, err := d.NamedQuery(query, apiKey)
 	if err != nil {
 		err = fmt.Errorf("could not insert API key: %w", err)
@@ -117,6 +121,35 @@ func New(d db.Inserter, userId int, permissions Permissions) (key uuid.UUID, api
 	}
 
 	return key, inserted, nil
+}
+
+// Delete deletes the API key associated with the given user ID and hash, if
+// such a key exists
+func Delete(d *db.DB, userId int, hash []byte) (Key, error) {
+	del := time.Now()
+	key := Key{
+		UserID:    userId,
+		DeletedAt: &del,
+		HashedKey: hash,
+	}
+	query := `UPDATE api_keys 
+		SET deleted_at = :deleted_at 
+		WHERE user_id = :user_id AND hashed_key = :hashed_key
+		RETURNING *`
+	rows, err := d.NamedQuery(query, key)
+	if err != nil {
+		return Key{}, err
+	}
+	if !rows.Next() {
+		return Key{}, fmt.Errorf("couldn't delete API key: %w", sql.ErrNoRows)
+	}
+
+	var res Key
+	if err := rows.StructScan(&res); err != nil {
+		return Key{}, err
+	}
+
+	return res, nil
 }
 
 // Get retrieves the API key in our DB that matches the given UUID, if such
@@ -160,7 +193,10 @@ func GetByHash(d db.Getter, userId int, hash []byte) (Key, error) {
 // GetByUserId gets all API keys associated with the given user ID
 func GetByUserId(d db.Selecter, userId int) ([]Key, error) {
 	query := `SELECT * FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL`
-	var keys []Key
+
+	// we want to explicitly return empty list and not null, for JSON serialization purposes
+	// noinspection ALL
+	keys := []Key{}
 	if err := d.Select(&keys, query, userId); err != nil {
 		if origerrors.Is(err, sql.ErrNoRows) {
 			return []Key{}, nil

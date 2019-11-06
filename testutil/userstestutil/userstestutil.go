@@ -34,7 +34,7 @@ func CreateUserOrFailWithPassword(t *testing.T, db *db.DB, password string) user
 	verified, err := users.VerifyEmail(db, token)
 	require.NoError(t, err)
 
-	_, _, err = apikeys.New(db, u.ID, apikeys.AllPermissions)
+	_, _, err = apikeys.New(db, u.ID, apikeys.AllPermissions, "Test API key")
 	require.NoError(t, err)
 
 	return verified

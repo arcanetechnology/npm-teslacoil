@@ -1,10 +1,14 @@
 package validation
 
 import (
+	"encoding/base64"
 	"os"
 	"testing"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/sirupsen/logrus"
@@ -25,9 +29,23 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestIsValidUrlBase64(t *testing.T) {
+	require.NoError(t, registerValidator(validate, urlbase64, isValidUrlBase64))
+
+	type Struct struct {
+		Base64 string `binding:"urlbase64"`
+	}
+
+	goodStruct := Struct{Base64: base64.URLEncoding.EncodeToString(txtest.MockPreimage())}
+	assert.NoError(t, validate.Struct(goodStruct))
+
+	badStruct := Struct{Base64: "this should not validate"}
+	assert.Error(t, validate.Struct(badStruct))
+}
+
 func TestIsValidPassword(t *testing.T) {
 
-	if err := RegisterValidator(validate, password, IsValidPassword); err != nil {
+	if err := registerValidator(validate, password, isValidPassword); err != nil {
 		log.Fatal(err)
 	}
 
@@ -53,7 +71,7 @@ func TestIsValidPassword(t *testing.T) {
 
 func TestIsValidPaymentRequest(t *testing.T) {
 
-	if err := RegisterValidator(validate, paymentrequest, IsValidPaymentRequest(chaincfg.RegressionNetParams)); err != nil {
+	if err := registerValidator(validate, paymentrequest, isValidPaymentRequest(chaincfg.RegressionNetParams)); err != nil {
 		log.Fatal(err)
 	}
 	type Struct struct {

@@ -182,6 +182,11 @@ var (
 		err:  transactions.ErrCannotPayOwnInvoice,
 		code: "ERR_CANNOT_PAY_OWN_INVOICE",
 	}
+	// ErrApiKeyNeedPermissons means the user tried to create an API key with zero permissions
+	ErrApiKeyNeedPermissons = apiError{
+		err:  errors.New("API key cannot have zero permissions"),
+		code: "ERR_API_KEY_NEED_PERMISSIONS",
+	}
 )
 
 // decapitalize makes the first element of a string lowercase
@@ -355,6 +360,16 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 			var message string
 			var code string
 			switch validationErr.Tag {
+			case "hexadecimal|base64":
+				fallthrough
+			case "base64|hexadecimal":
+				message = fmt.Sprintf("%q must be valid hexadecimal or standard encoded base64", field)
+				code = validationErr.Tag
+			case "hexadecimal|urlbase64":
+				fallthrough
+			case "urlbase64|hexadecimal":
+				message = fmt.Sprintf("%q must be valid hexadecimal or URL encoded base64", field)
+				code = validationErr.Tag
 			case "required":
 				message = fmt.Sprintf("%q is required", field)
 				code = "required"

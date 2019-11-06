@@ -589,7 +589,7 @@ func TestCreateInvoice(t *testing.T) {
 				if keys, err := apikeys.GetByUserId(testDB, user.ID); err == nil && len(keys) > 0 {
 					apiKey = keys[0]
 					// if not, try to create one, fail it if doesn't work
-				} else if _, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions); err != nil {
+				} else if _, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, ""); err != nil {
 					testutil.FatalMsg(t, err)
 				} else {
 					apiKey = key
@@ -717,7 +717,7 @@ func TestWithdrawOnChain(t *testing.T) {
 			ReadWallet:    true,
 			CreateInvoice: true,
 			EditAccount:   true,
-		})
+		}, "")
 		require.NoError(t, err)
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
