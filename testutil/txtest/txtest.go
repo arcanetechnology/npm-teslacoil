@@ -3,10 +3,18 @@ package txtest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/lightningnetwork/lnd/lnwire"
+
+	"github.com/btcsuite/btcd/btcec"
+
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/lightningnetwork/lnd/zpay32"
 
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/db"
@@ -15,6 +23,23 @@ import (
 	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
+)
+
+var (
+	// these variables are used for generating a payment request
+	testPrivKeyBytes, _ = hex.DecodeString("e126f68f7eafcc8b74f54d269fe206be715000f94dac067d1c04a8ca3b2db734")
+	testPrivKey, _      = btcec.PrivKeyFromBytes(btcec.S256(), testPrivKeyBytes)
+	messageSigner       = zpay32.MessageSigner{
+		SignCompact: func(hash []byte) ([]byte, error) {
+			sig, err := btcec.SignCompact(btcec.S256(),
+				testPrivKey, hash, true)
+			if err != nil {
+				return nil, fmt.Errorf("can't sign the "+
+					"message: %v", err)
+			}
+			return sig, nil
+		},
+	}
 )
 
 // MockPreimage will create a random preimage
@@ -76,6 +101,34 @@ func positiveInt64() int64 {
 	return rand.Int63n(math.MaxInt64)
 }
 
+// mockPaymentRequest mocks a payment request using lnd's zpay32 library
+func mockPaymentRequest() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+
+	description := gofakeit.HipsterSentence(4)
+	amount := btcutil.Amount(rand.Int63n(ln.MaxAmountSatPerInvoice))
+	amountMilli := lnwire.NewMSatFromSatoshis(amount)
+
+	paymentHash := sha256.Sum256(b)
+	invoice, err := zpay32.NewInvoice(&chaincfg.RegressionNetParams,
+		paymentHash,
+		time.Now(),
+		zpay32.Amount(amountMilli),
+		zpay32.Description(description),
+	)
+	if err != nil {
+		panic(fmt.Errorf("could not create paymentrequest: %w", err))
+	}
+
+	paymentRequest, err := invoice.Encode(messageSigner)
+	if err != nil {
+		panic(fmt.Errorf("could not sign invoice: %w", err))
+	}
+
+	return paymentRequest
+}
+
 func GenOffchain(userID int) transactions.Offchain {
 	amountMSat := rand.Int63n(ln.MaxAmountMsatPerInvoice)
 
@@ -107,7 +160,7 @@ func GenOffchain(userID int) transactions.Offchain {
 		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
-		PaymentRequest: "DO ME LATER",
+		PaymentRequest: mockPaymentRequest(),
 		Preimage:       preimage,
 		HashedPreimage: hashedPreimage,
 		AmountMSat:     amountMSat,

@@ -671,7 +671,7 @@ func TestWithdrawOnChain(t *testing.T) {
 
 		balanceReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
-			Path:        "/user",
+			Path:        "/users",
 			Method:      "GET",
 		})
 
@@ -738,9 +738,23 @@ func TestWithdrawOnChain(t *testing.T) {
 
 func TestGetOffchainByPaymentRequest(t *testing.T) {
 	t.Parallel()
-	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+	token, userID := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+
+	t.Run("can get transaction by payment request", func(t *testing.T) {
+		t.Parallel()
+
+		offchain := txtest.InsertFakeOffChainOrFail(t, testDB, userID)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/invoices/%s", offchain.PaymentRequest),
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, offchain.PaymentRequest, res["paymentRequest"])
 	})
 
 	t.Run("non-existant payment request returns error", func(t *testing.T) {
@@ -763,7 +777,6 @@ func TestGetOffchainByPaymentRequest(t *testing.T) {
 			Method:      "GET",
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-
 	})
 }
 
