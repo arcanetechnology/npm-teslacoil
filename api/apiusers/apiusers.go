@@ -36,13 +36,13 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmidd
 
 	// verifying an email doesn't require authentication beyond the
 	// verification token
-	server.PUT("/user/verify_email", verifyEmail())
-	server.POST("/user/verify_email", sendEmailVerificationEmail())
+	server.PUT("/users/verify_email", verifyEmail())
+	server.POST("/users/verify_email", sendEmailVerificationEmail())
 
 	users := server.Group("")
 	users.Use(authmiddleware)
-	users.GET("/user", getUser())
-	users.PUT("/user", updateUser())
+	users.GET("/users", getUser())
+	users.PUT("/users", updateUser())
 }
 
 // Response is the type returned by the API for user related request
