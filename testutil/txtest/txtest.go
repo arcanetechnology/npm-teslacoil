@@ -101,8 +101,8 @@ func positiveInt64() int64 {
 	return rand.Int63n(math.MaxInt64)
 }
 
-// mockPaymentRequest mocks a payment request using lnd's zpay32 library
-func mockPaymentRequest() string {
+// MockPaymentRequest mocks a payment request using lnd's zpay32 library
+func MockPaymentRequest() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 
@@ -160,7 +160,7 @@ func GenOffchain(userID int) transactions.Offchain {
 		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
-		PaymentRequest: mockPaymentRequest(),
+		PaymentRequest: MockPaymentRequest(),
 		Preimage:       preimage,
 		HashedPreimage: hashedPreimage,
 		AmountMSat:     amountMSat,

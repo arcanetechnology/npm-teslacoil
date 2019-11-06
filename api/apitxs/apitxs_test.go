@@ -760,9 +760,11 @@ func TestGetOffchainByPaymentRequest(t *testing.T) {
 	t.Run("non-existant payment request returns error", func(t *testing.T) {
 		t.Parallel()
 
+		payReq := txtest.MockPaymentRequest()
+
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        "/invoices/lnbcrt1pwuqjgwpp5aw67h6l0kw54a2v7syy6n0rd2a9vl6ftq5x3n53f4jy8g3du6n7qdqqcqzpgmjjkdzje99mehs3z239n4lmgpw4xkryzmjxqfssn926zulhs6el3hjzwe6hpzqkxsx6qnkslj3w9mdtfn5jknq4yuy7ddmw0sgtyl4gq39n2ng",
+			Path:        fmt.Sprintf("/invoices/%s", payReq),
 			Method:      "GET",
 		})
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)

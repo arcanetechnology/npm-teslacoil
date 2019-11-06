@@ -26,7 +26,7 @@ type ZmqStopStarter interface {
 }
 
 type VoutFinder interface {
-	FindVout(txid string, amountSat int64) (int, error)
+	FindVout(txid string, address string) (int, error)
 }
 
 type ConnFieldGetter interface {

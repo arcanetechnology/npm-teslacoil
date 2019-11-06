@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"net"
 	"net/http"
 	"time"
@@ -30,6 +29,10 @@ var (
 
 	// check the interface is satisfied
 	_ TeslacoilBitcoind = &Conn{}
+)
+
+var (
+	ErrNotATxid = errors.New("not a valid txid")
 )
 
 // Config contains everything we need to reliably start a bitcoind node.
@@ -257,11 +260,11 @@ func (c *Conn) StopZmq() {
 
 // FindVout finds a vout for transaction with `txid` and `amountSat`
 // by quering bitcoin core for the txid
-func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
+func (c *Conn) FindVout(txid string, address string) (int, error) {
 
 	txHash, err := chainhash.NewHashFromStr(txid)
 	if err != nil {
-		return -1, fmt.Errorf("could not convert txid to hash: %w", err)
+		return -1, fmt.Errorf("%s: %w", err, ErrNotATxid)
 	}
 
 	transactionResult, err := c.Btcctl().GetRawTransactionVerbose(txHash)
@@ -272,20 +275,23 @@ func (c *Conn) FindVout(txid string, amountSat int64) (int, error) {
 	vout := -1
 	for _, tx := range transactionResult.Vout {
 
-		amount := math.Round(btcutil.SatoshiPerBitcoin * tx.Value)
-		log.Tracef("found output with amountSat %f", amount)
+		// multi sig has more than one address..
+		for _, txAddress := range tx.ScriptPubKey.Addresses {
 
-		if amount == float64(amountSat) && vout != -1 {
-			return -1, fmt.Errorf("found multiple outputs with amount %d", amountSat)
+			// if we create a transaction with several outputs to the same address
+			if vout != -1 && txAddress == address {
+				return -1, fmt.Errorf("found several outputs to same address")
+			}
+
+			if address == txAddress {
+				vout = int(tx.N)
+			}
 		}
 
-		if amount == float64(amountSat) && vout == -1 {
-			vout = int(tx.N)
-		}
 	}
 
 	if vout == -1 {
-		return -1, fmt.Errorf("did not find output with amount %d", amountSat)
+		return -1, fmt.Errorf("did not find an output with address %q", address)
 	}
 
 	return vout, nil
