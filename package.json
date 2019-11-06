@@ -1,8 +1,38 @@
 {
   "name": "teslacoil",
   "version": "1.0.0",
+  "main": "dist/teslacoil.js",
+  "types": "dist/teslacoil.d.ts",
+  "author": "dev@arcane.no",
+  "license": "MIT",
+  "homepage": "https://teslacoil.io",
   "dependencies": {
-    "@types/axios": "^0.14.0",
     "axios": "^0.19.0"
-  }
+  },
+  "scripts": {
+    "build": "yarn tsc",
+    "clean": "rimraf lib",
+    "prepublishOnly": "npm-run-all lint clean build",
+    "preversion": "npm run lint",
+    "version": "npm run format && git add -A src",
+    "postversion": "git push && git push --tags",
+    "lint": "eslint src/teslacoil.ts"
+  },
+  "devDependencies": {
+    "@types/axios": "^0.14.0",
+    "@typescript-eslint/eslint-plugin": "^2.6.1",
+    "@typescript-eslint/parser": "^2.6.1",
+    "eslint": "^6.6.0",
+    "eslint-config-airbnb-base": "^14.0.0",
+    "eslint-plugin-import": "^2.18.2",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^1.18.2",
+    "typescript": "^3.7.2"
+  },
+  "files": [
+    "dist/**/*.ts",
+    "dist/**/*.js"
+  ],
+  "description": "package for sending and receiving bitcoin payments",
+  "repository": "https://github.com/ArcaneCryptoAS/teslacoil"
 }
