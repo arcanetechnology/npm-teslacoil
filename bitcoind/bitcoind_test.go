@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
+	"github.com/go-errors/errors"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 
 	"github.com/stretchr/testify/require"
