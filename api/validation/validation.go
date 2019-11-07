@@ -75,7 +75,6 @@ func isValidBitcoinAddress(chainCfg chaincfg.Params) validator.Func {
 		// assert address is valid by attempting to decode it
 		addr, err := btcutil.DecodeAddress(stringVal, &chainCfg)
 		if err != nil {
-			log.WithError(err).Errorf("could not decode %s", stringVal)
 			return false
 		}
 
