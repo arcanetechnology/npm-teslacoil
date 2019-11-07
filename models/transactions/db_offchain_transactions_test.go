@@ -438,8 +438,6 @@ func TestPayInvoice(t *testing.T) {
 			},
 		}
 
-		fmt.Printf("user: %+v", user)
-
 		off, err := transactions.CreateTeslacoilInvoice(testDB, &mockLNcli, transactions.NewOffchainOpts{
 			UserID:    user.ID,
 			AmountSat: int64(gofakeit.Number(0, ln.MaxAmountSatPerInvoice)),

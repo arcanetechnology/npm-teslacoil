@@ -638,6 +638,60 @@ func TestNewDepositWithDescription(t *testing.T) {
 
 	require.NotNil(t, onchain.Description)
 	assert.Equal(t, description, *onchain.Description)
+}
+
+func TestGetOrCreateDeposit(t *testing.T) {
+	t.Parallel()
+
+	mockLn := lntestutil.GetRandomLightningMockClient()
+
+	t.Run("can get latest address", func(t *testing.T) {
+		user := userstestutil.CreateUserOrFail(t, testDB)
+		tx := txtest.InsertFakeIncomingWithoutTxidOnchainorFail(t, testDB, user.ID)
+
+		deposit, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, false, "")
+		require.NoError(t, err)
+		assert.Equal(t, deposit, tx)
+	})
+
+	t.Run("can create new deposit if user has no empty address", func(t *testing.T) {
+		user := userstestutil.CreateUserOrFail(t, testDB)
+
+		deposit, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, false, "")
+		require.NoError(t, err)
+		assert.Equal(t, deposit.UserID, user.ID)
+	})
+
+	t.Run("forceNewAddress always returns a new address", func(t *testing.T) {
+		user := userstestutil.CreateUserOrFail(t, testDB)
+		tx, err := txtest.InsertFakeOnchainWithoutTxid(t, testDB, user.ID)
+		require.NoError(t, err)
+
+		deposit1, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, true, "")
+		require.NoError(t, err)
+		assert.NotEqual(t, deposit1.Address, tx.Address)
+
+		deposit2, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, true, "")
+		require.NoError(t, err)
+		assert.NotEqual(t, deposit2.Address, deposit1.Address)
+	})
+
+	t.Run("can get latest when user only has offchain transactions", func(t *testing.T) {
+		user := userstestutil.CreateUserOrFail(t, testDB)
+
+		_ = txtest.InsertFakeOffChainOrFail(t, testDB, user.ID)
+
+		deposit, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, true, "")
+		assert.NoError(t, err)
+		assert.Equal(t, deposit.UserID, user.ID)
+		assert.NotEmpty(t, deposit.Address)
+
+	})
 
 }
 
