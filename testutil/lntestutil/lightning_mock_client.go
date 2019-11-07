@@ -2,7 +2,13 @@ package lntestutil
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"sync"
+
+	"github.com/btcsuite/btcd/chaincfg"
+
+	"github.com/btcsuite/btcutil/hdkeychain"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"google.golang.org/grpc"
@@ -22,6 +28,9 @@ type LightningMockClient struct {
 	DecodePayReqResponse    lnrpc.PayReq
 	SendCoinsResponse       lnrpc.SendCoinsResponse
 	AddInvoiceResponse      lnrpc.AddInvoiceResponse
+	// ExtendedKey is an extended private key
+	ExtendedKey        *hdkeychain.ExtendedKey
+	NewAddressResponse lnrpc.NewAddressResponse
 }
 
 func (client LightningMockClient) ChannelAcceptor(ctx context.Context, opts ...grpc.CallOption) (lnrpc.Lightning_ChannelAcceptorClient, error) {
@@ -212,8 +221,23 @@ func (client LightningMockClient) SubscribeChannelBackups(ctx context.Context, i
 }
 
 func (client LightningMockClient) NewAddress(ctx context.Context, in *lnrpc.NewAddressRequest, opts ...grpc.CallOption) (*lnrpc.NewAddressResponse, error) {
+	// if address is empty, we assume an argument for NewAddressResponse is passed
+	if client.NewAddressResponse.Address != "" {
+		return &client.NewAddressResponse, nil
+	}
+
+	child, err := client.ExtendedKey.Child(rand.Uint32())
+	if err != nil {
+		return nil, fmt.Errorf("could not create child: %w", err)
+	}
+
+	newAddress, err := child.Address(&chaincfg.RegressionNetParams)
+	if err != nil {
+		return nil, fmt.Errorf("could not create new address: %w", err)
+	}
+
 	return &lnrpc.NewAddressResponse{
-		Address: "sb1qnl462s336uu4n8xanhyvpega4zwjr9jrhc26x4",
+		Address: newAddress.EncodeAddress(),
 	}, nil
 }
 
