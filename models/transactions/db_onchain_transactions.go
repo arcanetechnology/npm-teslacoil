@@ -339,7 +339,7 @@ func WithdrawOnChain(db *db.DB, lncli lnrpc.LightningClient, bitcoin bitcoind.Te
 		return Onchain{}, err
 	}
 
-	vout, err := bitcoin.FindVout(txid, args.AmountSat)
+	vout, err := bitcoin.FindVout(txid, args.Address)
 	if err != nil {
 		log.WithError(err).Error("Could not find output for sent TX")
 		return Onchain{}, fmt.Errorf("could not find output for sent TX: %w", err)

@@ -3,9 +3,20 @@
 package bitcoind_test
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/brianvoe/gofakeit"
+	"gitlab.com/arcanecrypto/teslacoil/ln"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/btcsuite/btcutil"
+	"github.com/stretchr/testify/assert"
+
+	"gitlab.com/arcanecrypto/teslacoil/db"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
 
@@ -18,14 +29,23 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
 )
 
-var log = build.Log
+var (
+	log            = build.Log
+	databaseConfig = testutil.GetDatabaseConfig("bitcoind")
+	testDB         *db.DB
+)
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.DebugLevel)
+	build.SetLogLevel(logrus.ErrorLevel)
+
+	testDB = testutil.InitDatabase(databaseConfig)
+
 	code := m.Run()
+
 	if err := nodetestutil.CleanupNodes(); err != nil {
 		panic(err)
 	}
+
 	os.Exit(code)
 }
 
@@ -122,6 +142,82 @@ func TestBlockListener(t *testing.T) {
 		if err != nil {
 			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
 		}
+
+	})
+
+}
+
+func TestFindVout(t *testing.T) {
+	nodetestutil.RunWithBitcoind(t, true, func(bitcoin bitcoind.TeslacoilBitcoind) {
+
+		t.Run("can find vout for transaction", func(t *testing.T) {
+			address, err := bitcoin.Btcctl().GetNewAddress("")
+			require.NoError(t, err)
+
+			amount := gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)
+			tx, err := bitcoin.Btcctl().SendToAddress(address, btcutil.Amount(amount))
+			require.NoError(t, err)
+
+			rawTx, err := bitcoin.Btcctl().GetRawTransactionVerbose(tx)
+			require.NoError(t, err)
+
+			var correctVout uint32
+			for _, output := range rawTx.Vout {
+				if float64(amount) == (output.Value * btcutil.SatoshiPerBitcoin) {
+					correctVout = output.N
+				}
+			}
+
+			vout, err := bitcoin.FindVout(tx.String(), address.String())
+			assert.NoError(t, err)
+			assert.Equal(t, uint32(vout), correctVout)
+		})
+
+		t.Run("can choose correct vout from several addresses", func(t *testing.T) {
+			address1, err := bitcoin.Btcctl().GetNewAddress("")
+			require.NoError(t, err)
+			address2, err := bitcoin.Btcctl().GetNewAddress("")
+			require.NoError(t, err)
+
+			const amount = 5001
+			addresses := map[btcutil.Address]btcutil.Amount{
+				address1: btcutil.Amount(5000),
+				// we want to check this is selected correctly
+				address2: btcutil.Amount(amount),
+			}
+			tx, err := bitcoin.Btcctl().SendMany("", addresses)
+			require.NoError(t, err)
+
+			vout, err := bitcoin.FindVout(tx.String(), address2.String())
+
+			rawTx, err := bitcoin.Btcctl().GetRawTransactionVerbose(tx)
+			require.NoError(t, err)
+
+			for _, output := range rawTx.Vout {
+				if output.Value*btcutil.SatoshiPerBitcoin == amount {
+					assert.Equal(t, uint32(vout), output.N)
+				}
+			}
+		})
+
+		t.Run("passing bad txid as argument returns error", func(t *testing.T) {
+			vout, err := bitcoin.FindVout("bad txid", "fake address")
+			assert.True(t, errors.Is(err, bitcoind.ErrNotATxid))
+			assert.Equal(t, vout, -1)
+		})
+
+		t.Run("trying to find vout for bad address returns error", func(t *testing.T) {
+			address, err := bitcoin.Btcctl().GetNewAddress("")
+			require.NoError(t, err)
+
+			const amount = 5000
+			tx, err := bitcoin.Btcctl().SendToAddress(address, btcutil.Amount(amount))
+			require.NoError(t, err)
+
+			vout, err := bitcoin.FindVout(tx.String(), "bad address")
+			assert.Error(t, err)
+			assert.Equal(t, vout, -1)
+		})
 
 	})
 

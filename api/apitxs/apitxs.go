@@ -44,7 +44,7 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 
 	// common
 	transaction.GET("/transactions", getAllTransactions())
-	transaction.GET("/transaction/:id", getTransactionByID())
+	transaction.GET("/transactions/:id", getTransactionByID())
 
 	// onchain transactions
 	transaction.POST("/withdraw", withdrawOnChain())
@@ -53,7 +53,7 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 	// offchain transactions
 	transaction.POST("/invoices/create", createInvoice())
 	transaction.POST("/invoices/pay", payInvoice())
-	transaction.GET("/invoice/:paymentrequest", getOffchainByPaymentRequest())
+	transaction.GET("/invoices/:paymentrequest", getOffchainByPaymentRequest())
 }
 
 // getAllTransactions finds all payments for the given user. Takes two URL
@@ -85,6 +85,12 @@ func getAllTransactions() gin.HandlerFunc {
 			t, err = transactions.GetAllTransactionsLimitOffset(database, userID, params.Limit, params.Offset)
 		}
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				// return the empty list
+				c.JSONP(http.StatusOK, t)
+				return
+			}
+
 			log.WithError(err).Error("Couldn't get transactions")
 			_ = c.Error(err)
 			return

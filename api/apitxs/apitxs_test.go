@@ -98,7 +98,7 @@ func TestGetTransaction(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        "/transaction/foobar",
+			Path:        "/transactions/foobar",
 			Method:      "GET",
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
@@ -108,7 +108,7 @@ func TestGetTransaction(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        "/transaction/99999",
+			Path:        "/transactions/99999",
 			Method:      "GET",
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
@@ -121,7 +121,7 @@ func TestGetTransaction(t *testing.T) {
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        fmt.Sprintf("/transaction/%d", txForOtherUser.ID),
+			Path:        fmt.Sprintf("/transactions/%d", txForOtherUser.ID),
 			Method:      "GET",
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
@@ -131,7 +131,7 @@ func TestGetTransaction(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        fmt.Sprintf("/transaction/%d", ids[0]),
+			Path:        fmt.Sprintf("/transactions/%d", ids[0]),
 			Method:      "GET",
 		})
 
@@ -147,7 +147,7 @@ func TestGetTransaction(t *testing.T) {
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        fmt.Sprintf("/transaction/%d", tx.ID),
+			Path:        fmt.Sprintf("/transactions/%d", tx.ID),
 			Method:      "GET",
 		})
 		res := h.AssertResponseOkWithJson(t, req)
@@ -162,7 +162,7 @@ func TestGetTransaction(t *testing.T) {
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        fmt.Sprintf("/transaction/%d", tx.ID),
+			Path:        fmt.Sprintf("/transactions/%d", tx.ID),
 			Method:      "GET",
 		})
 		res := h.AssertResponseOkWithJson(t, req)
@@ -180,7 +180,7 @@ func TestGetTransaction(t *testing.T) {
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        fmt.Sprintf("/transaction/%d", inserted.ID),
+			Path:        fmt.Sprintf("/transactions/%d", inserted.ID),
 			Method:      "GET",
 		})
 		res := h.AssertResponseOkWithJson(t, req)
@@ -671,7 +671,7 @@ func TestWithdrawOnChain(t *testing.T) {
 
 		balanceReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
-			Path:        "/user",
+			Path:        "/users",
 			Method:      "GET",
 		})
 
@@ -738,17 +738,33 @@ func TestWithdrawOnChain(t *testing.T) {
 
 func TestGetOffchainByPaymentRequest(t *testing.T) {
 	t.Parallel()
-	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+	token, userID := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
+	})
+
+	t.Run("can get transaction by payment request", func(t *testing.T) {
+		t.Parallel()
+
+		offchain := txtest.InsertFakeOffChainOrFail(t, testDB, userID)
+
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/invoices/%s", offchain.PaymentRequest),
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, offchain.PaymentRequest, res["paymentRequest"])
 	})
 
 	t.Run("non-existant payment request returns error", func(t *testing.T) {
 		t.Parallel()
 
+		payReq := txtest.MockPaymentRequest()
+
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        "/invoice/lnbcrt1pwuqjgwpp5aw67h6l0kw54a2v7syy6n0rd2a9vl6ftq5x3n53f4jy8g3du6n7qdqqcqzpgmjjkdzje99mehs3z239n4lmgpw4xkryzmjxqfssn926zulhs6el3hjzwe6hpzqkxsx6qnkslj3w9mdtfn5jknq4yuy7ddmw0sgtyl4gq39n2ng",
+			Path:        fmt.Sprintf("/invoices/%s", payReq),
 			Method:      "GET",
 		})
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusNotFound)
@@ -759,11 +775,10 @@ func TestGetOffchainByPaymentRequest(t *testing.T) {
 
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        "/invoice/not-a-payment-request",
+			Path:        "/invoices/not-a-payment-request",
 			Method:      "GET",
 		})
 		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-
 	})
 }
 

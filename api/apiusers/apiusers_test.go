@@ -247,7 +247,7 @@ func TestPutUserRoute(t *testing.T) {
 	t.Run("updating with an invalid email should fail", func(t *testing.T) {
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: accessToken,
-			Path:        "/user",
+			Path:        "/users",
 			Method:      "PUT",
 			Body: `{
 				"email": "bad-email.coming.through"
@@ -265,7 +265,7 @@ func TestPutUserRoute(t *testing.T) {
 		updateUserReq := httptestutil.GetAuthRequest(t,
 			httptestutil.AuthRequestArgs{
 				AccessToken: accessToken,
-				Path:        "/user", Method: "PUT",
+				Path:        "/users", Method: "PUT",
 				Body: fmt.Sprintf(`
 			{
 				"firstName": %q,
@@ -282,7 +282,8 @@ func TestPutUserRoute(t *testing.T) {
 		getUserReq := httptestutil.GetAuthRequest(t,
 			httptestutil.AuthRequestArgs{
 				AccessToken: accessToken,
-				Method:      "GET", Path: "/user",
+				Path:        "/users",
+				Method:      "GET",
 			})
 
 		// Verify that update and get returns the same
@@ -299,7 +300,7 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 	t.Run("reject a bad email request", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
+			Path:   "/users/verify_email",
 			Method: "POST",
 			Body: `{
 			"email": "foobar"
@@ -314,7 +315,7 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 		t.Parallel()
 		email := gofakeit.Email()
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
+			Path:   "/users/verify_email",
 			Method: "POST",
 			Body: fmt.Sprintf(`{
 			"email": %q
@@ -344,7 +345,7 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 		})
 
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
+			Path:   "/users/verify_email",
 			Method: "POST",
 			Body: fmt.Sprintf(`{
 			"email": %q
@@ -391,7 +392,7 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 		})
 
 		req := httptestutil.GetRequest(t, httptestutil.RequestArgs{
-			Path:   "/user/verify_email",
+			Path:   "/users/verify_email",
 			Method: "POST",
 			Body: fmt.Sprintf(`{
 			"email": %q

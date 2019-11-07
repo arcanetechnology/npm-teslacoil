@@ -47,7 +47,7 @@ func (t TeslacoilBitcoindMockClient) ZmqTxChannel() chan *wire.MsgTx {
 	return make(chan *wire.MsgTx)
 }
 
-func (t TeslacoilBitcoindMockClient) FindVout(txid string, amountSat int64) (int, error) {
+func (t TeslacoilBitcoindMockClient) FindVout(txid string, address string) (int, error) {
 	return 0, nil
 }
 

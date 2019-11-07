@@ -227,7 +227,6 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	*lnrpc.Invoice, error) {
 	ctx := context.Background()
 
-	log.Tracef("adding invoice: %+v", invoiceData)
 	inv, err := lncli.AddInvoice(ctx, &invoiceData)
 	if err != nil {
 		err = fmt.Errorf("could not add invoice: %w", err)

@@ -303,6 +303,9 @@ func RunWithBitcoindAndLnd(t *testing.T, giveInitialBalance bool, test func(lnd 
 
 		address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
 
+		_, err = bitcoindtestutil.GenerateToSelf(10, bitcoin)
+		assert.NoError(t, err)
+
 		_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
 		if err != nil {
 			testutil.FailMsgf(t, "could not generate to address")
@@ -584,11 +587,14 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		}
 
 		log.Debug("Stopped bitcoind process")
-		if err = os.RemoveAll(tempDir); err != nil {
-			return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
+		deleteBitcoin := func() error {
+			if err = os.RemoveAll(tempDir); err != nil {
+				return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
+			}
+			log.Debugf("Deleted bitcoind tmp directory %s", tempDir)
+			return nil
 		}
-		log.Debugf("Deleted bitcoind tmp directory %s", tempDir)
-		return nil
+		return async.RetryNoBackoff(10, time.Second, deleteBitcoin)
 	}
 	// pointer so we can mutate the object
 	RegisterCleaner(&cleaner)

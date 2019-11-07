@@ -109,7 +109,7 @@ func (harness *TestHarness) VerifyEmail(t *testing.T, email string) users.User {
 	}
 
 	verifyEmailRequest := GetRequest(t, RequestArgs{
-		Path:   "/user/verify_email",
+		Path:   "/users/verify_email",
 		Method: "PUT",
 		Body: fmt.Sprintf(`{
 			"token": %q
