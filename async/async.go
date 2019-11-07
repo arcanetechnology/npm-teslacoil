@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	pkgerrors "github.com/pkg/errors"
 )
 
 // WaitTimeout waits for the waitgroup for the specified max timeout.
@@ -34,9 +32,9 @@ func RetryBackoff(attempts int, sleep time.Duration, fn func() error) error {
 	start := time.Now()
 	if err := innerRetry(attempts, sleep, fn); err != nil {
 		end := time.Now()
-		return pkgerrors.Wrapf(err,
-			"failed after %d attempts and %s total duration",
-			attempts, end.Sub(start))
+		return fmt.Errorf(
+			"failed after %d attempts and %s total duration: %w",
+			attempts, end.Sub(start), err)
 	}
 	return nil
 }
@@ -59,9 +57,9 @@ func RetryNoBackoff(attempts int, sleep time.Duration, fn func() error) error {
 	start := time.Now()
 	if err := innerRetryNoBackoff(attempts, sleep, fn); err != nil {
 		end := time.Now()
-		return pkgerrors.Wrapf(err,
-			"failed after %d attempts and %s total duration",
-			attempts, end.Sub(start))
+		return fmt.Errorf(
+			"failed after %d attempts and %s total duration: %w",
+			attempts, end.Sub(start), err)
 	}
 	return nil
 }

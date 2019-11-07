@@ -138,7 +138,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 			binding.Validator.Engine(),
 		)
 	}
-	validators := validation.RegisterAllValidators(engine, &config.Network)
+	validators := validation.RegisterAllValidators(engine, config.Network)
 	log.Infof("Registered custom validators: %s", validators)
 
 	log.Info("Checking bitcoind connection")

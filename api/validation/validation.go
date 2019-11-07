@@ -50,14 +50,14 @@ func isValidPassword(
 }
 
 // isValidPaymentRequest checks if a payment request is valid per the configured network
-func isValidPaymentRequest(chainCfg *chaincfg.Params) validator.Func {
+func isValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
 	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
 		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
 
 		stringVal := field.String()
 
 		// if tag is payreq, check that the value is decodable
-		if _, err := zpay32.Decode(stringVal, chainCfg); err != nil {
+		if _, err := zpay32.Decode(stringVal, &chainCfg); err != nil {
 			return false
 		}
 
@@ -66,20 +66,20 @@ func isValidPaymentRequest(chainCfg *chaincfg.Params) validator.Func {
 }
 
 // isValidBitcoinAddress checks if a payment request is valid per the configured network
-func isValidBitcoinAddress(chainCfg *chaincfg.Params) validator.Func {
+func isValidBitcoinAddress(chainCfg chaincfg.Params) validator.Func {
 	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
 		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
 
 		stringVal := field.String()
 
 		// assert address is valid by attempting to decode it
-		addr, err := btcutil.DecodeAddress(stringVal, chainCfg)
+		addr, err := btcutil.DecodeAddress(stringVal, &chainCfg)
 		if err != nil {
 			log.WithError(err).Errorf("could not decode %s", stringVal)
 			return false
 		}
 
-		if !addr.IsForNet(chainCfg) {
+		if !addr.IsForNet(&chainCfg) {
 			return false
 		}
 
@@ -108,7 +108,7 @@ func registerValidator(engine *validator.Validate, name string, function validat
 // RegisterAllValidators registers all known validators to the Validator engine,
 // quitting if this results in an error. This function should typically be
 // called at startup.
-func RegisterAllValidators(engine *validator.Validate, chainCfg *chaincfg.Params) []string {
+func RegisterAllValidators(engine *validator.Validate, chainCfg chaincfg.Params) []string {
 	type Validator struct {
 		Name     string
 		Function validator.Func
