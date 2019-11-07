@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
-	"github.com/go-errors/errors"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 
 	"github.com/stretchr/testify/require"
@@ -202,7 +201,7 @@ func TestFindVout(t *testing.T) {
 		})
 
 		t.Run("passing bad txid as argument returns error", func(t *testing.T) {
-			vout, err := bitcoin.FindVout("bad txid", "fake address")
+			vout, err := bitcoin.FindVout("bad_txid", "fake address")
 			assert.True(t, errors.Is(err, bitcoind.ErrNotATxid))
 			assert.Equal(t, vout, -1)
 		})

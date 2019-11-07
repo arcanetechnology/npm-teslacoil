@@ -50,7 +50,7 @@ func isValidPassword(
 }
 
 // isValidPaymentRequest checks if a payment request is valid per the configured network
-func isValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
+func isValidPaymentRequest(chainCfg *chaincfg.Params) validator.Func {
 	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
 		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
 
@@ -116,7 +116,7 @@ func RegisterAllValidators(engine *validator.Validate, chainCfg *chaincfg.Params
 	validators := []Validator{
 		{
 			Name:     password,
-			Function: IsValidPassword,
+			Function: isValidPassword,
 		},
 		{
 			Name:     paymentrequest,

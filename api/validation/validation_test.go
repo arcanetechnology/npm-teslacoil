@@ -71,7 +71,7 @@ func TestIsValidPassword(t *testing.T) {
 
 func TestIsValidPaymentRequest(t *testing.T) {
 
-	if err := registerValidator(validate, paymentrequest, isValidPaymentRequest(chaincfg.RegressionNetParams)); err != nil {
+	if err := registerValidator(validate, paymentrequest, isValidPaymentRequest(&chaincfg.RegressionNetParams)); err != nil {
 		log.Fatal(err)
 	}
 	type Struct struct {
