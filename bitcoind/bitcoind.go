@@ -3,6 +3,7 @@ package bitcoind
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,7 +21,6 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightninglabs/gozmq"
-	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
@@ -32,6 +32,7 @@ var (
 )
 
 var (
+	// ErrNotATxid indicates something was not a valid txid
 	ErrNotATxid = errors.New("not a valid txid")
 )
 
@@ -134,12 +135,12 @@ func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcu
 		"application/json",
 		bytes.NewReader([]byte(body)))
 	if err != nil {
-		return nil, errors.Wrap(err, "generatetoaddress")
+		return nil, fmt.Errorf("generatetoaddress: %w", err)
 	}
 
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not read body")
+		return nil, fmt.Errorf("could not ready body: %w", err)
 	}
 
 	type GenerateResponse struct {
@@ -148,7 +149,7 @@ func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcu
 
 	var res GenerateResponse
 	if err := json.Unmarshal(bodyBytes, &res); err != nil {
-		return nil, errors.Wrapf(err, "could not unmarshal JSON: %+v. Body : %s", err, string(bodyBytes))
+		return nil, fmt.Errorf("could not unmarshal JSON: %w. Body : %s", err, string(bodyBytes))
 	}
 	var hashes []*chainhash.Hash
 	for _, hash := range res.Hashes {
@@ -173,8 +174,8 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 
 	client, err := rpcclient.New(conf.ToConnConfig(), notificationHandler)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not create new bitcoind rpcclient,"+
-			"is bitcoind running?")
+		return nil, fmt.Errorf("could not create new bitcoind rpcclient,"+
+			"is bitcoind running? %w", err)
 	}
 
 	// Establish two different ZMQ connections to bitcoind to retrieve block
@@ -184,7 +185,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 	zmqBlockConn, err := gozmq.Subscribe(
 		conf.ZmqPubRawBlock, []string{"rawblock"}, zmqPollInterval)
 	if err != nil {
-		return nil, errors.Wrap(err, "gozmq.Subscribe rawblock")
+		return nil, fmt.Errorf("gozmq.Subscribe rawblock: %w", err)
 	}
 
 	zmqTxConn, err := gozmq.Subscribe(
@@ -194,7 +195,7 @@ func NewConn(conf Config, zmqPollInterval time.Duration) (
 		if closeErr != nil {
 			log.Errorf("could not close zmqBlockConn: %+v", closeErr)
 		}
-		return nil, errors.Wrap(err, "gozmq.Subscribe rawtx")
+		return nil, fmt.Errorf("gozmq.Subscribe rawtx: %w", err)
 	}
 
 	zmqRawTxCh := make(chan *wire.MsgTx)
