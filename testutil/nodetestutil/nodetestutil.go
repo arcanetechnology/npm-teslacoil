@@ -587,11 +587,14 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		}
 
 		log.Debug("Stopped bitcoind process")
-		if err = os.RemoveAll(tempDir); err != nil {
-			return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
+		deleteBitcoin := func() error {
+			if err = os.RemoveAll(tempDir); err != nil {
+				return errors.Wrapf(err, "could not delete bitcoind tmp directory %s", tempDir)
+			}
+			log.Debugf("Deleted bitcoind tmp directory %s", tempDir)
+			return nil
 		}
-		log.Debugf("Deleted bitcoind tmp directory %s", tempDir)
-		return nil
+		return async.RetryNoBackoff(10, time.Second, deleteBitcoin)
 	}
 	// pointer so we can mutate the object
 	RegisterCleaner(&cleaner)
