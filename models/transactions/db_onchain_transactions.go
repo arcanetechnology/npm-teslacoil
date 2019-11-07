@@ -291,7 +291,7 @@ type WithdrawOnChainArgs struct {
 	// The amount in satoshis to send
 	AmountSat int64 `json:"amountSat" binding:"required"`
 	// The address to send coins to
-	Address string `json:"address" binding:"required"`
+	Address string `json:"address" binding:"required,address"`
 	// The target number of blocks the transaction should be confirmed by
 	TargetConf int `json:"targetConf"`
 	// A manual fee rate set in sat/byte that should be used

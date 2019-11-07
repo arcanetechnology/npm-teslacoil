@@ -93,3 +93,37 @@ func TestIsValidPaymentRequest(t *testing.T) {
 	})
 
 }
+
+func TestIsValidBitcoinAddress(t *testing.T) {
+
+	if err := registerValidator(validate, address, isValidBitcoinAddress(&chaincfg.RegressionNetParams)); err != nil {
+		log.Fatal(err)
+	}
+	type Struct struct {
+		Address string `binding:"address"`
+	}
+
+	// address for regtest
+	goodAddress := Struct{Address: "bcrt1qu6zvu2uxfmac6xyzq9zn5r70ke92w7ndrfme4t"}
+	t.Run("validate a good address", func(t *testing.T) {
+		if err := validate.Struct(goodAddress); err != nil {
+			testutil.FatalMsgf(t, "good struct %+v did not pass validation: %v", goodAddress, err)
+		}
+	})
+
+	badAddress := Struct{Address: "bad_address"}
+	t.Run("invalidate a bad address", func(t *testing.T) {
+		if validate.Struct(badAddress) == nil {
+			testutil.FatalMsgf(t, "bad struct %+v passed validation", badAddress)
+		}
+	})
+
+	// address for mainnet, as chainCfg.RegressionNetParams identify as testnet
+	wrongNetworkAddress := Struct{Address: "39qSSDqoBcGpQfFALNxozB9JQKv66tjjDy"}
+	t.Run("invalidate address for the wrong network", func(t *testing.T) {
+		if validate.Struct(wrongNetworkAddress) == nil {
+			testutil.FatalMsgf(t, "bad struct %+v passed validation", wrongNetworkAddress)
+		}
+	})
+
+}

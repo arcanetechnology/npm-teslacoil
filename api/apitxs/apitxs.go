@@ -133,7 +133,6 @@ func getTransactionByID() gin.HandlerFunc {
 
 // withdrawOnChain is a request handler used for withdrawing funds
 // to an on-chain address
-// TODO: verify dust limits
 func withdrawOnChain() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := auth.RequireScope(c, auth.SendTransaction)
