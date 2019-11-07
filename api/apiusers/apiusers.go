@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -232,6 +234,38 @@ func getUser() gin.HandlerFunc {
 	}
 }
 
+func emailInWhitelist(email string) bool {
+	whitelist := []string{
+		// add friends and family here
+		"bojalbor@gmail.com",
+	}
+	email = strings.ToLower(email)
+
+	for _, whitelistedEmail := range whitelist {
+		if whitelistedEmail == email {
+			return true
+		}
+	}
+
+	if strings.HasSuffix(email, "arcane.no") {
+		return true
+	}
+	if strings.HasSuffix(email, "arcanecrypto.no") {
+		return true
+	}
+	if strings.HasSuffix(email, "tigerstaden.com") {
+		return true
+	}
+	if strings.HasSuffix(email, "middelborg.no") {
+		return true
+	}
+	if strings.HasSuffix(email, "kleingroup.no") {
+		return true
+	}
+
+	return false
+}
+
 // createUser is a POST request that inserts a new user into the db
 // required: email and password, optional: firstname and lastname
 func createUser() gin.HandlerFunc {
@@ -251,6 +285,13 @@ func createUser() gin.HandlerFunc {
 		var req request
 		if c.BindJSON(&req) != nil {
 			return
+		}
+
+		if os.Getenv(gin.EnvGinMode) == gin.ReleaseMode {
+			if !emailInWhitelist(req.Email) {
+				apierr.Public(c, http.StatusForbidden, apierr.ErrNotYetOpenForBusiness)
+				return
+			}
 		}
 
 		// because the email column in users table has the unique tag, we don't
