@@ -1,5 +1,6 @@
 .envrc
 .systemd-variables
+.teslacoil-private-rsa.pem
 logs/
 coverage.html
 .idea/dataSources.xml

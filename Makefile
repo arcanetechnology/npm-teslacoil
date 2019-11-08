@@ -11,8 +11,11 @@ build:
 deploy-testnet: install
 	./scripts/deployTestnet.sh
 
-deploy-mainnet: install
+deploy-mainnet: install backup_db
 	./scripts/deployMainnet.sh
+
+backup_db:
+	pg_dump teslacoil > /home/admin/teslacoil-backups/$(shell date --iso=date).backup
 
 start-db:
 	if [ -z `docker-compose ps -q db` ]; then docker-compose up -d db && sleep 3; fi
