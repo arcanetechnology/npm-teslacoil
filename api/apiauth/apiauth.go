@@ -8,6 +8,8 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp/totp"
+	"golang.org/x/crypto/bcrypt"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiusers"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
@@ -15,10 +17,9 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/email"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
-	"golang.org/x/crypto/bcrypt"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("APIA")
 
 // services that gets initiated in RegisterRoutes
 var (

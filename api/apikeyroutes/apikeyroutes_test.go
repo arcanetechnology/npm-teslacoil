@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sirupsen/logrus"
@@ -19,7 +21,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
@@ -32,16 +33,18 @@ import (
 )
 
 var (
+	log = teslalog.Logger{
+		Logger:    logrus.New(),
+		Subsystem: "apikeyroutes_test",
+	}
 	testDB              *db.DB
 	h                   httptestutil.TestHarness
 	mockLightningClient = lntestutil.GetLightningMockClient()
 	mockBitcoindClient  = bitcoind.GetBitcoinMockClient()
 	mockHttpPoster      = testutil.GetMockHttpPoster()
 	mockSendGridClient  = mock.GetMockSendGridClient()
-	log                 = build.Log
 	conf                = api.Config{
-		LogLevel: logrus.InfoLevel,
-		Network:  chaincfg.RegressionNetParams,
+		Network: chaincfg.RegressionNetParams,
 	}
 )
 

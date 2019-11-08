@@ -8,15 +8,16 @@ import (
 	"fmt"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("KEYS")
 
 // Key is the database representation of our API keys
 type Key struct {

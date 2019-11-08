@@ -9,13 +9,14 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("FLAG")
 
 // Concat concatenates the given list of flags, without mutating them
 func Concat(first []cli.Flag, rest ...[]cli.Flag) []cli.Flag {
@@ -28,7 +29,7 @@ func Concat(first []cli.Flag, rest ...[]cli.Flag) []cli.Flag {
 }
 
 // CommonFlags is a set of flags that all commands take
-var CommonFlags []cli.Flag = Concat([]cli.Flag{
+var CommonFlags = Concat([]cli.Flag{
 	cli.StringFlag{
 		Name:  "network",
 		Usage: "the network lnd is running on e.g. mainnet, testnet, etc.",

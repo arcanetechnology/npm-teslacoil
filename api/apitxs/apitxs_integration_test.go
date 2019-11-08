@@ -11,15 +11,15 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcutil"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/sirupsen/logrus"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
@@ -30,6 +30,7 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/lightningnetwork/lnd/lnrpc"
+
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
@@ -41,7 +42,7 @@ func init() {
 	// closes when the process exits anyway
 	testDB = testutil.InitDatabase(databaseConfig)
 	databaseConfig = testutil.GetDatabaseConfig("api_txs_integration")
-	conf = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
+	conf = api.Config{Network: chaincfg.RegressionNetParams}
 }
 
 func TestCreateInvoiceRoute(t *testing.T) {

@@ -25,8 +25,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 )
 
-var log = logrus.New()
-
 var (
 	ErrCouldNotGetByID            = errors.New("could not get payment by ID")
 	Err0AmountInvoiceNotSupported = errors.New("cant insert 0 amount invoice, not yet supported")

@@ -8,7 +8,6 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -30,8 +29,7 @@ var (
 	mockHttpPoster      = testutil.GetMockHttpPoster()
 	mockSendGridClient  = mock.GetMockSendGridClient()
 	conf                = api.Config{
-		LogLevel: logrus.InfoLevel,
-		Network:  chaincfg.RegressionNetParams,
+		Network: chaincfg.RegressionNetParams,
 	}
 )
 

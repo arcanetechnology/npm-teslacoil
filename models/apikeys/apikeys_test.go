@@ -30,7 +30,7 @@ var (
 
 func TestMain(m *testing.M) {
 	gofakeit.Seed(0)
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevels(logrus.ErrorLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 

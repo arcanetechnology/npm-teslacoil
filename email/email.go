@@ -6,16 +6,16 @@ import (
 	"net/url"
 	"strings"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("EMAL")
 
 // ErrCouldNotSendEmail means the HTTP request to send an email did not get a
 // success status code.

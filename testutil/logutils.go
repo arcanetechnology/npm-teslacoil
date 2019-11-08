@@ -12,8 +12,6 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-
-	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
 const (
@@ -29,7 +27,7 @@ const (
 	cross     = "❌"
 )
 
-var log = build.Log
+var log = logrus.New()
 
 type LogWriter struct {
 	Label string

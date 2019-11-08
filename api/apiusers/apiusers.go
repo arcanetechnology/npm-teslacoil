@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -20,7 +21,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("APIU")
 
 // services that gets initiated in RegisterRoutes
 var (

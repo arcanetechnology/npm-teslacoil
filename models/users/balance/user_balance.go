@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("BLNC")
 
 const (
 	milliSatsPerSat     = 1000

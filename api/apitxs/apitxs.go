@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -17,7 +18,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("APIT")
 
 // services that gets initiated in RegisterRoutes
 var (

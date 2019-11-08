@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/dchest/passwordreset"
@@ -21,7 +22,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("USER")
 
 // User is a database table
 type User struct {

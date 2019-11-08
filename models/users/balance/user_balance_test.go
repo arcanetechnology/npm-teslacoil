@@ -25,7 +25,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevels(logrus.ErrorLevel)
 
 	rand.Seed(time.Now().UnixNano())
 

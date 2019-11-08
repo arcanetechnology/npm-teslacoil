@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
@@ -40,7 +39,7 @@ const (
 )
 
 var (
-	log         = build.Log
+	log         = logrus.New()
 	_   Cleaner = nodeCleaner{}
 )
 

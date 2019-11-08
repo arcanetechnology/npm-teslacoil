@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strings"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
+
 	"github.com/gin-gonic/gin/binding"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
 	"gitlab.com/arcanecrypto/teslacoil/api/apikeyroutes"
@@ -29,17 +32,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("APIM")
 
 // Config is the configuration for our API. Currently it just sets the
 // log level.
 type Config struct {
-	// LogLevel specifies which level our application is going to log to
-	LogLevel logrus.Level
 	// The Bitcoin blockchain network we're on
 	Network chaincfg.Params
 }
@@ -69,16 +68,15 @@ var corsConfig = cors.Config{
 // getGinEngine creates a new Gin engine, and applies middlewares used by
 // our API. This includes recovering from panics, logging with Logrus and
 // applying CORS configuration.
-func getGinEngine(config Config) *gin.Engine {
+func getGinEngine() *gin.Engine {
 	engine := gin.New()
 
 	log.Debug("Applying gin.Recovery middleware")
 	engine.Use(gin.Recovery())
 
 	log.Debug("Applying Gin logging middleware")
-	engine.Use(build.GinLoggingMiddleWare(log,
-		// TODO should we have a custom field for request logging in our config?
-		config.LogLevel))
+	engine.Use(teslalog.GinLoggingMiddleWare(log))
+	// TODO should we have a custom field for request logging in our config?
 
 	log.Debug("Applying CORS middleware")
 	engine.Use(cors.New(corsConfig))
@@ -123,13 +121,12 @@ func checkLndConnection(lncli lnrpc.LightningClient, expected chaincfg.Params) e
 func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	bitcoin bitcoind.TeslacoilBitcoind, callbacks transactions.HttpPoster,
 	config Config) (RestServer, error) {
-	build.SetLogLevel(config.LogLevel)
 
 	if config.Network.Name == "" {
 		return RestServer{}, errors.New("config.Network is not set")
 	}
 
-	g := getGinEngine(config)
+	g := getGinEngine()
 
 	engine, ok := binding.Validator.Engine().(*validator.Validate)
 	if !ok {

@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -26,7 +26,7 @@ import (
 	"gopkg.in/macaroon.v2"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("LN")
 
 // AddLookupInvoiceClient defines the required methods for adding an invoice
 type AddLookupInvoiceClient interface {

@@ -7,9 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/sirupsen/logrus"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
@@ -17,7 +18,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("DMMY")
 
 func init() {
 	rand.Seed(time.Now().Unix())

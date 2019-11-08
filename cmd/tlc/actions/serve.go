@@ -18,7 +18,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/tlc/flags"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/dummy"
@@ -110,8 +109,7 @@ func Serve() cli.Command {
 			}
 
 			config := api.Config{
-				LogLevel: build.Log.Level,
-				Network:  bitcoindConfig.Network,
+				Network: bitcoindConfig.Network,
 			}
 
 			var baseUrl string

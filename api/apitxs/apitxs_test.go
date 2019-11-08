@@ -42,8 +42,7 @@ var (
 	databaseConfig = testutil.GetDatabaseConfig("tx_routes")
 	testDB         *db.DB
 	conf           = api.Config{
-		LogLevel: logrus.InfoLevel,
-		Network:  chaincfg.RegressionNetParams,
+		Network: chaincfg.RegressionNetParams,
 	}
 
 	h httptestutil.TestHarness
@@ -68,7 +67,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.DebugLevel)
+	build.SetLogLevels(logrus.DebugLevel)
 
 	// new values for gofakeit every time
 	gofakeit.Seed(0)

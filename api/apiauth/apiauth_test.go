@@ -10,7 +10,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/dchest/passwordreset"
 	"github.com/pquerna/otp/totp"
-	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -31,8 +30,7 @@ var (
 	mockHttpPoster      = testutil.GetMockHttpPoster()
 	mockSendGridClient  = mock.GetMockSendGridClient()
 	conf                = api.Config{
-		LogLevel: logrus.InfoLevel,
-		Network:  chaincfg.RegressionNetParams,
+		Network: chaincfg.RegressionNetParams,
 	}
 )
 

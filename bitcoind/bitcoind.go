@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/sirupsen/logrus"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
@@ -21,12 +23,11 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightninglabs/gozmq"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
-var (
-	log = build.Log
+var log = build.AddSubLogger("BTCD")
 
+var (
 	// check the interface is satisfied
 	_ TeslacoilBitcoind = &Conn{}
 )

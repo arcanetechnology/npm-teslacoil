@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +32,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	build.SetLogLevels(logrus.ErrorLevel)
 	gofakeit.Seed(0)
 	reader := rand.Reader
 

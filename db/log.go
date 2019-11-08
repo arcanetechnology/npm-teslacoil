@@ -4,4 +4,4 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("DB")
