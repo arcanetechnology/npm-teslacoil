@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
+
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -12,7 +14,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/cmd/tlc/flags"
 )
 
-var log = build.Log
+var log = logrus.New()
 
 func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
@@ -25,13 +27,13 @@ func main() { //nolint:deadcode,unused
 			build.DisableColors()
 		}
 
-		level, err := build.ToLogLevel(c.GlobalString("logging.level"))
+		level, err := teslalog.ToLogLevel(c.GlobalString("logging.level"))
 		if err != nil {
 			return err
 		}
-		existingLevel := build.Log.Level
+		existingLevel := log.Level
 		if existingLevel != level {
-			build.SetLogLevel(level)
+			build.SetLogLevels(level)
 		}
 
 		logToFile := c.GlobalBool("logging.writetofile")
@@ -55,7 +57,7 @@ func main() { //nolint:deadcode,unused
 			Action: func(c *cli.Context) error {
 				// to make this pipeable to `source`, we don't want any other
 				// output
-				build.SetLogLevel(logrus.FatalLevel)
+				build.SetLogLevels(logrus.FatalLevel)
 
 				completion, err := app.ToFishCompletion()
 				if err != nil {

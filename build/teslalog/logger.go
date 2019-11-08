@@ -1,4 +1,4 @@
-package build
+package teslalog
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,44 +15,53 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Log is the logger for the whole application
-var Log = logrus.New()
+// Logger is our custom logger for the whole application
+type Logger struct {
+	*logrus.Logger
+	Subsystem string
+}
 
-func getFormatter() *logrus.TextFormatter {
-	return &logrus.TextFormatter{
-		ForceColors:   true,
-		FullTimestamp: true,
+var StandardFormatter = &Formatter{}
+
+type Formatter struct {
+	TimestampFormat string // default: "2006-01-02 15:04:05"
+	DisableColors   bool   // disable colors
+	Subsystem       string
+}
+
+func (l Logger) getFormatter() *Formatter {
+	return &Formatter{
 		// This uses an absolutely ridicoulous format:
 		// https://stackoverflow.com/a/20234207/10359642
-		TimestampFormat: "15:04:05",
+		TimestampFormat: "2006-01-02 15:04:05.000",
+		Subsystem:       l.Subsystem,
 	}
 }
 
-func init() {
-	Log.SetLevel(logrus.TraceLevel)
-	Log.SetFormatter(getFormatter())
-}
+// New creates a new logger with a standard format
+func New(subsystem string) *Logger {
+	logger := &Logger{logrus.New(), subsystem}
+	logger.SetLevel(logrus.TraceLevel)
+	logger.SetFormatter(logger.getFormatter())
 
-// SetLogLevel sets the log level for the whole application
-func SetLogLevel(logLevel logrus.Level) {
-	Log.SetLevel(logLevel)
+	return logger
 }
 
 // DisableColors forces logrus to log without colors
-func DisableColors() {
-	formatter := getFormatter()
+func (l Logger) DisableColors() {
+	formatter := l.getFormatter()
 	formatter.DisableColors = true
-	Log.SetFormatter(formatter)
+	l.SetFormatter(formatter)
 }
 
 // SetLogFile sets logrus to write to the given file
-func SetLogFile(file string) error {
+func (l Logger) SetLogFile(file string) error {
 	logFile, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return errors.Wrap(err, "could not open logfile")
 	}
 	writer := io.MultiWriter(os.Stdout, logFile)
-	Log.SetOutput(writer)
+	l.SetOutput(writer)
 	return nil
 }
 
@@ -77,13 +87,9 @@ func ToLogLevel(s string) (logrus.Level, error) {
 	}
 }
 
-type loggerEntryWithFields interface {
-	WithFields(fields logrus.Fields) *logrus.Entry
-}
-
 // GinLoggingMiddleWare returns  a middleware that logs incoming requests with Logrus.
 // It is based on the discontinued Ginrus middleware: https://github.com/gin-gonic/contrib/blob/master/ginrus/ginrus.go
-func GinLoggingMiddleWare(logger loggerEntryWithFields, level logrus.Level) gin.HandlerFunc {
+func GinLoggingMiddleWare(logger *Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -143,10 +149,95 @@ func GinLoggingMiddleWare(logger loggerEntryWithFields, level logrus.Level) gin.
 
 		withFields = withFields.WithField("latency", latency)
 		status := c.Writer.Status()
-		requestLevel := level
+		requestLevel := logger.Level
 		if status >= 300 {
 			requestLevel = logrus.ErrorLevel
 		}
 		withFields.Logf(requestLevel, "HTTP %s %s: %d", c.Request.Method, path, status)
+	}
+}
+
+// Format formats a long entry
+func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
+
+	// output buffer
+	b := &bytes.Buffer{}
+
+	// write timestamp
+	timestampFormat := f.TimestampFormat
+	if timestampFormat == "" {
+		timestampFormat = "2006-01-02 15:04:05.000"
+	}
+	b.WriteString(entry.Time.Format(timestampFormat))
+
+	// write level
+	level := strings.ToUpper(entry.Level.String())
+	levelColor := getColorByLevel(entry.Level)
+	if !f.DisableColors {
+		b.WriteString(fmt.Sprintf("\x1b[%dm", levelColor))
+	}
+
+	b.WriteString(fmt.Sprintf(" [%s]", level[:4]))
+	if !f.DisableColors {
+		b.WriteString("\x1b[0m")
+	}
+
+	// write subsystem
+	b.WriteString(fmt.Sprintf(" %s: ", f.Subsystem))
+
+	// write message
+	b.WriteString(entry.Message)
+	b.WriteString("\t\t")
+
+	if !f.DisableColors {
+		b.WriteString(fmt.Sprintf("\x1b[%dm", levelColor))
+	}
+	// write fields
+	f.writeFields(b, entry)
+
+	if !f.DisableColors {
+		b.WriteString("\x1b[0m")
+	}
+	b.WriteByte('\n')
+
+	return b.Bytes(), nil
+}
+
+func (f *Formatter) writeFields(b *bytes.Buffer, entry *logrus.Entry) {
+	if len(entry.Data) != 0 {
+		fields := make([]string, 0, len(entry.Data))
+		for field := range entry.Data {
+			fields = append(fields, field)
+		}
+
+		sort.Strings(fields)
+
+		for _, field := range fields {
+			f.writeField(b, entry, field)
+		}
+	}
+}
+
+func (f *Formatter) writeField(b *bytes.Buffer, entry *logrus.Entry, field string) {
+	fmt.Fprintf(b, "%s=%v ", field, entry.Data[field])
+}
+
+const (
+	colorRed    = 31
+	colorYellow = 33
+	colorBlue   = 36
+	colorGray   = 37
+)
+
+func getColorByLevel(level logrus.Level) int {
+	switch level {
+	case logrus.DebugLevel:
+		return colorGray
+	case logrus.WarnLevel:
+		return colorYellow
+	case logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel:
+		return colorRed
+	default:
+		return colorBlue
 	}
 }
