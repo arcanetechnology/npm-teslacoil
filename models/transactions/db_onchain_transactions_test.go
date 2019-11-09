@@ -46,7 +46,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		t.Run("inserting arbitrary onchain "+strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			onchain := txtest.GenOnchain(user.ID)
+			onchain := txtest.MockOnchain(user.ID)
 
 			inserted, err := transactions.InsertOnchain(testDB, onchain)
 			require.NoError(t, err, onchain)
@@ -119,7 +119,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		t.Run("inserting arbitrary offchain "+strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			offchain := txtest.GenOffchain(user.ID)
+			offchain := txtest.MockOffchain(user.ID)
 
 			inserted, err := transactions.InsertOffchain(testDB, offchain)
 			if err != nil {
@@ -646,6 +646,7 @@ func TestGetOrCreateDeposit(t *testing.T) {
 	mockLn := lntestutil.GetRandomLightningMockClient()
 
 	t.Run("can get latest address", func(t *testing.T) {
+		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
 		tx := txtest.InsertFakeIncomingWithoutTxidOnchainorFail(t, testDB, user.ID)
 
@@ -656,6 +657,7 @@ func TestGetOrCreateDeposit(t *testing.T) {
 	})
 
 	t.Run("can create new deposit if user has no empty address", func(t *testing.T) {
+		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
 
 		deposit, err := transactions.GetOrCreateDeposit(
@@ -665,6 +667,7 @@ func TestGetOrCreateDeposit(t *testing.T) {
 	})
 
 	t.Run("forceNewAddress always returns a new address", func(t *testing.T) {
+		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
 		tx, err := txtest.InsertFakeOnchainWithoutTxid(t, testDB, user.ID)
 		require.NoError(t, err)
@@ -681,6 +684,7 @@ func TestGetOrCreateDeposit(t *testing.T) {
 	})
 
 	t.Run("can get latest when user only has offchain transactions", func(t *testing.T) {
+		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
 
 		_ = txtest.InsertFakeOffChainOrFail(t, testDB, user.ID)

@@ -9,20 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/btcsuite/btcutil/hdkeychain"
-
-	"github.com/lightningnetwork/lnd/lnwire"
-
-	"github.com/btcsuite/btcd/btcec"
-
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/lightningnetwork/lnd/zpay32"
-
-	"github.com/stretchr/testify/require"
-	"gitlab.com/arcanecrypto/teslacoil/db"
-
 	"github.com/brianvoe/gofakeit"
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
+	"github.com/btcsuite/btcutil/hdkeychain"
+	"github.com/lightningnetwork/lnd/lnwire"
+	"github.com/lightningnetwork/lnd/zpay32"
+	"github.com/stretchr/testify/require"
+
+	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 )
@@ -46,27 +42,28 @@ var (
 	// testVec1MasterPrivKey is the vector from which we derive our private key [BIP 32]
 	testVec1MasterPrivKey = "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi"
 	// extendedKey is where we store our private key, see init function
-	extendedKey *hdkeychain.ExtendedKey
-)
+	extendedKey = func() *hdkeychain.ExtendedKey {
+		key, err := hdkeychain.NewKeyFromString(testVec1MasterPrivKey)
+		if err != nil {
+			panic("could not create new extended key from string")
+		}
 
-func init() {
-	var err error
-	extendedKey, err = hdkeychain.NewKeyFromString(testVec1MasterPrivKey)
-	if err != nil {
-		panic("could not create new extended key from string")
-	}
-}
+		return key
+	}()
+)
 
 // MockAddress mocks a btc address from the extendedKey using child derivation
 func MockAddress() *btcutil.AddressPubKeyHash {
 	child, err := extendedKey.Child(rand.Uint32())
 	if err != nil {
 		fmt.Println(fmt.Errorf("could not create child: %w", err))
+		return nil
 	}
 
 	newAddress, err := child.Address(&chaincfg.RegressionNetParams)
 	if err != nil {
 		fmt.Println(fmt.Errorf("could not create new address: %w", err))
+		return nil
 	}
 
 	return newAddress
@@ -159,7 +156,9 @@ func MockPaymentRequest() string {
 	return paymentRequest
 }
 
-func GenOffchain(userID int) transactions.Offchain {
+// MockOffchain mocks an offchain transaction using random data
+// for all fields
+func MockOffchain(userID int) transactions.Offchain {
 	amountMSat := rand.Int63n(ln.MaxAmountMsatPerInvoice)
 
 	var preimage []byte
@@ -203,7 +202,31 @@ func GenOffchain(userID int) transactions.Offchain {
 	}
 }
 
-func GenOnchainWithTxid(userID int) transactions.Onchain {
+// MockOnchainWithTxid mocks onchain recursively until
+// a tx with a txid is returned
+func MockOnchainWithTxid(userID int) transactions.Onchain {
+	tx := MockOnchain(userID)
+	if tx.Txid != nil {
+		return tx
+	}
+
+	return MockOnchain(userID)
+}
+
+// MockOnchainWithoutTxid mocks onchain recursively until
+// a tx without a txid is returned
+func MockOnchainWithoutTxid(userID int) transactions.Onchain {
+	tx := MockOnchain(userID)
+	if tx.Txid == nil {
+		return tx
+	}
+
+	return MockOnchain(userID)
+}
+
+// MockOnchain mocks an onchain transaction using random data
+// for all fields
+func MockOnchain(userID int) transactions.Onchain {
 	now := time.Now()
 	start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
 
@@ -211,18 +234,20 @@ func GenOnchainWithTxid(userID int) transactions.Onchain {
 	var vout *int
 	var amountSat *int64
 	var receivedMoneyAt *time.Time
-	t := MockTxid()
-	txid = &t
-	v := gofakeit.Number(0, 12)
-	vout = &v
-	a := int64Between(0, btcutil.SatoshiPerBitcoin)
-	amountSat = &a
-	r := gofakeit.Date()
-	receivedMoneyAt = &r
+	if gofakeit.Bool() {
+		t := MockTxid()
+		txid = &t
+		v := gofakeit.Number(0, 12)
+		vout = &v
+		a := int64Between(0, btcutil.SatoshiPerBitcoin)
+		amountSat = &a
+		r := gofakeit.Date()
+		receivedMoneyAt = &r
+	}
 
 	var confirmedAtBlock *int
 	var confirmedAt *time.Time
-	if gofakeit.Bool() {
+	if txid != nil && gofakeit.Bool() {
 		cA := gofakeit.DateRange(start, now)
 		confirmedAt = &cA
 		c := gofakeit.Number(1, 1000000)
@@ -230,7 +255,7 @@ func GenOnchainWithTxid(userID int) transactions.Onchain {
 	}
 
 	var settledAt *time.Time
-	if gofakeit.Bool() {
+	if txid != nil && gofakeit.Bool() {
 		s := gofakeit.DateRange(start, now)
 		settledAt = &s
 	}
@@ -261,59 +286,23 @@ func GenOnchainWithTxid(userID int) transactions.Onchain {
 	}
 }
 
-func GenOnchainWithoutTxid(userID int) transactions.Onchain {
-	var amountSat *int64
-
-	var expiry *int64
-	if gofakeit.Bool() {
-		e := int64(gofakeit.Number(100, 100000))
-		expiry = &e
-	}
-
-	return transactions.Onchain{
-		UserID:          userID,
-		CallbackURL:     MockMaybeString(gofakeit.URL),
-		CustomerOrderId: MockMaybeString(gofakeit.Word),
-		Expiry:          expiry,
-		Direction:       MockDirection(),
-		AmountSat:       amountSat,
-		Description: MockMaybeString(func() string {
-			return gofakeit.Sentence(gofakeit.Number(1, 10))
-		}),
-		Address: MockAddress().EncodeAddress(),
-	}
-
-}
-
-func GenOnchain(userID int) transactions.Onchain {
-	if gofakeit.Bool() {
-		return GenOnchainWithTxid(userID)
-	}
-	return GenOnchainWithoutTxid(userID)
-}
-
 func InsertFakeOnchain(t *testing.T, db *db.DB, userID int) (transactions.Onchain, error) {
-	onchain := GenOnchain(userID)
-	return transactions.InsertOnchain(db, onchain)
-}
-
-func InsertFakeOnchainWithTxid(t *testing.T, db *db.DB, userID int) (transactions.Onchain, error) {
-	onchain := GenOnchainWithTxid(userID)
+	onchain := MockOnchain(userID)
 	return transactions.InsertOnchain(db, onchain)
 }
 
 func InsertFakeOnchainWithoutTxid(t *testing.T, db *db.DB, userID int) (transactions.Onchain, error) {
-	onchain := GenOnchainWithoutTxid(userID)
+	onchain := MockOnchainWithoutTxid(userID)
 	return transactions.InsertOnchain(db, onchain)
 }
 
 func InsertFakeOffchain(t *testing.T, db *db.DB, userID int) (transactions.Offchain, error) {
-	offchain := GenOffchain(userID)
+	offchain := MockOffchain(userID)
 	return transactions.InsertOffchain(db, offchain)
 }
 
 func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
-	onchain := GenOnchain(userID)
+	onchain := MockOnchain(userID)
 	onchain.Direction = transactions.INBOUND
 	tx, err := transactions.InsertOnchain(db, onchain)
 	require.NoError(t, err, onchain)
@@ -321,15 +310,7 @@ func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transa
 }
 
 func InsertFakeIncomingWithoutTxidOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
-	onchain := GenOnchainWithoutTxid(userID)
-	onchain.Direction = transactions.INBOUND
-	tx, err := transactions.InsertOnchain(db, onchain)
-	require.NoError(t, err, onchain)
-	return tx
-}
-
-func InsertFakeIncomingWithTxidOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
-	onchain := GenOnchainWithTxid(userID)
+	onchain := MockOnchainWithoutTxid(userID)
 	onchain.Direction = transactions.INBOUND
 	tx, err := transactions.InsertOnchain(db, onchain)
 	require.NoError(t, err, onchain)
@@ -337,7 +318,7 @@ func InsertFakeIncomingWithTxidOnchainorFail(t *testing.T, db *db.DB, userID int
 }
 
 func InsertFakeOutgoingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
-	onchain := GenOnchain(userID)
+	onchain := MockOnchain(userID)
 	onchain.Direction = transactions.OUTBOUND
 	tx, err := transactions.InsertOnchain(db, onchain)
 	require.NoError(t, err, onchain)
@@ -352,7 +333,7 @@ func InsertFakeOnChainOrFail(t *testing.T, db *db.DB, userID int) transactions.O
 }
 
 func InsertFakeIncomingOffchainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
-	offchain := GenOffchain(userID)
+	offchain := MockOffchain(userID)
 	offchain.Direction = transactions.INBOUND
 	tx, err := transactions.InsertOffchain(db, offchain)
 	require.NoError(t, err)
@@ -360,7 +341,7 @@ func InsertFakeIncomingOffchainOrFail(t *testing.T, db *db.DB, userID int) trans
 }
 
 func InsertFakeOutgoingOffchainOrFail(t *testing.T, db *db.DB, userID int) transactions.Offchain {
-	offchain := GenOffchain(userID)
+	offchain := MockOffchain(userID)
 	offchain.Direction = transactions.OUTBOUND
 	tx, err := transactions.InsertOffchain(db, offchain)
 	require.NoError(t, err)

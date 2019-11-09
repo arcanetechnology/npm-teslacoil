@@ -129,7 +129,7 @@ const maxTxs = 40
 const minTxs = 20
 
 func genOffchain(user users.User) transactions.Offchain {
-	tx := txtest.GenOffchain(user.ID)
+	tx := txtest.MockOffchain(user.ID)
 	// we want a bias towards incoming TXs, so we end up with positive balance
 	if rand.Intn(10) > 2 && tx.Direction == transactions.OUTBOUND {
 		return genOffchain(user)
@@ -138,7 +138,7 @@ func genOffchain(user users.User) transactions.Offchain {
 }
 
 func genOnchain(user users.User) transactions.Onchain {
-	tx := txtest.GenOnchain(user.ID)
+	tx := txtest.MockOnchain(user.ID)
 	// we want a bias towards incoming TXs, so we end up with positive balance
 	if rand.Intn(10) > 2 && tx.Direction == transactions.OUTBOUND {
 		return genOnchain(user)
