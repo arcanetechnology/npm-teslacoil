@@ -173,6 +173,7 @@ func CreateTeslacoilInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewO
 		Status:         InvoiceStateToTeslaState[invoice.State],
 		Direction:      INBOUND,
 	}
+
 	if opts.Memo != "" {
 		tx.Memo = &opts.Memo
 	}

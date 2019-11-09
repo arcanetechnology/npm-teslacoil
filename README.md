@@ -161,6 +161,8 @@ docker volume rm teslacoil_postgres # name is teslacoil_ + service name
 
 #### Glossary
 ##### Payment
-Payment is a lightning transaction, and describes both settled and unsettled lightning payments.
-##### Transaction
-A transaction is an on-chain transaction
+A payment is a lightning transaction sent by us, ie. a lightning transaction
+ initiated by us using lncli.SendPayment()
+##### Invoice
+An invoice is a lightning transaction we receive, ie. all lightning
+ transactions created using lncli.AddInvoice()

@@ -11,6 +11,7 @@ import (
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
+
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
@@ -81,7 +82,7 @@ func GetLightningMockClient() LightningMockClient {
 			RHash:          SampleHash[:],
 			RPreimage:      SamplePreimage,
 			Expiry:         1337,
-			Settled:        true,
+			State:          lnrpc.Invoice_SETTLED,
 			Value:          int64(271),
 		},
 		SendPaymentSyncResponse: lnrpc.SendResponse{

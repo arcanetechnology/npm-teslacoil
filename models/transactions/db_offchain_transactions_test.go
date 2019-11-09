@@ -56,9 +56,9 @@ func TestNewOffchainTx(t *testing.T) {
 	amount2 := rand.Int63n(ln.MaxAmountSatPerInvoice)
 	amount3 := rand.Int63n(ln.MaxAmountSatPerInvoice)
 
-	payReq1 := gofakeit.Word()
-	payReq2 := gofakeit.Word()
-	payReq3 := gofakeit.Word()
+	payReq1 := txtest.MockPaymentRequest()
+	payReq2 := txtest.MockPaymentRequest()
+	payReq3 := txtest.MockPaymentRequest()
 
 	customerOrderId := "this is an order id"
 
@@ -82,7 +82,7 @@ func TestNewOffchainTx(t *testing.T) {
 				RHash:          SampleHash[:],
 				RPreimage:      SamplePreimage,
 				Expiry:         1337,
-				Settled:        false,
+				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
 				UserID:         user.ID,
@@ -106,7 +106,7 @@ func TestNewOffchainTx(t *testing.T) {
 				RHash:          SampleHash[:],
 				RPreimage:      SamplePreimage,
 				Expiry:         1337,
-				Settled:        false,
+				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
 				UserID:         user.ID,
@@ -131,7 +131,7 @@ func TestNewOffchainTx(t *testing.T) {
 				RHash:          SampleHash[:],
 				RPreimage:      SamplePreimage,
 				Expiry:         1337,
-				Settled:        false,
+				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
 				UserID:          user.ID,
@@ -147,10 +147,11 @@ func TestNewOffchainTx(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("create invoice with amount %d memo %s and description %s",
-			tt.amountSat, tt.memo, tt.description), func(t *testing.T) {
-			t.Parallel()
+	for i, tt := range tests {
+		t.Run(fmt.Sprintf("%d create invoice with amount %d memo %s and"+
+			" description %s",
+			i, tt.amountSat, tt.memo, tt.description), func(t *testing.T) {
+			// this test can not be run in parallell, messes up lncli
 
 			// Create Mock LND client with preconfigured invoice response
 			mockLNcli := lntestutil.LightningMockClient{
