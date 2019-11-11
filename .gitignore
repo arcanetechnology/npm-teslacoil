@@ -2,6 +2,7 @@
 .systemd-variables
 .teslacoil-private-rsa.pem
 logs/
+coverage.out
 coverage.html
 .idea/dataSources.xml
 .idea/teslacoil.iml
