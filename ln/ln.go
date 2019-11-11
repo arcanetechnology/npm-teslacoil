@@ -232,7 +232,12 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 		err = fmt.Errorf("could not add invoice: %w", err)
 		return nil, err
 	}
-	log.Tracef("added invoice: %+v", *inv)
+	log.WithFields(logrus.Fields{
+		"PaymentRequest": inv.PaymentRequest,
+		"AddIndex":       inv.AddIndex,
+		"RHash":          inv.RHash,
+		"hash":           hex.EncodeToString(inv.RHash),
+	}).Tracef("added invoice")
 
 	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
 		RHash: inv.RHash,
