@@ -3,107 +3,117 @@ package build
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
+type tunableLogger interface {
+	setLevel(level logrus.Level)
+	setDir(dir string) error
+}
+
+type hook struct {
+	console     *consoleLogHook
+	jsonFile    *jsonFileHook
+	regularFile *humanReadableFileHook
+}
+
+var _ tunableLogger = &hook{}
+
+func (h *hook) setDir(dir string) error {
+	jsonFile, err := openFileForAppend(filepath.Join(dir, "teslacoil.log.json"))
+	if err != nil {
+		return fmt.Errorf("could not open JSON log file: %w", err)
+	}
+	h.jsonFile.file = jsonFile
+
+	regularFile, err := openFileForAppend(filepath.Join(dir, "teslacoil.log"))
+	if err != nil {
+		return fmt.Errorf("could not open regular log file: %w", err)
+	}
+	h.regularFile.file = regularFile
+	return nil
+}
+
+func (h *hook) setLevel(level logrus.Level) {
+	h.console.setLevel(level)
+	h.jsonFile.setLevel(level)
+	h.regularFile.setLevel(level)
+}
+
 var logConfigLock sync.Mutex
-var baseFormat = formatter{
-
-	TextFormatter: logrus.TextFormatter{
-		// This uses an absolutely ridicoulous format:
-		// https://stackoverflow.com/a/20234207/10359642
-		TimestampFormat: "15:04:05",
-		ForceColors:     true,
-		FullTimestamp:   true,
-	},
-	subSystem: "",
-}
-var _colorsEnabled = true
-var _logWriter io.Writer = os.Stdout
-
-func getFormatter(subsystem string) *formatter {
-	f := baseFormat
-	f.subSystem = subsystem
-	return &f
-}
-
-type formatter struct {
-	logrus.TextFormatter
-	subSystem string
-}
-
-// Format formats a long entry
-func (f *formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	entry.Message = fmt.Sprintf("%s %s", f.subSystem, entry.Message)
-	return f.TextFormatter.Format(entry)
-}
-
-// Log is the logger for the whole application
-var subsystemLoggers = map[string]*logrus.Logger{}
+var subsystemHooks = map[string]tunableLogger{}
 
 func SetLogLevel(subsystem string, level logrus.Level) {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	logger, ok := subsystemLoggers[subsystem]
+	hook, ok := subsystemHooks[subsystem]
 	if !ok {
 		return
 	}
-	logger.SetLevel(level)
+	hook.setLevel(level)
 }
 
 func SetLogLevels(level logrus.Level) {
-	for subsystem := range subsystemLoggers {
-		SetLogLevel(subsystem, level)
+	for _, hook := range subsystemHooks {
+		hook.setLevel(level)
 	}
 }
 
 // AddSubLogger creates a new logger with a standard format
 func AddSubLogger(subsystem string) *logrus.Logger {
+	logConfigLock.Lock()
+	defer logConfigLock.Unlock()
+
 	logger := logrus.New()
-	logger.SetOutput(_logWriter)
+	logger.SetOutput(ioutil.Discard) // send all logs to nowhere by default
 
-	subsystemLoggers[subsystem] = logger
-
-	logger.SetLevel(logrus.TraceLevel)
-	f := getFormatter(subsystem)
-	if !_colorsEnabled {
-		f.DisableColors = true
+	jsonHook := &jsonFileHook{
+		subsystem: subsystem,
 	}
-	logger.SetFormatter(f)
+	fileHook := &humanReadableFileHook{
+		subsystem: subsystem,
+	}
+	consoleHook := &consoleLogHook{
+		subsystem: subsystem,
+	}
+	logger.AddHook(jsonHook)    // write logs to JSON formatted file
+	logger.AddHook(fileHook)    // write non-colored with precise timestamp logs to human readable file
+	logger.AddHook(consoleHook) // write colored logs with imprecise timestamp to console
+	trio := &hook{
+		console:     consoleHook,
+		jsonFile:    jsonHook,
+		regularFile: fileHook,
+	}
+	subsystemHooks[subsystem] = trio
+
 	return logger
 }
 
-// SetLogFile sets logrus to write to the given file
-func SetLogFile(file string) error {
-	logConfigLock.Lock()
-	defer logConfigLock.Unlock()
-
-	logFile, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return errors.Wrap(err, "could not open logfile")
-	}
-	_logWriter = io.MultiWriter(os.Stdout, logFile)
-	for _, logger := range subsystemLoggers {
-		logger.SetOutput(_logWriter)
-	}
-	return nil
+func openFileForAppend(file string) (*os.File, error) {
+	return os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 }
 
-func DisableColors() {
+// SetLogDir sets logrus to write to the given directory
+func SetLogDir(dir string) error {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	_colorsEnabled = false
+	for _, hook := range subsystemHooks {
+		if err := hook.setDir(dir); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ToLogLevel takes in a string and converts it to a Logrus log level
@@ -196,4 +206,148 @@ func GinLoggingMiddleWare(logger *logrus.Logger) gin.HandlerFunc {
 		}
 		withFields.Logf(requestLevel, "HTTP %s %s: %d", c.Request.Method, path, status)
 	}
+}
+
+type consoleLogHook struct {
+	hasLevel
+	subsystem string
+}
+
+var _ logrus.Hook = &consoleLogHook{}
+var consoleFormat = logrus.TextFormatter{
+	TimestampFormat: "15:04:05",
+	ForceColors:     true,
+	FullTimestamp:   true,
+}
+
+func (c *consoleLogHook) getSubsystem() string {
+	return c.subsystem
+}
+
+func (c *consoleLogHook) Fire(entry *logrus.Entry) error {
+	if c.level < entry.Level {
+		return nil
+	}
+	if entry == nil {
+		return nil
+	}
+
+	// append subsystem to log message
+	copied := *entry
+	copied.Message = fmt.Sprintf("%s %s", c.subsystem, entry.Message)
+
+	formatted, err := consoleFormat.Format(&copied)
+	if err != nil {
+		return err
+	}
+
+	_, err = os.Stdout.Write(formatted)
+	return err
+}
+
+type humanReadableFileHook struct {
+	hasLevel
+	file      *os.File
+	subsystem string
+}
+
+var _ logrus.Hook = &humanReadableFileHook{}
+var fileHookFormat = logrus.TextFormatter{
+	// see comment below on coloring and formatting
+	ForceColors:     true,
+	TimestampFormat: time.RFC3339,
+	FullTimestamp:   true,
+}
+
+const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+
+var ansiRegex = regexp.MustCompile(ansi)
+
+func (h humanReadableFileHook) Fire(entry *logrus.Entry) error {
+	// don't write anything if file isn't set
+	if h.file == nil {
+		return nil
+	}
+
+	if h.level < entry.Level {
+		return nil
+	}
+
+	if entry == nil {
+		return nil
+	}
+
+	// append subsystem to log message
+	copied := *entry
+	copied.Message = fmt.Sprintf("%s %s", h.subsystem, entry.Message)
+	formatted, err := fileHookFormat.Format(&copied)
+	if err != nil {
+		return err
+	}
+
+	// for some reason whether or not you log with color affect the default
+	// output of logrus... we wan't the formats written to file and console
+	// to be more or less identical, so we have to log _with_ color and then
+	// strip out the ANSI codes afterwards...
+	stripped := ansiRegex.ReplaceAll(formatted, nil)
+	_, err = h.file.Write(stripped)
+	return err
+}
+
+type jsonFileHook struct {
+	hasLevel
+	file      *os.File
+	subsystem string
+}
+
+var _ logrus.Hook = &jsonFileHook{}
+var jsonHookFormat = logrus.JSONFormatter{
+	TimestampFormat: time.RFC3339,
+}
+
+func (j jsonFileHook) Fire(entry *logrus.Entry) error {
+	// don't write anything if file isn't set
+	if j.file == nil {
+		return nil
+	}
+
+	if j.level < entry.Level {
+		return nil
+	}
+	if entry == nil {
+		return nil
+	}
+
+	// this is a bit awkward, but we want to add a field to the entry without
+	// modifying the underlying entry map. this is because this entry map is
+	// shared with other loggers. `WithField` doesn't copy over _everything_,
+	// for some reason. so we copy message and level manually
+	withSubsystem := entry.WithField("subsystem", j.subsystem)
+	withSubsystem.Message = entry.Message
+	withSubsystem.Level = entry.Level
+	formatted, err := jsonHookFormat.Format(withSubsystem)
+	if err != nil {
+		return err
+	}
+
+	_, err = j.file.Write(formatted)
+	return err
+}
+
+type hasLevel struct {
+	level logrus.Level
+}
+
+// Levels is here to satisfy the Hook interface.
+// confusingly, this method appears to do exactly nothing... it's only needed
+// to satisfy an interface, and the field was added over 6 years ago
+// https://github.com/sirupsen/logrus/blob/93a1736895ca25a01a739e0394bf7f672299a27d/hooks.go#L9
+// I've not been able to identify any places in the code except for tests where
+// that value is actually read
+func (h *hasLevel) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *hasLevel) setLevel(level logrus.Level) {
+	h.level = level
 }

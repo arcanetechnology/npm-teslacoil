@@ -21,10 +21,6 @@ func main() { //nolint:deadcode,unused
 	app.EnableBashCompletion = true
 	// have log levels be set for all commands/subcommands
 	app.Before = func(c *cli.Context) error {
-		if c.GlobalBool("logging.disablecolors") {
-			build.DisableColors()
-		}
-
 		level, err := build.ToLogLevel(c.GlobalString("logging.level"))
 		if err != nil {
 			return err
@@ -34,13 +30,9 @@ func main() { //nolint:deadcode,unused
 			build.SetLogLevels(level)
 		}
 
-		logToFile := c.GlobalBool("logging.writetofile")
-		if logToFile {
-			logFile := c.GlobalString("logging.file")
-			if err = build.SetLogFile(logFile); err != nil {
-				return err
-			}
-			log.Info("Logging to file")
+		logFile := c.GlobalString("logging.directory")
+		if err = build.SetLogDir(logFile); err != nil {
+			return err
 		}
 		return nil
 	}

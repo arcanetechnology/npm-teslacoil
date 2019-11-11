@@ -244,24 +244,16 @@ var logging = []cli.Flag{
 		Value: logrus.InfoLevel.String(),
 		Usage: "Logging level for all subsystems {trace, debug, info, warn, error, fatal, panic}",
 	},
-	cli.BoolFlag{
-		Name:  "logging.writetofile",
-		Usage: "If set, logs are written to file",
-	},
 	cli.StringFlag{
-		Name:      "logging.file",
+		Name:      "logging.directory",
 		TakesFile: true,
 		Value: func() string {
 			dir, err := os.Getwd()
 			if err != nil {
 				panic(err)
 			}
-			return filepath.Join(dir, "logs", "teslacoil.log")
+			return filepath.Join(dir, "logs")
 		}(),
-		Usage: "If logging.writetofile is set, logs are written to this file",
-	},
-	cli.BoolFlag{
-		Name:  "logging.disablecolors",
-		Usage: "If set, logs are without colors",
+		Usage: "What directory to write log files to",
 	},
 }
