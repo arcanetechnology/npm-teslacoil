@@ -621,7 +621,7 @@ func TestCreateInvoice(t *testing.T) {
 }
 
 func getTx(minAmountSat int64, userId int) transactions.Offchain {
-	tx := txtest.GenOffchain(userId)
+	tx := txtest.MockOffchain(userId)
 	if tx.Direction != transactions.INBOUND ||
 		tx.Status != transactions.Offchain_COMPLETED ||
 		tx.AmountMSat/1000 < minAmountSat {
@@ -816,7 +816,7 @@ func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {
 }
 
 func getOnchainWithMoney(userId int) transactions.Onchain {
-	tx := txtest.GenOnchain(userId)
+	tx := txtest.MockOnchain(userId)
 	if tx.Txid == nil {
 		return getOnchainWithMoney(userId)
 	}

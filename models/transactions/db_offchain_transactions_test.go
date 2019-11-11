@@ -283,7 +283,7 @@ func TestNewOffchainTx(t *testing.T) {
 func TestOffchain_MarkAsPaid(t *testing.T) {
 	t.Parallel()
 	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
-	tx := txtest.GenOffchain(user.ID)
+	tx := txtest.MockOffchain(user.ID)
 	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
@@ -302,7 +302,7 @@ func TestOffchain_MarkAsFlopped(t *testing.T) {
 	var tx transactions.Offchain
 	// it only makes sense to mark open TXs as failed
 	for tx.Status != transactions.Offchain_CREATED {
-		tx = txtest.GenOffchain(user.ID)
+		tx = txtest.MockOffchain(user.ID)
 	}
 
 	inserted, err := transactions.InsertOffchain(testDB, tx)
@@ -438,8 +438,6 @@ func TestPayInvoice(t *testing.T) {
 				PaymentRequest: paymentRequest,
 			},
 		}
-
-		fmt.Printf("user: %+v", user)
 
 		off, err := transactions.CreateTeslacoilInvoice(testDB, &mockLNcli, transactions.NewOffchainOpts{
 			UserID:    user.ID,

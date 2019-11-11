@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/btcsuite/btcutil/hdkeychain"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -30,6 +32,16 @@ func GetRandomLightningMockClient() LightningMockClient {
 		first := sha256.Sum256(bytes)
 		again := sha256.Sum256(first[:])
 		return again[:]
+	}
+
+	seed, err := hdkeychain.GenerateSeed(32)
+	if err != nil {
+		panic(err)
+	}
+
+	extendedKey, err := hdkeychain.NewMaster(seed, &chaincfg.RegressionNetParams)
+	if err != nil {
+		panic("could not create new extended key")
 	}
 
 	value := int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice))
@@ -56,6 +68,7 @@ func GetRandomLightningMockClient() LightningMockClient {
 		SendCoinsResponse: lnrpc.SendCoinsResponse{
 			Txid: "0c10119609137327c72fe605452375c40727871bd18dad18db16da649e9bdcc1",
 		},
+		ExtendedKey: extendedKey,
 	}
 }
 
@@ -96,6 +109,9 @@ func GetLightningMockClient() LightningMockClient {
 		},
 		SendCoinsResponse: lnrpc.SendCoinsResponse{
 			Txid: "0c10119609137327c72fe605452375c40727871bd18dad18db16da649e9bdcc1",
+		},
+		NewAddressResponse: lnrpc.NewAddressResponse{
+			Address: "bcrt1q32nla0f0g4k9nhy5dahklcqspsrumvt4dv2xlg",
 		},
 	}
 }

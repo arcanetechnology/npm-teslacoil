@@ -1,9 +1,5 @@
-stages:
-  # while we have a pretty simple CI setup, we run everything on one job
-  - test
-
 test:
-  image: golangci/golangci-lint
+  image: golang:1.13
   services:
     # If you're updating the postgres image we're using, make sure you've pushed
     # this to the registry. Otherwise the tests won't run with the newest image!
@@ -13,9 +9,6 @@ test:
     - name: registry.gitlab.com/arcanecrypto/teslacoil/postgres
       # otherwise the host is name of the image
       alias: postgres
-  only:
-    - merge_requests
-  stage: test
   # This is a hack, but that's because GitLab doesn't respect GOPATH etc
   # https://medium.com/@Extrawurst/golang-and-gitlab-ci-da97d11bafe1
   cache:
@@ -24,7 +17,13 @@ test:
       - .binaries
   variables:
     DATABASE_HOST: postgres
-  before_script: 
+  artifacts:
+    paths:
+      - coverage.html
+  environment:
+    name: coverage-report/$CI_BUILD_REF_NAME
+    url: http://159.69.36.23/backend-pr-coverage/$CI_BUILD_REF_NAME
+  before_script:
     # setup binaries directory
     - mkdir -p .binaries
     - export PATH=$PWD/.binaries/:$PATH
@@ -37,11 +36,28 @@ test:
     - mkdir -p $CI_PROJECT_DIR/.cache
     - export GOPATH="$CI_PROJECT_DIR/.cache"
 
-    # make sure we're using Go modules
-    - export GO111MODULE=on
+    # make sure we have ssh-agent installed
+    - apt-get update
+
+    # start ssh agent
+    - eval $(ssh-agent -s)
+    # add our key
+    - echo $CI_SSH_KEY | openssl base64 -A -d | ssh-add -
+
   script:
     # run tests
-    - go test -cover -tags integration  ./...
+    - go test -cover -coverprofile coverage.out -tags integration  ./...
+    - go tool cover -html=coverage.out -o coverage.html
+    - ssh -o StrictHostKeyChecking=no root@159.69.36.23 mkdir -p /var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME
+    - scp -o StrictHostKeyChecking=no coverage.html root@159.69.36.23:/var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME/index.html
 
-    # run linter
-    - make lint
+lint:
+  image: golangci/golangci-lint
+  cache:
+    paths:
+      - .cache
+  before_script:
+    # cache things properly
+    - mkdir -p $CI_PROJECT_DIR/.cache
+    - export GOPATH="$CI_PROJECT_DIR/.cache"
+  script: golangci-lint run --timeout=5m
