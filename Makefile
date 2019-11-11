@@ -3,6 +3,7 @@ all: test build
 # If we're on a tag, binary name is tlc, else tlc-dev
 TLC := $(shell git describe --exact-match HEAD 2>/dev/null && echo tlc || echo tlc-dev)
 BINARIES := tlc tlc-dev
+COVERAGE_ARTIFACTS := coverage.out coverage.html
 
 .PHONY: build
 build:
@@ -28,7 +29,7 @@ drop: build start-db
 	./tlc-dev db drop --force
 
 clean:
-	rm -f ${BINARIES}
+	rm -f ${BINARIES} ${COVERAGE_ARTIFACTS}
 
 install:
 	go install ./...
@@ -62,6 +63,10 @@ lint:
 
 test-verbose:
 	go test ./... -v
+
+coverage-report: 
+	go test ./... -coverprofile coverage.out
+	go tool cover -html=coverage.out -o coverage.html
 
 nuke_postgres:
 	docker-compose build --no-cache db 
