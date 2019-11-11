@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
-
 	_ "github.com/lib/pq" // Import postgres
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -14,7 +12,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/cmd/tlc/flags"
 )
 
-var log = logrus.New()
+var log = build.AddSubLogger("MAIN")
 
 func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
@@ -27,7 +25,7 @@ func main() { //nolint:deadcode,unused
 			build.DisableColors()
 		}
 
-		level, err := teslalog.ToLogLevel(c.GlobalString("logging.level"))
+		level, err := build.ToLogLevel(c.GlobalString("logging.level"))
 		if err != nil {
 			return err
 		}

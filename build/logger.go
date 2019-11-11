@@ -1,4 +1,4 @@
-package teslalog
+package build
 
 import (
 	"bytes"
@@ -6,8 +6,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,54 +15,95 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Logger is our custom logger for the whole application
-type Logger struct {
-	*logrus.Logger
-	Subsystem string
-}
+var logConfigLock sync.Mutex
+var baseFormat = formatter{
 
-var StandardFormatter = &Formatter{}
-
-type Formatter struct {
-	TimestampFormat string // default: "2006-01-02 15:04:05"
-	DisableColors   bool   // disable colors
-	Subsystem       string
-}
-
-func (l Logger) getFormatter() *Formatter {
-	return &Formatter{
+	TextFormatter: logrus.TextFormatter{
 		// This uses an absolutely ridicoulous format:
 		// https://stackoverflow.com/a/20234207/10359642
-		TimestampFormat: "2006-01-02 15:04:05.000",
-		Subsystem:       l.Subsystem,
+		TimestampFormat: "15:04:05",
+		ForceColors:     true,
+		FullTimestamp:   true,
+	},
+	subSystem: "",
+}
+var _colorsEnabled = true
+var _logWriter io.Writer = os.Stdout
+
+func getFormatter(subsystem string) *formatter {
+	f := baseFormat
+	f.subSystem = subsystem
+	return &f
+}
+
+type formatter struct {
+	logrus.TextFormatter
+	subSystem string
+}
+
+// Format formats a long entry
+func (f *formatter) Format(entry *logrus.Entry) ([]byte, error) {
+	entry.Message = fmt.Sprintf("%s %s", f.subSystem, entry.Message)
+	return f.TextFormatter.Format(entry)
+}
+
+// Log is the logger for the whole application
+var subsystemLoggers = map[string]*logrus.Logger{}
+
+func SetLogLevel(subsystem string, level logrus.Level) {
+	logConfigLock.Lock()
+	defer logConfigLock.Unlock()
+
+	logger, ok := subsystemLoggers[subsystem]
+	if !ok {
+		return
+	}
+	logger.SetLevel(level)
+}
+
+func SetLogLevels(level logrus.Level) {
+	for subsystem := range subsystemLoggers {
+		SetLogLevel(subsystem, level)
 	}
 }
 
-// New creates a new logger with a standard format
-func New(subsystem string) *Logger {
-	logger := &Logger{logrus.New(), subsystem}
-	logger.SetLevel(logrus.TraceLevel)
-	logger.SetFormatter(logger.getFormatter())
+// AddSubLogger creates a new logger with a standard format
+func AddSubLogger(subsystem string) *logrus.Logger {
+	logger := logrus.New()
+	logger.SetOutput(_logWriter)
 
+	subsystemLoggers[subsystem] = logger
+
+	logger.SetLevel(logrus.TraceLevel)
+	f := getFormatter(subsystem)
+	if !_colorsEnabled {
+		f.DisableColors = true
+	}
+	logger.SetFormatter(f)
 	return logger
 }
 
-// DisableColors forces logrus to log without colors
-func (l Logger) DisableColors() {
-	formatter := l.getFormatter()
-	formatter.DisableColors = true
-	l.SetFormatter(formatter)
-}
-
 // SetLogFile sets logrus to write to the given file
-func (l Logger) SetLogFile(file string) error {
+func SetLogFile(file string) error {
+	logConfigLock.Lock()
+	defer logConfigLock.Unlock()
+
 	logFile, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		return errors.Wrap(err, "could not open logfile")
 	}
-	writer := io.MultiWriter(os.Stdout, logFile)
-	l.SetOutput(writer)
+	_logWriter = io.MultiWriter(os.Stdout, logFile)
+	for _, logger := range subsystemLoggers {
+		logger.SetOutput(_logWriter)
+	}
 	return nil
+}
+
+func DisableColors() {
+	logConfigLock.Lock()
+	defer logConfigLock.Unlock()
+
+	_colorsEnabled = false
 }
 
 // ToLogLevel takes in a string and converts it to a Logrus log level
@@ -89,7 +130,7 @@ func ToLogLevel(s string) (logrus.Level, error) {
 
 // GinLoggingMiddleWare returns  a middleware that logs incoming requests with Logrus.
 // It is based on the discontinued Ginrus middleware: https://github.com/gin-gonic/contrib/blob/master/ginrus/ginrus.go
-func GinLoggingMiddleWare(logger *Logger) gin.HandlerFunc {
+func GinLoggingMiddleWare(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -154,90 +195,5 @@ func GinLoggingMiddleWare(logger *Logger) gin.HandlerFunc {
 			requestLevel = logrus.ErrorLevel
 		}
 		withFields.Logf(requestLevel, "HTTP %s %s: %d", c.Request.Method, path, status)
-	}
-}
-
-// Format formats a long entry
-func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-
-	// output buffer
-	b := &bytes.Buffer{}
-
-	// write timestamp
-	timestampFormat := f.TimestampFormat
-	if timestampFormat == "" {
-		timestampFormat = "2006-01-02 15:04:05.000"
-	}
-	b.WriteString(entry.Time.Format(timestampFormat))
-
-	// write level
-	level := strings.ToUpper(entry.Level.String())
-	levelColor := getColorByLevel(entry.Level)
-	if !f.DisableColors {
-		b.WriteString(fmt.Sprintf("\x1b[%dm", levelColor))
-	}
-
-	b.WriteString(fmt.Sprintf(" [%s]", level[:4]))
-	if !f.DisableColors {
-		b.WriteString("\x1b[0m")
-	}
-
-	// write subsystem
-	b.WriteString(fmt.Sprintf(" %s: ", f.Subsystem))
-
-	// write message
-	b.WriteString(entry.Message)
-	b.WriteString("\t\t")
-
-	if !f.DisableColors {
-		b.WriteString(fmt.Sprintf("\x1b[%dm", levelColor))
-	}
-	// write fields
-	f.writeFields(b, entry)
-
-	if !f.DisableColors {
-		b.WriteString("\x1b[0m")
-	}
-	b.WriteByte('\n')
-
-	return b.Bytes(), nil
-}
-
-func (f *Formatter) writeFields(b *bytes.Buffer, entry *logrus.Entry) {
-	if len(entry.Data) != 0 {
-		fields := make([]string, 0, len(entry.Data))
-		for field := range entry.Data {
-			fields = append(fields, field)
-		}
-
-		sort.Strings(fields)
-
-		for _, field := range fields {
-			f.writeField(b, entry, field)
-		}
-	}
-}
-
-func (f *Formatter) writeField(b *bytes.Buffer, entry *logrus.Entry, field string) {
-	fmt.Fprintf(b, "%s=%v ", field, entry.Data[field])
-}
-
-const (
-	colorRed    = 31
-	colorYellow = 33
-	colorBlue   = 36
-	colorGray   = 37
-)
-
-func getColorByLevel(level logrus.Level) int {
-	switch level {
-	case logrus.DebugLevel:
-		return colorGray
-	case logrus.WarnLevel:
-		return colorYellow
-	case logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel:
-		return colorRed
-	default:
-		return colorBlue
 	}
 }

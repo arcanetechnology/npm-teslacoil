@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/brianvoe/gofakeit"
-	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 
 	"github.com/stretchr/testify/require"
@@ -31,7 +30,7 @@ import (
 )
 
 var (
-	log            = teslalog.New("BTCD_INT_TEST")
+	log            = build.AddSubLogger("BTCD_INT_TEST")
 	databaseConfig = testutil.GetDatabaseConfig("bitcoind")
 	testDB         *db.DB
 )

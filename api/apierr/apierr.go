@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"unicode"
 
-	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
-
 	"github.com/gin-gonic/gin"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -231,7 +229,7 @@ func capitalize(str string) string {
 }
 
 // GetMiddleware returns a Gin middleware that handles errors
-func GetMiddleware(logger *teslalog.Logger) gin.HandlerFunc {
+func GetMiddleware(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		// let previous handlers run
@@ -318,7 +316,7 @@ func Public(c *gin.Context, code int, err apiError) {
 // we don't know how to handle
 const UnknownValidationTag = "unknown"
 
-func handleValidationErrors(c *gin.Context, logger *teslalog.Logger) []httptypes.FieldError {
+func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.FieldError {
 	// initialize to empty list instead of pointer, to make sure the empty list
 	// is returned instead of nil
 	//noinspection GoPreferNilSlice

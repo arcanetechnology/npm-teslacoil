@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -24,6 +25,8 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 )
+
+var log = build.AddSubLogger("TXS")
 
 var (
 	ErrCouldNotGetByID            = errors.New("could not get payment by ID")

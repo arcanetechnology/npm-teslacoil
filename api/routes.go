@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
 
 	"github.com/gin-gonic/gin/binding"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
@@ -75,7 +74,7 @@ func getGinEngine() *gin.Engine {
 	engine.Use(gin.Recovery())
 
 	log.Debug("Applying Gin logging middleware")
-	engine.Use(teslalog.GinLoggingMiddleWare(log))
+	engine.Use(build.GinLoggingMiddleWare(log))
 	// TODO should we have a custom field for request logging in our config?
 
 	log.Debug("Applying CORS middleware")

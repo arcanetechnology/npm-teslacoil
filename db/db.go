@@ -10,7 +10,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 )
+
+var log = build.AddSubLogger("DB")
 
 // DatabaseConfig has all the values we need to connect to a DB
 type DatabaseConfig struct {

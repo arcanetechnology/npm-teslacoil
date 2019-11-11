@@ -9,11 +9,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
-	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
 
 	"github.com/gin-gonic/gin"
 
@@ -26,12 +25,9 @@ type Request struct {
 }
 
 var (
-	middleware = GetMiddleware(&teslalog.Logger{
-		Logger:    logrus.New(),
-		Subsystem: "GIN",
-	})
-	router    = setupRouter(middleware)
-	emptyBody = bytes.NewBuffer([]byte(""))
+	middleware = GetMiddleware(build.AddSubLogger("API_ERR_TEST"))
+	router     = setupRouter(middleware)
+	emptyBody  = bytes.NewBuffer([]byte(""))
 
 	publicError = apiError{
 		err:  errors.New("this is a public error"),

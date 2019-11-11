@@ -23,7 +23,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gitlab.com/arcanecrypto/teslacoil/build/teslalog"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
@@ -33,7 +32,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
-var log = teslalog.New("TXNS_INT_TEST")
+var log = build.AddSubLogger("TXNS_INT_TEST")
 
 func TestMain(m *testing.M) {
 	build.SetLogLevels(logrus.ErrorLevel)

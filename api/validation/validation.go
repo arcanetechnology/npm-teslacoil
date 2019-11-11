@@ -18,7 +18,7 @@ import (
 	"gopkg.in/go-playground/validator.v8"
 )
 
-var log = build.AddSubLogger("VDTN")
+var log = build.AddSubLogger("VALI")
 
 // RequiredValidationScore password validation we require for a password to be
 // deemed acceptable. It can be between 0 and 4, with values corresponding to
