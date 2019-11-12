@@ -189,11 +189,11 @@ func MockOffchain(userID int) transactions.Offchain {
 		Description: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
-		PaymentRequest: MockPaymentRequest(),
-		Preimage:       preimage,
-		HashedPreimage: hashedPreimage,
-		AmountMSat:     amountMSat,
-		SettledAt:      settledAt,
+		PaymentRequest:  MockPaymentRequest(),
+		RPreimage:       preimage,
+		RHashedPreimage: hashedPreimage,
+		AmountMilliSat:  amountMSat,
+		SettledAt:       settledAt,
 		Memo: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),

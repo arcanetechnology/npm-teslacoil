@@ -48,8 +48,8 @@ func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 	}
 
 	// if preimage is NULL in DB, default is empty slice and not null
-	if tx.Preimage != nil && len(*tx.Preimage) == 0 {
-		insertedOffchain.Preimage = nil
+	if tx.RPreimage != nil && len(*tx.RPreimage) == 0 {
+		insertedOffchain.RPreimage = nil
 	}
 
 	return insertedOffchain, nil
@@ -58,8 +58,8 @@ func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 // GetOffchainByID retrieves a transaction with `ID` for `userID` .
 // if the transaction cannot be converted to an Offchain transaction
 // an error is returned
-func GetOffchainByID(db *db.DB, id int, userID int) (Offchain, error) {
-	tx, err := GetTransactionByID(db, id, userID)
+func GetOffchainByID(database *db.DB, id int, userID int) (Offchain, error) {
+	tx, err := GetTransactionByID(database, id, userID)
 	if err != nil {
 		return Offchain{}, err
 	}
@@ -72,11 +72,11 @@ func GetOffchainByID(db *db.DB, id int, userID int) (Offchain, error) {
 
 // GetOffchainByPaymentRequest retrieves a Offchain transaction from the database
 // with the specified paymentRequest and userID
-func GetOffchainByPaymentRequest(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
+func GetOffchainByPaymentRequest(database *db.DB, paymentRequest string, userID int) (Offchain, error) {
 	query := "SELECT * FROM transactions WHERE user_id=$1 AND payment_request=$2"
 
 	var selectedTx Transaction
-	if err := db.Get(&selectedTx, query, userID, paymentRequest); err != nil {
+	if err := database.Get(&selectedTx, query, userID, paymentRequest); err != nil {
 		log.WithError(err).WithField("paymentRequest",
 			paymentRequest).Error("could not get TX from DB")
 		return Offchain{}, err
@@ -153,7 +153,7 @@ func (o NewOffchainOpts) toFields() logrus.Fields {
 
 // CreateTeslacoilInvoice creates a new lightning invoice by first creating an
 // invoice using lnd, then saving info returned from lnd to a new offchain tx
-func CreateTeslacoilInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (
+func CreateTeslacoilInvoice(database *db.DB, lncli ln.AddLookupInvoiceClient, opts NewOffchainOpts) (
 	Offchain, error) {
 
 	invoice, err := CreateInvoiceWithMemo(lncli, opts.AmountSat, opts.Memo)
@@ -165,13 +165,13 @@ func CreateTeslacoilInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewO
 	// We do not store the preimage until the payment is settled, to avoid the
 	// user getting the preimage before the invoice is settled
 	tx := Offchain{
-		UserID:         opts.UserID,
-		AmountMSat:     invoice.Value * 1000,
-		Expiry:         invoice.Expiry,
-		PaymentRequest: invoice.PaymentRequest,
-		HashedPreimage: invoice.RHash,
-		Status:         InvoiceStateToTeslaState[invoice.State],
-		Direction:      INBOUND,
+		UserID:          opts.UserID,
+		AmountMilliSat:  invoice.Value * 1000,
+		Expiry:          invoice.Expiry,
+		PaymentRequest:  invoice.PaymentRequest,
+		RHashedPreimage: invoice.RHash,
+		Status:          InvoiceStateToTeslaState[invoice.State],
+		Direction:       INBOUND,
 	}
 
 	if opts.Memo != "" {
@@ -187,7 +187,7 @@ func CreateTeslacoilInvoice(d *db.DB, lncli ln.AddLookupInvoiceClient, opts NewO
 		tx.CustomerOrderId = &opts.OrderId
 	}
 
-	inserted, err := InsertOffchain(d, tx)
+	inserted, err := InsertOffchain(database, tx)
 	if err != nil {
 		log.WithError(err).WithFields(opts.toFields()).WithField("expiry",
 			invoice.Expiry).Error("Could not insert invoice")
@@ -298,15 +298,16 @@ func PayInvoiceWithDescription(db *db.DB, lncli ln.DecodeSendClient, callbacker 
 
 	// insert pay_req into DB
 	payment := Offchain{
-		UserID:         userID,
-		PaymentRequest: paymentRequest,
-		HashedPreimage: hashedPreimage,
-		Expiry:         payreq.Expiry,
-		Status:         Offchain_CREATED,
-		Memo:           &payreq.Description,
-		Description:    &description,
-		Direction:      OUTBOUND,
-		AmountMSat:     payreq.NumSatoshis * 1000,
+		UserID:          userID,
+		PaymentRequest:  paymentRequest,
+		RHashedPreimage: hashedPreimage,
+		HashedPreimage:  payreq.PaymentHash,
+		Expiry:          payreq.Expiry,
+		Status:          Offchain_CREATED,
+		Memo:            &payreq.Description,
+		Description:     &description,
+		Direction:       OUTBOUND,
+		AmountMilliSat:  payreq.NumSatoshis * 1000,
 	}
 
 	// we insert the payment before calculating balance to ensure
@@ -389,7 +390,7 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 			}
 
 			log.WithFields(logrus.Fields{
-				"hash":   hex.EncodeToString(offchain.HashedPreimage),
+				"hash":   hex.EncodeToString(offchain.RHashedPreimage),
 				"id":     offchain.ID,
 				"status": offchain.Status,
 			},
@@ -443,20 +444,20 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	now := time.Now()
 	offchainInvoice.SettledAt = &now
 	offchainInvoice.Status = Offchain_COMPLETED
-	offchainInvoice.Preimage = invoice.RPreimage
+	offchainInvoice.RPreimage = invoice.RPreimage
 
 	// TODO: In the lightning spec, it is allowed to pay up to 2x the invoice
 	//  amount (and the node should accept it). How do we make this clear to
 	//  the merchant? I imagine searching in amounts is pretty important
 	//  Should we add a new field to the db, e.g. overpaidAmount? and give it
 	//  to them every month? Keep it ourself?
-	if invoice.AmtPaidMsat != offchainInvoice.AmountMSat {
+	if invoice.AmtPaidMsat != offchainInvoice.AmountMilliSat {
 		log.WithFields(logrus.Fields{
-			"expected": offchainInvoice.AmountMSat,
+			"expected": offchainInvoice.AmountMilliSat,
 			"paid":     invoice.AmtPaidMsat,
 		}).Warn("amount paid not equal to expected amount")
 	}
-	offchainInvoice.AmountMSat = invoice.AmtPaidMsat
+	offchainInvoice.AmountMilliSat = invoice.AmtPaidMsat
 
 	updatedTx := offchainInvoice.ToTransaction()
 	updateOffchainTxQuery := `UPDATE transactions 
@@ -467,7 +468,7 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	if err != nil {
 		return Offchain{}, err
 	}
-	defer rows.Close()
+	defer db.CloseRows(rows)
 
 	if !rows.Next() {
 		return Offchain{}, fmt.Errorf("could not update offchain TX: %w", sql.ErrNoRows)

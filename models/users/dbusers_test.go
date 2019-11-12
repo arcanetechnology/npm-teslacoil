@@ -553,7 +553,7 @@ func TestWithBalance(t *testing.T) {
 				testDB, user.ID)
 
 			if tx.Status == transactions.Offchain_COMPLETED && tx.SettledAt != nil {
-				txAmountMilliSat += tx.AmountMSat
+				txAmountMilliSat += tx.AmountMilliSat
 			}
 		}
 		expectedBalance := balance.Balance(txAmountMilliSat).Sats()

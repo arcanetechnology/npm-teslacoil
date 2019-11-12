@@ -207,11 +207,11 @@ func TestGetTransactionByID(t *testing.T) {
 			email1,
 			password1,
 			transactions.Transaction{
-				UserID:      user.ID,
-				AmountMSat:  &amount1,
-				Address:     &address1,
-				Description: &foo,
-				Direction:   transactions.INBOUND,
+				UserID:         user.ID,
+				AmountMilliSat: &amount1,
+				Address:        &address1,
+				Description:    &foo,
+				Direction:      transactions.INBOUND,
 			},
 		},
 		{
@@ -219,17 +219,17 @@ func TestGetTransactionByID(t *testing.T) {
 			email2,
 			password2,
 			transactions.Transaction{
-				UserID:      user.ID,
-				AmountMSat:  &amount2,
-				Address:     &address2,
-				Description: &foo,
-				Direction:   transactions.INBOUND,
+				UserID:         user.ID,
+				AmountMilliSat: &amount2,
+				Address:        &address2,
+				Description:    &foo,
+				Direction:      transactions.INBOUND,
 			},
 		},
 	}
 
 	for _, test := range testCases {
-		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountMSat),
+		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountMilliSat),
 			func(t *testing.T) {
 				t.Parallel()
 
@@ -251,9 +251,9 @@ func TestGetTransactionByID(t *testing.T) {
 
 				test.expectedResult.ID = transaction.ID
 				assert.Equal(t, transaction.Address, test.expectedResult.Address)
-				if test.expectedResult.AmountMSat != nil {
-					require.NotNil(t, transaction.AmountMSat)
-					assert.InDelta(t, *transaction.AmountMSat, *test.expectedResult.AmountMSat, 1000)
+				if test.expectedResult.AmountMilliSat != nil {
+					require.NotNil(t, transaction.AmountMilliSat)
+					assert.InDelta(t, *transaction.AmountMilliSat, *test.expectedResult.AmountMilliSat, 1000)
 				}
 				assert.Equal(t, transaction.Direction, test.expectedResult.Direction)
 				assert.Equal(t, transaction.Description, test.expectedResult.Description)

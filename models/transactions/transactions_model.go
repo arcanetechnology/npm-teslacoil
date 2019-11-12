@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -56,7 +58,7 @@ type Transaction struct {
 	// AmountMsat is the amount of money spent to a transaction. In the case of this being an offchain TX the field
 	// is set to the amount in the associated invoice. In that case it should always be non-nil. In the case of an
 	// onchain transaction, it is nil until the transaction (address) has had money spent to it.
-	AmountMSat *int64 `db:"amount_milli_sat"`
+	AmountMilliSat *int64 `db:"amount_milli_sat"`
 
 	// InternalTransfer marks whether this payment was a transaction to
 	// another teslacoil user
@@ -76,12 +78,12 @@ type Transaction struct {
 	ConfirmedAt      *time.Time `db:"confirmed_at"`
 
 	// offchain fields
-	PaymentRequest *string         `db:"payment_request"`
-	Preimage       *[]byte         `db:"preimage"`
-	HashedPreimage *[]byte         `db:"hashed_preimage"`
-	SettledAt      *time.Time      `db:"settled_at"` // If defined, it means the  invoice is settled
-	Memo           *string         `db:"memo"`
-	Status         *OffchainStatus `db:"invoice_status"`
+	PaymentRequest  *string         `db:"payment_request"`
+	RPreimage       *[]byte         `db:"preimage"`
+	RHashedPreimage *[]byte         `db:"hashed_preimage"`
+	SettledAt       *time.Time      `db:"settled_at"` // If defined, it means the  invoice is settled
+	Memo            *string         `db:"memo"`
+	Status          *OffchainStatus `db:"invoice_status"`
 }
 
 // MarshalJSON is added to make sure that we never serialize raw Transactions
@@ -125,8 +127,8 @@ func (t Transaction) ToOnchain() (Onchain, error) {
 		return Onchain{}, errors.New("transaction was offchain")
 	}
 	var amountSat *int64
-	if t.AmountMSat != nil {
-		a := *t.AmountMSat / 1000
+	if t.AmountMilliSat != nil {
+		a := *t.AmountMilliSat / 1000
 		amountSat = &a
 	}
 	on := Onchain{
@@ -138,8 +140,8 @@ func (t Transaction) ToOnchain() (Onchain, error) {
 		Expiry:           t.Expiry,
 		Direction:        t.Direction,
 		AmountSat:        amountSat,
-		InternalTransfer: t.InternalTransfer,
 		Description:      t.Description,
+		InternalTransfer: t.InternalTransfer,
 
 		ConfirmedAtBlock: t.ConfirmedAtBlock,
 		ConfirmedAt:      t.ConfirmedAt,
@@ -159,8 +161,15 @@ func (t Transaction) ToOnchain() (Onchain, error) {
 
 // ToOffchain converst a transaction into an offchain transaction
 func (t Transaction) ToOffchain() (Offchain, error) {
-	if t.PaymentRequest == nil || t.AmountMSat == nil {
+	if t.PaymentRequest == nil || t.AmountMilliSat == nil {
 		return Offchain{}, errors.New("TX was onchain")
+	}
+
+	var amountSat *int64
+	if t.AmountMilliSat != nil {
+		a := balance.Balance(*t.AmountMilliSat)
+		sats := a.Sats()
+		amountSat = &sats
 	}
 
 	off := Offchain{
@@ -169,13 +178,14 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 		CallbackURL:      t.CallbackURL,
 		CustomerOrderId:  t.CustomerOrderId,
 		Expiry:           *t.Expiry,
-		AmountMSat:       *t.AmountMSat,
 		InternalTransfer: t.InternalTransfer,
+		AmountSat:        amountSat,
+		AmountMilliSat:   *t.AmountMilliSat,
 		Description:      t.Description,
 		Direction:        t.Direction,
-		HashedPreimage:   *t.HashedPreimage,
+		RHashedPreimage:  *t.RHashedPreimage,
 		PaymentRequest:   *t.PaymentRequest,
-		Preimage:         *t.Preimage,
+		RPreimage:        *t.RPreimage,
 		Memo:             t.Memo,
 		Status:           *t.Status,
 		SettledAt:        t.SettledAt,
@@ -185,8 +195,8 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 	}
 
 	// if preimage is NULL in DB, default is empty slice and not null
-	if t.Preimage != nil && len(*t.Preimage) == 0 {
-		off.Preimage = nil
+	if t.RPreimage != nil && len(*t.RPreimage) == 0 {
+		off.RPreimage = nil
 	}
 
 	return off, nil
@@ -222,17 +232,20 @@ type Offchain struct {
 	// the callback URL of a transaction.
 	CustomerOrderId *string `json:"customerOrderId,omitempty"`
 
-	Expiry int64 `json:"-"`
+	Expiry           int64 `json:"-"`
+	InternalTransfer bool  `json:"-"`
 
-	AmountMSat       int64          `json:"amountMSat"`
-	InternalTransfer bool           `json:"internalTransfer"`
-	Description      *string        `json:"description,omitempty"`
-	Direction        Direction      `json:"direction"`
-	HashedPreimage   []byte         `json:"hash"`
-	PaymentRequest   string         `json:"paymentRequest"`
-	Preimage         []byte         `json:"preimage"`
-	Memo             *string        `json:"memo,omitempty"`
-	Status           OffchainStatus `json:"status"`
+	AmountSat       *int64         `json:"amountSat"`
+	AmountMilliSat  int64          `json:"amountMilliSat"`
+	Description     *string        `json:"description,omitempty"`
+	Direction       Direction      `json:"direction"`
+	RHashedPreimage []byte         `json:"rHash"`
+	HashedPreimage  string         `json:"hash"`
+	PaymentRequest  string         `json:"paymentRequest"`
+	RPreimage       []byte         `json:"rPreimage"`
+	Preimage        string         `json:"preimage"`
+	Memo            *string        `json:"memo,omitempty"`
+	Status          OffchainStatus `json:"status"`
 
 	SettledAt *time.Time `json:"settledAt,omitempty"` // If defined, it means the  invoice is settled
 	CreatedAt time.Time  `json:"createdAt"`
@@ -253,12 +266,12 @@ func (o Offchain) ToTransaction() Transaction {
 		CustomerOrderId:  o.CustomerOrderId,
 		Expiry:           &o.Expiry,
 		Direction:        o.Direction,
-		InternalTransfer: o.InternalTransfer,
 		Description:      o.Description,
+		InternalTransfer: o.InternalTransfer,
 		PaymentRequest:   &o.PaymentRequest,
-		Preimage:         &o.Preimage,
-		HashedPreimage:   &o.HashedPreimage,
-		AmountMSat:       &o.AmountMSat,
+		RPreimage:        &o.RPreimage,
+		RHashedPreimage:  &o.RHashedPreimage,
+		AmountMilliSat:   &o.AmountMilliSat,
 		SettledAt:        o.SettledAt,
 		Memo:             o.Memo,
 		Status:           &o.Status,
@@ -275,7 +288,7 @@ func (o Offchain) withAdditionalFields() offchainWithDerived {
 		Type:           lightning,
 		Expired:        expiresAt.Before(time.Now()),
 		ExpiresAt:      expiresAt,
-		AmountSat:      o.AmountMSat / 1000,
+		AmountSat:      o.AmountMilliSat / 1000,
 	}
 }
 
@@ -347,7 +360,7 @@ func (s OffchainStatus) MarshalText() (text []byte, err error) {
 }
 
 // MarkAsCompleted marks the given payment request as paid at the given date
-func (o Offchain) MarkAsCompleted(db db.InsertGetter, paidAt time.Time, callbacker HttpPoster) (
+func (o Offchain) MarkAsCompleted(database db.InsertGetter, paidAt time.Time, callbacker HttpPoster) (
 	Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions
 		SET internal_transfer = :internal_transfer, settled_at = :settled_at, invoice_status = :invoice_status
@@ -358,12 +371,12 @@ func (o Offchain) MarkAsCompleted(db db.InsertGetter, paidAt time.Time, callback
 	o.SettledAt = &paidAt
 	o.Status = Offchain_COMPLETED
 	tx := o.ToTransaction()
-	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
+	rows, err := database.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
 		log.WithError(err).Error("couldnt mark invoice as paid")
 		return Offchain{}, err
 	}
-	defer rows.Close()
+	defer db.CloseRows(rows)
 
 	if !rows.Next() {
 		return Offchain{}, fmt.Errorf("could not mark invoice as paid: %w", sql.ErrNoRows)
@@ -381,7 +394,7 @@ func (o Offchain) MarkAsCompleted(db db.InsertGetter, paidAt time.Time, callback
 
 	// call the callback URL(if exists)
 	if updatedOffchain.CallbackURL != nil {
-		if err = postCallback(db, updatedOffchain, callbacker); err != nil {
+		if err = postCallback(database, updatedOffchain, callbacker); err != nil {
 			// don't return here, we don't want this to fail the entire
 			// operation
 			log.WithError(err).Error("Could not POST to callback URL")
@@ -394,7 +407,7 @@ func (o Offchain) MarkAsCompleted(db db.InsertGetter, paidAt time.Time, callback
 }
 
 // MarkAsFlopped marks the transaction as failed
-func (o Offchain) MarkAsFlopped(db db.Inserter) (Offchain, error) {
+func (o Offchain) MarkAsFlopped(database db.Inserter) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions 
 		SET invoice_status = :invoice_status
 		WHERE id = :id ` + txReturningSql
@@ -403,17 +416,18 @@ func (o Offchain) MarkAsFlopped(db db.Inserter) (Offchain, error) {
 
 	o.Status = Offchain_FLOPPED
 	tx := o.ToTransaction()
-	rows, err := db.NamedQuery(updateOffchainTxQuery, &tx)
+	rows, err := database.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
 		log.WithError(err).Errorf("Couldn't mark invoice as failed")
 		return Offchain{}, err
 	}
+	defer db.CloseRows(rows)
 	if !rows.Next() {
 		return Offchain{}, fmt.Errorf("couldn't mark invoice as failed: %w", sql.ErrNoRows)
 	}
 
 	var updated Transaction
-	if err := rows.StructScan(&updated); err != nil {
+	if err = rows.StructScan(&updated); err != nil {
 		return Offchain{}, err
 	}
 
@@ -433,7 +447,6 @@ func (o Offchain) String() string {
 		fmt.Sprintf("Preimage: %x", o.Preimage),
 		fmt.Sprintf("HashedPreimage: %x", o.HashedPreimage),
 		fmt.Sprintf("Status: %s", o.Status),
-		fmt.Sprintf("InternalTransfer: %t", o.InternalTransfer),
 	}
 
 	if o.Memo != nil {
@@ -449,7 +462,7 @@ func (o Offchain) String() string {
 	fragments = append(fragments,
 		fmt.Sprintf("Expiry: %d", o.Expiry),
 		fmt.Sprintf("Direction: %s", o.Direction),
-		fmt.Sprintf("AmountMSat: %d", o.AmountMSat),
+		fmt.Sprintf("AmountMilliSat: %d", o.AmountMilliSat),
 		fmt.Sprintf("SettledAt: %v", o.SettledAt),
 		fmt.Sprintf("CreatedAt: %v", o.CreatedAt),
 		fmt.Sprintf("UpdatedAt: %v", o.UpdatedAt),
@@ -491,9 +504,8 @@ type Onchain struct {
 
 	Direction Direction `json:"direction"`
 
-	InternalTransfer bool `json:"internalTransfer"`
-
-	Description *string `json:"description,omitempty"`
+	InternalTransfer bool    `json:"-"`
+	Description      *string `json:"description,omitempty"`
 
 	// Some onchain TXs may have an expiry time associated with them. Typically
 	// this would be done where a merchant wants to give an offer to the consumer
@@ -542,17 +554,17 @@ func (o Onchain) withAdditionalFields() onchainWithDerived {
 
 // ToTransaction converts a Onchain struct into a Transaction
 func (o Onchain) ToTransaction() Transaction {
-	var amountMsat *int64
+	var amountMilliSat *int64
 	if o.AmountSat != nil {
 		a := *o.AmountSat * 1000
-		amountMsat = &a
+		amountMilliSat = &a
 	}
 	return Transaction{
 		ID:               o.ID,
 		UserID:           o.UserID,
 		CallbackURL:      o.CallbackURL,
 		CustomerOrderId:  o.CustomerOrderId,
-		AmountMSat:       amountMsat,
+		AmountMilliSat:   amountMilliSat,
 		SettledAt:        o.SettledAt,
 		Expiry:           o.Expiry,
 		Direction:        o.Direction,
@@ -578,7 +590,7 @@ func (o Onchain) ToTransaction() Transaction {
 
 // MarkAsConfirmed updates the transaction stored in the DB
 // with Confirmed = true and ConfirmedAt = Now().
-func (o Onchain) MarkAsConfirmed(db db.Inserter, height int) (Onchain, error) {
+func (o Onchain) MarkAsConfirmed(database db.Inserter, height int) (Onchain, error) {
 
 	if o.Txid == nil {
 		return Onchain{}, errors.New("cannot mark a TX as confirmed when it hasn't received any money")
@@ -593,17 +605,18 @@ func (o Onchain) MarkAsConfirmed(db db.Inserter, height int) (Onchain, error) {
 		SET confirmed_at = :confirmed_at, confirmed_at_block = :confirmed_at_block
 		WHERE id = :id` + txReturningSql
 
-	rows, err := db.NamedQuery(query, &tx)
+	rows, err := database.NamedQuery(query, &tx)
 	if err != nil {
 		return Onchain{}, err
 	}
+	defer db.CloseRows(rows)
 
 	if !rows.Next() {
 		return Onchain{}, fmt.Errorf("could not mark TX as confirmed: %w", sql.ErrNoRows)
 	}
 
 	var updatedTx Transaction
-	if err := rows.StructScan(&updatedTx); err != nil {
+	if err = rows.StructScan(&updatedTx); err != nil {
 		return Onchain{}, err
 	}
 
@@ -618,7 +631,7 @@ func (o Onchain) MarkAsConfirmed(db db.Inserter, height int) (Onchain, error) {
 // PersistReceivedMoney saves a TX consisting of a TXID, a vout and an amount to the
 // DB transaction. If the Onchain transaction already has received money (i.e.
 // has a TXID) the method errors.
-func (o Onchain) PersistReceivedMoney(db db.Inserter, txid chainhash.Hash, vout int,
+func (o Onchain) PersistReceivedMoney(database db.Inserter, txid chainhash.Hash, vout int,
 	amountSat int64) (Onchain, error) {
 
 	if vout < 0 {
@@ -641,7 +654,7 @@ func (o Onchain) PersistReceivedMoney(db db.Inserter, txid chainhash.Hash, vout 
 
 	tx := o.ToTransaction()
 
-	rows, err := db.NamedQuery(
+	rows, err := database.NamedQuery(
 		`UPDATE transactions SET txid = :txid, vout = :vout, amount_milli_sat = :amount_milli_sat,
 			received_tx_at = :received_tx_at
 			WHERE id = :id AND txid IS NULL AND vout IS NULL AND amount_milli_sat IS NULL `+txReturningSql,
@@ -649,13 +662,14 @@ func (o Onchain) PersistReceivedMoney(db db.Inserter, txid chainhash.Hash, vout 
 	if err != nil {
 		return Onchain{}, err
 	}
+	defer db.CloseRows(rows)
 
 	if !rows.Next() {
 		return Onchain{}, fmt.Errorf("could not update TX when adding received money: %w", sql.ErrNoRows)
 	}
 
 	var inserted Transaction
-	if err := rows.StructScan(&inserted); err != nil {
+	if err = rows.StructScan(&inserted); err != nil {
 		return Onchain{}, err
 	}
 
@@ -670,7 +684,7 @@ func (o Onchain) PersistReceivedMoney(db db.Inserter, txid chainhash.Hash, vout 
 // GetTransactionByID performs this query:
 // `SELECT * FROM transactions WHERE id=id AND user_id=userID`,
 // where id is the primary key of the table(autoincrementing)
-func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
+func GetTransactionByID(database *db.DB, id int, userID int) (Transaction, error) {
 	if id < 0 || userID < 0 {
 		return Transaction{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
 	}
@@ -678,7 +692,7 @@ func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
 	query := "SELECT * FROM transactions WHERE id=$1 AND user_id=$2 LIMIT 1"
 
 	var transaction Transaction
-	if err := d.Get(&transaction, query, id, userID); err != nil {
+	if err := database.Get(&transaction, query, id, userID); err != nil {
 		log.WithError(err).WithField("id", id).Error("Could not get transaction")
 		return transaction, fmt.Errorf("could not get transaction: %w", err)
 	}
@@ -687,17 +701,17 @@ func GetTransactionByID(d *db.DB, id int, userID int) (Transaction, error) {
 }
 
 // GetAllTransactions selects all the transactions for a user
-func GetAllTransactions(d *db.DB, userID int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, 0)
+func GetAllTransactions(database *db.DB, userID int) ([]Transaction, error) {
+	return GetAllTransactionsLimitOffset(database, userID, math.MaxInt32, 0)
 }
 
 // GetAllTransactionsOffset selects all transactions for a given user with an `offset`
-func GetAllTransactionsOffset(d *db.DB, userID int, offset int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(d, userID, math.MaxInt32, offset)
+func GetAllTransactionsOffset(database *db.DB, userID int, offset int) ([]Transaction, error) {
+	return GetAllTransactionsLimitOffset(database, userID, math.MaxInt32, offset)
 }
 
 // GetAllTransactionsLimitOffset selects all transactions for a userID from the DB.
-func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) (
+func GetAllTransactionsLimitOffset(database *db.DB, userID int, limit int, offset int) (
 	[]Transaction, error) {
 	// Using OFFSET is not ideal, but until we start seeing
 	// performance problems it's fine
@@ -710,7 +724,7 @@ func GetAllTransactionsLimitOffset(d *db.DB, userID int, limit int, offset int) 
 
 	// we need to initialize this variable because an empty SELECT will not update `transactions`
 	transactions := []Transaction{}
-	err := d.Select(&transactions, query, userID, limit, offset)
+	err := database.Select(&transactions, query, userID, limit, offset)
 	if err != nil {
 		log.WithError(err).WithFields(logrus.Fields{
 			"limit":  limit,
@@ -768,7 +782,7 @@ const txReturningSql = ` RETURNING id, user_id, callback_url, customer_order_id,
 	    description, confirmed_at_block, confirmed_at, address, txid, vout, received_tx_at, payment_request, preimage, 
 	    hashed_preimage, settled_at, memo, invoice_status, created_at, updated_at, deleted_at`
 
-func insertTransaction(db db.Inserter, t Transaction) (Transaction, error) {
+func insertTransaction(database db.Inserter, t Transaction) (Transaction, error) {
 	createTransactionQuery := `
 	INSERT INTO transactions (user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, internal_transfer, 
 	                          description, confirmed_at_block, confirmed_at, address, txid, vout, received_tx_at, payment_request, 
@@ -777,16 +791,11 @@ func insertTransaction(db db.Inserter, t Transaction) (Transaction, error) {
 	        :description, :confirmed_at_block, :confirmed_at, :address, :txid, :vout, :received_tx_at, :payment_request, 
 	        :preimage, :hashed_preimage, :settled_at, :memo, :invoice_status)` + txReturningSql
 
-	rows, err := db.NamedQuery(createTransactionQuery, t)
+	rows, err := database.NamedQuery(createTransactionQuery, t)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("could not insert transaction: %w", err)
 	}
-	defer func() {
-		err = rows.Close()
-		if err != nil {
-			log.WithError(err).Error("could not close rows")
-		}
-	}()
+	defer db.CloseRows(rows)
 
 	var transaction Transaction
 	if rows.Next() {

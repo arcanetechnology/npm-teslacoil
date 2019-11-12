@@ -624,7 +624,7 @@ func getTx(minAmountSat int64, userId int) transactions.Offchain {
 	tx := txtest.MockOffchain(userId)
 	if tx.Direction != transactions.INBOUND ||
 		tx.Status != transactions.Offchain_COMPLETED ||
-		tx.AmountMSat/1000 < minAmountSat {
+		tx.AmountMilliSat/1000 < minAmountSat {
 		return getTx(minAmountSat, userId)
 	}
 	return tx
@@ -676,7 +676,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		})
 
 		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
-		expectedBalance := (tx.AmountMSat / 1000) - withdrawAmount
+		expectedBalance := (tx.AmountMilliSat / 1000) - withdrawAmount
 
 		testutil.AssertEqual(t, expectedBalance, balanceRes["balanceSats"])
 	})

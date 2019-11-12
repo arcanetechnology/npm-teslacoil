@@ -85,14 +85,14 @@ func TestNewOffchainTx(t *testing.T) {
 				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
-				UserID:         user.ID,
-				PaymentRequest: payReq1,
-				AmountMSat:     amount1 * 1000,
-				HashedPreimage: SampleHash[:],
-				Memo:           &firstMemo,
-				Description:    &description,
-				Status:         transactions.Offchain_CREATED,
-				Direction:      transactions.INBOUND,
+				UserID:          user.ID,
+				PaymentRequest:  payReq1,
+				AmountMilliSat:  amount1 * 1000,
+				RHashedPreimage: SampleHash[:],
+				Memo:            &firstMemo,
+				Description:     &description,
+				Status:          transactions.Offchain_CREATED,
+				Direction:       transactions.INBOUND,
 			},
 		},
 		{
@@ -109,14 +109,14 @@ func TestNewOffchainTx(t *testing.T) {
 				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
-				UserID:         user.ID,
-				AmountMSat:     amount2 * 1000,
-				HashedPreimage: SampleHash[:],
-				PaymentRequest: payReq2,
-				Memo:           &firstMemo,
-				Description:    &description,
-				Status:         transactions.Offchain_CREATED,
-				Direction:      transactions.INBOUND,
+				UserID:          user.ID,
+				AmountMilliSat:  amount2 * 1000,
+				RHashedPreimage: SampleHash[:],
+				PaymentRequest:  payReq2,
+				Memo:            &firstMemo,
+				Description:     &description,
+				Status:          transactions.Offchain_CREATED,
+				Direction:       transactions.INBOUND,
 			},
 		},
 		{
@@ -135,9 +135,9 @@ func TestNewOffchainTx(t *testing.T) {
 			},
 			want: transactions.Offchain{
 				UserID:          user.ID,
-				AmountMSat:      amount3 * 1000,
+				AmountMilliSat:  amount3 * 1000,
 				Memo:            &firstMemo,
-				HashedPreimage:  SampleHash[:],
+				RHashedPreimage: SampleHash[:],
 				PaymentRequest:  payReq3,
 				Description:     &description,
 				Status:          transactions.Offchain_CREATED,
@@ -172,7 +172,7 @@ func TestNewOffchainTx(t *testing.T) {
 			want := tt.want
 
 			assert := assert.New(t)
-			assert.Equal(want.AmountMSat, got.AmountMSat)
+			assert.Equal(want.AmountMilliSat, got.AmountMilliSat)
 			assert.Equal(want.SettledAt, got.SettledAt)
 			assert.Equal(want.Memo, got.Memo)
 			assert.Equal(want.Description, got.Description)
@@ -609,12 +609,12 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 
 	t.Run("expiry field", func(t *testing.T) {
 		offchainTx := transactions.Offchain{
-			UserID:         user.ID,
-			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-			Expiry:         1,
-			Direction:      transactions.INBOUND,
-			Status:         transactions.Offchain_CREATED,
-			AmountMSat:     100000,
+			UserID:          user.ID,
+			RHashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:          1,
+			Direction:       transactions.INBOUND,
+			Status:          transactions.Offchain_CREATED,
+			AmountMilliSat:  100000,
 		}
 
 		offchainTx, err := transactions.InsertOffchain(testDB, offchainTx)
@@ -630,20 +630,20 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 
 	invoices := []transactions.Offchain{
 		{
-			UserID:         user.ID,
-			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-			Expiry:         3600,
-			Direction:      transactions.INBOUND,
-			Status:         transactions.Offchain_CREATED,
-			AmountMSat:     100000,
+			UserID:          user.ID,
+			RHashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:          3600,
+			Direction:       transactions.INBOUND,
+			Status:          transactions.Offchain_CREATED,
+			AmountMilliSat:  100000,
 		},
 		{
-			UserID:         user.ID,
-			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-			Expiry:         2,
-			Direction:      transactions.INBOUND,
-			Status:         transactions.Offchain_CREATED,
-			AmountMSat:     100000,
+			UserID:          user.ID,
+			RHashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:          2,
+			Direction:       transactions.INBOUND,
+			Status:          transactions.Offchain_CREATED,
+			AmountMilliSat:  100000,
 		},
 	}
 
