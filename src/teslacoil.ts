@@ -72,3 +72,5 @@ export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice> => {
     throw Error(error)
   }
 }
+
+export { Invoice }
