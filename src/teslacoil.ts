@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Invoice } from './types'
+import { Direction, Invoice, Status } from './types'
 
 const api = axios.create()
 
@@ -73,4 +73,4 @@ export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice> => {
   }
 }
 
-export { Invoice }
+export { Invoice, Status, Direction }
