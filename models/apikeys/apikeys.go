@@ -104,6 +104,7 @@ func New(d db.Inserter, userId int, permissions Permissions, description string)
 		err = fmt.Errorf("could not insert API key: %w", err)
 		return
 	}
+	defer db.CloseRows(rows)
 
 	if !rows.Next() {
 		err = sql.ErrNoRows
@@ -113,10 +114,6 @@ func New(d db.Inserter, userId int, permissions Permissions, description string)
 	var inserted Key
 	if err = rows.StructScan(&inserted); err != nil {
 		err = fmt.Errorf("could not read API key from DB: %w", err)
-		return
-	}
-
-	if err = rows.Close(); err != nil {
 		return
 	}
 
@@ -140,12 +137,13 @@ func Delete(d *db.DB, userId int, hash []byte) (Key, error) {
 	if err != nil {
 		return Key{}, err
 	}
+	defer db.CloseRows(rows)
 	if !rows.Next() {
 		return Key{}, fmt.Errorf("couldn't delete API key: %w", sql.ErrNoRows)
 	}
 
 	var res Key
-	if err := rows.StructScan(&res); err != nil {
+	if err = rows.StructScan(&res); err != nil {
 		return Key{}, err
 	}
 

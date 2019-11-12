@@ -165,3 +165,15 @@ type Selecter interface {
 type Inserter interface {
 	NamedQuery(query string, arg interface{}) (*sqlx.Rows, error)
 }
+
+// Closer can Close()
+type Closer interface {
+	Close() error
+}
+
+// CloseRows attempts to close the rows. If something goes wrong, it prints an error message
+func CloseRows(rows Closer) {
+	if err := rows.Close(); err != nil {
+		log.WithError(err).Error("could not close rows")
+	}
+}
