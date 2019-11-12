@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Invoice } from '../typings/types'
+import { Invoice } from './types'
 
 const api = axios.create()
 

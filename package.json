@@ -1,6 +1,6 @@
 {
   "name": "teslacoil",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "dist/teslacoil.js",
   "types": "dist/teslacoil.d.ts",
   "author": "dev@arcane.no",
