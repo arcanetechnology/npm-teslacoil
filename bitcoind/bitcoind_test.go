@@ -170,7 +170,12 @@ func TestFindVout(t *testing.T) {
 
 			vout, err := bitcoin.FindVout(tx.String(), address.String())
 			assert.NoError(t, err)
-			assert.Equal(t, uint32(vout), correctVout)
+			if !assert.Equal(t, uint32(vout), correctVout) {
+				log.WithFields(logrus.Fields{
+					"amount":  amount,
+					"address": address,
+				}).Errorf("rawTx.Hex: %s", rawTx.Hex)
+			}
 		})
 
 		t.Run("can choose correct vout from several addresses", func(t *testing.T) {
