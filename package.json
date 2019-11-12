@@ -1,6 +1,6 @@
 {
   "name": "teslacoil",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "main": "dist/teslacoil.js",
   "types": "dist/teslacoil.d.ts",
   "author": "dev@arcane.no",
@@ -12,11 +12,12 @@
   "scripts": {
     "build": "yarn tsc",
     "clean": "rimraf lib",
+    "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
     "prepublishOnly": "npm-run-all lint clean build",
     "preversion": "npm run lint",
     "version": "npm run format && git add -A src",
     "postversion": "git push && git push --tags",
-    "lint": "eslint src/teslacoil.ts"
+    "lint": "eslint src/*.ts"
   },
   "devDependencies": {
     "@types/axios": "^0.14.0",
