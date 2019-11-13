@@ -7,7 +7,11 @@ const apiKeyNotSetMessage = "looks like you haven't set your api-key! set api-ke
 type environments = 'MAINNET' | 'TESTNET'
 let apiKey = ''
 
-export const setCredentials = (key = '', network: environments = 'MAINNET'): void => {
+export const setCredentials = (key: string, network: environments = 'MAINNET'): void => {
+  if (key === '') {
+    throw Error('api key can not be set to empty string')
+  }
+
   apiKey = key
   api.defaults.baseURL = network === 'MAINNET' ? 'https://api.teslacoil.io' : 'https://testnetapi.teslacoil.io'
   api.defaults.timeout = 5000
