@@ -27,8 +27,6 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
-
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
 // Server is something that can serve HTTP requests
@@ -65,13 +63,8 @@ func isJSONString(s string) bool {
 func (harness *TestHarness) CreateUserNoVerifyEmail(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
 	t.Helper()
 
-	if args.Password == "" {
-		testutil.FatalMsg(t, "You forgot to set the password!")
-	}
-
-	if args.Email == "" {
-		testutil.FatalMsg(t, "You forgot to set the email!")
-	}
+	require.NotEmpty(t, args.Password, "You forgot to set the password!")
+	require.NotEmpty(t, args.Email, "You forgot to set the email!")
 
 	var firstName string
 	var lastName string
@@ -104,9 +97,7 @@ func (harness *TestHarness) CreateUserNoVerifyEmail(t *testing.T, args users.Cre
 func (harness *TestHarness) VerifyEmail(t *testing.T, email string) users.User {
 	t.Helper()
 	token, err := users.GetEmailVerificationToken(harness.database, email)
-	if err != nil {
-		testutil.FatalMsgf(t, "Was not able to get email verification token: %v", err)
-	}
+	require.NoError(t, err)
 
 	verifyEmailRequest := GetRequest(t, RequestArgs{
 		Path:   "/users/verify_email",
@@ -119,11 +110,9 @@ func (harness *TestHarness) VerifyEmail(t *testing.T, email string) users.User {
 	harness.AssertResponseOk(t, verifyEmailRequest)
 
 	verified, err := users.GetByEmail(harness.database, email)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
 
-	testutil.AssertMsg(t, verified.HasVerifiedEmail, "User hasn't verified email!")
+	assert.True(t, verified.HasVerifiedEmail, "User hasn't verified email!")
 	return verified
 }
 
@@ -132,9 +121,7 @@ func (harness *TestHarness) CreateUser(t *testing.T, args users.CreateUserArgs) 
 
 	createUserResponse := harness.CreateUserNoVerifyEmail(t, args)
 	email, ok := createUserResponse["email"].(string)
-	if !ok {
-		testutil.FailMsgf(t, "didn't get email back when creating user! Response: %v", createUserResponse)
-	}
+	assert.True(t, ok, createUserResponse)
 
 	return harness.VerifyEmail(t, email)
 
@@ -151,9 +138,8 @@ type AuthRequestArgs struct {
 // and an optional JSON body
 func GetAuthRequest(t *testing.T, args AuthRequestArgs) *http.Request {
 	t.Helper()
-	if args.AccessToken == "" {
-		testutil.FatalMsg(t, "You forgot to set AccessToken")
-	}
+	require.NotEmpty(t, args.AccessToken, "You forgot to set AccessToken")
+
 	req := GetRequest(t, RequestArgs{Path: args.Path,
 		Method: args.Method, Body: args.Body})
 	req.Header.Set("Authorization", args.AccessToken)
@@ -169,12 +155,8 @@ type RequestArgs struct {
 // GetRequest returns a HTTP request with an optional JSON body
 func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	t.Helper()
-	if args.Path == "" {
-		testutil.FatalMsg(t, "You forgot to set Path")
-	}
-	if args.Method == "" {
-		testutil.FatalMsg(t, "You forgot to set Method")
-	}
+	require.NotEmpty(t, args.Path, "You forgot to set Path")
+	require.NotEmpty(t, args.Method, "You forgot to set Method")
 
 	var body *bytes.Buffer
 	if args.Body == "" {
@@ -182,13 +164,11 @@ func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	} else if isJSONString(args.Body) {
 		body = bytes.NewBuffer([]byte(args.Body))
 	} else {
-		testutil.FatalMsgf(t, "Body was not valid JSON: %s", args.Body)
+		assert.FailNow(t, fmt.Sprintf("Body was not valid JSON: %s", args.Body))
 	}
 
 	res, err := http.NewRequest(args.Method, args.Path, body)
-	if err != nil {
-		testutil.FatalMsgf(t, "Couldn't construct request: %+v", err)
-	}
+	require.NoError(t, err)
 	return res
 }
 
@@ -198,22 +178,20 @@ var uppercaseAndUnderScoreRegex = regexp.MustCompile("^ERR_([A-Z]|_|[0-9])+$")
 func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httptest.ResponseRecorder, httptypes.StandardErrorResponse) {
 
 	body, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "could not read body"))
-	}
+	require.NoError(t, err)
+
 	var parsed httptypes.StandardErrorResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		testutil.FatalMsg(t, errors.Wrap(err, "could not parse body into StandardResponse"))
-	}
-	testutil.AssertMsgf(t, parsed.ErrorField.Message != "", "Error message was empty! JSON: %s", body)
-	testutil.AssertMsgf(t, parsed.ErrorField.Code != "", "Error code was empty! JSON: %s", body)
-	testutil.AssertMsgf(t, uppercaseAndUnderScoreRegex.MatchString(parsed.ErrorField.Code), "Code didn't match regex! Code: %s", parsed.ErrorField.Code)
+	require.NoError(t, json.Unmarshal(body, &parsed))
 
-	testutil.AssertMsg(t, !stderrors.Is(parsed, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
+	assert.NotEqual(t, "", parsed.ErrorField.Message, string(body))
+	assert.NotEqual(t, "", parsed.ErrorField.Code, string(body))
+	assert.Regexp(t, uppercaseAndUnderScoreRegex, parsed.ErrorField.Code)
 
-	testutil.AssertMsg(t, parsed.ErrorField.Fields != nil, "Fields was nil! Expected at least empty list")
+	assert.False(t, stderrors.Is(parsed, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
+
+	assert.NotNil(t, parsed.ErrorField.Fields, "Fields was nil! Expected at least empty list")
 	for _, field := range parsed.ErrorField.Fields {
-		testutil.AssertMsgf(t, field.Code != apierr.UnknownValidationTag, "Encountered unknown validation tag %q! We should make sure all valiation tags get a nice error message.", field.Code)
+		assert.NotEqual(t, field.Code, apierr.UnknownValidationTag, "Encountered unknown validation tag! We should make sure all valiation tags get a nice error message.")
 	}
 	return response, parsed
 }
@@ -225,7 +203,7 @@ func (harness *TestHarness) AssertResponseNotOk(t *testing.T, request *http.Requ
 	response := httptest.NewRecorder()
 	harness.server.ServeHTTP(response, request)
 	if response.Code < 300 {
-		testutil.FailMsgf(t, "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
+		assert.Fail(t, "", "Got success code (%d) on path %s", response.Code, extractMethodAndPath(request))
 	}
 
 	return assertErrorIsOk(t, response)
@@ -256,7 +234,7 @@ func (harness *TestHarness) AssertResponseOkWithBody(t *testing.T, request *http
 	t.Helper()
 	response := harness.AssertResponseOk(t, request)
 
-	testutil.AssertMsg(t, response.Body.Len() != 0, "Body was empty!")
+	assert.NotEmpty(t, response.Body, "Body was empty!")
 
 	return *response.Body
 }
@@ -268,7 +246,7 @@ func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http
 	var destination map[string]interface{}
 	harness.AssertResponseOKWithStruct(t, request, &destination)
 	if err, ok := destination["error"]; ok {
-		testutil.FailMsgf(t, `JSON body had field named "error": %v`, err)
+		assert.Fail(t, `JSON body had field named "error": %v`, err)
 	}
 	return destination
 }
@@ -300,10 +278,8 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	if request.Body != nil {
 		// read the body bytes for potential error messages later
 		bodyBytes, err = ioutil.ReadAll(request.Body)
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not read body: %v", err)
-		}
-		// restore the original buffer so it can be read later
+		require.NoError(t, err)
+
 		request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 	}
 
@@ -311,7 +287,7 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	harness.server.ServeHTTP(response, request)
 
 	if response.Code >= 300 {
-		testutil.FailMsgf(t, "Got failure code (%d) on path %s: %s",
+		assert.Fail(t, "Got failure code (%d) on path %s: %s",
 			response.Code, extractMethodAndPath(request), response.Body.String())
 		_, _ = assertErrorIsOk(t, response)
 	}
@@ -327,9 +303,7 @@ func (harness *TestHarness) AssertResponseOKWithStruct(t *testing.T, request *ht
 
 	response := harness.AssertResponseOkWithBody(t, request)
 
-	if err := json.Unmarshal(response.Bytes(), s); err != nil {
-		testutil.FailMsg(t, errors.Wrap(err, "could not unmarshal JSON"))
-	}
+	assert.NoError(t, json.Unmarshal(response.Bytes(), s))
 }
 
 func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.CreateUserArgs) (string, int) {
@@ -344,7 +318,7 @@ func (harness *TestHarness) AuthenticaticateUser(t *testing.T, args users.Create
 	})
 
 	fail := func(json map[string]interface{}, key, methodAndPath string) {
-		testutil.FatalMsgf(t, "Returned JSON (%+v) did not have string property '%s'. Path: %s",
+		assert.Fail(t, "Returned JSON (%+v) did not have string property '%s'. Path: %s",
 			json, key, methodAndPath)
 	}
 

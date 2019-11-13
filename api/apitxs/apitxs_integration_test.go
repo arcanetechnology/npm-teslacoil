@@ -77,8 +77,8 @@ func TestCreateInvoiceRoute(t *testing.T) {
 				})
 
 			res := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertMsg(t, res["memo"] == nil, "Memo was not empty")
-			testutil.AssertMsg(t, res["description"] == nil, "Description was not empty")
+			assert.Nil(t, res["memo"])
+			assert.Nil(t, res["description"])
 
 		})
 
@@ -102,8 +102,8 @@ func TestCreateInvoiceRoute(t *testing.T) {
 				})
 
 			res := h.AssertResponseOkWithJson(t, req)
-			testutil.AssertEqual(t, res["memo"], memo)
-			testutil.AssertEqual(t, res["description"], description)
+			assert.Equal(t, res["memo"], memo)
+			assert.Equal(t, res["description"], description)
 
 		})
 

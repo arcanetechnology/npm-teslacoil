@@ -10,6 +10,8 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/dchest/passwordreset"
 	"github.com/pquerna/otp/totp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
@@ -89,10 +91,10 @@ func TestPostLoginRoute(t *testing.T) {
 		}`, email, password),
 		})
 		res := h.AssertResponseOkWithJson(t, req)
-		testutil.AssertEqual(t, res["firstName"], first)
-		testutil.AssertEqual(t, res["lastName"], second)
-		testutil.AssertEqual(t, res["email"], email)
-		testutil.AssertEqual(t, res["balance"], 0.0)
+		assert.Equal(t, res["firstName"], first)
+		assert.Equal(t, res["lastName"], second)
+		assert.Equal(t, res["email"], email)
+		assert.InDelta(t, 0.0, res["balanceSats"], 0.0, res)
 	})
 	t.Run("fail to login with invalid credentials", func(t *testing.T) {
 		t.Parallel()
@@ -105,7 +107,7 @@ func TestPostLoginRoute(t *testing.T) {
 		}`, email, gofakeit.Password(true, true, true, true, true, 32)),
 		})
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
-		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
+		testutil.AssertEqualErr(t, apierr.ErrNoSuchUser, err)
 	})
 
 	t.Run("fail to login with non-existant credentials", func(t *testing.T) {
@@ -119,7 +121,7 @@ func TestPostLoginRoute(t *testing.T) {
 		}`, gofakeit.Email(), gofakeit.Password(true, true, true, true, true, 32)),
 		})
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusUnauthorized)
-		testutil.AssertEqual(t, apierr.ErrNoSuchUser, err)
+		testutil.AssertEqualErr(t, apierr.ErrNoSuchUser, err)
 	})
 
 	t.Run("fail to login with non-verified email", func(t *testing.T) {
@@ -355,9 +357,8 @@ func TestResetPasswordRoute(t *testing.T) {
 		t.Parallel()
 		badPass := "12345678"
 		token, err := users.NewPasswordResetToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not get password reset token: %v", err)
-		}
+		require.NoError(t, err)
+
 		resetPassReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/auth/reset_password",
 			Method: "PUT",
@@ -372,9 +373,8 @@ func TestResetPasswordRoute(t *testing.T) {
 	t.Run("Reset the password by using the correct token", func(t *testing.T) {
 		t.Parallel()
 		token, err := users.NewPasswordResetToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
-		}
+		require.NoError(t, err)
+
 		resetPassReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/auth/reset_password",
 			Method: "PUT",
@@ -411,9 +411,8 @@ func TestResetPasswordRoute(t *testing.T) {
 	t.Run("Should not be able to reset the password twice", func(t *testing.T) {
 		t.Parallel()
 		token, err := users.NewPasswordResetToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsgf(t, "Could not password reset token: %v", err)
-		}
+		require.NoError(t, err)
+
 		resetPassReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
 			Path:   "/auth/reset_password",
 			Method: "PUT",
@@ -456,7 +455,7 @@ func TestSendPasswordResetEmail(t *testing.T) {
 	})
 
 	h.AssertResponseOk(t, req)
-	testutil.AssertMsg(t, mockSendGridClient.GetPasswordResetMails() > 0,
+	assert.True(t, mockSendGridClient.GetPasswordResetMails() > 0,
 		"Sendgrid client didn't send any emails!")
 
 	// requesting a password reset email to a non existant user should
@@ -470,7 +469,7 @@ func TestSendPasswordResetEmail(t *testing.T) {
 		}`, gofakeit.Email()),
 	})
 	h.AssertResponseOk(t, otherReq)
-	testutil.AssertEqual(t, mockSendGridClient.GetPasswordResetMails(), emailsBeforeOtherReq)
+	assert.Equal(t, mockSendGridClient.GetPasswordResetMails(), emailsBeforeOtherReq)
 
 }
 
@@ -502,11 +501,10 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 		h.AssertResponseOk(t, req)
 
 		user, err := users.GetByEmail(testDB, email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertMsg(t, user.TotpSecret != nil, "TOTP secret was nil!")
-		testutil.AssertMsg(t, !user.ConfirmedTotpSecret, "User confirmed TOTP secret!")
+		require.NoError(t, err)
+
+		assert.NotNil(t, user.TotpSecret)
+		assert.False(t, user.ConfirmedTotpSecret)
 
 		t.Run("fail to confirm 2FA with bad code", func(t *testing.T) {
 			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
@@ -524,9 +522,7 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 		t.Run("confirm 2FA", func(t *testing.T) {
 
 			code, err := totp.GenerateCode(*user.TotpSecret, time.Now())
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 
 			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 				AccessToken: accessToken,
@@ -541,9 +537,7 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 
 			t.Run("fail to confirm 2FA twice", func(t *testing.T) {
 				code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
-				if err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				require.NoError(t, err)
 
 				req = httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
@@ -571,9 +565,8 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 
 			t.Run("should be able to login with TOTP code", func(t *testing.T) {
 				code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
-				if err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				require.NoError(t, err)
+
 				req = httptestutil.GetRequest(t, httptestutil.RequestArgs{
 					Path:   "/login",
 					Method: "POST",
@@ -600,9 +593,7 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 
 			t.Run("delete 2FA credentials", func(t *testing.T) {
 				code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
-				if err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				require.NoError(t, err)
 
 				deleteReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 					AccessToken: accessToken,
@@ -627,9 +618,8 @@ func TestEnableConfirmAndDelete2fa(t *testing.T) {
 
 				t.Run("fail to delete already deleted 2FA credentials", func(t *testing.T) {
 					code, err = totp.GenerateCode(*user.TotpSecret, time.Now())
-					if err != nil {
-						testutil.FatalMsg(t, err)
-					}
+					require.NoError(t, err)
+
 					req = httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 						AccessToken: accessToken,
 						Path:        "/auth/2fa",

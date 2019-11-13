@@ -575,14 +575,12 @@ func TestCreateInvoice(t *testing.T) {
 			}`, mockInvoice.Value),
 		})
 		invoicesJson := otherH.AssertResponseOkWithJson(t, req)
-		testutil.AssertMsg(t, invoicesJson["callbackUrl"] != nil, "callback URL was nil!")
+		assert.NotNil(t, invoicesJson["callbackUrl"])
 
 		t.Run("receive a POST to the given URL when paying the invoice",
 			func(t *testing.T) {
 				user, err := users.GetByEmail(testDB, email)
-				if err != nil {
-					testutil.FatalMsg(t, err)
-				}
+				require.NoError(t, err)
 
 				var apiKey apikeys.Key
 				// check if there are any API keys
@@ -590,7 +588,7 @@ func TestCreateInvoice(t *testing.T) {
 					apiKey = keys[0]
 					// if not, try to create one, fail it if doesn't work
 				} else if _, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, ""); err != nil {
-					testutil.FatalMsg(t, err)
+					require.NoError(t, err)
 				} else {
 					apiKey = key
 				}
@@ -615,7 +613,7 @@ func TestCreateInvoice(t *testing.T) {
 				_, _ = hmac.Write([]byte(fmt.Sprintf("%d", body.Offchain.ID)))
 
 				sum := hmac.Sum(nil)
-				testutil.AssertEqual(t, sum, body.Hash)
+				assert.Equal(t, sum, body.Hash)
 			})
 	})
 }
@@ -678,7 +676,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
 		expectedBalance := balance.Balance(tx.AmountMilliSat).Sats() - withdrawAmount
 
-		testutil.AssertEqual(t, expectedBalance, balanceRes["balanceSats"])
+		assert.InDelta(t, expectedBalance, balanceRes["balanceSats"], 0)
 	})
 
 	t.Run("fail to withdraw too much", func(t *testing.T) {
@@ -703,7 +701,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		})
 
 		_, err := h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
-		testutil.AssertEqual(t, apierr.ErrBalanceTooLow, err)
+		testutil.AssertEqualErr(t, apierr.ErrBalanceTooLow, err)
 
 	})
 

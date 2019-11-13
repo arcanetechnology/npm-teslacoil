@@ -9,14 +9,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"gitlab.com/arcanecrypto/teslacoil/build"
-
-	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
-
 	"github.com/gin-gonic/gin"
-
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 )
 
 type Request struct {
@@ -66,15 +63,14 @@ func setupRouter(middleware gin.HandlerFunc) *gin.Engine {
 
 func assertErrorResponseOk(t *testing.T, w *httptest.ResponseRecorder, expectedFieldErrors int) httptypes.StandardErrorResponse {
 	bodyBytes, err := ioutil.ReadAll(w.Body)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
+
 	var res httptypes.StandardErrorResponse
-	if err := json.Unmarshal(bodyBytes, &res); err != nil {
-		testutil.FatalMsg(t, err)
-	}
-	testutil.AssertMsg(t, res.ErrorField.Fields != nil, "Fields was nil!")
-	testutil.AssertMsgf(t, len(res.ErrorField.Fields) == expectedFieldErrors, "Unexpected number of errors: %d", len(res.ErrorField.Fields))
+
+	require.NoError(t, json.Unmarshal(bodyBytes, &res))
+
+	require.NotNil(t, res.ErrorField.Fields)
+	assert.Len(t, res.ErrorField.Fields, expectedFieldErrors)
 	return res
 }
 
@@ -86,17 +82,19 @@ func TestJsonValidation(t *testing.T) {
 			req := httptest.NewRequest("POST", "/body",
 				bytes.NewBuffer([]byte(`{[{"foo": 2 }]`))) // missing }
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
+
 			err := assertErrorResponseOk(t, w, 0)
-			testutil.AssertMsg(t, err.ErrorField.Message != "", "Error message was empty")
-			testutil.AssertEqual(t, err.ErrorField.Code, errInvalidJson.code)
+			assert.NotEqual(t, err.ErrorField.Message, "", "Error message was empty")
+			assert.Equal(t, err.ErrorField.Code, errInvalidJson.code)
 		})
 
 		t.Run("no parameters", func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("POST", "/body", bytes.NewBuffer([]byte(`{}`)))
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
+
 			err := assertErrorResponseOk(t, w, 2)
 			barOkErrorCheck := false
 			fooOkErrorCheck := false
@@ -108,8 +106,8 @@ func TestJsonValidation(t *testing.T) {
 					fooOkErrorCheck = true
 				}
 			}
-			testutil.AssertMsg(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
-			testutil.AssertMsg(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
+			assert.True(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
+			assert.True(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
 		})
 
 		t.Run("just foo", func(t *testing.T) {
@@ -120,16 +118,16 @@ func TestJsonValidation(t *testing.T) {
 			}
 			`)))
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
 
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
-			testutil.AssertMsgf(t, len(err.ErrorField.Fields) > 0, "no field errors! Err: %v", err)
+			assert.True(t, len(err.ErrorField.Fields) > 0)
 			field := err.ErrorField.Fields[0]
 			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
 			}
-			testutil.AssertMsg(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
+			assert.True(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
 		})
 		t.Run("just bar", func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -139,14 +137,15 @@ func TestJsonValidation(t *testing.T) {
 			}
 			`)))
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
+
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
 			field := err.ErrorField.Fields[0]
 			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true
 			}
-			testutil.AssertMsg(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
+			assert.True(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
 		})
 	})
 
@@ -161,7 +160,7 @@ func TestJsonValidation(t *testing.T) {
 			}
 			`)))
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusOK)
+		assert.Equal(t, w.Code, http.StatusOK)
 	})
 }
 
@@ -172,7 +171,8 @@ func TestQueryValidation(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/query", emptyBody)
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
+
 			err := assertErrorResponseOk(t, w, 2)
 			barOkErrorCheck := false
 			fooOkErrorCheck := false
@@ -184,15 +184,15 @@ func TestQueryValidation(t *testing.T) {
 					fooOkErrorCheck = true
 				}
 			}
-			testutil.AssertMsg(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
-			testutil.AssertMsg(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
+			assert.True(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
+			assert.True(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
 		})
 
 		t.Run("just foo", func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/query?foo=12", emptyBody)
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
 
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
@@ -200,20 +200,21 @@ func TestQueryValidation(t *testing.T) {
 			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
 			}
-			testutil.AssertMsg(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
+			assert.True(t, barOkErrorCheck, `"bar" did not have a meaningful message!`)
 		})
 		t.Run("just bar", func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/query?bar=baz", emptyBody)
 			router.ServeHTTP(w, req)
-			testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+			assert.Equal(t, w.Code, http.StatusBadRequest)
+
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
 			field := err.ErrorField.Fields[0]
 			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true
 			}
-			testutil.AssertMsg(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
+			assert.True(t, fooOkErrorCheck, `"foo" did not have a meaningful message!`)
 		})
 	})
 
@@ -223,7 +224,7 @@ func TestQueryValidation(t *testing.T) {
 			"/query?foo=1&bar=bar",
 			emptyBody)
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusOK)
+		assert.Equal(t, w.Code, http.StatusOK)
 	})
 }
 
@@ -235,7 +236,7 @@ func TestErrorWithCode(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/withCode", emptyBody)
 	router.ServeHTTP(w, req)
-	testutil.AssertNotEqual(t, w.Code, http.StatusInternalServerError)
+	assert.NotEqual(t, w.Code, http.StatusInternalServerError)
 }
 
 // When a request errors with a public error we expect that error message to
@@ -245,10 +246,10 @@ func TestPublicError(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/public", emptyBody)
 	router.ServeHTTP(w, req)
-	testutil.AssertEqual(t, w.Code, http.StatusInternalServerError)
+	assert.Equal(t, w.Code, http.StatusInternalServerError)
 
 	err := assertErrorResponseOk(t, w, 0)
-	testutil.AssertEqual(t, err.ErrorField.Code, publicError.code)
+	assert.Equal(t, err.ErrorField.Code, publicError.code)
 }
 
 func TestBodyRequired(t *testing.T) {

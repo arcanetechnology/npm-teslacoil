@@ -26,7 +26,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
-	pkgErrors "github.com/pkg/errors"
 
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
@@ -287,7 +286,6 @@ func TestNewOffchainTx(t *testing.T) {
 		assert.Equal(t, url, *offchain.CallbackURL)
 	})
 }
-
 func TestInsertOffchainTransaction(t *testing.T) {
 	t.Parallel()
 	user := userstestutil.CreateUserOrFail(t, testDB)
@@ -297,47 +295,33 @@ func TestInsertOffchainTransaction(t *testing.T) {
 			offchain := txtest.MockOffchain(user.ID)
 
 			inserted, err := transactions.InsertOffchain(testDB, offchain)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 
 			offchain.CreatedAt = inserted.CreatedAt
 			offchain.UpdatedAt = inserted.UpdatedAt
 
 			if offchain.SettledAt != nil {
 				if offchain.SettledAt.Sub(*inserted.SettledAt) > time.Millisecond*500 {
-					testutil.AssertEqual(t, *offchain.SettledAt, *inserted.SettledAt)
+					assert.Equal(t, *offchain.SettledAt, *inserted.SettledAt)
 				}
 				offchain.SettledAt = inserted.SettledAt
 			}
 
 			// ID should be created by DB for us
-			testutil.AssertNotEqual(t, offchain.ID, inserted.ID)
+			assert.NotEqual(t, offchain.ID, inserted.ID)
 			offchain.ID = inserted.ID
-			diff := cmp.Diff(offchain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
+			assert.Equal(t, offchain, inserted)
 
 			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 
 			foundOffChain, err := foundTx.ToOffchain()
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 
-			diff = cmp.Diff(foundOffChain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
+			assert.Equal(t, foundOffChain, inserted)
 
 			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 			found := false
 			for _, tx := range allTXs {
 				off, err := tx.ToOffchain()
@@ -349,9 +333,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 					break
 				}
 			}
-			if !found {
-				testutil.FatalMsg(t, "Did not find TX when doing GetAll")
-			}
+			assert.True(t, found, "Did not find TX when doing GetAll")
 		})
 
 	}
@@ -472,7 +454,7 @@ func TestPayInvoice(t *testing.T) {
 		_, err := transactions.PayInvoice(
 			testDB, &mockLNcli, nil, user.ID, paymentRequest)
 		if !errors.Is(err, transactions.Err0AmountInvoiceNotSupported) {
-			testutil.FailMsgf(t, "expected Err0AmountInvoiceNotSupported but got error %v", err)
+			assert.NoError(t, err, "Err was not Err0AmountInvoiceNotSupported")
 		}
 
 	})
@@ -660,11 +642,7 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 		}
 
 		_, err := transactions.HandleSettledInvoice(invoice, testDB, httpPoster)
-		if !errors.Is(err, transactions.ErrExpectedSettledStatus) {
-			testutil.FatalMsgf(t,
-				"expected error %v but got %v",
-				transactions.ErrExpectedSettledStatus, err)
-		}
+		testutil.AssertEqualErr(t, transactions.ErrExpectedSettledStatus, err)
 
 		checkPostSent := func() bool {
 			return httpPoster.GetSentPostRequests() > 0
@@ -672,10 +650,9 @@ func TestUpdateInvoiceStatus(t *testing.T) {
 
 		// emails are sent in go-routing, so can't assume they're sent fast
 		// enough for test to pick up
-		if err = async.Await(4,
-			time.Millisecond*20, checkPostSent); err == nil {
-			testutil.FatalMsgf(t, "HTTP POSTer sent out callback for non-settled offchainTx")
-		}
+		err = async.Await(4,
+			time.Millisecond*20, checkPostSent)
+		assert.Error(t, err, "HTTP POSTer sent out callback for non-settled offchainTx")
 	})
 }
 
@@ -737,10 +714,7 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 func CreateNewOffchainTxOrFail(t *testing.T, db *db.DB, ln ln.AddLookupInvoiceClient,
 	opts transactions.NewOffchainOpts) transactions.Offchain {
 	payment, err := transactions.CreateTeslacoilInvoice(db, ln, opts)
-	if err != nil {
-		testutil.FatalMsg(t,
-			pkgErrors.Wrap(err, "wasn't able to create new payment"))
-	}
+	require.NoError(t, err)
 	return payment
 }
 

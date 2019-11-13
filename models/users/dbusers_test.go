@@ -3,10 +3,11 @@ package users_test
 import (
 	"math/rand"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
@@ -56,12 +57,10 @@ func TestInsertUser(t *testing.T) {
 		}
 
 		insertedUser, err := users.InsertUser(testDB, u)
-		if err != nil {
-			testutil.FailError(t, "could not insert user", err)
-		}
+		require.NoError(t, err)
 
-		testutil.AssertEqual(t, insertedUser.Email, email)
-		testutil.AssertEqual(t, insertedUser.HashedPassword, hashedPassword)
+		assert.Equal(t, insertedUser.Email, email)
+		assert.Equal(t, insertedUser.HashedPassword, hashedPassword)
 	})
 	t.Run("can not choose ID of user", func(t *testing.T) {
 		u := users.User{
@@ -71,11 +70,9 @@ func TestInsertUser(t *testing.T) {
 		}
 
 		insertedUser, err := users.InsertUser(testDB, u)
-		if err != nil {
-			testutil.FailError(t, "could not insert user", err)
-		}
+		require.NoError(t, err)
 
-		testutil.AssertNotEqual(t, 999, insertedUser.ID)
+		assert.NotEqual(t, 999, insertedUser.ID)
 	})
 	t.Run("can not insert without a hashed password", func(t *testing.T) {
 		u := users.User{
@@ -83,7 +80,7 @@ func TestInsertUser(t *testing.T) {
 		}
 
 		_, err := users.InsertUser(testDB, u)
-		testutil.AssertEqual(t, users.ErrHashedPasswordMustBeDefined, err)
+		assert.Equal(t, users.ErrHashedPasswordMustBeDefined, err)
 	})
 	t.Run("can not insert without an email", func(t *testing.T) {
 		u := users.User{
@@ -92,15 +89,14 @@ func TestInsertUser(t *testing.T) {
 		}
 
 		_, err := users.InsertUser(testDB, u)
-		testutil.AssertEqual(t, users.ErrEmailMustBeDefined, err)
+		assert.Equal(t, users.ErrEmailMustBeDefined, err)
 	})
 }
 
 func TestGetByID(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
-	email := testutil.GetTestEmail(t)
+	email := gofakeit.Email()
 	tests := []struct {
 		user           users.User
 		expectedResult users.User
@@ -116,28 +112,21 @@ func TestGetByID(t *testing.T) {
 		},
 	}
 
-	for i, tt := range tests {
-		t.Logf("\ttest %d\twhen getting user with email %s", i, tt.user.Email)
-
+	for _, tt := range tests {
 		u, err := users.InsertUser(testDB, tt.user)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		user, err := users.GetByID(testDB, u.ID)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		assert.Equal(t, user.Email, tt.expectedResult.Email)
 	}
 }
 
 func TestGetByEmail(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
-	email := testutil.GetTestEmail(t)
+	email := gofakeit.Email()
 	tests := []struct {
 		user           users.User
 		expectedResult users.User
@@ -156,23 +145,18 @@ func TestGetByEmail(t *testing.T) {
 	for _, tt := range tests {
 
 		user, err := users.InsertUser(testDB, tt.user)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		user, err = users.GetByEmail(testDB, email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		require.NoError(t, err)
+		assert.Equal(t, user.Email, tt.expectedResult.Email)
 	}
 }
 
 func TestGetByCredentials(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
-	email := testutil.GetTestEmail(t)
+	email := gofakeit.Email()
 	tests := []struct {
 		email          string
 		password       string
@@ -191,16 +175,12 @@ func TestGetByCredentials(t *testing.T) {
 		user, err := users.Create(testDB, users.CreateUserArgs{
 			Email: tt.email, Password: tt.password,
 		})
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		user, err = users.GetByCredentials(testDB, tt.email, tt.password)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		testutil.AssertEqual(t, user.Email, tt.expectedResult.Email)
+		assert.Equal(t, user.Email, tt.expectedResult.Email)
 	}
 }
 
@@ -214,11 +194,9 @@ func TestCreateUser(t *testing.T) {
 				Email:    email,
 				Password: "password",
 			})
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		testutil.AssertEqual(t, user.Email, email)
+		assert.Equal(t, user.Email, email)
 	})
 }
 
@@ -227,15 +205,11 @@ func TestGetEmailVerificationToken(t *testing.T) {
 	user := createUserOrFail(t)
 	t.Run("get token for existing user", func(t *testing.T) {
 		_, err := users.GetEmailVerificationToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 	})
 	t.Run("don't get token for non existant user", func(t *testing.T) {
 		_, err := users.GetEmailVerificationToken(testDB, gofakeit.Email())
-		if err == nil {
-			testutil.FatalMsg(t, "Got token for non existant user!")
-		}
+		assert.Error(t, err)
 	})
 }
 
@@ -244,40 +218,30 @@ func TestVerifyEmailVerificationToken(t *testing.T) {
 	user := createUserOrFail(t)
 	t.Run("verify valid token", func(t *testing.T) {
 		token, err := users.GetEmailVerificationToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		login, err := users.VerifyEmailVerificationToken(token)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertEqual(t, user.Email, login)
+		require.NoError(t, err)
+		assert.Equal(t, user.Email, login)
 	})
 
 	t.Run("creating a token for a different user should yield a different login", func(t *testing.T) {
 		otherUser := createUserOrFail(t)
 		token, err := users.GetEmailVerificationToken(testDB, otherUser.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		login, err := users.VerifyEmailVerificationToken(token)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertNotEqual(t, user.Email, login)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, user.Email, login)
 	})
 
 	t.Run("fail to verify token created with bad key", func(t *testing.T) {
 		token, err := users.GetEmailVerificationTokenWithKey(testDB, user.Email, []byte("bad key"))
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		if _, err := users.VerifyEmailVerificationToken(token); err == nil {
-			testutil.FatalMsg(t, "Was able to verify token created with bad key!")
-		}
+		_, err = users.VerifyEmailVerificationToken(token)
+		require.Error(t, err)
 	})
 }
 
@@ -287,78 +251,59 @@ func TestVerifyEmail(t *testing.T) {
 		t.Parallel()
 
 		user := createUserOrFailNoEmailVerify(t)
-		testutil.AssertMsg(t, !user.HasVerifiedEmail, "User was created with verified email!")
+		assert.False(t, user.HasVerifiedEmail, "User was created with verified email!")
 
 		token, err := users.GetEmailVerificationToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		verified, err := users.VerifyEmail(testDB, token)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		testutil.AssertMsg(t, verified.HasVerifiedEmail, "Email didn't get marked as verified!")
+		verified, err := users.VerifyEmail(testDB, token)
+		require.NoError(t, err)
+
+		assert.True(t, verified.HasVerifiedEmail, "Email didn't get marked as verified!")
 	})
 
 	t.Run("don't verify email with bad key", func(t *testing.T) {
 		t.Parallel()
 
 		user := createUserOrFailNoEmailVerify(t)
-		testutil.AssertMsg(t, !user.HasVerifiedEmail, "User was created with verified email!")
+		assert.False(t, user.HasVerifiedEmail, "User was created with verified email!")
 
-		token, err := users.GetEmailVerificationTokenWithKey(testDB, user.Email, []byte("badddddd key"))
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		if _, err = users.VerifyEmail(testDB, token); err == nil {
-			testutil.FatalMsgf(t, "Was able to verify email with bad key!")
-		}
+		_, err := users.GetEmailVerificationTokenWithKey(testDB, user.Email, []byte("badddddd key"))
+		require.NoError(t, err)
 
 		sameUser, err := users.GetByEmail(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertMsg(t, !sameUser.HasVerifiedEmail, "Users email got marked as verified")
+		require.NoError(t, err)
+
+		assert.False(t, sameUser.HasVerifiedEmail, "Users email got marked as verified")
 
 	})
 }
 
 func TestGetPasswordResetToken(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	t.Run("Get a token for an existing user", func(t *testing.T) {
 		user := createUserOrFail(t)
 		_, err := users.NewPasswordResetToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		assert.NoError(t, err)
 	})
 	t.Run("Fail to get a token for an non-existing user", func(t *testing.T) {
 		_, err := users.NewPasswordResetToken(testDB, gofakeit.Email())
-		if err == nil {
-			testutil.FatalMsg(t, "Was able to get a token from a non existing user!")
-		}
+		assert.Error(t, err)
 	})
 }
 
 func TestVerifyPasswordResetToken(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	user := createUserOrFail(t)
 
 	t.Run("Verify a token we created", func(t *testing.T) {
 		token, err := users.NewPasswordResetToken(testDB, user.Email)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		email, err := users.VerifyPasswordResetToken(testDB, token)
-		if err != nil {
-			testutil.FatalMsgf(t, "Wasn't able to verify token: %+v", err)
-		}
-		testutil.AssertEqual(t, email, user.Email)
+		require.NoError(t, err)
+		assert.Equal(t, email, user.Email)
 	})
 
 	t.Run("Don't verify a token we didn't create", func(t *testing.T) {
@@ -366,86 +311,66 @@ func TestVerifyPasswordResetToken(t *testing.T) {
 		secretKey := []byte("this is a secret key")
 		badToken := passwordreset.NewToken(user.Email, duration,
 			user.HashedPassword, secretKey)
-		if _, err := users.VerifyPasswordResetToken(testDB, badToken); err == nil {
-			testutil.FatalMsg(t, "Was able to verify a bad token!")
-		}
+		_, err := users.VerifyPasswordResetToken(testDB, badToken)
+		assert.Error(t, err)
 	})
 }
 
 func TestChangePassword(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 	newPassword := gofakeit.Password(true, true, true, true, true, 32)
 	user := createUserOrFail(t)
 
-	if err := bcrypt.CompareHashAndPassword(user.HashedPassword,
-		[]byte(newPassword)); err == nil {
-		testutil.FatalMsg(t, "User has new password before reset occured")
-	}
+	err := bcrypt.CompareHashAndPassword(user.HashedPassword,
+		[]byte(newPassword))
+	assert.Error(t, err, "User has new password before reset occured")
 
 	updated, err := user.ChangePassword(testDB, newPassword)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-	if err = bcrypt.CompareHashAndPassword(updated.HashedPassword, []byte(newPassword)); err != nil {
-		testutil.FatalMsgf(t, "User password did not change: %v", err)
-	}
+	require.NoError(t, err)
+	err = bcrypt.CompareHashAndPassword(updated.HashedPassword, []byte(newPassword))
+	assert.NoError(t, err, "User password did not change: %v")
 }
 
 func TestCreateConfirmAndDelete2FA(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 	user := createUserOrFail(t)
 
 	key, err := user.Create2faCredentials(testDB)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
 
 	updated, err := users.GetByID(testDB, user.ID)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
-	testutil.AssertMsg(t, updated.TotpSecret != nil, "TOTP secret was nil")
-	testutil.AssertMsg(t, !updated.ConfirmedTotpSecret, "User unexpectedly had confirmed TOTP secret")
-	testutil.AssertMsgf(t, key.Issuer() == users.TotpIssuer, "Key had unexpected issuer: %s", key.Issuer())
+	require.NoError(t, err)
+	assert.NotNil(t, updated.TotpSecret)
+	assert.False(t, updated.ConfirmedTotpSecret, "User unexpectedly had confirmed TOTP secret")
+	assert.Equal(t, key.Issuer(), users.TotpIssuer, key.Issuer())
 
 	t.Run("not confirm with bad 2FA credentials", func(t *testing.T) {
 		_, err := updated.Confirm2faCredentials(testDB, "123456")
-		if err == nil {
-			testutil.FatalMsg(t, "was able to enable 2FA with bad code")
-		}
+		assert.Error(t, err)
 	})
 
 	t.Run("confirm 2FA credentials", func(t *testing.T) {
 		totpCode, err := totp.GenerateCode(*updated.TotpSecret, time.Now())
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
+
 		enabled, err := updated.Confirm2faCredentials(testDB, totpCode)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
-		testutil.AssertMsg(t, enabled.ConfirmedTotpSecret, "User hasn't confirmed TOTP secret")
+		require.NoError(t, err)
+
+		assert.True(t, enabled.ConfirmedTotpSecret, "User hasn't confirmed TOTP secret")
 
 		t.Run("fail to disable 2FA credentials with a bad passcode", func(t *testing.T) {
 			_, err := enabled.Delete2faCredentials(testDB, "123456")
-			if err == nil {
-				testutil.FatalMsg(t, "was able to delete 2FA credentials with bad code")
-			}
+			assert.Error(t, err)
 		})
 		t.Run("disable 2FA credentials", func(t *testing.T) {
 			totpCode, err := totp.GenerateCode(*updated.TotpSecret, time.Now())
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-			disabled, err := enabled.Delete2faCredentials(testDB, totpCode)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-			testutil.AssertMsg(t, !disabled.ConfirmedTotpSecret, "User has confirmed TOTP secret")
-			testutil.AssertEqual(t, disabled.TotpSecret, nil)
+			require.NoError(t, err)
 
+			disabled, err := enabled.Delete2faCredentials(testDB, totpCode)
+			require.NoError(t, err)
+
+			assert.False(t, disabled.ConfirmedTotpSecret, "User has confirmed TOTP secret")
+			assert.Nil(t, disabled.TotpSecret)
 		})
 
 	})
@@ -453,33 +378,25 @@ func TestCreateConfirmAndDelete2FA(t *testing.T) {
 
 func TestUpdateUserFailWithBadOpts(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 	user := createUserOrFail(t)
 
-	if _, err := user.Update(testDB, users.UpdateOptions{}); err == nil {
-		testutil.FatalMsg(t, "Was able to give non-meaningful options and get a result")
-	}
+	_, err := user.Update(testDB, users.UpdateOptions{})
+	assert.Error(t, err)
 }
 
 func TestUpdateUserEmail(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	user := createUserOrFail(t)
 
-	newEmail := testutil.GetTestEmail(t)
+	newEmail := gofakeit.Email()
 	updated, err := user.Update(testDB, users.UpdateOptions{NewEmail: &newEmail})
-	if err != nil {
-		testutil.FatalMsgf(t, "Was not able to set email %s: %+v", newEmail, err)
-	}
-	if updated.Email != newEmail {
-		testutil.FatalMsgf(t, "Got unexpected result after updating email: %+v", user)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, updated.Email, newEmail)
 
 	empty := ""
-	if _, err := user.Update(testDB, users.UpdateOptions{NewEmail: &empty}); err == nil {
-		testutil.FatalMsg(t, "Was able to delete user email!")
-	}
+	_, err = user.Update(testDB, users.UpdateOptions{NewEmail: &empty})
+	assert.Error(t, err, "Was able to delete user email!")
 }
 
 func TestUpdateUserFirstName(t *testing.T) {
@@ -489,58 +406,38 @@ func TestUpdateUserFirstName(t *testing.T) {
 
 	newName := "NewLastName"
 	updated, err := user.Update(testDB, users.UpdateOptions{NewLastName: &newName})
-	if err != nil {
-		testutil.FatalMsgf(t, "Was not able to set last name: %+v", err)
-	}
-	if updated.Lastname == nil || *updated.Lastname != newName {
-		testutil.FatalMsgf(t, "Got unexpected result after updating last name: %+v", updated)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, updated.Lastname, &newName)
+
 	empty := ""
 	removed, err := user.Update(testDB, users.UpdateOptions{NewLastName: &empty})
-	if err != nil {
-		testutil.FatalMsgf(t, "Was not able to remove last name: %+v", err)
-	}
-	if removed.Lastname != nil {
-		testutil.FatalMsgf(t, "Didn't unset last name: %+v", removed)
-	}
+	require.NoError(t, err)
+	assert.Nil(t, removed.Lastname)
 }
 
 func TestUpdateUserLastName(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	user := createUserOrFail(t)
 
 	newName := "NewFirstName"
 	updated, err := user.Update(testDB, users.UpdateOptions{NewFirstName: &newName})
-	if err != nil {
-		testutil.FatalMsgf(t, "Was not able to set first name: %+v", err)
-	}
-	if updated.Firstname == nil || *updated.Firstname != newName {
-		testutil.FatalMsgf(t, "Got unexpected result after updating first name: %+v", user)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, updated.Firstname, &newName)
 	empty := ""
 	removed, err := user.Update(testDB, users.UpdateOptions{NewFirstName: &empty})
-	if err != nil {
-		testutil.FatalMsgf(t, "Was not able to remove first name: %+v", err)
-	}
-	if removed.Firstname != nil {
-		testutil.FatalMsgf(t, "Didn't unset first name: %+v", removed)
-	}
+	require.NoError(t, err)
+	assert.Nil(t, removed.Firstname)
 
 }
 
 func TestFailToUpdateNonExistingUser(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
-	email := testutil.GetTestEmail(t)
+	email := gofakeit.Email()
 	user := users.User{ID: 99999}
 	_, err := user.Update(testDB, users.UpdateOptions{NewEmail: &email})
 
-	if err == nil || !strings.Contains(err.Error(), "given rows did not have any elements") {
-		testutil.FatalMsgf(t,
-			"Was able to update email of non existant user: %v", err)
-	}
+	assert.Error(t, err)
 }
 
 func TestWithBalance(t *testing.T) {
@@ -559,18 +456,16 @@ func TestWithBalance(t *testing.T) {
 		expectedBalance := balance.Balance(txAmountMilliSat).Sats()
 
 		withBalance, err := user.WithBalance(testDB)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not add balance")
-		}
+		require.NoError(t, err)
 
-		testutil.AssertEqual(t, expectedBalance,
+		assert.Equal(t, expectedBalance,
 			*withBalance.BalanceSats)
 	})
 	t.Run("not calling withBalance should result in nil balance",
 		func(t *testing.T) {
 			user := createUserOrFail(t)
 
-			testutil.AssertEqual(t, nil, user.BalanceSats)
+			assert.Nil(t, user.BalanceSats)
 		})
 }
 
@@ -587,11 +482,7 @@ func createUserOrFailNoEmailVerify(t *testing.T) users.User {
 		Email:    gofakeit.Email(),
 		Password: password,
 	})
-	if err != nil {
-		testutil.FatalMsgf(t,
-			"CreateUser(%s, db) -> should be able to CreateUser. Error:  %+v",
-			t.Name(), err)
-	}
+	require.NoError(t, err)
 	return u
 }
 
@@ -599,14 +490,10 @@ func createUserOrFailNoEmailVerify(t *testing.T) users.User {
 func createUserOrFail(t *testing.T) users.User {
 	user := createUserOrFailNoEmailVerify(t)
 	token, err := users.GetEmailVerificationToken(testDB, user.Email)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
 
 	verified, err := users.VerifyEmail(testDB, token)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
 
 	return verified
 }
