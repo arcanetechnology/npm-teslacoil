@@ -166,12 +166,8 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 		return Offchain{}, errors.New("TX was onchain")
 	}
 
-	var amountSat *int64
-	if t.AmountMilliSat != nil {
-		a := balance.Balance(*t.AmountMilliSat)
-		sats := a.Sats()
-		amountSat = &sats
-	}
+	a := balance.Balance(*t.AmountMilliSat)
+	amountSat := a.Sats()
 
 	off := Offchain{
 		ID:               t.ID,
@@ -180,7 +176,7 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 		CustomerOrderId:  t.CustomerOrderId,
 		Expiry:           *t.Expiry,
 		InternalTransfer: t.InternalTransfer,
-		AmountSat:        *amountSat,
+		AmountSat:        amountSat,
 		AmountMilliSat:   *t.AmountMilliSat,
 		Description:      t.Description,
 		Direction:        t.Direction,

@@ -201,31 +201,31 @@ func CreateTeslacoilInvoice(database *db.DB, lncli ln.AddLookupInvoiceClient, op
 // payReqBelongsToTeslacoilUser checks whether a payment request belongs
 // to teslacoil by SELECTING INBOUND transactions from the db. Returns the INBOUND
 // offchain transaction if it exists
-func payReqBelongsToTeslacoilUser(db *db.DB, paymentRequest string, userID int) (*Offchain, error) {
+func payReqBelongsToTeslacoilUser(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
 	query := "SELECT * FROM transactions WHERE payment_request=$1 AND direction = $2"
 
 	var selectedTx Transaction
 	err := db.Get(&selectedTx, query, paymentRequest, INBOUND)
 	if errors.Is(err, sql.ErrNoRows) {
 		// does not belong to us
-		return nil, err
+		return Offchain{}, err
 	}
 	if err != nil {
 		log.WithError(err).WithField("paymentRequest",
 			paymentRequest).Error("could not get TX from DB")
-		return nil, err
+		return Offchain{}, err
 	}
 
 	if selectedTx.UserID == userID {
-		return nil, ErrCannotPayOwnInvoice
+		return Offchain{}, ErrCannotPayOwnInvoice
 	}
 
 	offchain, err := selectedTx.ToOffchain()
 	if err != nil {
-		return nil, err
+		return Offchain{}, err
 	}
 
-	return &offchain, nil
+	return offchain, nil
 }
 
 func sendOffchain(db *db.DB, lncli ln.DecodeSendClient, callbacker HttpPoster, payment Offchain) (Offchain, error) {
@@ -348,36 +348,24 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 	if errors.Is(err, ErrCannotPayOwnInvoice) {
 		log.WithError(err).Error("cannot pay own invoice")
 		return Offchain{}, err
-	}
-
-	// if inboundTransaction is nil, the paymentRequest was not found in our
-	// database, or something somewhere went wrong in payReqBelongsToTeslacoilUser
-	// however, we don't care what or if anything went wrong, we just want to pay
-	// the invoice
-	if inboundTransaction == nil {
+	} else if errors.Is(err, sql.ErrNoRows) {
+		// does not belong to us
 		payment, err = sendOffchain(database, lncli, callbacker, payment)
 		if err != nil {
 			return Offchain{}, fmt.Errorf("could not send offchain payment: %w", err)
 		}
+	} else if err != nil {
+		// something went wrong
+		return Offchain{}, fmt.Errorf("payReqBelongsToTeslacoilUser failed: %w", err)
 	} else {
-		payment, err = settleInternalTransfer(database, lncli, payment, *inboundTransaction, callbacker)
+		// error is nil, and inboundTransaction is defined
+		payment, err = settleInternalTransfer(database, lncli, payment, inboundTransaction, callbacker)
 		if err != nil {
 			return Offchain{}, fmt.Errorf("could not settle internal transfer: %w", err)
 		}
 	}
 
 	return payment, nil
-}
-
-func lookupPreimage(lncli ln.AddLookupInvoiceClient, rHash []byte) ([]byte, error) {
-	invoice, err := lncli.LookupInvoice(context.Background(), &lnrpc.PaymentHash{
-		RHash: rHash,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("could not lookup invoice: %w", err)
-	}
-
-	return invoice.RPreimage, nil
 }
 
 func settleInternalTransfer(database *db.DB, lncli ln.AddLookupInvoiceClient, outbound Offchain,
@@ -387,10 +375,13 @@ func settleInternalTransfer(database *db.DB, lncli ln.AddLookupInvoiceClient, ou
 		return Offchain{}, fmt.Errorf("outbound offchain transaction does not have a hashed preimage")
 	}
 
-	preimage, err := lookupPreimage(lncli, outbound.HashedPreimage)
+	invoice, err := lncli.LookupInvoice(context.Background(), &lnrpc.PaymentHash{
+		RHash: outbound.HashedPreimage,
+	})
 	if err != nil {
-		return Offchain{}, err
+		return Offchain{}, fmt.Errorf("could not lookup invoice: %w", err)
 	}
+	preimage := invoice.RPreimage
 
 	tx := database.MustBegin()
 	outbound, err = outbound.MarkAsCompleted(tx, preimage, callbacker)
