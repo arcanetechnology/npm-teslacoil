@@ -3,7 +3,7 @@ package mock
 import (
 	"sync"
 
-	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
@@ -12,7 +12,7 @@ import (
 
 var _ email.Sender = &mockSendGridClient{}
 
-var log = logrus.New()
+var log = build.AddSubLogger("MOCK")
 
 type mockSendGridClient struct {
 	sync.Mutex

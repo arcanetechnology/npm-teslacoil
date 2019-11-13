@@ -220,10 +220,6 @@ var consoleFormat = logrus.TextFormatter{
 	FullTimestamp:   true,
 }
 
-func (c *consoleLogHook) getSubsystem() string {
-	return c.subsystem
-}
-
 func (c *consoleLogHook) Fire(entry *logrus.Entry) error {
 	if c.level < entry.Level {
 		return nil

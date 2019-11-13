@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -39,7 +41,7 @@ const (
 )
 
 var (
-	log         = logrus.New()
+	log         = build.AddSubLogger("NODETESTUTIL")
 	_   Cleaner = nodeCleaner{}
 )
 
