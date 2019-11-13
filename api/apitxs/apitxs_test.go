@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/araddon/dateparse"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -186,8 +188,7 @@ func TestGetTransaction(t *testing.T) {
 		assert.Equal(t, float64(*inserted.AmountSat), res["amountSat"])
 		assert.Equal(t, float64(*inserted.Vout), res["vout"])
 		assert.Equal(t, *inserted.Txid, res["txid"])
-		const layout = "2006-01-02T15:04:05.000000Z"
-		foundTime, err := time.Parse(layout, res["createdAt"].(string))
+		foundTime, err := dateparse.ParseAny(res["createdAt"].(string))
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, *inserted.ReceivedMoneyAt, foundTime, time.Millisecond*100)

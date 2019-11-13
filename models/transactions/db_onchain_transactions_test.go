@@ -575,7 +575,6 @@ func TestGetOrCreateDeposit(t *testing.T) {
 	mockLn := lntestutil.GetRandomLightningMockClient()
 
 	t.Run("can get latest address", func(t *testing.T) {
-		t.Parallel()
 		user := userstestutil.CreateUserOrFail(t, testDB)
 		tx := txtest.InsertFakeIncomingWithoutTxidOnchainorFail(t, testDB, user.ID)
 

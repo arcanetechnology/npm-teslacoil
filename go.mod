@@ -3,6 +3,7 @@ module gitlab.com/arcanecrypto/teslacoil
 go 1.13
 
 require (
+	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195 // indirect
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
 	github.com/btcsuite/btcd v0.20.0-beta
 	github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
