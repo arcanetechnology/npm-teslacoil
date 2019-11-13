@@ -6,8 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,14 +89,15 @@ func TestNewOffchainTx(t *testing.T) {
 				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
-				UserID:          user.ID,
-				PaymentRequest:  payReq1,
-				AmountMilliSat:  amount1 * 1000,
-				RHashedPreimage: SampleHash[:],
-				Memo:            &firstMemo,
-				Description:     &description,
-				Status:          transactions.Offchain_CREATED,
-				Direction:       transactions.INBOUND,
+				UserID:         user.ID,
+				PaymentRequest: payReq1,
+				AmountSat:      amount1,
+				AmountMilliSat: amount1 * 1000,
+				HashedPreimage: SampleHash[:],
+				Memo:           &firstMemo,
+				Description:    &description,
+				Status:         transactions.Offchain_CREATED,
+				Direction:      transactions.INBOUND,
 			},
 		},
 		{
@@ -109,14 +114,15 @@ func TestNewOffchainTx(t *testing.T) {
 				State:          lnrpc.Invoice_OPEN,
 			},
 			want: transactions.Offchain{
-				UserID:          user.ID,
-				AmountMilliSat:  amount2 * 1000,
-				RHashedPreimage: SampleHash[:],
-				PaymentRequest:  payReq2,
-				Memo:            &firstMemo,
-				Description:     &description,
-				Status:          transactions.Offchain_CREATED,
-				Direction:       transactions.INBOUND,
+				UserID:         user.ID,
+				AmountSat:      amount2,
+				AmountMilliSat: amount2 * 1000,
+				HashedPreimage: SampleHash[:],
+				PaymentRequest: payReq2,
+				Memo:           &firstMemo,
+				Description:    &description,
+				Status:         transactions.Offchain_CREATED,
+				Direction:      transactions.INBOUND,
 			},
 		},
 		{
@@ -135,9 +141,10 @@ func TestNewOffchainTx(t *testing.T) {
 			},
 			want: transactions.Offchain{
 				UserID:          user.ID,
+				AmountSat:       amount3,
 				AmountMilliSat:  amount3 * 1000,
 				Memo:            &firstMemo,
-				RHashedPreimage: SampleHash[:],
+				HashedPreimage:  SampleHash[:],
 				PaymentRequest:  payReq3,
 				Description:     &description,
 				Status:          transactions.Offchain_CREATED,
@@ -182,6 +189,7 @@ func TestNewOffchainTx(t *testing.T) {
 			assert.Equal(want.PaymentRequest, got.PaymentRequest)
 			assert.Equal(want.Status, got.Status)
 			assert.Equal(want.Direction, got.Direction)
+			assert.Equal(want.HashedPreimage, got.HashedPreimage)
 			assert.Equal(want.HashedPreimage, got.HashedPreimage)
 			assert.Equal(want.Preimage, got.Preimage)
 		})
@@ -280,19 +288,87 @@ func TestNewOffchainTx(t *testing.T) {
 	})
 }
 
-func TestOffchain_MarkAsPaid(t *testing.T) {
+func TestInsertOffchainTransaction(t *testing.T) {
+	t.Parallel()
+	user := userstestutil.CreateUserOrFail(t, testDB)
+	for i := 0; i < 20; i++ {
+		t.Run("inserting arbitrary offchain "+strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+			offchain := txtest.MockOffchain(user.ID)
+
+			inserted, err := transactions.InsertOffchain(testDB, offchain)
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+
+			offchain.CreatedAt = inserted.CreatedAt
+			offchain.UpdatedAt = inserted.UpdatedAt
+
+			if offchain.SettledAt != nil {
+				if offchain.SettledAt.Sub(*inserted.SettledAt) > time.Millisecond*500 {
+					testutil.AssertEqual(t, *offchain.SettledAt, *inserted.SettledAt)
+				}
+				offchain.SettledAt = inserted.SettledAt
+			}
+
+			// ID should be created by DB for us
+			testutil.AssertNotEqual(t, offchain.ID, inserted.ID)
+			offchain.ID = inserted.ID
+			diff := cmp.Diff(offchain, inserted)
+			if diff != "" {
+				testutil.FatalMsg(t, diff)
+			}
+
+			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+
+			foundOffChain, err := foundTx.ToOffchain()
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+
+			diff = cmp.Diff(foundOffChain, inserted)
+			if diff != "" {
+				testutil.FatalMsg(t, diff)
+			}
+
+			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
+			if err != nil {
+				testutil.FatalMsg(t, err)
+			}
+			found := false
+			for _, tx := range allTXs {
+				off, err := tx.ToOffchain()
+				if err != nil {
+					break
+				}
+				if cmp.Diff(off, inserted) == "" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				testutil.FatalMsg(t, "Did not find TX when doing GetAll")
+			}
+		})
+
+	}
+}
+
+func TestOffchain_MarkAsCompleted(t *testing.T) {
 	t.Parallel()
 	user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountMsatPerInvoice*5)
 	tx := txtest.MockOffchain(user.ID)
 	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
-	settlement := time.Now()
-	paid, err := inserted.MarkAsCompleted(testDB, settlement, nil)
+	paid, err := inserted.MarkAsCompleted(testDB, inserted.Preimage, nil)
 	require.NoError(t, err)
 	assert.Equal(t, transactions.Offchain_COMPLETED, paid.Status)
 	require.NotNil(t, paid.SettledAt)
-	assert.WithinDuration(t, settlement, *paid.SettledAt, time.Second)
+	assert.WithinDuration(t, time.Now(), *paid.SettledAt, time.Second)
 }
 
 func TestOffchain_MarkAsFlopped(t *testing.T) {
@@ -609,12 +685,12 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 
 	t.Run("expiry field", func(t *testing.T) {
 		offchainTx := transactions.Offchain{
-			UserID:          user.ID,
-			RHashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-			Expiry:          1,
-			Direction:       transactions.INBOUND,
-			Status:          transactions.Offchain_CREATED,
-			AmountMilliSat:  100000,
+			UserID:         user.ID,
+			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:         1,
+			Direction:      transactions.INBOUND,
+			Status:         transactions.Offchain_CREATED,
+			AmountMilliSat: 100000,
 		}
 
 		offchainTx, err := transactions.InsertOffchain(testDB, offchainTx)
@@ -630,20 +706,20 @@ func TestOffchain_WithAdditionalFields(t *testing.T) {
 
 	invoices := []transactions.Offchain{
 		{
-			UserID:          user.ID,
-			RHashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-			Expiry:          3600,
-			Direction:       transactions.INBOUND,
-			Status:          transactions.Offchain_CREATED,
-			AmountMilliSat:  100000,
+			UserID:         user.ID,
+			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:         3600,
+			Direction:      transactions.INBOUND,
+			Status:         transactions.Offchain_CREATED,
+			AmountMilliSat: 100000,
 		},
 		{
-			UserID:          user.ID,
-			RHashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
-			Expiry:          2,
-			Direction:       transactions.INBOUND,
-			Status:          transactions.Offchain_CREATED,
-			AmountMilliSat:  100000,
+			UserID:         user.ID,
+			HashedPreimage: []byte("f747dbf93249644a71749b6fff7c5a9eb7c1526c52ad3414717e222470940c57"),
+			Expiry:         2,
+			Direction:      transactions.INBOUND,
+			Status:         transactions.Offchain_CREATED,
+			AmountMilliSat: 100000,
 		},
 	}
 

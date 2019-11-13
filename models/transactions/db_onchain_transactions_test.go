@@ -113,75 +113,6 @@ func TestInsertOnchainTransaction(t *testing.T) {
 	}
 }
 
-func TestInsertOffchainTransaction(t *testing.T) {
-	t.Parallel()
-	user := userstestutil.CreateUserOrFail(t, testDB)
-	for i := 0; i < 20; i++ {
-		t.Run("inserting arbitrary offchain "+strconv.Itoa(i), func(t *testing.T) {
-			t.Parallel()
-			offchain := txtest.MockOffchain(user.ID)
-
-			inserted, err := transactions.InsertOffchain(testDB, offchain)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-
-			offchain.CreatedAt = inserted.CreatedAt
-			offchain.UpdatedAt = inserted.UpdatedAt
-
-			if offchain.SettledAt != nil {
-				if offchain.SettledAt.Sub(*inserted.SettledAt) > time.Millisecond*500 {
-					testutil.AssertEqual(t, *offchain.SettledAt, *inserted.SettledAt)
-				}
-				offchain.SettledAt = inserted.SettledAt
-			}
-
-			// ID should be created by DB for us
-			testutil.AssertNotEqual(t, offchain.ID, inserted.ID)
-			offchain.ID = inserted.ID
-			diff := cmp.Diff(offchain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
-
-			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-
-			foundOffChain, err := foundTx.ToOffchain()
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-
-			diff = cmp.Diff(foundOffChain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
-
-			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-			found := false
-			for _, tx := range allTXs {
-				off, err := tx.ToOffchain()
-				if err != nil {
-					break
-				}
-				if cmp.Diff(off, inserted) == "" {
-					found = true
-					break
-				}
-			}
-			if !found {
-				testutil.FatalMsg(t, "Did not find TX when doing GetAll")
-			}
-		})
-
-	}
-}
-
 func TestGetTransactionByID(t *testing.T) {
 	t.Parallel()
 
@@ -203,7 +134,6 @@ func TestGetTransactionByID(t *testing.T) {
 		expectedResult transactions.Transaction
 	}{
 		{
-
 			email1,
 			password1,
 			transactions.Transaction{
@@ -215,7 +145,6 @@ func TestGetTransactionByID(t *testing.T) {
 			},
 		},
 		{
-
 			email2,
 			password2,
 			transactions.Transaction{

@@ -267,7 +267,7 @@ func payInvoice() gin.HandlerFunc {
 			return
 		}
 
-		c.JSONP(http.StatusOK, t)
+		c.JSON(http.StatusOK, t)
 	}
 }
 

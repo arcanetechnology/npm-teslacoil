@@ -4,6 +4,8 @@ package apitxs_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"testing"
@@ -109,6 +111,17 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 func TestPayInvoice(t *testing.T) {
 
+	assertPreimageIsOfHash := func(t *testing.T, preimage string, hash string) {
+		// we decode the base64 encoded string into a []byte
+		decodedPreimage, err := hex.DecodeString(preimage)
+		require.NoError(t, err)
+
+		// then we hash the preimage using shasum256
+		shasum := sha256.Sum256(decodedPreimage)
+
+		assert.Equal(t, hex.EncodeToString(shasum[:]), hash)
+	}
+
 	nodetestutil.RunWithBitcoindAndLndPair(t, func(lnd1 lnrpc.LightningClient, lnd2 lnrpc.LightningClient, bitcoind bitcoind.TeslacoilBitcoind) {
 		app, err := api.NewApp(testDB,
 			lnd1,
@@ -145,7 +158,9 @@ func TestPayInvoice(t *testing.T) {
 				}`, paymentRequest.PaymentRequest),
 				})
 
-			_ = h.AssertResponseOkWithJson(t, req)
+			res := h.AssertResponseOkWithJson(t, req)
+
+			assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
 		})
 
 		t.Run("invalid payment request is not OK", func(t *testing.T) {
@@ -246,7 +261,12 @@ func TestPayInvoice(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, prePaymentBalance.Sats()+amount, postPaymentBalance.Sats())
-			assert.True(t, res["internalTransfer"].(bool))
+			assert.Equal(t, res["status"], "completed")
+			assert.NotNil(t, res["preimage"])
+			assert.Equal(t, hex.EncodeToString(offchain.HashedPreimage), res["hash"])
+			assert.Equal(t, float64(offchain.AmountSat), res["amountSat"])
+			assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
+
 		})
 
 		t.Run("paying own invoice returns specific error", func(t *testing.T) {

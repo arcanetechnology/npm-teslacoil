@@ -3,6 +3,7 @@ package transactions
 import (
 	"database/sql"
 	"encoding"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,12 +79,12 @@ type Transaction struct {
 	ConfirmedAt      *time.Time `db:"confirmed_at"`
 
 	// offchain fields
-	PaymentRequest  *string         `db:"payment_request"`
-	RPreimage       *[]byte         `db:"preimage"`
-	RHashedPreimage *[]byte         `db:"hashed_preimage"`
-	SettledAt       *time.Time      `db:"settled_at"` // If defined, it means the  invoice is settled
-	Memo            *string         `db:"memo"`
-	Status          *OffchainStatus `db:"invoice_status"`
+	PaymentRequest *string         `db:"payment_request"`
+	Preimage       *[]byte         `db:"preimage"`
+	HashedPreimage *[]byte         `db:"hashed_preimage"`
+	SettledAt      *time.Time      `db:"settled_at"` // If defined, it means the  invoice is settled
+	Memo           *string         `db:"memo"`
+	Status         *OffchainStatus `db:"invoice_status"`
 }
 
 // MarshalJSON is added to make sure that we never serialize raw Transactions
@@ -179,13 +180,13 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 		CustomerOrderId:  t.CustomerOrderId,
 		Expiry:           *t.Expiry,
 		InternalTransfer: t.InternalTransfer,
-		AmountSat:        amountSat,
+		AmountSat:        *amountSat,
 		AmountMilliSat:   *t.AmountMilliSat,
 		Description:      t.Description,
 		Direction:        t.Direction,
-		RHashedPreimage:  *t.RHashedPreimage,
+		Preimage:         *t.Preimage,
+		HashedPreimage:   *t.HashedPreimage,
 		PaymentRequest:   *t.PaymentRequest,
-		RPreimage:        *t.RPreimage,
 		Memo:             t.Memo,
 		Status:           *t.Status,
 		SettledAt:        t.SettledAt,
@@ -195,8 +196,8 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 	}
 
 	// if preimage is NULL in DB, default is empty slice and not null
-	if t.RPreimage != nil && len(*t.RPreimage) == 0 {
-		off.RPreimage = nil
+	if t.Preimage != nil && len(*t.Preimage) == 0 {
+		off.Preimage = nil
 	}
 
 	return off, nil
@@ -216,10 +217,12 @@ type offchainNoJson Offchain
 type offchainWithDerived struct {
 	offchainNoJson
 
-	Expired   bool      `json:"expired"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	AmountSat int64     `json:"amountSat"`
-	Type      txType    `json:"type"`
+	HexHashedPreimage string    `json:"hash"`
+	HexPreimage       string    `json:"preimage"`
+	Expired           bool      `json:"expired"`
+	ExpiresAt         time.Time `json:"expiresAt"`
+	AmountSat         int64     `json:"amountSat"`
+	Type              txType    `json:"type"`
 }
 
 // Offchain is the db-type for an offchain transaction
@@ -235,17 +238,15 @@ type Offchain struct {
 	Expiry           int64 `json:"-"`
 	InternalTransfer bool  `json:"-"`
 
-	AmountSat       *int64         `json:"amountSat"`
-	AmountMilliSat  int64          `json:"amountMilliSat"`
-	Description     *string        `json:"description,omitempty"`
-	Direction       Direction      `json:"direction"`
-	RHashedPreimage []byte         `json:"rHash"`
-	HashedPreimage  string         `json:"hash"`
-	PaymentRequest  string         `json:"paymentRequest"`
-	RPreimage       []byte         `json:"rPreimage"`
-	Preimage        string         `json:"preimage"`
-	Memo            *string        `json:"memo,omitempty"`
-	Status          OffchainStatus `json:"status"`
+	AmountSat      int64          `json:"amountSat"`
+	AmountMilliSat int64          `json:"amountMilliSat"`
+	Description    *string        `json:"description,omitempty"`
+	Direction      Direction      `json:"direction"`
+	HashedPreimage []byte         `json:"-"`
+	Preimage       []byte         `json:"-"`
+	PaymentRequest string         `json:"paymentRequest"`
+	Memo           *string        `json:"memo,omitempty"`
+	Status         OffchainStatus `json:"status"`
 
 	SettledAt *time.Time `json:"settledAt,omitempty"` // If defined, it means the  invoice is settled
 	CreatedAt time.Time  `json:"createdAt"`
@@ -269,8 +270,8 @@ func (o Offchain) ToTransaction() Transaction {
 		Description:      o.Description,
 		InternalTransfer: o.InternalTransfer,
 		PaymentRequest:   &o.PaymentRequest,
-		RPreimage:        &o.RPreimage,
-		RHashedPreimage:  &o.RHashedPreimage,
+		Preimage:         &o.Preimage,
+		HashedPreimage:   &o.HashedPreimage,
 		AmountMilliSat:   &o.AmountMilliSat,
 		SettledAt:        o.SettledAt,
 		Memo:             o.Memo,
@@ -284,11 +285,13 @@ func (o Offchain) ToTransaction() Transaction {
 func (o Offchain) withAdditionalFields() offchainWithDerived {
 	expiresAt := o.CreatedAt.Add(time.Second * time.Duration(o.Expiry))
 	return offchainWithDerived{
-		offchainNoJson: offchainNoJson(o),
-		Type:           lightning,
-		Expired:        expiresAt.Before(time.Now()),
-		ExpiresAt:      expiresAt,
-		AmountSat:      o.AmountMilliSat / 1000,
+		offchainNoJson:    offchainNoJson(o),
+		HexPreimage:       hex.EncodeToString(o.Preimage),
+		HexHashedPreimage: hex.EncodeToString(o.HashedPreimage),
+		Type:              lightning,
+		Expired:           expiresAt.Before(time.Now()),
+		ExpiresAt:         expiresAt,
+		AmountSat:         o.AmountMilliSat / 1000,
 	}
 }
 
@@ -360,22 +363,27 @@ func (s OffchainStatus) MarshalText() (text []byte, err error) {
 }
 
 // MarkAsCompleted marks the given payment request as paid at the given date
-func (o Offchain) MarkAsCompleted(database db.InsertGetter, paidAt time.Time, callbacker HttpPoster) (
-	Offchain, error) {
+func (o Offchain) MarkAsCompleted(database db.InsertGetter, preimage []byte,
+	callbacker HttpPoster) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions
-		SET internal_transfer = :internal_transfer, settled_at = :settled_at, invoice_status = :invoice_status
+		SET preimage = :preimage, internal_transfer = :internal_transfer, settled_at = :settled_at, invoice_status = :invoice_status
 		WHERE id = :id ` + txReturningSql
 
 	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
 
-	o.SettledAt = &paidAt
+	now := time.Now()
+	o.SettledAt = &now
 	o.Status = Offchain_COMPLETED
+	o.Preimage = preimage
+	o.InternalTransfer = true
+
 	tx := o.ToTransaction()
 	rows, err := database.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
 		log.WithError(err).Error("couldnt mark invoice as paid")
 		return Offchain{}, err
 	}
+	// we defer CloseRows in case rows.Next() or StructScan fails
 	defer db.CloseRows(rows)
 
 	if !rows.Next() {
@@ -392,6 +400,9 @@ func (o Offchain) MarkAsCompleted(database db.InsertGetter, paidAt time.Time, ca
 		return Offchain{}, err
 	}
 
+	// we close rows here to free up the connection because postCallback
+	// needs to use the database
+	db.CloseRows(rows)
 	// call the callback URL(if exists)
 	if updatedOffchain.CallbackURL != nil {
 		if err = postCallback(database, updatedOffchain, callbacker); err != nil {
