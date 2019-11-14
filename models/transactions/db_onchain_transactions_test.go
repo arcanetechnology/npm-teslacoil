@@ -574,14 +574,20 @@ func TestGetOrCreateDeposit(t *testing.T) {
 
 	mockLn := lntestutil.GetRandomLightningMockClient()
 
-	t.Run("can get latest address", func(t *testing.T) {
+	t.Run("always gets latest unused address", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		tx := txtest.InsertFakeIncomingWithoutTxidOnchainorFail(t, testDB, user.ID)
 
-		deposit, err := transactions.GetOrCreateDeposit(
+		deposit1, err := transactions.GetOrCreateDeposit(
 			testDB, mockLn, user.ID, false, "")
 		require.NoError(t, err)
-		assert.Equal(t, deposit, tx)
+		deposit2, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, false, "")
+		require.NoError(t, err)
+		deposit3, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, false, "")
+
+		assert.Equal(t, deposit1, deposit2)
+		assert.Equal(t, deposit1, deposit3)
 	})
 
 	t.Run("can create new deposit if user has no empty address", func(t *testing.T) {
