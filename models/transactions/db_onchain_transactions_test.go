@@ -585,6 +585,7 @@ func TestGetOrCreateDeposit(t *testing.T) {
 		require.NoError(t, err)
 		deposit3, err := transactions.GetOrCreateDeposit(
 			testDB, mockLn, user.ID, false, "")
+		require.NoError(t, err)
 
 		assert.Equal(t, deposit1, deposit2)
 		assert.Equal(t, deposit1, deposit3)

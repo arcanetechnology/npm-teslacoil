@@ -198,10 +198,10 @@ func CreateTeslacoilInvoice(database *db.DB, lncli ln.AddLookupInvoiceClient, op
 	return inserted, nil
 }
 
-// payReqBelongsToTeslacoilUser checks whether a payment request belongs
+// getTeslacoilPaymentRequest checks whether a payment request belongs
 // to teslacoil by SELECTING INBOUND transactions from the db. Returns the INBOUND
 // offchain transaction if it exists
-func payReqBelongsToTeslacoilUser(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
+func getTeslacoilPaymentRequest(db *db.DB, paymentRequest string, userID int) (Offchain, error) {
 	query := "SELECT * FROM transactions WHERE payment_request=$1 AND direction = $2"
 
 	var selectedTx Transaction
@@ -214,10 +214,6 @@ func payReqBelongsToTeslacoilUser(db *db.DB, paymentRequest string, userID int) 
 		log.WithError(err).WithField("paymentRequest",
 			paymentRequest).Error("could not get TX from DB")
 		return Offchain{}, err
-	}
-
-	if selectedTx.UserID == userID {
-		return Offchain{}, ErrCannotPayOwnInvoice
 	}
 
 	offchain, err := selectedTx.ToOffchain()
@@ -343,12 +339,8 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 		return Offchain{}, ErrBalanceTooLow
 	}
 
-	inboundTransaction, err := payReqBelongsToTeslacoilUser(database, payment.PaymentRequest, payment.UserID)
-	// first we check for specific errors we need to send up the chain
-	if errors.Is(err, ErrCannotPayOwnInvoice) {
-		log.WithError(err).Error("cannot pay own invoice")
-		return Offchain{}, err
-	} else if errors.Is(err, sql.ErrNoRows) {
+	inboundTransaction, err := getTeslacoilPaymentRequest(database, payment.PaymentRequest, payment.UserID)
+	if errors.Is(err, sql.ErrNoRows) {
 		// does not belong to us
 		payment, err = sendOffchain(database, lncli, callbacker, payment)
 		if err != nil {
@@ -356,7 +348,9 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 		}
 	} else if err != nil {
 		// something went wrong
-		return Offchain{}, fmt.Errorf("payReqBelongsToTeslacoilUser failed: %w", err)
+		return Offchain{}, fmt.Errorf("could not get offchain by paymentrequest: %w", err)
+	} else if inboundTransaction.UserID == userID {
+		return Offchain{}, ErrCannotPayOwnInvoice
 	} else {
 		// error is nil, and inboundTransaction is defined
 		payment, err = settleInternalTransfer(database, lncli, payment, inboundTransaction, callbacker)
