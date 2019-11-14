@@ -22,7 +22,7 @@ test:
       - coverage.html
   environment:
     name: coverage-report/$CI_BUILD_REF_NAME
-    url: http://159.69.36.23/backend-pr-coverage/$CI_BUILD_REF_NAME
+    url: https://ci.teslacoil.io/backend-pr-coverage/$CI_BUILD_REF_NAME
   before_script:
     # setup binaries directory
     - mkdir -p .binaries
@@ -47,9 +47,10 @@ test:
   script:
     # run tests
     - go test -cover -coverprofile coverage.out -tags integration  ./...
+
+    # make and upload coverage report
     - go tool cover -html=coverage.out -o coverage.html
-    - ssh -o StrictHostKeyChecking=no root@159.69.36.23 mkdir -p /var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME
-    - scp -o StrictHostKeyChecking=no coverage.html root@159.69.36.23:/var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME/index.html
+    - scp -o StrictHostKeyChecking=no coverage.html root@ci.teslacoil.io:/var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME/index.html
 
 lint:
   image: golangci/golangci-lint
