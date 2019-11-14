@@ -30,13 +30,13 @@ import (
 )
 
 var (
-	log            = build.Log
+	log            = build.AddSubLogger("BTCD_INT_TEST")
 	databaseConfig = testutil.GetDatabaseConfig("bitcoind")
 	testDB         *db.DB
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevels(logrus.ErrorLevel)
 
 	testDB = testutil.InitDatabase(databaseConfig)
 
@@ -58,7 +58,6 @@ func TestTxListener(t *testing.T) {
 	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
-
 		txCh := bitcoin.ZmqTxChannel()
 
 		var eventsReceived int
@@ -66,8 +65,7 @@ func TestTxListener(t *testing.T) {
 			for {
 				// We don't care for the result, juts the amount of events, therefore
 				// we ignore the tx
-				tx := <-txCh
-				log.Error("received tx: ", tx)
+				_ = <-txCh
 				eventsReceived++
 			}
 		}()
@@ -157,9 +155,11 @@ func TestFindVout(t *testing.T) {
 			amount := gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)
 			tx, err := bitcoin.Btcctl().SendToAddress(address, btcutil.Amount(amount))
 			require.NoError(t, err)
+			log.Tracef("sent tx %+v", tx)
 
 			rawTx, err := bitcoin.Btcctl().GetRawTransactionVerbose(tx)
 			require.NoError(t, err)
+			log.Tracef("raw tx %+v", rawTx)
 
 			var correctVout uint32
 			for _, output := range rawTx.Vout {
@@ -170,7 +170,12 @@ func TestFindVout(t *testing.T) {
 
 			vout, err := bitcoin.FindVout(tx.String(), address.String())
 			assert.NoError(t, err)
-			assert.Equal(t, uint32(vout), correctVout)
+			if !assert.Equal(t, uint32(vout), correctVout) {
+				log.WithFields(logrus.Fields{
+					"amount":  amount,
+					"address": address,
+				}).Errorf("rawTx.Hex: %s", rawTx.Hex)
+			}
 		})
 
 		t.Run("can choose correct vout from several addresses", func(t *testing.T) {

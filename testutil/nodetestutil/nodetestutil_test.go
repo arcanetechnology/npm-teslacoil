@@ -9,6 +9,7 @@ import (
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/stretchr/testify/assert"
+
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
@@ -16,7 +17,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-
 	code := m.Run()
 	if err := CleanupNodes(); err != nil {
 		panic(err)

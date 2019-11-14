@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	uuid "github.com/satori/go.uuid"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -16,7 +17,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/apikeys"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("APIK")
 
 var database *db.DB
 

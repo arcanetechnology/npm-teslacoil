@@ -19,7 +19,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.InfoLevel)
+	build.SetLogLevels(logrus.InfoLevel)
 
 	result := m.Run()
 

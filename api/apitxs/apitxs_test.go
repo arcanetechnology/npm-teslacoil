@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/araddon/dateparse"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -42,8 +44,7 @@ var (
 	databaseConfig = testutil.GetDatabaseConfig("tx_routes")
 	testDB         *db.DB
 	conf           = api.Config{
-		LogLevel: logrus.InfoLevel,
-		Network:  chaincfg.RegressionNetParams,
+		Network: chaincfg.RegressionNetParams,
 	}
 
 	h httptestutil.TestHarness
@@ -68,7 +69,7 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.DebugLevel)
+	build.SetLogLevels(logrus.DebugLevel)
 
 	// new values for gofakeit every time
 	gofakeit.Seed(0)
@@ -187,8 +188,7 @@ func TestGetTransaction(t *testing.T) {
 		assert.Equal(t, float64(*inserted.AmountSat), res["amountSat"])
 		assert.Equal(t, float64(*inserted.Vout), res["vout"])
 		assert.Equal(t, *inserted.Txid, res["txid"])
-		const layout = "2006-01-02T15:04:05.000000Z"
-		foundTime, err := time.Parse(layout, res["createdAt"].(string))
+		foundTime, err := dateparse.ParseAny(res["createdAt"].(string))
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, *inserted.ReceivedMoneyAt, foundTime, time.Millisecond*100)
@@ -624,7 +624,7 @@ func getTx(minAmountSat int64, userId int) transactions.Offchain {
 	tx := txtest.MockOffchain(userId)
 	if tx.Direction != transactions.INBOUND ||
 		tx.Status != transactions.Offchain_COMPLETED ||
-		tx.AmountMSat/1000 < minAmountSat {
+		balance.Balance(tx.AmountMilliSat).Sats() < minAmountSat {
 		return getTx(minAmountSat, userId)
 	}
 	return tx
@@ -676,7 +676,7 @@ func TestWithdrawOnChain(t *testing.T) {
 		})
 
 		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
-		expectedBalance := (tx.AmountMSat / 1000) - withdrawAmount
+		expectedBalance := balance.Balance(tx.AmountMilliSat).Sats() - withdrawAmount
 
 		testutil.AssertEqual(t, expectedBalance, balanceRes["balanceSats"])
 	})

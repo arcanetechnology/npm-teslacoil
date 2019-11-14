@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 
 	"github.com/gin-gonic/gin"
-	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
@@ -23,7 +25,7 @@ type Request struct {
 }
 
 var (
-	middleware = GetMiddleware(build.Log)
+	middleware = GetMiddleware(build.AddSubLogger("API_ERR_TEST"))
 	router     = setupRouter(middleware)
 	emptyBody  = bytes.NewBuffer([]byte(""))
 

@@ -16,9 +16,10 @@ import (
 	"github.com/gin-gonic/gin"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gopkg.in/go-playground/validator.v8"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-	"gopkg.in/go-playground/validator.v8"
 )
 
 // apiError is a type we can pass in to the Public method of this package.
@@ -228,7 +229,7 @@ func capitalize(str string) string {
 }
 
 // GetMiddleware returns a Gin middleware that handles errors
-func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
+func GetMiddleware(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		// let previous handlers run
@@ -245,7 +246,7 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 			httpCode = http.StatusInternalServerError
 		}
 
-		fieldErrors := handleValidationErrors(c, log)
+		fieldErrors := handleValidationErrors(c, logger)
 		response := &httptypes.StandardErrorResponse{
 			ErrorField: httptypes.StandardError{
 				Fields: fieldErrors,
@@ -279,7 +280,7 @@ func GetMiddleware(log *logrus.Logger) gin.HandlerFunc {
 				response.ErrorField.Code = apiErr.code
 				response.ErrorField.Message = apiErr.err.Error()
 			} else {
-				log.WithError(err).Warn("Got public error in error handler that was not apiError type")
+				logger.WithError(err).Warn("Got public error in error handler that was not apiError type")
 				response.ErrorField.Code = ErrUnknownError.code
 				response.ErrorField.Message = ErrUnknownError.err.Error()
 			}
@@ -315,7 +316,7 @@ func Public(c *gin.Context, code int, err apiError) {
 // we don't know how to handle
 const UnknownValidationTag = "unknown"
 
-func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.FieldError {
+func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.FieldError {
 	// initialize to empty list instead of pointer, to make sure the empty list
 	// is returned instead of nil
 	//noinspection GoPreferNilSlice
@@ -339,7 +340,7 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 		// if we pass an int to a JSON field expecting a string (or something similar),
 		// we end up with this kind of error, not a validator.ValidationErrors
 		if jsonError, ok := err.Err.(*json.UnmarshalTypeError); ok {
-			log.WithError(jsonError).WithFields(logrus.Fields{
+			logger.WithError(jsonError).WithFields(logrus.Fields{
 				"field":  jsonError.Field,
 				"value":  jsonError.Value,
 				"type":   jsonError.Type,
@@ -412,7 +413,7 @@ func handleValidationErrors(c *gin.Context, log *logrus.Logger) []httptypes.Fiel
 				message = fmt.Sprintf("%q cannot be longer than %s characters", field, validationErr.Param)
 				code = "max"
 			default:
-				log.WithField("tag", validationErr.Tag).Warn("Encountered unknown validation field")
+				logger.WithField("tag", validationErr.Tag).Warn("Encountered unknown validation field")
 				message = fmt.Sprintf("%s is invalid", field)
 				code = UnknownValidationTag
 			}

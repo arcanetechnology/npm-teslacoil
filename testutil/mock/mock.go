@@ -3,14 +3,16 @@ package mock
 import (
 	"sync"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/email"
 )
 
 var _ email.Sender = &mockSendGridClient{}
-var log = build.Log
+
+var log = build.AddSubLogger("MOCK")
 
 type mockSendGridClient struct {
 	sync.Mutex

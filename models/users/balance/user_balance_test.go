@@ -25,7 +25,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.ErrorLevel)
+	build.SetLogLevels(logrus.ErrorLevel)
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -46,7 +46,7 @@ func TestIncomingForUser(t *testing.T) {
 	calcNewBalance := func(t *testing.T, tx transactions.Transaction) balance.Balance {
 		if off, err := tx.ToOffchain(); err == nil {
 			if off.SettledAt != nil && off.Direction == transactions.INBOUND && off.Status == transactions.Offchain_COMPLETED {
-				return balance.Balance(off.AmountMSat)
+				return balance.Balance(off.AmountMilliSat)
 			}
 			return balance.Balance(0)
 		}
@@ -145,7 +145,7 @@ func TestOutgoingForUser(t *testing.T) {
 		if off, err := tx.ToOffchain(); err == nil {
 			// we debit users for all offchain TXs, _unless_ the payments are explictly failed
 			if off.Direction == transactions.OUTBOUND && off.Status != transactions.Offchain_FLOPPED {
-				return balance.Balance(off.AmountMSat)
+				return balance.Balance(off.AmountMilliSat)
 			}
 			return balance.Balance(0)
 		}

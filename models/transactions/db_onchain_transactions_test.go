@@ -113,75 +113,6 @@ func TestInsertOnchainTransaction(t *testing.T) {
 	}
 }
 
-func TestInsertOffchainTransaction(t *testing.T) {
-	t.Parallel()
-	user := userstestutil.CreateUserOrFail(t, testDB)
-	for i := 0; i < 20; i++ {
-		t.Run("inserting arbitrary offchain "+strconv.Itoa(i), func(t *testing.T) {
-			t.Parallel()
-			offchain := txtest.MockOffchain(user.ID)
-
-			inserted, err := transactions.InsertOffchain(testDB, offchain)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-
-			offchain.CreatedAt = inserted.CreatedAt
-			offchain.UpdatedAt = inserted.UpdatedAt
-
-			if offchain.SettledAt != nil {
-				if offchain.SettledAt.Sub(*inserted.SettledAt) > time.Millisecond*500 {
-					testutil.AssertEqual(t, *offchain.SettledAt, *inserted.SettledAt)
-				}
-				offchain.SettledAt = inserted.SettledAt
-			}
-
-			// ID should be created by DB for us
-			testutil.AssertNotEqual(t, offchain.ID, inserted.ID)
-			offchain.ID = inserted.ID
-			diff := cmp.Diff(offchain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
-
-			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-
-			foundOffChain, err := foundTx.ToOffchain()
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-
-			diff = cmp.Diff(foundOffChain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
-
-			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
-			found := false
-			for _, tx := range allTXs {
-				off, err := tx.ToOffchain()
-				if err != nil {
-					break
-				}
-				if cmp.Diff(off, inserted) == "" {
-					found = true
-					break
-				}
-			}
-			if !found {
-				testutil.FatalMsg(t, "Did not find TX when doing GetAll")
-			}
-		})
-
-	}
-}
-
 func TestGetTransactionByID(t *testing.T) {
 	t.Parallel()
 
@@ -203,33 +134,31 @@ func TestGetTransactionByID(t *testing.T) {
 		expectedResult transactions.Transaction
 	}{
 		{
-
 			email1,
 			password1,
 			transactions.Transaction{
-				UserID:      user.ID,
-				AmountMSat:  &amount1,
-				Address:     &address1,
-				Description: &foo,
-				Direction:   transactions.INBOUND,
+				UserID:         user.ID,
+				AmountMilliSat: &amount1,
+				Address:        &address1,
+				Description:    &foo,
+				Direction:      transactions.INBOUND,
 			},
 		},
 		{
-
 			email2,
 			password2,
 			transactions.Transaction{
-				UserID:      user.ID,
-				AmountMSat:  &amount2,
-				Address:     &address2,
-				Description: &foo,
-				Direction:   transactions.INBOUND,
+				UserID:         user.ID,
+				AmountMilliSat: &amount2,
+				Address:        &address2,
+				Description:    &foo,
+				Direction:      transactions.INBOUND,
 			},
 		},
 	}
 
 	for _, test := range testCases {
-		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountMSat),
+		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountMilliSat),
 			func(t *testing.T) {
 				t.Parallel()
 
@@ -251,9 +180,9 @@ func TestGetTransactionByID(t *testing.T) {
 
 				test.expectedResult.ID = transaction.ID
 				assert.Equal(t, transaction.Address, test.expectedResult.Address)
-				if test.expectedResult.AmountMSat != nil {
-					require.NotNil(t, transaction.AmountMSat)
-					assert.InDelta(t, *transaction.AmountMSat, *test.expectedResult.AmountMSat, 1000)
+				if test.expectedResult.AmountMilliSat != nil {
+					require.NotNil(t, transaction.AmountMilliSat)
+					assert.InDelta(t, *transaction.AmountMilliSat, *test.expectedResult.AmountMilliSat, 1000)
 				}
 				assert.Equal(t, transaction.Direction, test.expectedResult.Direction)
 				assert.Equal(t, transaction.Description, test.expectedResult.Description)
@@ -645,15 +574,21 @@ func TestGetOrCreateDeposit(t *testing.T) {
 
 	mockLn := lntestutil.GetRandomLightningMockClient()
 
-	t.Run("can get latest address", func(t *testing.T) {
-		t.Parallel()
+	t.Run("always gets latest unused address", func(t *testing.T) {
 		user := userstestutil.CreateUserOrFail(t, testDB)
-		tx := txtest.InsertFakeIncomingWithoutTxidOnchainorFail(t, testDB, user.ID)
 
-		deposit, err := transactions.GetOrCreateDeposit(
+		deposit1, err := transactions.GetOrCreateDeposit(
 			testDB, mockLn, user.ID, false, "")
 		require.NoError(t, err)
-		assert.Equal(t, deposit, tx)
+		deposit2, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, false, "")
+		require.NoError(t, err)
+		deposit3, err := transactions.GetOrCreateDeposit(
+			testDB, mockLn, user.ID, false, "")
+		require.NoError(t, err)
+
+		assert.Equal(t, deposit1, deposit2)
+		assert.Equal(t, deposit1, deposit3)
 	})
 
 	t.Run("can create new deposit if user has no empty address", func(t *testing.T) {

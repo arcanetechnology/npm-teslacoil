@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urfave/cli"
 	"gitlab.com/arcanecrypto/teslacoil/build"
+
+	"github.com/urfave/cli"
 	"gitlab.com/arcanecrypto/teslacoil/cmd/tlc/flags"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("ACTN")
 
 // Db returns commands for handling DB access and migrations
 func Db() cli.Command {

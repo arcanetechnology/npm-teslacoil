@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/dchest/passwordreset"
@@ -21,7 +22,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/db"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("USER")
 
 // User is a database table
 type User struct {
@@ -435,7 +436,7 @@ type UpdateOptions struct {
 
 // Update the users email, first name and last name, depending on
 // what options are passed in
-func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
+func (u User) Update(database *db.DB, opts UpdateOptions) (User, error) {
 	if u.ID == 0 {
 		return User{}, errors.New("UserID cannot be 0")
 	}
@@ -486,11 +487,10 @@ func (u User) Update(db *db.DB, opts UpdateOptions) (User, error) {
 		"newLastName":  opts.NewLastName,
 	}).Debug("executing SQL for updating user")
 
-	rows, err := db.NamedQuery(
+	rows, err := database.NamedQuery(
 		updateQuery,
 		&queryUser,
 	)
-
 	if err != nil {
 		return User{}, errors.Wrap(err, "could not update user")
 	}
@@ -542,6 +542,7 @@ func (u User) String() string {
 
 // scanUser tries to scan a User struct frm the given scannable interface
 func scanUser(rows dbScanner) (User, error) {
+	defer db.CloseRows(rows)
 	user := User{}
 
 	if err := rows.Err(); err != nil {
@@ -565,10 +566,6 @@ func scanUser(rows dbScanner) (User, error) {
 		}
 	} else {
 		return user, errors.New("given rows did not have any elements")
-	}
-
-	if err := rows.Close(); err != nil {
-		return user, err
 	}
 
 	return user, nil

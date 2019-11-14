@@ -12,7 +12,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/cmd/tlc/flags"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("MAIN")
 
 func main() { //nolint:deadcode,unused
 	app := cli.NewApp()
@@ -21,26 +21,18 @@ func main() { //nolint:deadcode,unused
 	app.EnableBashCompletion = true
 	// have log levels be set for all commands/subcommands
 	app.Before = func(c *cli.Context) error {
-		if c.GlobalBool("logging.disablecolors") {
-			build.DisableColors()
-		}
-
 		level, err := build.ToLogLevel(c.GlobalString("logging.level"))
 		if err != nil {
 			return err
 		}
-		existingLevel := build.Log.Level
+		existingLevel := log.Level
 		if existingLevel != level {
-			build.SetLogLevel(level)
+			build.SetLogLevels(level)
 		}
 
-		logToFile := c.GlobalBool("logging.writetofile")
-		if logToFile {
-			logFile := c.GlobalString("logging.file")
-			if err = build.SetLogFile(logFile); err != nil {
-				return err
-			}
-			log.Info("Logging to file")
+		logFile := c.GlobalString("logging.directory")
+		if err = build.SetLogDir(logFile); err != nil {
+			return err
 		}
 		return nil
 	}
@@ -55,7 +47,7 @@ func main() { //nolint:deadcode,unused
 			Action: func(c *cli.Context) error {
 				// to make this pipeable to `source`, we don't want any other
 				// output
-				build.SetLogLevel(logrus.FatalLevel)
+				build.SetLogLevels(logrus.FatalLevel)
 
 				completion, err := app.ToFishCompletion()
 				if err != nil {

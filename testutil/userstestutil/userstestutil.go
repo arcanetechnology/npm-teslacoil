@@ -46,12 +46,12 @@ func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, balance int) users.Use
 
 	settled := gofakeit.Date()
 	offchain := transactions.Offchain{
-		UserID:     u.ID,
-		AmountMSat: int64(balance) * 1000,
-		Direction:  transactions.INBOUND,
-		Expiry:     1337,
-		Status:     transactions.Offchain_COMPLETED,
-		SettledAt:  &settled,
+		UserID:         u.ID,
+		AmountMilliSat: int64(balance) * 1000,
+		Direction:      transactions.INBOUND,
+		Expiry:         1337,
+		Status:         transactions.Offchain_COMPLETED,
+		SettledAt:      &settled,
 	}
 	_, err := transactions.InsertOffchain(db, offchain)
 	require.NoError(t, err)

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
-
 	"gitlab.com/arcanecrypto/teslacoil/build"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 	cross     = "❌"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("TESTUTIL")
 
 type LogWriter struct {
 	Label string

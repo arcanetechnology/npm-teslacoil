@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -30,9 +32,10 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("TXNS_INT_TEST")
 
 func TestMain(m *testing.M) {
+	build.SetLogLevels(logrus.ErrorLevel)
 	code := m.Run()
 
 	if err := nodetestutil.CleanupNodes(); err != nil {

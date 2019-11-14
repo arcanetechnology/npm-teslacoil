@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
+
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -192,7 +194,8 @@ func MockOffchain(userID int) transactions.Offchain {
 		PaymentRequest: MockPaymentRequest(),
 		Preimage:       preimage,
 		HashedPreimage: hashedPreimage,
-		AmountMSat:     amountMSat,
+		AmountSat:      balance.Balance(amountMSat).Sats(),
+		AmountMilliSat: amountMSat,
 		SettledAt:      settledAt,
 		Memo: MockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))

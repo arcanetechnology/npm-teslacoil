@@ -8,16 +8,17 @@ import (
 
 	"github.com/btcsuite/btcutil"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/zpay32"
 
 	"github.com/nbutton23/zxcvbn-go"
 	"github.com/pkg/errors"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gopkg.in/go-playground/validator.v8"
 )
 
-var log = build.Log
+var log = build.AddSubLogger("VALI")
 
 // RequiredValidationScore password validation we require for a password to be
 // deemed acceptable. It can be between 0 and 4, with values corresponding to

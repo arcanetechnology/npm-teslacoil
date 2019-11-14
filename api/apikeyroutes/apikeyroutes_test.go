@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/araddon/dateparse"
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/sirupsen/logrus"
@@ -32,16 +33,16 @@ import (
 )
 
 var (
+	log = build.AddSubLogger("apikeyroutes_test")
+
 	testDB              *db.DB
 	h                   httptestutil.TestHarness
 	mockLightningClient = lntestutil.GetLightningMockClient()
 	mockBitcoindClient  = bitcoind.GetBitcoinMockClient()
 	mockHttpPoster      = testutil.GetMockHttpPoster()
 	mockSendGridClient  = mock.GetMockSendGridClient()
-	log                 = build.Log
 	conf                = api.Config{
-		LogLevel: logrus.InfoLevel,
-		Network:  chaincfg.RegressionNetParams,
+		Network: chaincfg.RegressionNetParams,
 	}
 )
 
@@ -328,8 +329,7 @@ func TestCreateApiKey(t *testing.T) {
 
 		require.NotNil(t, res["createdAt"])
 
-		const layout = "2006-01-02T15:04:05.000000Z"
-		createdAt, err := time.Parse(layout, res["createdAt"].(string))
+		createdAt, err := dateparse.ParseAny(res["createdAt"].(string))
 		require.NoError(t, err, res["createdAt"])
 		assert.WithinDuration(t, time.Now(), createdAt, time.Second)
 

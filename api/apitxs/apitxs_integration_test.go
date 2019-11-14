@@ -4,20 +4,22 @@ package apitxs_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"testing"
 
 	"github.com/btcsuite/btcutil"
+
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/sirupsen/logrus"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/mock"
@@ -28,6 +30,7 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/lightningnetwork/lnd/lnrpc"
+
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/httptestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/nodetestutil"
@@ -39,7 +42,7 @@ func init() {
 	// closes when the process exits anyway
 	testDB = testutil.InitDatabase(databaseConfig)
 	databaseConfig = testutil.GetDatabaseConfig("api_txs_integration")
-	conf = api.Config{LogLevel: logrus.InfoLevel, Network: chaincfg.RegressionNetParams}
+	conf = api.Config{Network: chaincfg.RegressionNetParams}
 }
 
 func TestCreateInvoiceRoute(t *testing.T) {
@@ -109,6 +112,17 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 func TestPayInvoice(t *testing.T) {
 
+	assertPreimageIsOfHash := func(t *testing.T, preimage string, hash string) {
+		// we decode the base64 encoded string into a []byte
+		decodedPreimage, err := hex.DecodeString(preimage)
+		require.NoError(t, err)
+
+		// then we hash the preimage using shasum256
+		shasum := sha256.Sum256(decodedPreimage)
+
+		assert.Equal(t, hex.EncodeToString(shasum[:]), hash)
+	}
+
 	nodetestutil.RunWithBitcoindAndLndPair(t, func(lnd1 lnrpc.LightningClient, lnd2 lnrpc.LightningClient, bitcoind bitcoind.TeslacoilBitcoind) {
 		app, err := api.NewApp(testDB,
 			lnd1,
@@ -145,7 +159,9 @@ func TestPayInvoice(t *testing.T) {
 				}`, paymentRequest.PaymentRequest),
 				})
 
-			_ = h.AssertResponseOkWithJson(t, req)
+			res := h.AssertResponseOkWithJson(t, req)
+
+			assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
 		})
 
 		t.Run("invalid payment request is not OK", func(t *testing.T) {
@@ -246,7 +262,12 @@ func TestPayInvoice(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, prePaymentBalance.Sats()+amount, postPaymentBalance.Sats())
-			assert.True(t, res["internalTransfer"].(bool))
+			assert.Equal(t, res["status"], "completed")
+			assert.NotNil(t, res["preimage"])
+			assert.Equal(t, hex.EncodeToString(offchain.HashedPreimage), res["hash"])
+			assert.Equal(t, float64(offchain.AmountSat), res["amountSat"])
+			assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
+
 		})
 
 		t.Run("paying own invoice returns specific error", func(t *testing.T) {

@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -27,7 +29,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
@@ -40,7 +41,7 @@ const (
 )
 
 var (
-	log         = build.Log
+	log         = build.AddSubLogger("NODETESTUTIL")
 	_   Cleaner = nodeCleaner{}
 )
 

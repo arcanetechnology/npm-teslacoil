@@ -42,9 +42,9 @@ func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 		return Onchain{}, fmt.Errorf("could not convert inserted TX to onchain TX: %w", err)
 	}
 	// update the sats field
-	if tx.AmountMSat != nil {
-		// TODO: math.Round() ? math.Floor()?
-		sats := *tx.AmountMSat / 1000
+	if tx.AmountMilliSat != nil {
+		a := balance.Balance(*tx.AmountMilliSat)
+		sats := a.Sats()
 		insertedOnchain.AmountSat = &sats
 	}
 	return insertedOnchain, nil

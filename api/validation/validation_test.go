@@ -19,7 +19,7 @@ import (
 var validate *validator.Validate
 
 func TestMain(m *testing.M) {
-	build.SetLogLevel(logrus.InfoLevel)
+	build.SetLogLevels(logrus.ErrorLevel)
 	gofakeit.Seed(0)
 
 	config := validator.Config{TagName: "binding"}

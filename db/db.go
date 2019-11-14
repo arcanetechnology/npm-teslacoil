@@ -10,7 +10,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 )
+
+var log = build.AddSubLogger("DB")
 
 // DatabaseConfig has all the values we need to connect to a DB
 type DatabaseConfig struct {
@@ -164,4 +167,16 @@ type Selecter interface {
 // Inserter can insert into a database
 type Inserter interface {
 	NamedQuery(query string, arg interface{}) (*sqlx.Rows, error)
+}
+
+// Closer can Close()
+type Closer interface {
+	Close() error
+}
+
+// CloseRows attempts to close the rows. If something goes wrong, it prints an error message
+func CloseRows(rows Closer) {
+	if err := rows.Close(); err != nil {
+		log.WithError(err).Error("could not close rows")
+	}
 }
