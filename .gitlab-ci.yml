@@ -50,6 +50,7 @@ test:
 
     # make and upload coverage report
     - go tool cover -html=coverage.out -o coverage.html
+    - ssh -o StrictHostKeyChecking=no root@ci.teslacoil.io mkdir -p /var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME
     - scp -o StrictHostKeyChecking=no coverage.html root@ci.teslacoil.io:/var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME/index.html
 
 lint:
