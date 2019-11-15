@@ -46,14 +46,10 @@ func TestNew(t *testing.T) {
 		t.Parallel()
 		desc := gofakeit.Sentence(10)
 		rawKey, key, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, desc)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		found, err := apikeys.Get(testDB, rawKey)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		assert := assert.New(t)
 		assert.Equal(key, found)
@@ -82,18 +78,14 @@ func TestNew(t *testing.T) {
 	t.Run("creating an api key with no related user should not work", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := apikeys.New(testDB, 99999999, apikeys.AllPermissions, "")
-		if err == nil {
-			testutil.FatalMsg(t, "Created an API key with no corresponding user")
-		}
+		assert.Error(t, err, "Created an API key with no corresponding user")
 	})
 
 	t.Run("getting an non-existing key should not work", func(t *testing.T) {
 		t.Parallel()
 
 		_, err := apikeys.Get(testDB, uuid.Must(uuid.FromString(gofakeit.UUID())))
-		if err == nil {
-			testutil.FatalMsg(t, "Was able to find non existant key!")
-		}
+		assert.Error(t, err, "Was able to find non existant key!")
 	})
 }
 

@@ -9,9 +9,8 @@ import (
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/stretchr/testify/assert"
-
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 )
@@ -28,9 +27,7 @@ func TestStartBitcoindOrFail(t *testing.T) {
 	conf := bitcoindtestutil.GetBitcoindConfig(t)
 	client := StartBitcoindOrFail(t, conf)
 	_, err := client.Btcctl().GetBlockChainInfo()
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not start and communicate with bitcoind: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestStartLndOrFail(t *testing.T) {
@@ -41,9 +38,7 @@ func TestStartLndOrFail(t *testing.T) {
 	lnd := StartLndOrFail(t, bitcoindConf, lndConf)
 
 	_, err := lnd.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not start and communiate with lnd: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func TestRunWithBitcoindAndLndPair(t *testing.T) {

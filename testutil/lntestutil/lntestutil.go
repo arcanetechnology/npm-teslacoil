@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcutil/hdkeychain"
+	"github.com/stretchr/testify/require"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -120,9 +121,7 @@ func GetLightningMockClient() LightningMockClient {
 func GetLightingConfig(t *testing.T) ln.LightningConfig {
 	port := testutil.GetPortOrFail(t)
 	tempDir, err := ioutil.TempDir("", "teslacoil-lnd-")
-	if err != nil {
-		testutil.FatalMsgf(t, "Could not create temp lnd dir: %v", err)
-	}
+	require.NoError(t, err)
 	return ln.LightningConfig{
 		LndDir:  tempDir,
 		Network: chaincfg.RegressionNetParams,

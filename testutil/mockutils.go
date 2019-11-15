@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -11,12 +10,9 @@ import (
 	"sync"
 	"testing"
 	"time"
-)
 
-// GetTestEmail generates a random email for a given test
-func GetTestEmail(t *testing.T) string {
-	return fmt.Sprintf("%d-%s@example.com", rand.Int(), t.Name())
-}
+	"github.com/stretchr/testify/require"
+)
 
 type mockHttpPoster struct {
 	sync.Mutex
@@ -80,8 +76,6 @@ func GetPortOrFail(t *testing.T) int {
 	if err != nil {
 		return GetPortOrFail(t)
 	}
-	if err = listener.Close(); err != nil {
-		FatalMsgf(t, "Couldn't close port: %sl", err)
-	}
+	require.NoError(t, listener.Close())
 	return port
 }

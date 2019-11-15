@@ -62,14 +62,11 @@ func TestCreateJWT(t *testing.T) {
 		1000000,
 	)
 	token, err := CreateJwt(email, id)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
 
 	parsed, claims, err := parseBearerJwt(token)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
+
 	assert.True(t, parsed.Valid, "Token was invalid")
 	assert.Equal(t, claims.UserID, id)
 	assert.Equal(t, claims.Email, email)
@@ -98,12 +95,10 @@ func TestParseBearerJwt(t *testing.T) {
 
 	t.Run("Parsing a JWT with a bad key should not work", func(t *testing.T) {
 		token, err := CreateJwt(email, id)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		_, _, err = parseBearerJwtWithKey(token, &wrongJwtPrivKey.PublicKey)
-		testutil.AssertEqual(t, err, rsa.ErrVerification)
+		testutil.AssertEqualErr(t, rsa.ErrVerification, err)
 	})
 }
 
@@ -132,14 +127,12 @@ func TestGetMiddleware(t *testing.T) {
 	user := userstestutil.CreateUserOrFail(t, testDB)
 	t.Run("authenticate with JWT", func(t *testing.T) {
 		token, err := CreateJwt(user.Email, user.ID)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, token)
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusOK)
+		assert.Equal(t, w.Code, http.StatusOK)
 	})
 
 	t.Run("not authenticate with JWT from bad key", func(t *testing.T) {
@@ -149,14 +142,12 @@ func TestGetMiddleware(t *testing.T) {
 			privateKey: wrongJwtPrivKey,
 		}
 		token, err := createJwt(args)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, token)
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusUnauthorized)
+		assert.Equal(t, w.Code, http.StatusUnauthorized)
 	})
 
 	t.Run("not authenticate with malformed JWT", func(t *testing.T) {
@@ -164,7 +155,7 @@ func TestGetMiddleware(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, "Bearer foobar")
 		router.ServeHTTP(w, req)
-		testutil.AssertEqual(t, w.Code, http.StatusBadRequest)
+		assert.Equal(t, w.Code, http.StatusBadRequest)
 	})
 
 	t.Run("not authenticate with expired JWT", func(t *testing.T) {
@@ -178,9 +169,7 @@ func TestGetMiddleware(t *testing.T) {
 				return time.Now().Add(-24 * time.Hour)
 			},
 		})
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		req.Header.Add(Header, token)
 		router.ServeHTTP(w, req)
 		assert.Equal(t, w.Code, http.StatusUnauthorized)
@@ -198,9 +187,7 @@ func TestGetMiddleware(t *testing.T) {
 				return time.Now().Add(24 * time.Hour)
 			},
 		})
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		req.Header.Add(Header, token)
 		router.ServeHTTP(w, req)
 		assert.Equal(t, w.Code, http.StatusUnauthorized)
@@ -209,9 +196,7 @@ func TestGetMiddleware(t *testing.T) {
 
 	t.Run("authentiate with API key", func(t *testing.T) {
 		apiKey, _, err := apikeys.New(testDB, user.ID, apikeys.AllPermissions, "")
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/ping", emptyBody)
 		req.Header.Add(Header, apiKey.String())

@@ -8,6 +8,7 @@ import (
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/api"
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -107,7 +108,6 @@ func TestCreateUser(t *testing.T) {
 
 		email := gofakeit.Email()
 		pass := gofakeit.Password(true, true, true, true, true, 32)
-		testutil.DescribeTest(t)
 		body := httptestutil.RequestArgs{
 			Path: "/users", Method: "POST",
 			Body: fmt.Sprintf(`{
@@ -117,9 +117,9 @@ func TestCreateUser(t *testing.T) {
 		}
 		req := httptestutil.GetRequest(t, body)
 		jsonRes := h.AssertResponseOkWithJson(t, req)
-		testutil.AssertEqual(t, jsonRes["email"], email)
-		testutil.AssertEqual(t, jsonRes["firstName"], nil)
-		testutil.AssertEqual(t, jsonRes["lastName"], nil)
+		assert.Equal(t, jsonRes["email"], email)
+		assert.Equal(t, jsonRes["firstName"], nil)
+		assert.Equal(t, jsonRes["lastName"], nil)
 	})
 
 	t.Run("It should be possible to create a user with names", func(t *testing.T) {
@@ -139,18 +139,17 @@ func TestCreateUser(t *testing.T) {
 			}`, pass, email, firstName, lastName),
 		})
 		jsonRes := h.AssertResponseOkWithJson(t, req)
-		testutil.AssertEqual(t, jsonRes["email"], email)
+		assert.Equal(t, jsonRes["email"], email)
 
 		user := h.VerifyEmail(t, email)
-		testutil.AssertEqual(t, *user.Firstname, firstName)
-		testutil.AssertEqual(t, *user.Lastname, lastName)
+		assert.Equal(t, *user.Firstname, firstName)
+		assert.Equal(t, *user.Lastname, lastName)
 	})
 }
 
 func TestPostUsersRoute(t *testing.T) {
-
+	t.Parallel()
 	t.Run("create a user", func(t *testing.T) {
-
 		// we need a new email sender here to record the amount of emails
 		// sent correctly
 		postUserEmailClient := mock.GetMockSendGridClient()
@@ -173,7 +172,6 @@ func TestPostUsersRoute(t *testing.T) {
 			}`, email, pass),
 		})
 		jsonRes := harness.AssertResponseOkWithJson(t, req)
-		require.False(t, t.Failed())
 
 		var postCreation int
 		// emails are sent in a go routine
@@ -189,10 +187,9 @@ func TestPostUsersRoute(t *testing.T) {
 			async.RetryNoBackoff(10, time.Millisecond*50, retry),
 			email)
 
-		testutil.AssertEqual(t, jsonRes["firstName"], nil)
-		testutil.AssertEqual(t, jsonRes["lastName"], nil)
-		testutil.AssertEqual(t, jsonRes["email"], email)
-		testutil.AssertEqual(t, jsonRes["balance"], 0)
+		assert.Nil(t, jsonRes["firstName"])
+		assert.Nil(t, jsonRes["lastName"])
+		assert.Equal(t, email, jsonRes["email"])
 
 		t.Run("not create the same user twice", func(t *testing.T) {
 			otherReq := httptestutil.GetRequest(t, httptestutil.RequestArgs{
@@ -204,8 +201,8 @@ func TestPostUsersRoute(t *testing.T) {
 			}`, email, pass),
 			})
 			_, err = harness.AssertResponseNotOk(t, otherReq)
-			testutil.AssertEqual(t, apierr.ErrUserAlreadyExists, err)
-			testutil.AssertEqual(t, postCreation, postUserEmailClient.GetEmailVerificationMails())
+			testutil.AssertEqualErr(t, apierr.ErrUserAlreadyExists, err)
+			assert.Equal(t, postCreation, postUserEmailClient.GetEmailVerificationMails())
 		})
 	})
 
@@ -272,9 +269,9 @@ func TestPutUserRoute(t *testing.T) {
 			}`, newFirst, newLast, newEmail)})
 
 		jsonRes := h.AssertResponseOkWithJson(t, updateUserReq)
-		testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
-		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
-		testutil.AssertEqual(t, jsonRes["email"], newEmail)
+		assert.Equal(t, jsonRes["firstName"], newFirst)
+		assert.Equal(t, jsonRes["lastName"], newLast)
+		assert.Equal(t, jsonRes["email"], newEmail)
 
 		// Get User endpoint
 		getUserReq := httptestutil.GetAuthRequest(t,
@@ -286,9 +283,9 @@ func TestPutUserRoute(t *testing.T) {
 
 		// Verify that update and get returns the same
 		jsonRes = h.AssertResponseOkWithJson(t, getUserReq)
-		testutil.AssertEqual(t, jsonRes["firstName"], newFirst)
-		testutil.AssertEqual(t, jsonRes["lastName"], newLast)
-		testutil.AssertEqual(t, jsonRes["email"], newEmail)
+		assert.Equal(t, jsonRes["firstName"], newFirst)
+		assert.Equal(t, jsonRes["lastName"], newLast)
+		assert.Equal(t, jsonRes["email"], newEmail)
 	})
 }
 
@@ -305,7 +302,7 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 			}`,
 		})
 		_, err := h.AssertResponseNotOk(t, req)
-		testutil.AssertEqual(t, apierr.ErrRequestValidationFailed, err)
+		testutil.AssertEqualErr(t, apierr.ErrRequestValidationFailed, err)
 	})
 
 	// we don't want to leak information about users, so we respond with 200
@@ -377,9 +374,7 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 		app, err := api.NewApp(testDB, mockLightningClient,
 			emailClient, mockBitcoindClient,
 			mockHttpPoster, conf)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		harness := httptestutil.NewTestHarness(app.Router, testDB)
 		email := gofakeit.Email()
@@ -398,15 +393,14 @@ func TestSendEmailVerificationEmail(t *testing.T) {
 		})
 		emailsPreReq := emailClient.GetEmailVerificationMails()
 		harness.AssertResponseOk(t, req)
-		if err = async.RetryNoBackoff(5, time.Millisecond*10, func() error {
+		err = async.RetryNoBackoff(5, time.Millisecond*10, func() error {
 			postReq := emailClient.GetEmailVerificationMails()
 			if emailsPreReq+1 != postReq {
 				return fmt.Errorf("mismatch between emails pre equest (%d) and post request (%d", emailsPreReq, postReq)
 			}
 			return nil
-		}); err == nil {
-			testutil.FatalMsg(t, "Sent out emails for already verified user!")
-		}
+		})
+		assert.Error(t, err)
 	})
 
 }

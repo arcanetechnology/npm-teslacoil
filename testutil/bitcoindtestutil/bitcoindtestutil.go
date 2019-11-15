@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -34,9 +35,7 @@ func GetBitcoindClientOrFail(t *testing.T, conf bitcoind.Config) *rpcclient.Clie
 	var notificationHandler *rpcclient.NotificationHandlers = nil
 
 	client, err := rpcclient.New(conf.ToConnConfig(), notificationHandler)
-	if err != nil {
-		testutil.FatalMsg(t, err)
-	}
+	require.NoError(t, err)
 
 	return client
 }

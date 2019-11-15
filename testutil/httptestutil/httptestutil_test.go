@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"gitlab.com/arcanecrypto/teslacoil/db"
-	"gitlab.com/arcanecrypto/teslacoil/testutil"
 )
 
 var emptyDb = &db.DB{}
@@ -75,7 +74,7 @@ func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 		})
 		testThatShouldFail := testing.T{}
 		h.AssertResponseOkWithJson(&testThatShouldFail, req)
-		testutil.AssertMsg(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
+		assert.True(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
 	})
 
 	t.Run(`fail with invalid JSON`, func(t *testing.T) {
@@ -87,7 +86,7 @@ func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 		})
 		testThatShouldFail := testing.T{}
 		h.AssertResponseOkWithJson(&testThatShouldFail, req)
-		testutil.AssertMsg(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
+		assert.True(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
 	})
 }
 
@@ -123,7 +122,7 @@ func TestTestHarness_AssertResponseOkWithJsonList(t *testing.T) {
 		})
 		testThatShouldFail := testing.T{}
 		h.AssertResponseOkWithJsonList(&testThatShouldFail, req)
-		testutil.AssertMsg(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
+		assert.True(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
 	})
 }
 
@@ -177,8 +176,8 @@ func TestTestHarness_AssertResponseNotOk(t *testing.T) {
 		})
 		testThatShouldFail := testing.T{}
 		res, _ := h.AssertResponseNotOk(&testThatShouldFail, req)
-		testutil.AssertMsg(t, res.Code == 200, "Code wasn't 200")
-		testutil.AssertMsg(t, testThatShouldFail.Failed(), "test didn't fail with 200 code")
+		assert.Equal(t, 200, res.Code)
+		assert.True(t, testThatShouldFail.Failed(), "test didn't fail with 200 code")
 	})
 
 	t.Run("fail with a error code that doesn't have a correct error response", func(t *testing.T) {
@@ -190,8 +189,8 @@ func TestTestHarness_AssertResponseNotOk(t *testing.T) {
 		})
 		testThatShouldFail := testing.T{}
 		res, _ := h.AssertResponseNotOk(&testThatShouldFail, req)
-		testutil.AssertMsg(t, res.Code != 200, "Code was 200")
-		testutil.AssertMsg(t, testThatShouldFail.Failed(), "test didn't fail with bad error message")
+		assert.NotEqual(t, res.Code, 200)
+		assert.True(t, testThatShouldFail.Failed(), "test didn't fail with bad error message")
 
 	})
 }

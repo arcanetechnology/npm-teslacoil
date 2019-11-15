@@ -69,32 +69,21 @@ func TestInsertOnchainTransaction(t *testing.T) {
 			}
 
 			// ID should be created by DB for us
-			testutil.AssertNotEqual(t, onchain.ID, inserted.ID)
+			assert.NotEqual(t, onchain.ID, inserted.ID)
 			onchain.ID = inserted.ID
-			diff := cmp.Diff(onchain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
+			assert.Equal(t, onchain, inserted)
 
 			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 
 			foundOnChain, err := foundTx.ToOnchain()
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
 
-			diff = cmp.Diff(foundOnChain, inserted)
-			if diff != "" {
-				testutil.FatalMsg(t, diff)
-			}
+			assert.Equal(t, foundOnChain, inserted)
 
 			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
-			if err != nil {
-				testutil.FatalMsg(t, err)
-			}
+			require.NoError(t, err)
+
 			found := false
 			for _, tx := range allTXs {
 				on, err := tx.ToOnchain()
@@ -106,13 +95,10 @@ func TestInsertOnchainTransaction(t *testing.T) {
 					break
 				}
 			}
-			if !found {
-				testutil.FatalMsg(t, "Did not find TX when doing GetAll")
-			}
+			assert.True(t, found, "Did not find TX when doing GetAll")
 		})
 	}
 }
-
 func TestGetTransactionByID(t *testing.T) {
 	t.Parallel()
 
@@ -344,50 +330,42 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 	t.Run("should fail to save negative amount", func(t *testing.T) {
 		t.Parallel()
 		transaction := CreateOnChainOrFail(t, user.ID)
-		if _, err := transaction.PersistReceivedMoney(testDB,
+		_, err := transaction.PersistReceivedMoney(testDB,
 			chainhash.HashH([]byte("some hash")),
 			1,
 			-1337,
-		); err == nil {
-			testutil.FatalMsg(t, "Was able to add negative amount")
-		}
+		)
+		require.Error(t, err)
 	})
 
 	t.Run("should fail to save negative vout", func(t *testing.T) {
 		t.Parallel()
 		transaction := CreateOnChainOrFail(t, user.ID)
-		if _, err := transaction.PersistReceivedMoney(testDB,
+		_, err := transaction.PersistReceivedMoney(testDB,
 			chainhash.HashH([]byte("some hash")),
 			-1,
 			1337,
-		); err == nil {
-			testutil.FatalMsg(t, "Was able to add negative vout")
-		}
+		)
+		require.Error(t, err)
+
 	})
 
 	t.Run("add money", func(t *testing.T) {
 		t.Parallel()
 		const amountSat = 1337
 
-		hash, err := chainhash.NewHash([]byte(testutil.MockStringOfLength(32)))
-		if err != nil {
-			testutil.FatalMsgf(t, "should be able to create hash: %+v", err)
-		}
+		hash, err := chainhash.NewHashFromStr(txtest.MockTxid())
+		require.NoError(t, err)
 
 		transaction := CreateOnChainOrFail(t, user.ID)
-		if _, err := transaction.PersistReceivedMoney(testDB, *hash, 0, amountSat); err != nil {
-			testutil.FatalMsgf(t, "SaveTxToTransaction(): %+v", err)
-		}
+		_, err = transaction.PersistReceivedMoney(testDB, *hash, 0, amountSat)
+		require.NoError(t, err)
 
 		found, err := transactions.GetTransactionByID(testDB, transaction.ID, transaction.UserID)
-		if err != nil {
-			testutil.FatalMsgf(t, "should be able to GetTransactionByID: %+v", err)
-		}
+		require.NoError(t, err)
 
 		foundOnChain, err := found.ToOnchain()
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		require.NotNil(t, foundOnChain.Vout)
 		assert.Equal(t, *foundOnChain.Vout, 0)
@@ -433,9 +411,8 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 		transaction := CreateOnChainOrFail(t, user.ID)
 
 		const confHeight = 100
-		if _, err := transaction.MarkAsConfirmed(testDB, confHeight); err == nil {
-			testutil.FatalMsgf(t, "marked TX as confirmed without spending any money to it!")
-		}
+		_, err := transaction.MarkAsConfirmed(testDB, confHeight)
+		assert.Error(t, err)
 	})
 
 	t.Run("should mark transaction as confirmed and set confirmedAt", func(t *testing.T) {
@@ -447,32 +424,22 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 			0,
 			1337,
 		)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		const confHeight = 100
 		confirmed, err := spent.MarkAsConfirmed(testDB, confHeight)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not mark as confirmed: %+v", err)
-		}
+		require.NoError(t, err)
 
 		found, err := transactions.GetTransactionByID(testDB, confirmed.ID, user.ID)
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
 		foundOnChain, err := found.ToOnchain()
-		if err != nil {
-			testutil.FatalMsg(t, err)
-		}
+		require.NoError(t, err)
 
-		if foundOnChain.ConfirmedAt == nil {
-			testutil.FatalMsgf(t, "ConfirmedAt should have a value")
-		}
+		assert.NotNil(t, foundOnChain.ConfirmedAt)
 
-		testutil.AssertNotEqual(t, foundOnChain.ConfirmedAtBlock, nil)
-		testutil.AssertEqual(t, *foundOnChain.ConfirmedAtBlock, confHeight)
+		require.NotNil(t, foundOnChain.ConfirmedAtBlock)
+		assert.Equal(t, *foundOnChain.ConfirmedAtBlock, confHeight)
 
 		// we received some money
 		transaction.AmountSat = spent.AmountSat
@@ -486,10 +453,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 		transaction.ConfirmedAt = foundOnChain.ConfirmedAt
 
 		// but apart from that they should be the same
-		diff := cmp.Diff(foundOnChain, transaction)
-		if diff != "" {
-			testutil.FatalMsg(t, diff)
-		}
+		assert.Equal(t, foundOnChain, transaction)
 	})
 }
 
@@ -646,10 +610,7 @@ func CreateOnChainOrFail(t *testing.T, userID int) transactions.Onchain {
 
 	inserted, err := transactions.InsertOnchain(testDB, tx)
 
-	if err != nil {
-		testutil.FatalMsgf(t, "should be able to insertTransaction. Error:  %+v",
-			err)
-	}
+	require.NoError(t, err)
 
 	return inserted
 }

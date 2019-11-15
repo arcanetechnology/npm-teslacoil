@@ -53,7 +53,6 @@ func TestMain(m *testing.M) {
 // It can not run in parallell, because each new block mined also creates a
 // tx, thus filling us up with tx's
 func TestTxListener(t *testing.T) {
-	testutil.DescribeTest(t)
 
 	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
@@ -72,15 +71,10 @@ func TestTxListener(t *testing.T) {
 
 		const blocksGenerated = 101
 		_, err := bitcoindtestutil.GenerateToSelf(blocksGenerated, bitcoin)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not generate to self: %+v", err)
-		}
+		require.NoError(t, err)
 
-		hash, err := bitcoindtestutil.SendTxToSelf(bitcoin, 10)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not send tx: %+v", err)
-		}
-		testutil.Succeedf(t, "hash: %v", hash)
+		_, err = bitcoindtestutil.SendTxToSelf(bitcoin, 10)
+		require.NoError(t, err)
 
 		check := func() bool {
 			// For some reason the channel receives a tx with one input every time it connects
@@ -94,10 +88,7 @@ func TestTxListener(t *testing.T) {
 		}
 
 		err = async.Await(8, 100*time.Millisecond, check)
-		if err != nil {
-			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", 1+1+blocksGenerated, eventsReceived)
-		}
-
+		require.NoError(t, err, "expected to receive %d events, but received %d", 1+1+blocksGenerated, eventsReceived)
 	})
 }
 
@@ -105,7 +96,6 @@ func TestTxListener(t *testing.T) {
 // all mined blocks
 func TestBlockListener(t *testing.T) {
 	t.Parallel()
-	testutil.DescribeTest(t)
 
 	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
@@ -125,9 +115,7 @@ func TestBlockListener(t *testing.T) {
 
 		const blocksToMine = 3
 		_, err := bitcoindtestutil.GenerateToSelf(blocksToMine, bitcoin)
-		if err != nil {
-			testutil.FatalMsgf(t, "could not generate %d blocks to self: %v", blocksToMine, err)
-		}
+		require.NoError(t, err, "could not generate %d blocks to self", blocksToMine)
 
 		check := func() bool {
 			if eventsReceived != blocksToMine {
@@ -137,10 +125,7 @@ func TestBlockListener(t *testing.T) {
 		}
 
 		err = async.Await(15, 100*time.Millisecond, check)
-		if err != nil {
-			testutil.FatalMsgf(t, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
-		}
-
+		require.NoError(t, err, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
 	})
 
 }
