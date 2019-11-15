@@ -423,11 +423,15 @@ func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
 			}
 
 			log.WithFields(logrus.Fields{
-				"hash":   hex.EncodeToString(offchain.HashedPreimage),
-				"id":     offchain.ID,
-				"status": offchain.Status,
-			},
-			).Info("updated invoice status")
+				"id":             offchain.ID,
+				"userId":         offchain.UserID,
+				"amountMilliSat": offchain.AmountMilliSat,
+				"direction":      offchain.Direction,
+				"status":         offchain.Status,
+				"hash":           hex.EncodeToString(offchain.HashedPreimage),
+				"memo":           offchain.Memo,
+				"orderId":        offchain.CustomerOrderId,
+			}).Debug("invoice is settled")
 
 		case lnrpc.Invoice_CANCELED | lnrpc.Invoice_ACCEPTED: // hold invoices
 			// we panic because somewhere in our code we used lncli.AddHoldInvoice(),
@@ -526,8 +530,6 @@ func HandleSettledInvoice(invoice lnrpc.Invoice, database db.InsertGetter,
 	} else {
 		log.WithField("id", inserted.ID).Debug("invoice did not have callback URL")
 	}
-
-	log.Tracef("invoice is settled: %+v", inserted)
 
 	return inserted, nil
 }
