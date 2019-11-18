@@ -1,13 +1,17 @@
 all: test build
 
-# If we're on a tag, binary name is tlc, else tlc-dev
-TLC := $(shell git describe --exact-match HEAD 2>/dev/null && echo tlc || echo tlc-dev)
+PKG := gitlab.com/arcanecrypto/teslacoil
+COMMIT := $(shell git describe --abbrev=40 --dirty)
+
+# set `var build.Commit` to current commit (or version if on a tag)
+LDFLAGS := -ldflags "-X $(PKG)/build.commit=$(COMMIT)"
+
 BINARIES := tlc tlc-dev
 COVERAGE_ARTIFACTS := coverage.out coverage.html
 
 .PHONY: build
 build:
-	go build -o ${TLC} ./cmd/tlc/main.go
+	go build ${LDFLAGS} -o tlc-dev ./cmd/tlc/main.go
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
@@ -32,7 +36,7 @@ clean:
 	rm -f ${BINARIES} ${COVERAGE_ARTIFACTS}
 
 install:
-	go install ./...
+	go install ${LDFLAGS} -o tlc ./cmd/tlc/main.go
 
 # If the first argument is "test-only"...
 ifeq (test-only,$(firstword $(MAKECMDGOALS)))
