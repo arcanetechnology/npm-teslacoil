@@ -3,7 +3,7 @@ if [[ $* != *--network* ]]; then
     BITCOIN_NETWORK="regtest"
 fi
 
-exe() { echo "\$ $@" ; "$@" ; }
+exe() { echo "\$ $@" 1>&2 ; "$@" ; }
 
 
 exe lncli --lnddir=docker/.bob --rpcserver=localhost:10010 --network $BITCOIN_NETWORK "$@"

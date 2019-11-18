@@ -309,7 +309,8 @@ func (c *Conn) blockEventHandler() {
 	for {
 		// Poll an event from the ZMQ socket. This is where the goroutine
 		// will hang until new messages are received
-		msgBytes, err := c.zmqBlockConn.Receive()
+		var bufs [][]byte
+		msgBytes, err := c.zmqBlockConn.Receive(bufs)
 		if err != nil {
 			// EOF should only be returned if the connection was
 			// explicitly closed, so we can exit at this point.
@@ -374,7 +375,8 @@ func (c *Conn) txEventHandler() {
 
 	for {
 		// Poll an event from the ZMQ socket
-		msgBytes, err := c.zmqTxConn.Receive()
+		var bufs [][]byte
+		msgBytes, err := c.zmqTxConn.Receive(bufs)
 		if err != nil {
 			// EOF should only be returned if the connection was
 			// explicitly closed, so we can exit at this point.

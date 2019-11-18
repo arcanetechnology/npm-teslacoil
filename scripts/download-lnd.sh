@@ -4,7 +4,7 @@
 # exit on error
 set -e
 
-LND_VERSION=0.8.0-beta
+LND_VERSION=0.8.1-beta
 LND_SUFFIX=lnd-linux-386-v$LND_VERSION
 LND_URL=https://github.com/lightningnetwork/lnd/releases/download/v$LND_VERSION/$LND_SUFFIX.tar.gz
 
