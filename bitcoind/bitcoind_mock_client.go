@@ -276,7 +276,7 @@ func (b BitcoindRpcMockClient) GetBlockChainInfo() (*btcjson.GetBlockChainInfoRe
 		PruneHeight:          0,
 		ChainWork:            "",
 		SoftForks:            nil,
-		Bip9SoftForks:        nil,
+		UnifiedSoftForks:     nil,
 	}, nil
 }
 
