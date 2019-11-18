@@ -13,8 +13,6 @@ import (
 
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/lightningnetwork/lnd/lnrpc"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -707,6 +705,16 @@ func GetTransactionByID(database *db.DB, id int, userID int) (Transaction, error
 	return transaction, nil
 }
 
+// CountForUser returns the number of transactions in the DB related to the given user
+func CountForUser(database db.Getter, userID int) (int, error) {
+	var res int
+	// count all onchain TXs that have been spent to + all LN TXs
+	query := `SELECT COUNT(*) FROM transactions 
+				WHERE user_id=$1 AND (received_tx_at IS NOT NULL OR payment_request IS NOT NULL)`
+	err := database.Get(&res, query, userID)
+	return res, err
+}
+
 // GetAllTransactions selects all the transactions for a user
 func GetAllTransactions(database *db.DB, userID int) ([]Transaction, error) {
 	return GetAllTransactionsLimitOffset(database, userID, math.MaxInt32, 0)
@@ -724,7 +732,7 @@ func GetAllTransactionsLimitOffset(database *db.DB, userID int, limit int, offse
 	// performance problems it's fine
 	query := `SELECT *
 		FROM transactions
-		WHERE user_id=$1
+		WHERE user_id=$1 AND (received_tx_at IS NOT NULL OR payment_request IS NOT NULL)
 		ORDER BY created_at
 		LIMIT $2
 		OFFSET $3`
@@ -732,13 +740,8 @@ func GetAllTransactionsLimitOffset(database *db.DB, userID int, limit int, offse
 	// we need to initialize this variable because an empty SELECT will not update `transactions`
 	transactions := []Transaction{}
 	err := database.Select(&transactions, query, userID, limit, offset)
-	if err != nil {
-		log.WithError(err).WithFields(logrus.Fields{
-			"limit":  limit,
-			"offset": offset,
-			"userID": userID,
-		}).Error("could not get transactions")
-		return transactions, err
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
 
 	return transactions, nil

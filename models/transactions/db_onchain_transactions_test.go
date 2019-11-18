@@ -81,6 +81,11 @@ func TestInsertOnchainTransaction(t *testing.T) {
 
 			assert.Equal(t, foundOnChain, inserted)
 
+			// when getting all TXs we only include onchain TXs if they've been spent to
+			if foundOnChain.ReceivedMoneyAt == nil {
+				return
+			}
+
 			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
 			require.NoError(t, err)
 
