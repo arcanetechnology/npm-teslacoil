@@ -237,7 +237,7 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 		"AddIndex":       inv.AddIndex,
 		"RHash":          inv.RHash,
 		"hash":           hex.EncodeToString(inv.RHash),
-	}).Tracef("added invoice")
+	}).Trace("added invoice")
 
 	invoice, err := lncli.LookupInvoice(ctx, &lnrpc.PaymentHash{
 		RHash: inv.RHash,
@@ -263,7 +263,7 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
 		context.Background(),
 		invoiceSubDetails)
 	if err != nil {
-		log.Error(err)
+		log.WithError(err).Error("Could not subscribe to invoices")
 		return
 	}
 
@@ -271,11 +271,13 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
 		invoice := lnrpc.Invoice{}
 		err := invoiceClient.RecvMsg(&invoice)
 		if err != nil {
-			log.Error(err)
+			log.WithError(err).Error("Could not receive message")
 			return
 		}
-		log.Infof("invoice %s with hash %s was updated",
-			invoice.PaymentRequest, hex.EncodeToString(invoice.RHash))
+		log.WithFields(logrus.Fields{
+			"paymentRequest": invoice.PaymentRequest,
+			"hash":           hex.EncodeToString(invoice.RHash),
+		}).Info("Received invoice")
 
 		msgCh <- &invoice
 	}

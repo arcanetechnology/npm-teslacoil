@@ -153,7 +153,9 @@ func Serve() cli.Command {
 				}
 			}
 
-			address := fmt.Sprintf(":%d", c.Int("port"))
+			port := c.Int("port")
+			address := fmt.Sprintf(":%d", port)
+			log.WithField("port", port).Info("Listening and serving HTTP")
 			return a.Router.Run(address)
 		},
 	}
