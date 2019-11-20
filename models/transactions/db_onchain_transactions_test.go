@@ -86,7 +86,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 				return
 			}
 
-			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
+			allTXs, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{})
 			require.NoError(t, err)
 
 			found := false

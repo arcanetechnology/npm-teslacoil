@@ -320,7 +320,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 
 			assert.Equal(t, foundOffChain, inserted)
 
-			allTXs, err := transactions.GetAllTransactions(testDB, user.ID)
+			allTXs, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{})
 			require.NoError(t, err)
 			found := false
 			for _, tx := range allTXs {

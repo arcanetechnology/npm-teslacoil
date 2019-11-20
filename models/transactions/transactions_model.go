@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -715,31 +716,122 @@ func CountForUser(database db.Getter, userID int) (int, error) {
 	return res, err
 }
 
+type SortingDirection int
+
+func (s *SortingDirection) UnmarshalText(text []byte) error {
+	str := string(text)
+	switch strings.ToLower(str) {
+	case "asc":
+		*s = SortAscending
+	case "desc":
+		*s = SortDescending
+	default:
+		return fmt.Errorf("unknown sorting direction: %s", str)
+	}
+	return nil
+}
+
+func (s SortingDirection) String() string {
+	if s == SortAscending {
+		return "ASC"
+	} else {
+		return "DESC"
+	}
+}
+
+const (
+	SortAscending SortingDirection = iota
+	SortDescending
+)
+
+type GetAllParams struct {
+	Offset        int
+	Limit         int
+	MaxMilliSats  *int64
+	MinMilliSats  *int64 // Millisats
+	End           *time.Time
+	Start         *time.Time
+	SortDirection SortingDirection
+}
+
+func (g GetAllParams) toFields() logrus.Fields {
+	return logrus.Fields{
+		"offset":        g.Offset,
+		"limit":         g.Limit,
+		"maxMilliSats":  g.MaxMilliSats,
+		"minMilliSats":  g.MinMilliSats,
+		"sortDirection": g.SortDirection.String(),
+		"end":           g.End,
+		"start":         g.Start,
+	}
+}
+
 // GetAllTransactions selects all the transactions for a user
-func GetAllTransactions(database *db.DB, userID int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(database, userID, math.MaxInt32, 0)
-}
+func GetAllTransactions(database *db.DB, userID int, params GetAllParams) ([]Transaction, error) {
+	if params.Limit == 0 {
+		params.Limit = math.MaxInt64
+	}
 
-// GetAllTransactionsOffset selects all transactions for a given user with an `offset`
-func GetAllTransactionsOffset(database *db.DB, userID int, offset int) ([]Transaction, error) {
-	return GetAllTransactionsLimitOffset(database, userID, math.MaxInt32, offset)
-}
+	argCounter := 1
+	args := []interface{}{userID}
 
-// GetAllTransactionsLimitOffset selects all transactions for a userID from the DB.
-func GetAllTransactionsLimitOffset(database *db.DB, userID int, limit int, offset int) (
-	[]Transaction, error) {
+	whereQuery := fmt.Sprintf(`WHERE user_id=$%d AND (received_tx_at IS NOT NULL OR payment_request IS NOT NULL)`, argCounter)
+	argCounter += 1
+
+	if params.MaxMilliSats != nil {
+		whereQuery = fmt.Sprintf(` %s AND amount_milli_sat < $%d`, whereQuery, argCounter)
+		args = append(args, *params.MaxMilliSats)
+		argCounter += 1
+	}
+	if params.MinMilliSats != nil {
+		whereQuery = fmt.Sprintf(` %s AND amount_milli_sat > $%d`, whereQuery, argCounter)
+		args = append(args, *params.MinMilliSats)
+		argCounter += 1
+	}
+
+	if params.End != nil {
+		// when dealing with onchain TXs we count their received_tx_at as their creation date,
+		// not when the address was registered in the DB
+		whereQuery = fmt.Sprintf(` %s AND (CASE 
+			WHEN received_tx_at IS NOT NULL THEN received_tx_at 
+			ELSE created_at
+		END) < $%d`, whereQuery, argCounter)
+		args = append(args, *params.End)
+		argCounter += 1
+	}
+
+	if params.Start != nil {
+		// when dealing with onchain TXs we count their received_tx_at as their creation date,
+		// not when the address was registered in the DB
+		whereQuery = fmt.Sprintf(` %s AND (CASE 
+			WHEN received_tx_at IS NOT NULL THEN received_tx_at 
+			ELSE created_at
+		END) > $%d`, whereQuery, argCounter)
+		args = append(args, *params.Start)
+		argCounter += 1
+	}
+
 	// Using OFFSET is not ideal, but until we start seeing
 	// performance problems it's fine
 	query := `SELECT *
-		FROM transactions
-		WHERE user_id=$1 AND (received_tx_at IS NOT NULL OR payment_request IS NOT NULL)
-		ORDER BY created_at
-		LIMIT $2
-		OFFSET $3`
+		FROM transactions ` + whereQuery +
+		// when dealing with onchain TXs we count their received_tx_at as their creation date,
+		// not when the address was registered in the DB
+		fmt.Sprintf(` ORDER BY CASE
+			WHEN received_tx_at IS NOT NULL THEN received_tx_at
+			ELSE created_at 
+		END %s
+		LIMIT $%d
+		OFFSET $%d`, params.SortDirection, argCounter, argCounter+1)
+	args = append(args, params.Limit, params.Offset)
+
+	log.WithFields(params.toFields()).WithFields(logrus.Fields{
+		"userId": userID,
+	}).Trace("Getting all TXs")
 
 	// we need to initialize this variable because an empty SELECT will not update `transactions`
 	transactions := []Transaction{}
-	err := database.Select(&transactions, query, userID, limit, offset)
+	err := database.Select(&transactions, query, args...)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
