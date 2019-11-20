@@ -2,6 +2,8 @@ module gitlab.com/arcanecrypto/teslacoil
 
 go 1.13
 
+replace github.com/gin-gonic/gin => github.com/thinkerou/gin v1.1.5-0.20191114124330-14f15bb81460
+
 require (
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195
 	github.com/brianvoe/gofakeit v3.18.0+incompatible
@@ -11,10 +13,8 @@ require (
 	github.com/dchest/passwordreset v0.0.0-20190826080013-4518b1f41006
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-contrib/cors v1.3.0
-	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/gin-gonic/gin v1.4.0
 	github.com/golang-migrate/migrate/v4 v4.5.0
-	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.3.1
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/iancoleman/strcase v0.0.0-20190422225806-e506e3ef7365
@@ -22,7 +22,6 @@ require (
 	github.com/lib/pq v1.2.0
 	github.com/lightninglabs/gozmq v0.0.0-20191113021534-d20a764486bf
 	github.com/lightningnetwork/lnd v0.8.1-beta
-	github.com/mattn/go-isatty v0.0.8 // indirect
 	github.com/nbutton23/zxcvbn-go v0.0.0-20180912185939-ae427f1e4c1d
 	github.com/pkg/errors v0.8.1
 	github.com/pquerna/otp v1.2.0
@@ -31,12 +30,11 @@ require (
 	github.com/sendgrid/sendgrid-go v3.5.0+incompatible
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.4.0
-	github.com/ugorji/go v1.1.7 // indirect
 	github.com/urfave/cli v1.22.1
 	github.com/ztrue/shutdown v0.1.1
 	golang.org/x/crypto v0.0.0-20190829043050-9756ffdc2472
 	golang.org/x/net v0.0.0-20190827160401-ba9fcec4b297 // indirect
 	google.golang.org/grpc v1.20.1
-	gopkg.in/go-playground/validator.v8 v8.18.2
+	gopkg.in/go-playground/validator.v9 v9.29.1
 	gopkg.in/macaroon.v2 v2.1.0
 )

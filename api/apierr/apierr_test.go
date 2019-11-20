@@ -122,7 +122,8 @@ func TestJsonValidation(t *testing.T) {
 
 			err := assertErrorResponseOk(t, w, 1)
 			barOkErrorCheck := false
-			assert.True(t, len(err.ErrorField.Fields) > 0)
+			require.NotEmpty(t, err.ErrorField.Fields)
+
 			field := err.ErrorField.Fields[0]
 			if field.Field == "bar" && field.Message == `"bar" is required` && field.Code == "required" {
 				barOkErrorCheck = true
@@ -141,6 +142,8 @@ func TestJsonValidation(t *testing.T) {
 
 			err := assertErrorResponseOk(t, w, 1)
 			fooOkErrorCheck := false
+			require.NotEmpty(t, err.ErrorField.Fields)
+
 			field := err.ErrorField.Fields[0]
 			if field.Field == "foo" && field.Message == `"foo" is required` && field.Code == "required" {
 				fooOkErrorCheck = true

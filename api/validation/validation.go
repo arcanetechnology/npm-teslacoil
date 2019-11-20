@@ -4,7 +4,6 @@ package validation
 
 import (
 	"encoding/base64"
-	"reflect"
 
 	"github.com/btcsuite/btcutil"
 
@@ -15,7 +14,7 @@ import (
 
 	"github.com/nbutton23/zxcvbn-go"
 	"github.com/pkg/errors"
-	"gopkg.in/go-playground/validator.v8"
+	"gopkg.in/go-playground/validator.v9"
 )
 
 var log = build.AddSubLogger("VALI")
@@ -37,10 +36,8 @@ const (
 )
 
 // isValidPassword checks if a password is strong enough.
-func isValidPassword(
-	_ *validator.Validate, _ reflect.Value, _ reflect.Value,
-	field reflect.Value, _ reflect.Type, _ reflect.Kind, _ string) bool {
-	stringVal := field.String()
+func isValidPassword(level validator.FieldLevel) bool {
+	stringVal := level.Field().String()
 
 	// custom wordlist that password is checked against
 	// TODO: could put username, bitcoin terms etc into here?
@@ -52,10 +49,9 @@ func isValidPassword(
 
 // isValidPaymentRequest checks if a payment request is valid per the configured network
 func isValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
-	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
-		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
+	return func(level validator.FieldLevel) bool {
 
-		stringVal := field.String()
+		stringVal := level.Field().String()
 
 		// if tag is payreq, check that the value is decodable
 		if _, err := zpay32.Decode(stringVal, &chainCfg); err != nil {
@@ -68,10 +64,9 @@ func isValidPaymentRequest(chainCfg chaincfg.Params) validator.Func {
 
 // isValidBitcoinAddress checks if a payment request is valid per the configured network
 func isValidBitcoinAddress(chainCfg chaincfg.Params) validator.Func {
-	return func(v *validator.Validate, topStruct reflect.Value, currentStructOrField reflect.Value,
-		field reflect.Value, fieldType reflect.Type, fieldKind reflect.Kind, param string) bool {
+	return func(level validator.FieldLevel) bool {
 
-		stringVal := field.String()
+		stringVal := level.Field().String()
 
 		// assert address is valid by attempting to decode it
 		addr, err := btcutil.DecodeAddress(stringVal, &chainCfg)
@@ -87,10 +82,8 @@ func isValidBitcoinAddress(chainCfg chaincfg.Params) validator.Func {
 	}
 }
 
-func isValidUrlBase64(
-	_ *validator.Validate, _ reflect.Value, _ reflect.Value,
-	field reflect.Value, _ reflect.Type, _ reflect.Kind, _ string) bool {
-	stringVal := field.String()
+func isValidUrlBase64(level validator.FieldLevel) bool {
+	stringVal := level.Field().String()
 	_, err := base64.URLEncoding.DecodeString(stringVal)
 	return err == nil
 }
