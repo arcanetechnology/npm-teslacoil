@@ -16,7 +16,7 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/api/validation"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
-	"gopkg.in/go-playground/validator.v8"
+	"gopkg.in/go-playground/validator.v9"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 
@@ -130,7 +130,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	engine, ok := binding.Validator.Engine().(*validator.Validate)
 	if !ok {
 		return RestServer{}, fmt.Errorf(
-			"gin validator engine (%s) was not validator.Validate",
+			"gin validator engine (%T) was not validator.Validate",
 			binding.Validator.Engine(),
 		)
 	}

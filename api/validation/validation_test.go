@@ -13,7 +13,7 @@ import (
 	"github.com/brianvoe/gofakeit"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-	"gopkg.in/go-playground/validator.v8"
+	"gopkg.in/go-playground/validator.v9"
 )
 
 var validate *validator.Validate
@@ -22,8 +22,8 @@ func TestMain(m *testing.M) {
 	build.SetLogLevels(logrus.ErrorLevel)
 	gofakeit.Seed(0)
 
-	config := validator.Config{TagName: "binding"}
-	validate = validator.New(&config)
+	validate = validator.New()
+	validate.SetTagName("binding")
 
 	os.Exit(m.Run())
 }

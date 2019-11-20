@@ -14,9 +14,8 @@ import (
 	"unicode"
 
 	"github.com/gin-gonic/gin"
-	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/go-playground/validator.v8"
+	"gopkg.in/go-playground/validator.v9"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
@@ -31,7 +30,7 @@ type apiError struct {
 }
 
 func (a apiError) Error() string {
-	return pkgerrors.Wrap(a.err, a.code).Error()
+	return fmt.Errorf("%s: %w", a.code, a.err).Error()
 }
 
 // Is provides functionality for comparing errors
@@ -363,20 +362,20 @@ func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.F
 			// the JSON/Query field we're validating, only the field of the struct.
 			// The assumption here is that all struct fields are named the same
 			// as corresponding form/JSON fields, except for the first letter.
-			field := decapitalize(validationErr.Field)
+			field := decapitalize(validationErr.Field())
 			var message string
 			var code string
-			switch validationErr.Tag {
+			switch validationErr.Tag() {
 			case "hexadecimal|base64":
 				fallthrough
 			case "base64|hexadecimal":
 				message = fmt.Sprintf("%q must be valid hexadecimal or standard encoded base64", field)
-				code = validationErr.Tag
+				code = validationErr.Tag()
 			case "hexadecimal|urlbase64":
 				fallthrough
 			case "urlbase64|hexadecimal":
 				message = fmt.Sprintf("%q must be valid hexadecimal or URL encoded base64", field)
-				code = validationErr.Tag
+				code = validationErr.Tag()
 			case "required":
 				message = fmt.Sprintf("%q is required", field)
 				code = "required"
@@ -391,15 +390,15 @@ func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.F
 				code = "email"
 			case "gte":
 				message = fmt.Sprintf("%q field must be greater than or equal %s. Got: %s",
-					field, validationErr.Param, validationErr.Value)
+					field, validationErr.Param(), validationErr.Value())
 				code = "gte"
 			case "lte":
 				message = fmt.Sprintf("%q field must be less than or equal %s. Got: %s",
-					field, validationErr.Param, validationErr.Value)
+					field, validationErr.Param(), validationErr.Value())
 				code = "gte"
 			case "gt":
 				message = fmt.Sprintf("%q field must be greater than %s. Got: %s",
-					field, validationErr.Param, validationErr.Value)
+					field, validationErr.Param(), validationErr.Value())
 				code = "gt"
 			case "url":
 				message = fmt.Sprintf("%q field is not a valid URL", field)
@@ -407,13 +406,13 @@ func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.F
 			case "eqfield":
 				message = fmt.Sprintf("%q must the equal to %q", field,
 					// see comment above on capitalization of fields
-					decapitalize(validationErr.Param))
+					decapitalize(validationErr.Param()))
 				code = "eqfield"
 			case "max":
-				message = fmt.Sprintf("%q cannot be longer than %s characters", field, validationErr.Param)
+				message = fmt.Sprintf("%q cannot be longer than %s characters", field, validationErr.Param())
 				code = "max"
 			default:
-				logger.WithField("tag", validationErr.Tag).Warn("Encountered unknown validation field")
+				logger.WithField("tag", validationErr.Tag()).Warn("Encountered unknown validation field")
 				message = fmt.Sprintf("%s is invalid", field)
 				code = UnknownValidationTag
 			}
