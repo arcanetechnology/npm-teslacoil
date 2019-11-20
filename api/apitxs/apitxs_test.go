@@ -93,7 +93,7 @@ func TestGetTransaction(t *testing.T) {
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
 
-	ids := createFakeDeposits(t, 3, token)
+	ids := createFakeDeposits(t, 3, userId)
 
 	t.Run("reject request with bad ID parameter", func(t *testing.T) {
 		t.Parallel()
@@ -136,10 +136,9 @@ func TestGetTransaction(t *testing.T) {
 			Method:      "GET",
 		})
 
-		var trans transactions.Transaction
-		h.AssertResponseOKWithStruct(t, req, &trans)
+		res := h.AssertResponseOkWithJson(t, req)
 
-		assert.Equal(t, trans.ID, ids[0])
+		assert.Equal(t, res["id"], float64(ids[0]))
 	})
 
 	t.Run("can get an offchain TX by ID", func(t *testing.T) {
@@ -195,6 +194,28 @@ func TestGetTransaction(t *testing.T) {
 	})
 }
 
+func getIncomingOnchainWithMoney(userId int) transactions.Onchain {
+	tx := txtest.MockOnchain(userId)
+	if tx.Direction != transactions.INBOUND {
+		return getIncomingOnchainWithMoney(userId)
+	}
+	if tx.ReceivedMoneyAt == nil {
+		return getIncomingOnchainWithMoney(userId)
+	}
+	return tx
+}
+
+func getOutgoingOnchainWithMoney(userId int) transactions.Onchain {
+	tx := txtest.MockOnchain(userId)
+	if tx.Direction != transactions.OUTBOUND {
+		return getOutgoingOnchainWithMoney(userId)
+	}
+	if tx.ReceivedMoneyAt == nil {
+		return getOutgoingOnchainWithMoney(userId)
+	}
+	return tx
+}
+
 func TestGetTransactionsBothKinds(t *testing.T) {
 	t.Parallel()
 
@@ -208,7 +229,9 @@ func TestGetTransactionsBothKinds(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		for i := 0; i < incomingOnchainTxs; i++ {
-			txtest.InsertFakeIncomingOnchainorFail(t, testDB, userId)
+			tx := getIncomingOnchainWithMoney(userId)
+			_, err := transactions.InsertOnchain(testDB, tx)
+			require.NoError(t, err)
 		}
 		wg.Done()
 	}()
@@ -217,7 +240,9 @@ func TestGetTransactionsBothKinds(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		for i := 0; i < outgoingOnchainTxs; i++ {
-			txtest.InsertFakeOutgoingOnchainorFail(t, testDB, userId)
+			tx := getOutgoingOnchainWithMoney(userId)
+			_, err := transactions.InsertOnchain(testDB, tx)
+			require.NoError(t, err)
 		}
 		wg.Done()
 	}()
@@ -251,8 +276,8 @@ func TestGetTransactionsBothKinds(t *testing.T) {
 		t.Fatal("TX creation timed out")
 	}
 
-	response := h.AssertResponseOkWithJsonList(t, req)
-	assert.Len(t, response, incomingOffchainTxs+incomingOnchainTxs+outgoingOffchainTxs+outgoingOnchainTxs)
+	response := h.AssertResponseOkWithJson(t, req)
+	assert.Len(t, response["transactions"], incomingOffchainTxs+incomingOnchainTxs+outgoingOffchainTxs+outgoingOnchainTxs)
 }
 
 func TestGetTransactionsEmpty(t *testing.T) {
@@ -268,18 +293,19 @@ func TestGetTransactionsEmpty(t *testing.T) {
 		Method:      "GET",
 	})
 
-	txs := h.AssertResponseOkWithJsonList(t, req)
-	assert.Len(t, txs, 0)
+	txs := h.AssertResponseOkWithJson(t, req)
+	assert.Len(t, txs["transactions"], 0)
+	assert.InDelta(t, txs["total"], 0, 0)
 }
 
 func TestGetTransactionsFiltering(t *testing.T) {
 	t.Parallel()
-	token, _ := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
+	token, userId := h.CreateAndAuthenticateUser(t, users.CreateUserArgs{
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
 	const incomingOnchainTxs = 10
-	createFakeDeposits(t, incomingOnchainTxs, token)
+	createFakeDeposits(t, incomingOnchainTxs, userId)
 
 	t.Run("should reject non-numeric limit", func(t *testing.T) {
 		t.Parallel()
@@ -780,37 +806,35 @@ func TestGetOffchainByPaymentRequest(t *testing.T) {
 	})
 }
 
-func createFakeDeposit(t *testing.T, accessToken string, forceNewAddress bool, description string) int {
-	req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
-		AccessToken: accessToken,
-		Path:        "/deposit",
-		Method:      "POST",
-		Body: fmt.Sprintf(
-			`{ "forceNewAddress": %t, "description": %q }`,
-			forceNewAddress,
-			description),
-	})
+func createFakeDeposit(t *testing.T, userId int) int {
+	t.Helper()
+	tx := txtest.MockOnchain(userId)
+	if tx.ReceivedMoneyAt == nil {
+		return createFakeDeposit(t, userId)
+	}
+	inserted, err := transactions.InsertOnchain(testDB, tx)
+	require.NoError(t, err)
+	return inserted.ID
 
-	var trans transactions.Transaction
-	h.AssertResponseOKWithStruct(t, req, &trans)
-
-	return trans.ID
 }
 
-func createFakeDeposits(t *testing.T, amount int, accessToken string) []int {
+func createFakeDeposits(t *testing.T, amount, userId int) []int {
 	t.Helper()
 
 	ids := make([]int, amount)
 	for i := 0; i < amount; i++ {
-		ids[i] = createFakeDeposit(t, accessToken, true, "")
+		ids[i] = createFakeDeposit(t, userId)
 	}
 	return ids
 }
 
 func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {
-	var trans []transactions.Transaction
-	h.AssertResponseOKWithStruct(t, req, &trans)
-	assert.Equal(t, expected, len(trans))
+	res := h.AssertResponseOkWithJson(t, req)
+	list, ok := res["transactions"].([]interface{})
+	require.True(t, ok, "could not cast res. %+v", res)
+
+	assert.Len(t, list, expected)
+	assert.GreaterOrEqual(t, res["total"], float64(len(list)))
 }
 
 func getOnchainWithMoney(userId int) transactions.Onchain {

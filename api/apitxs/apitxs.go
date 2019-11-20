@@ -5,10 +5,13 @@ package apitxs
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/sirupsen/logrus"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
@@ -65,6 +68,13 @@ func getAllTransactions() gin.HandlerFunc {
 		Offset int `form:"offset" binding:"gte=0"`
 	}
 
+	type response struct {
+		Transactions []transactions.Transaction `json:"transactions"`
+		Total        int                        `json:"total"`
+		Limit        int                        `json:"limit"`
+		Offset       int                        `json:"offset"`
+	}
+
 	return func(c *gin.Context) {
 		userID, ok := auth.RequireScope(c, auth.ReadWallet)
 		if !ok {
@@ -76,28 +86,83 @@ func getAllTransactions() gin.HandlerFunc {
 			return
 		}
 
-		var t []transactions.Transaction
-		var err error
-		if params.Limit == 0 && params.Offset == 0 {
-			t, err = transactions.GetAllTransactions(database, userID)
-		} else if params.Limit == 0 {
-			t, err = transactions.GetAllTransactionsOffset(database, userID, params.Offset)
-		} else {
-			t, err = transactions.GetAllTransactionsLimitOffset(database, userID, params.Limit, params.Offset)
-		}
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				// return the empty list
-				c.JSONP(http.StatusOK, t)
+		results := make(chan interface{}, 2)
+		errs := make(chan error, 2)
+		var wg sync.WaitGroup
+
+		// fetch transactions
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			var t []transactions.Transaction
+			var err error
+			if params.Limit == 0 && params.Offset == 0 {
+				t, err = transactions.GetAllTransactions(database, userID)
+			} else if params.Limit == 0 {
+				t, err = transactions.GetAllTransactionsOffset(database, userID, params.Offset)
+			} else {
+				t, err = transactions.GetAllTransactionsLimitOffset(database, userID, params.Limit, params.Offset)
+			}
+			if err != nil {
+				log.WithError(err).WithFields(logrus.Fields{
+					"limit":  params.Limit,
+					"offset": params.Offset,
+					"userID": userID,
+				}).Error("could not get transactions")
+				errs <- err
 				return
 			}
+			results <- t
+		}()
 
-			log.WithError(err).Error("Couldn't get transactions")
+		// fetch the count
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			count, err := transactions.CountForUser(database, userID)
+			if err != nil {
+				log.WithError(err).WithField("userId", userID).
+					Error("Could not get TX count for user")
+				errs <- err
+				return
+			}
+			results <- count
+		}()
+
+		// close the channels
+		go func() {
+			wg.Wait()
+			close(results)
+			close(errs)
+		}()
+
+		for err := range errs {
 			_ = c.Error(err)
 			return
 		}
 
-		c.JSONP(http.StatusOK, t)
+		var txs []transactions.Transaction
+		var total int
+		for res := range results {
+			switch r := res.(type) {
+			case []transactions.Transaction:
+				txs = r
+			case int:
+				total = r
+			default:
+				_ = c.Error(fmt.Errorf("unexpected result type when fetching TXs: %v", r))
+				return
+			}
+		}
+
+		c.JSONP(http.StatusOK, response{
+			Transactions: txs,
+			Total:        total,
+			Limit:        params.Limit,
+			Offset:       params.Offset,
+		})
 	}
 }
 

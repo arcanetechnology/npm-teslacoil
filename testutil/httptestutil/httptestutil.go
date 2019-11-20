@@ -287,8 +287,9 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 	harness.server.ServeHTTP(response, request)
 
 	if response.Code >= 300 {
-		assert.Fail(t, "Got failure code (%d) on path %s: %s",
-			response.Code, extractMethodAndPath(request), response.Body.String())
+		methodAndPath := extractMethodAndPath(request)
+		body := response.Body.String()
+		assert.Failf(t, "Got failure response", "code: %d, path %s: %s", response.Code, methodAndPath, body)
 		_, _ = assertErrorIsOk(t, response)
 	}
 
