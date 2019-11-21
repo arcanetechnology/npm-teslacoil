@@ -364,13 +364,15 @@ func (o Offchain) MarkAsCompleted(database db.InsertGetter, preimage []byte,
 		SET preimage = :preimage, internal_transfer = :internal_transfer, settled_at = :settled_at, invoice_status = :invoice_status
 		WHERE id = :id ` + txReturningSql
 
-	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
+	log.WithFields(logrus.Fields{
+		"paymentRequest": o.PaymentRequest,
+		"id":             o.ID,
+	}).Info("Marking invoice as paid")
 
 	now := time.Now()
 	o.SettledAt = &now
 	o.Status = Offchain_COMPLETED
 	o.Preimage = preimage
-	o.InternalTransfer = true
 
 	tx := o.ToTransaction()
 	rows, err := database.NamedQuery(updateOffchainTxQuery, &tx)

@@ -534,7 +534,7 @@ func TestPayInvoice(t *testing.T) {
 		paid, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, off.PaymentRequest)
 		assert.NoError(t, err)
 
-		assert.Equal(t, true, paid.InternalTransfer)
+		assert.True(t, paid.InternalTransfer)
 		assert.Equal(t, transactions.Offchain_COMPLETED, paid.Status)
 		assert.NotNil(t, paid.SettledAt)
 

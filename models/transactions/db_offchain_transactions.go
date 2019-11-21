@@ -342,33 +342,21 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 	inboundTransaction, err := getTeslacoilPaymentRequest(database, payment.PaymentRequest, payment.UserID)
 	if errors.Is(err, sql.ErrNoRows) {
 		// does not belong to us
-		payment, err = sendOffchain(database, lncli, callbacker, payment)
-		if err != nil {
-			return Offchain{}, fmt.Errorf("could not send offchain payment: %w", err)
-		}
+		return sendOffchain(database, lncli, callbacker, payment)
 	} else if err != nil {
 		// something went wrong
 		return Offchain{}, fmt.Errorf("could not get offchain by paymentrequest: %w", err)
 	} else if inboundTransaction.UserID == userID {
 		return Offchain{}, ErrCannotPayOwnInvoice
-	} else {
-		// error is nil, and inboundTransaction is defined
-		payment, err = settleInternalTransfer(database, lncli, payment, inboundTransaction, callbacker)
-		if err != nil {
-			return Offchain{}, fmt.Errorf("could not settle internal transfer: %w", err)
-		}
 	}
 
-	return payment, nil
+	// error is nil, and inboundTransaction is defined
+	return settleInternalTransfer(database, lncli, payment, inboundTransaction, callbacker)
+
 }
 
 func settleInternalTransfer(database *db.DB, lncli ln.AddLookupInvoiceClient, outbound Offchain,
 	inbound Offchain, callbacker HttpPoster) (Offchain, error) {
-
-	if len(outbound.HashedPreimage) == 0 {
-		return Offchain{}, fmt.Errorf("outbound offchain transaction does not have a hashed preimage")
-	}
-
 	invoice, err := lncli.LookupInvoice(context.Background(), &lnrpc.PaymentHash{
 		RHash: outbound.HashedPreimage,
 	})
@@ -378,6 +366,7 @@ func settleInternalTransfer(database *db.DB, lncli ln.AddLookupInvoiceClient, ou
 	preimage := invoice.RPreimage
 
 	tx := database.MustBegin()
+	outbound.InternalTransfer = true
 	outbound, err = outbound.MarkAsCompleted(tx, preimage, callbacker)
 	if err != nil {
 		_ = tx.Rollback()
