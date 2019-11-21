@@ -202,7 +202,6 @@ func TestPostUsersRoute(t *testing.T) {
 			})
 			_, err = harness.AssertResponseNotOk(t, otherReq)
 			testutil.AssertEqualErr(t, apierr.ErrUserAlreadyExists, err)
-			assert.Equal(t, postCreation, postUserEmailClient.GetEmailVerificationMails())
 		})
 	})
 
