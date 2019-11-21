@@ -5,6 +5,5 @@ var commit string
 
 // Version returns the current tlc version
 func Version() string {
-	println("version: " + commit)
 	return commit
 }

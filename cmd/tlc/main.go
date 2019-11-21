@@ -97,4 +97,6 @@ func realMain(app *cli.App) {
 		}
 		os.Exit(1)
 	}
+	// we need to explicitly exit, otherwise we'll hang forever waiting for a signal
+	os.Exit(0)
 }
