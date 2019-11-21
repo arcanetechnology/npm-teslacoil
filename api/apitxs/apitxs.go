@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -64,8 +66,15 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 // parameters, `limit` and `offset`
 func getAllTransactions() gin.HandlerFunc {
 	type Params struct {
-		Limit  int `form:"limit" binding:"gte=0"`
-		Offset int `form:"offset" binding:"gte=0"`
+		Limit  int        `form:"limit" binding:"gte=0"`
+		Offset int        `form:"offset" binding:"gte=0"`
+		Max    *int64     `form:"max" binding:"omitempty"` // Sats
+		Min    *int64     `form:"min" binding:"omitempty"` // Sats
+		End    *time.Time `form:"end" binding:"omitempty"`
+		Start  *time.Time `form:"start" binding:"omitempty"`
+
+		// looks like it's not possible to use custom types here:  https://github.com/gin-gonic/gin/issues/1152
+		Direction *string `form:"direction" binding:"omitempty,oneof=asc ASC desc DESC"`
 	}
 
 	type response struct {
@@ -90,20 +99,40 @@ func getAllTransactions() gin.HandlerFunc {
 		errs := make(chan error, 2)
 		var wg sync.WaitGroup
 
+		txParams := transactions.GetAllParams{
+			Offset: params.Offset,
+			Limit:  params.Limit,
+			End:    params.End,
+			Start:  params.Start,
+		}
+		if params.Min != nil {
+			i := *params.Min * 1000 // sats to msats conversion
+			txParams.MinMilliSats = &i
+		}
+		if params.Max != nil {
+			i := *params.Max * 1000 // sats to msats conversion
+			txParams.MaxMilliSats = &i
+		}
+		if params.Direction != nil {
+			switch strings.ToLower(*params.Direction) {
+			case "asc":
+				txParams.SortDirection = transactions.SortAscending
+			case "desc":
+				txParams.SortDirection = transactions.SortDescending
+			default:
+				// should never reach this thanks to binding check above, `oneof`
+				log.WithField("direction", params.Direction).Error("Reached unreachable point")
+				_ = c.Error(fmt.Errorf("bad sorting direction: %s", *params.Direction))
+				return
+			}
+		}
+
 		// fetch transactions
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			var t []transactions.Transaction
-			var err error
-			if params.Limit == 0 && params.Offset == 0 {
-				t, err = transactions.GetAllTransactions(database, userID)
-			} else if params.Limit == 0 {
-				t, err = transactions.GetAllTransactionsOffset(database, userID, params.Offset)
-			} else {
-				t, err = transactions.GetAllTransactionsLimitOffset(database, userID, params.Limit, params.Offset)
-			}
+			txs, err := transactions.GetAllTransactions(database, userID, txParams)
 			if err != nil {
 				log.WithError(err).WithFields(logrus.Fields{
 					"limit":  params.Limit,
@@ -113,7 +142,7 @@ func getAllTransactions() gin.HandlerFunc {
 				errs <- err
 				return
 			}
-			results <- t
+			results <- txs
 		}()
 
 		// fetch the count

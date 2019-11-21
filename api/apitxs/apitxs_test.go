@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"testing"
@@ -132,13 +133,13 @@ func TestGetTransaction(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
-			Path:        fmt.Sprintf("/transactions/%d", ids[0]),
+			Path:        fmt.Sprintf("/transactions/%d", ids[0].ID),
 			Method:      "GET",
 		})
 
 		res := h.AssertResponseOkWithJson(t, req)
 
-		assert.Equal(t, res["id"], float64(ids[0]))
+		assert.Equal(t, res["id"], float64(ids[0].ID))
 	})
 
 	t.Run("can get an offchain TX by ID", func(t *testing.T) {
@@ -304,8 +305,161 @@ func TestGetTransactionsFiltering(t *testing.T) {
 		Email:    gofakeit.Email(),
 		Password: gofakeit.Password(true, true, true, true, true, 21),
 	})
-	const incomingOnchainTxs = 10
-	createFakeDeposits(t, incomingOnchainTxs, userId)
+	const incomingOnchainTxs = 100
+	deposits := createFakeDeposits(t, incomingOnchainTxs, userId)
+
+	t.Run("sort ascending", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?direction=asc",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		txsI, ok := res["transactions"]
+		require.True(t, ok)
+
+		txs, ok := txsI.([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, txs)
+
+		var prev *time.Time
+		for _, elem := range txs {
+			createdAt, err := time.Parse(time.RFC3339Nano, elem.(map[string]interface{})["createdAt"].(string))
+			require.NoError(t, err)
+			if prev != nil {
+				assert.True(t, prev.Before(createdAt), "prev %s createdAt %s", prev, createdAt)
+			}
+			prev = &createdAt
+		}
+	})
+
+	t.Run("sort descending", func(t *testing.T) {
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?direction=desc",
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		txsI, ok := res["transactions"]
+		require.True(t, ok)
+
+		txs, ok := txsI.([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, txs)
+
+		var prev *time.Time
+		for _, elem := range txs {
+			createdAt, err := time.Parse(time.RFC3339Nano, elem.(map[string]interface{})["createdAt"].(string))
+			require.NoError(t, err)
+			if prev != nil {
+				assert.True(t, prev.After(createdAt), "prev %s createdAt %s", prev, createdAt)
+			}
+			prev = &createdAt
+		}
+	})
+
+	t.Run("sort by bad string", func(t *testing.T) {
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/transactions?direction=foobar",
+			Method:      "GET",
+		})
+
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("filter by min", func(t *testing.T) {
+		t.Parallel()
+		minimum := *deposits[incomingOnchainTxs/2].AmountSat - 100
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transactions?min=%d", minimum),
+			Method:      "GET",
+		})
+
+		res := h.AssertResponseOkWithJson(t, req)
+		txsI, ok := res["transactions"]
+		require.True(t, ok)
+
+		txs, ok := txsI.([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, txs)
+
+		for _, elem := range txs {
+			assert.Less(t, float64(minimum), elem.(map[string]interface{})["amountSat"])
+		}
+	})
+	t.Run("filter by max", func(t *testing.T) {
+		t.Parallel()
+		maximum := *deposits[incomingOnchainTxs/2].AmountSat + 100
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transactions?max=%d", maximum),
+			Method:      "GET",
+		})
+
+		res := h.AssertResponseOkWithJson(t, req)
+		txsI, ok := res["transactions"]
+		require.True(t, ok)
+
+		txs, ok := txsI.([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, txs)
+
+		for _, elem := range txs {
+			assert.Greater(t, float64(maximum), elem.(map[string]interface{})["amountSat"])
+		}
+	})
+
+	t.Run("filter by before", func(t *testing.T) {
+		end := deposits[incomingOnchainTxs/2].ReceivedMoneyAt // for deposits we count createdAt as when they received money
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transactions?end=%s", url.QueryEscape(end.Format(time.RFC3339))),
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		txsI, ok := res["transactions"]
+		require.True(t, ok)
+
+		txs, ok := txsI.([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, txs)
+
+		for _, elem := range txs {
+			createdAt, err := time.Parse(time.RFC3339Nano, elem.(map[string]interface{})["createdAt"].(string))
+			require.NoError(t, err)
+			assert.True(t, end.After(createdAt))
+		}
+	})
+
+	t.Run("filter by after", func(t *testing.T) {
+		after := deposits[incomingOnchainTxs/2].ReceivedMoneyAt // for deposits we count createdAt as when they received money
+
+		t.Parallel()
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        fmt.Sprintf("/transactions?start=%s", url.QueryEscape(after.Format(time.RFC3339))),
+			Method:      "GET",
+		})
+		res := h.AssertResponseOkWithJson(t, req)
+		txsI, ok := res["transactions"]
+		require.True(t, ok)
+
+		txs, ok := txsI.([]interface{})
+		require.True(t, ok)
+		require.NotEmpty(t, txs)
+
+		for _, elem := range txs {
+			createdAt, err := time.Parse(time.RFC3339Nano, elem.(map[string]interface{})["createdAt"].(string))
+			require.NoError(t, err)
+			assert.True(t, createdAt.After(after.Add(-time.Millisecond))) // to avoid rounding errors
+		}
+
+	})
 
 	t.Run("should reject non-numeric limit", func(t *testing.T) {
 		t.Parallel()
@@ -337,7 +491,7 @@ func TestGetTransactionsFiltering(t *testing.T) {
 			Method:      "GET",
 		})
 
-		assertGetsRightAmount(t, req, 10)
+		assertGetsRightAmount(t, req, incomingOnchainTxs)
 	})
 	t.Run("get transactions with limit 10 should get 10", func(t *testing.T) {
 		t.Parallel()
@@ -367,9 +521,9 @@ func TestGetTransactionsFiltering(t *testing.T) {
 			Method:      "GET",
 		})
 
-		assertGetsRightAmount(t, req, 10)
+		assertGetsRightAmount(t, req, incomingOnchainTxs)
 	})
-	t.Run("get /transactions with offset 10 should get 0", func(t *testing.T) {
+	t.Run("get /transactions with offset 10 should get max sub 10", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
@@ -377,10 +531,10 @@ func TestGetTransactionsFiltering(t *testing.T) {
 			Method:      "GET",
 		})
 
-		assertGetsRightAmount(t, req, 0)
+		assertGetsRightAmount(t, req, incomingOnchainTxs-10)
 	})
 
-	t.Run("get /transactions with offset 0 should get 10", func(t *testing.T) {
+	t.Run("get /transactions with offset 0 should get all", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
@@ -388,10 +542,10 @@ func TestGetTransactionsFiltering(t *testing.T) {
 			Method:      "GET",
 		})
 
-		assertGetsRightAmount(t, req, 10)
+		assertGetsRightAmount(t, req, incomingOnchainTxs)
 	})
 
-	t.Run("get /transactions with offset 5 should get 5", func(t *testing.T) {
+	t.Run("get /transactions with offset 5 should get all sub 5", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
 			AccessToken: token,
@@ -399,7 +553,7 @@ func TestGetTransactionsFiltering(t *testing.T) {
 			Method:      "GET",
 		})
 
-		assertGetsRightAmount(t, req, 5)
+		assertGetsRightAmount(t, req, incomingOnchainTxs-5)
 	})
 	t.Run("get /transactions with offset 5 and limit 3 should get 3", func(t *testing.T) {
 		t.Parallel()
@@ -806,7 +960,7 @@ func TestGetOffchainByPaymentRequest(t *testing.T) {
 	})
 }
 
-func createFakeDeposit(t *testing.T, userId int) int {
+func createFakeDeposit(t *testing.T, userId int) transactions.Onchain {
 	t.Helper()
 	tx := txtest.MockOnchain(userId)
 	if tx.ReceivedMoneyAt == nil {
@@ -814,18 +968,18 @@ func createFakeDeposit(t *testing.T, userId int) int {
 	}
 	inserted, err := transactions.InsertOnchain(testDB, tx)
 	require.NoError(t, err)
-	return inserted.ID
+	return inserted
 
 }
 
-func createFakeDeposits(t *testing.T, amount, userId int) []int {
+func createFakeDeposits(t *testing.T, amount, userId int) []transactions.Onchain {
 	t.Helper()
 
-	ids := make([]int, amount)
+	txs := make([]transactions.Onchain, amount)
 	for i := 0; i < amount; i++ {
-		ids[i] = createFakeDeposit(t, userId)
+		txs[i] = createFakeDeposit(t, userId)
 	}
-	return ids
+	return txs
 }
 
 func assertGetsRightAmount(t *testing.T, req *http.Request, expected int) {

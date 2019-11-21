@@ -411,6 +411,9 @@ func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.F
 			case "max":
 				message = fmt.Sprintf("%q cannot be longer than %s characters", field, validationErr.Param())
 				code = "max"
+			case "oneof":
+				message = fmt.Sprintf("%q must be one of %q", field, validationErr.Param())
+				code = "oneof"
 			default:
 				logger.WithField("tag", validationErr.Tag()).Warn("Encountered unknown validation field")
 				message = fmt.Sprintf("%s is invalid", field)
