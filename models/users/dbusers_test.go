@@ -8,10 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
-	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
-
-	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -438,35 +434,6 @@ func TestFailToUpdateNonExistingUser(t *testing.T) {
 	_, err := user.Update(testDB, users.UpdateOptions{NewEmail: &email})
 
 	assert.Error(t, err)
-}
-
-func TestWithBalance(t *testing.T) {
-	t.Run("withBalance should add balance", func(t *testing.T) {
-		user := createUserOrFail(t)
-
-		var txAmountMilliSat int64
-		for i := 0; i < 10; i++ {
-			tx := txtest.InsertFakeIncomingOffchainOrFail(t,
-				testDB, user.ID)
-
-			if tx.Status == transactions.Offchain_COMPLETED && tx.SettledAt != nil {
-				txAmountMilliSat += tx.AmountMilliSat
-			}
-		}
-		expectedBalance := balance.Balance(txAmountMilliSat).Sats()
-
-		withBalance, err := user.WithBalance(testDB)
-		require.NoError(t, err)
-
-		assert.Equal(t, expectedBalance,
-			*withBalance.BalanceSats)
-	})
-	t.Run("not calling withBalance should result in nil balance",
-		func(t *testing.T) {
-			user := createUserOrFail(t)
-
-			assert.Nil(t, user.BalanceSats)
-		})
 }
 
 // The following functions are copy paste replicated here as well as in

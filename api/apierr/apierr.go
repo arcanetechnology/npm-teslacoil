@@ -35,12 +35,16 @@ func (a apiError) Error() string {
 
 // Is provides functionality for comparing errors
 func (a apiError) Is(err error) bool {
+	// first compare codes
 	if stdErr, ok := err.(httptypes.StandardErrorResponse); ok {
 		return stdErr.ErrorField.Code == a.code
 	}
+	// then compare codes, then underlying errors
 	if aErr, ok := err.(apiError); ok {
-		return a.code == aErr.code
+		return a.code == aErr.code || errors.Is(a.err, aErr.err)
 	}
+
+	// lastely compare strings
 	return a.err.Error() == err.Error()
 }
 

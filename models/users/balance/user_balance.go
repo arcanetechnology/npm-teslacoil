@@ -1,7 +1,6 @@
 package balance
 
 import (
-	"errors"
 	"fmt"
 	"math"
 
@@ -16,10 +15,6 @@ var log = build.AddSubLogger("BLNC")
 const (
 	milliSatsPerSat     = 1000
 	milliSatsPerBitcoin = 100000000000 // 100 000 million
-)
-
-var (
-	ErrUserHasNegativeBalance = errors.New("user has negative balance")
 )
 
 // Balance is a type we use to easily convert between different denominations of BTC(sats, millisats, Bitcoins)
@@ -71,9 +66,8 @@ func ForUser(db *db.DB, userID int) (Balance, error) {
 		"balance":  balance,
 	})
 	if balance < 0 {
-		bLogger.Error("User has negative balance!")
+		bLogger.Warn("User has negative balance!")
 		// TODO: create some monitoring service that shuts everything down if this happens
-		return -1, ErrUserHasNegativeBalance
 	}
 
 	bLogger.Trace("Calculated user balance")

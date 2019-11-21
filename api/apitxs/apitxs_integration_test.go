@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcutil"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 
@@ -160,8 +162,12 @@ func TestPayInvoice(t *testing.T) {
 				})
 
 			res := h.AssertResponseOkWithJson(t, req)
+			preimage, ok := res["preimage"].(string)
+			require.True(t, ok, res)
+			hash, ok := res["hash"].(string)
+			require.True(t, ok, res)
 
-			assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
+			assertPreimageIsOfHash(t, preimage, hash)
 		})
 
 		t.Run("invalid payment request is not OK", func(t *testing.T) {
@@ -267,6 +273,41 @@ func TestPayInvoice(t *testing.T) {
 			assert.Equal(t, hex.EncodeToString(offchain.HashedPreimage), res["hash"])
 			assert.Equal(t, float64(offchain.AmountSat), res["amountSat"])
 			assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
+
+		})
+
+		t.Run("cannot pay invoice for more than balance", func(t *testing.T) {
+			const initialBalance = ln.MaxAmountSatPerInvoice / 4
+			user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, initialBalance)
+			jwt, err := auth.CreateJwt(user.Email, user.ID)
+			require.NoError(t, err)
+
+			bal, err := balance.ForUser(testDB, user.ID)
+			require.NoError(t, err)
+
+			offchain, err := transactions.CreateTeslacoilInvoice(testDB, lnd2, transactions.NewOffchainOpts{
+				UserID:    user.ID,
+				AmountSat: bal.Sats() + 1,
+			})
+			require.NoError(t, err)
+
+			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+				AccessToken: jwt,
+				Path:        "/invoices/pay",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"paymentRequest": %q
+				}`, offchain.PaymentRequest),
+			})
+
+			_, err = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+			testutil.AssertEqualErr(t, apierr.ErrBalanceTooLow, err)
+
+			// check that balance hasn't changed
+			newBal, err := balance.ForUser(testDB, user.ID)
+			require.NoError(t, err)
+
+			assert.Equal(t, bal.MilliSats(), newBal.MilliSats())
 
 		})
 

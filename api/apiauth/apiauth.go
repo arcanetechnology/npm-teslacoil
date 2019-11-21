@@ -8,6 +8,7 @@ import (
 	"github.com/dchest/passwordreset"
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp/totp"
+	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
 	"golang.org/x/crypto/bcrypt"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -117,16 +118,20 @@ func login() gin.HandlerFunc {
 		tokenString, err := auth.CreateJwt(req.Email, user.ID)
 		if err != nil {
 			_ = c.Error(err)
-			c.Abort()
 			return
 		}
 
+		bal, err := balance.ForUser(database, user.ID)
+		if err != nil {
+			_ = c.Error(err)
+			return
+		}
 		res := loginResponse{
 			AccessToken: tokenString,
 			Response: apiusers.Response{
 				ID:          user.ID,
 				Email:       user.Email,
-				BalanceSats: *user.BalanceSats,
+				BalanceSats: bal.Sats(),
 				Firstname:   user.Firstname,
 				Lastname:    user.Lastname,
 			},

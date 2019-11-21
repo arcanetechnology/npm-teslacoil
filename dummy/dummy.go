@@ -1,7 +1,6 @@
 package dummy
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -179,8 +178,8 @@ func createTxsForUser(db *db.DB, user users.User) {
 
 	// verify that the user has positive balance, otherwise keep on chugging
 	// until we're positive
-	_, err := balance.ForUser(db, user.ID)
-	if errors.Is(err, balance.ErrUserHasNegativeBalance) {
+	bal, err := balance.ForUser(db, user.ID)
+	if err == nil && bal.MilliSats() < 0 {
 		createTxsForUser(db, user)
 	}
 }
