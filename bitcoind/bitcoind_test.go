@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 // tx, thus filling us up with tx's
 func TestTxListener(t *testing.T) {
 
-	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
 		txCh := bitcoin.ZmqTxChannel()
@@ -97,7 +97,7 @@ func TestTxListener(t *testing.T) {
 func TestBlockListener(t *testing.T) {
 	t.Parallel()
 
-	nodetestutil.RunWithBitcoind(t, false, func(bitcoin bitcoind.TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		bitcoin.StartZmq()
 
@@ -131,7 +131,7 @@ func TestBlockListener(t *testing.T) {
 }
 
 func TestFindVout(t *testing.T) {
-	nodetestutil.RunWithBitcoind(t, true, func(bitcoin bitcoind.TeslacoilBitcoind) {
+	nodetestutil.RunWithBitcoind(t, func(bitcoin bitcoind.TeslacoilBitcoind) {
 
 		t.Run("can find vout for transaction", func(t *testing.T) {
 			address, err := bitcoin.Btcctl().GetNewAddress("")

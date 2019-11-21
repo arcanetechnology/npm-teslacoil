@@ -84,6 +84,7 @@ type Transaction struct {
 	SettledAt      *time.Time      `db:"settled_at"` // If defined, it means the  invoice is settled
 	Memo           *string         `db:"memo"`
 	Status         *OffchainStatus `db:"invoice_status"`
+	Error          *string         `db:"payment_error"`
 }
 
 // MarshalJSON is added to make sure that we never serialize raw Transactions
@@ -184,6 +185,7 @@ func (t Transaction) ToOffchain() (Offchain, error) {
 		PaymentRequest:   *t.PaymentRequest,
 		Memo:             t.Memo,
 		Status:           *t.Status,
+		Error:            t.Error,
 		SettledAt:        t.SettledAt,
 		CreatedAt:        t.CreatedAt,
 		UpdatedAt:        t.UpdatedAt,
@@ -242,6 +244,7 @@ type Offchain struct {
 	PaymentRequest string         `json:"paymentRequest"`
 	Memo           *string        `json:"memo,omitempty"`
 	Status         OffchainStatus `json:"status"`
+	Error          *string        `json:"error,omitempty"` // PaymentError from LND
 
 	SettledAt *time.Time `json:"settledAt,omitempty"` // If defined, it means the  invoice is settled
 	CreatedAt time.Time  `json:"createdAt"`
@@ -271,6 +274,7 @@ func (o Offchain) ToTransaction() Transaction {
 		SettledAt:        o.SettledAt,
 		Memo:             o.Memo,
 		Status:           &o.Status,
+		Error:            o.Error,
 		CreatedAt:        o.CreatedAt,
 		UpdatedAt:        o.UpdatedAt,
 		DeletedAt:        o.DeletedAt,
@@ -415,14 +419,19 @@ func (o Offchain) MarkAsCompleted(database db.InsertGetter, preimage []byte,
 }
 
 // MarkAsFlopped marks the transaction as failed
-func (o Offchain) MarkAsFlopped(database db.Inserter) (Offchain, error) {
+func (o Offchain) MarkAsFlopped(database db.Inserter, reason string) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions 
-		SET invoice_status = :invoice_status
+		SET invoice_status = :invoice_status, payment_error = :payment_error
 		WHERE id = :id ` + txReturningSql
 
-	log.WithField("paymentRequest", o.PaymentRequest).Info("Marking invoice as paid")
+	log.WithFields(logrus.Fields{
+		"paymentRequest": o.PaymentRequest,
+		"id":             o.ID,
+		"reason":         reason,
+	}).Info("Marking invoice as failed")
 
 	o.Status = Offchain_FLOPPED
+	o.Error = &reason
 	tx := o.ToTransaction()
 	rows, err := database.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
@@ -465,6 +474,9 @@ func (o Offchain) String() string {
 	}
 	if o.CallbackURL != nil {
 		fragments = append(fragments, fmt.Sprintf("CallbackURL: %s", *o.CallbackURL))
+	}
+	if o.Error != nil {
+		fragments = append(fragments, fmt.Sprintf("Error: %s", *o.Error))
 	}
 
 	fragments = append(fragments,
@@ -884,16 +896,16 @@ func (o Onchain) String() string {
 
 const txReturningSql = ` RETURNING id, user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, internal_transfer,
 	    description, confirmed_at_block, confirmed_at, address, txid, vout, received_tx_at, payment_request, preimage, 
-	    hashed_preimage, settled_at, memo, invoice_status, created_at, updated_at, deleted_at`
+	    hashed_preimage, settled_at, memo, invoice_status, payment_error, created_at, updated_at, deleted_at`
 
 func insertTransaction(database db.Inserter, t Transaction) (Transaction, error) {
 	createTransactionQuery := `
 	INSERT INTO transactions (user_id, callback_url, customer_order_id, expiry, direction, amount_milli_sat, internal_transfer, 
 	                          description, confirmed_at_block, confirmed_at, address, txid, vout, received_tx_at, payment_request, 
-	                          preimage, hashed_preimage, settled_at, memo, invoice_status)
+	                          preimage, hashed_preimage, settled_at, memo, invoice_status, payment_error)
 	VALUES (:user_id, :callback_url, :customer_order_id, :expiry, :direction, :amount_milli_sat, :internal_transfer, 
 	        :description, :confirmed_at_block, :confirmed_at, :address, :txid, :vout, :received_tx_at, :payment_request, 
-	        :preimage, :hashed_preimage, :settled_at, :memo, :invoice_status)` + txReturningSql
+	        :preimage, :hashed_preimage, :settled_at, :memo, :invoice_status, :payment_error)` + txReturningSql
 
 	rows, err := database.NamedQuery(createTransactionQuery, t)
 	if err != nil {

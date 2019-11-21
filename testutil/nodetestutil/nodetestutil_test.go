@@ -36,6 +36,7 @@ func TestStartLndOrFail(t *testing.T) {
 	_ = StartBitcoindOrFail(t, bitcoindConf)
 
 	lnd := StartLndOrFail(t, bitcoindConf, lndConf)
+	require.False(t, t.Failed(), "test failed while starting LND!")
 
 	_, err := lnd.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
 	require.NoError(t, err)
