@@ -754,8 +754,8 @@ func (s SortingDirection) String() string {
 }
 
 const (
-	SortAscending SortingDirection = iota
-	SortDescending
+	SortDescending SortingDirection = iota
+	SortAscending
 )
 
 type GetAllParams struct {
