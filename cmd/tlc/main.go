@@ -93,6 +93,7 @@ func realMain(app *cli.App) {
 		// only print error if something was supplied to tlc, help
 		// message is printed anyways
 		if len(os.Args) > 1 {
+			log.Error(err) // just printing to stderr doesn't make errors appear in logs
 			_, _ = fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(1)
