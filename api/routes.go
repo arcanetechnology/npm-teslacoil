@@ -64,6 +64,13 @@ var corsConfig = cors.Config{
 		"Authorization"},
 }
 
+// we don't log the body of HTTP requests sent to these URLs
+var routeBlackList = []string{
+	"/login",
+	"/auth/reset_password",
+	"/users",
+}
+
 // getGinEngine creates a new Gin engine, and applies middlewares used by
 // our API. This includes recovering from panics, logging with Logrus and
 // applying CORS configuration.
@@ -74,8 +81,7 @@ func getGinEngine() *gin.Engine {
 	engine.Use(gin.Recovery())
 
 	log.Debug("Applying Gin logging middleware")
-	engine.Use(build.GinLoggingMiddleWare(log))
-	// TODO should we have a custom field for request logging in our config?
+	engine.Use(build.GinLoggingMiddleWare(log, routeBlackList))
 
 	log.Debug("Applying CORS middleware")
 	engine.Use(cors.New(corsConfig))

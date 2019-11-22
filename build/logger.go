@@ -64,6 +64,9 @@ func SetLogLevel(subsystem string, level logrus.Level) {
 }
 
 func SetLogLevels(level logrus.Level) {
+	logConfigLock.Lock()
+	defer logConfigLock.Unlock()
+
 	for _, hook := range subsystemHooks {
 		hook.setLevel(level)
 	}
@@ -140,7 +143,12 @@ func ToLogLevel(s string) (logrus.Level, error) {
 
 // GinLoggingMiddleWare returns  a middleware that logs incoming requests with Logrus.
 // It is based on the discontinued Ginrus middleware: https://github.com/gin-gonic/contrib/blob/master/ginrus/ginrus.go
-func GinLoggingMiddleWare(logger *logrus.Logger) gin.HandlerFunc {
+func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string) gin.HandlerFunc {
+	blackListMap := make(map[string]struct{})
+	for _, elem := range blacklist {
+		blackListMap[elem] = struct{}{}
+	}
+
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -153,10 +161,16 @@ func GinLoggingMiddleWare(logger *logrus.Logger) gin.HandlerFunc {
 		})
 
 		// read the body so it can be logged
-		// we don't check the error here, as we later check for 0 length anyways
-		bodyBytes, _ := ioutil.ReadAll(c.Request.Body)
-		// restore the original buffer so it can be read later
-		c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+		var bodyBytes []byte
+		// don't read the body if the path is blacklisted
+		if _, found := blackListMap[path]; !found {
+			// we don't check the error here, as we later check for 0 length anyways
+			bodyBytes, _ = ioutil.ReadAll(c.Request.Body)
+			// restore the original buffer so it can be read later
+			c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+		} else {
+			bodyBytes = []byte("not logged")
+		}
 
 		if c.Request.URL != nil {
 			query := c.Request.URL.Query()
