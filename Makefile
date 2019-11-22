@@ -36,7 +36,7 @@ clean:
 	rm -f ${BINARIES} ${COVERAGE_ARTIFACTS}
 
 install:
-	go install ${LDFLAGS} -o tlc ./cmd/tlc/main.go
+	go install ${LDFLAGS} ./...
 
 # If the first argument is "test-only"...
 ifeq (test-only,$(firstword $(MAKECMDGOALS)))
