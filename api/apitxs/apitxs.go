@@ -358,6 +358,11 @@ func payInvoice() gin.HandlerFunc {
 				apierr.Public(c, http.StatusBadRequest, apierr.ErrCannotPayOwnInvoice)
 				return
 			}
+			if errors.Is(err, transactions.ErrBalanceTooLow) {
+				apierr.Public(c, http.StatusBadRequest, apierr.ErrBalanceTooLow)
+				return
+			}
+
 			_ = c.Error(err)
 			return
 		}

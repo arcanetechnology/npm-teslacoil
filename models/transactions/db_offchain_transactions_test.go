@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"github.com/stretchr/testify/assert"
@@ -414,8 +416,12 @@ func TestPayInvoice(t *testing.T) {
 
 	t.Run("paying invoice greater than balance fails", func(t *testing.T) {
 		t.Parallel()
+		build.SetLogLevels(logrus.DebugLevel)
 
 		user := CreateUserWithBalanceOrFail(t, testDB, 5)
+		balancePrePayment, err := balance.ForUser(testDB, user.ID)
+		require.NoError(t, err)
+
 		// Create Mock LND client with preconfigured invoice response
 		mockLNcli := lntestutil.LightningMockClient{
 			SendPaymentSyncResponse: lnrpc.SendResponse{
@@ -425,15 +431,13 @@ func TestPayInvoice(t *testing.T) {
 			// define what lncli.DecodePayReq returns
 			DecodePayReqResponse: lnrpc.PayReq{
 				PaymentHash: SampleHashHex,
-				NumSatoshis: 6,
+				NumSatoshis: balancePrePayment.Sats() + 1,
 			},
 		}
 
-		_, err := transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, paymentRequest)
-		if errors.Is(err, transactions.ErrBalanceTooLow) {
-			assert.Equal(t, err, transactions.ErrBalanceTooLow)
-		}
-
+		_, err = transactions.PayInvoice(testDB, &mockLNcli, nil, user.ID, paymentRequest)
+		require.Error(t, err)
+		testutil.AssertEqualErr(t, err, transactions.ErrBalanceTooLow)
 	})
 
 	t.Run("paying invoice with 0 amount fails with Err0AmountInvoiceNotSupported", func(t *testing.T) {
@@ -514,6 +518,9 @@ func TestPayInvoice(t *testing.T) {
 
 		payTo := CreateUserOrFail(t, testDB)
 		user := CreateUserWithBalanceOrFail(t, testDB, ln.MaxAmountSatPerInvoice*3)
+		balancePrePayment, err := balance.ForUser(testDB, user.ID)
+		require.NoError(t, err)
+
 		mockLNcli := lntestutil.LightningMockClient{
 			DecodePayReqResponse: lnrpc.PayReq{
 				PaymentHash: SampleHashHex,
@@ -539,9 +546,9 @@ func TestPayInvoice(t *testing.T) {
 		assert.NotNil(t, paid.SettledAt)
 
 		// assert balance is decreased
-		updatedBalance, err := user.WithBalance(testDB)
+		updatedBalance, err := balance.ForUser(testDB, user.ID)
 		assert.NoError(t, err)
-		assert.Equal(t, *user.BalanceSats-amount, *updatedBalance.BalanceSats)
+		assert.Equal(t, balancePrePayment.Sats()-amount, updatedBalance.Sats())
 	})
 }
 
@@ -728,33 +735,26 @@ func CreateUserOrFail(t *testing.T, db *db.DB) users.User {
 	return u
 }
 
-// CreateUserWithBalanceOrFail creates a user with an initial balance
+// CreateUserWithBalanceOrFail creates a user with the given balance
 func CreateUserWithBalanceOrFail(t *testing.T, db *db.DB, sats int64) users.User {
 	u := CreateUserOrFail(t, db)
-
-	block := gofakeit.Number(0, 600000)
-	txid := txtest.MockTxid()
-	vout := 0
-	receivedAt := gofakeit.Date()
-	settledAt := gofakeit.Date()
-	confirmedAt := gofakeit.Date()
-	_, err := transactions.InsertOnchain(db, transactions.Onchain{
-		UserID:           u.ID,
-		Direction:        transactions.INBOUND,
-		AmountSat:        &sats,
-		ConfirmedAtBlock: &block,
-		Address:          "THIS IS AN ADDRESS",
-		Txid:             &txid,
-		Vout:             &vout,
-		ReceivedMoneyAt:  &receivedAt,
-		SettledAt:        &settledAt,
-		ConfirmedAt:      &confirmedAt,
-	})
+	tx := getIncomingTxFor(u.ID, sats)
+	_, err := transactions.InsertOffchain(db, tx)
 	require.NoError(t, err)
 
-	with, err := u.WithBalance(db)
-	require.NoError(t, err)
-	require.Equal(t, *with.BalanceSats, sats)
+	return u
+}
 
-	return with
+func getIncomingTxFor(userId int, sats int64) transactions.Offchain {
+	tx := txtest.MockOffchain(userId)
+	if tx.Direction != transactions.INBOUND {
+		return getIncomingTxFor(userId, sats)
+	}
+	if tx.Status != transactions.Offchain_COMPLETED {
+		return getIncomingTxFor(userId, sats)
+	}
+
+	tx.AmountSat = sats
+	tx.AmountMilliSat = sats * 1000
+	return tx
 }

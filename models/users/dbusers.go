@@ -11,8 +11,6 @@ import (
 	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
 
-	"gitlab.com/arcanecrypto/teslacoil/models/users/balance"
-
 	"github.com/dchest/passwordreset"
 	"github.com/pkg/errors"
 	"github.com/pquerna/otp"
@@ -43,12 +41,6 @@ type User struct {
 	CreatedAt           time.Time  `db:"created_at"`
 	UpdatedAt           time.Time  `db:"updated_at"`
 	DeletedAt           *time.Time `db:"deleted_at"`
-
-	// BalanceSats is an additional property that is not
-	// saved in the db, but is computed using the balance package
-	// it's a pointer because we never want to mistake a
-	// unfilled balance (default 0) with an actual 0 balance
-	BalanceSats *int64 `db:"-"`
 }
 
 // SQL related constants
@@ -117,12 +109,7 @@ func GetByID(db *db.DB, id int) (User, error) {
 		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
 	}
 
-	withBalance, err := userResult.WithBalance(db)
-	if err != nil {
-		log.WithError(err).Error("could not add balance")
-	}
-
-	return withBalance, nil
+	return userResult, nil
 }
 
 // GetByEmail selects all columns for user where email=email
@@ -135,12 +122,7 @@ func GetByEmail(db *db.DB, email string) (User, error) {
 		return User{}, err
 	}
 
-	withBalance, err := userResult.WithBalance(db)
-	if err != nil {
-		log.WithError(err).Error("could not add balance")
-	}
-
-	return withBalance, nil
+	return userResult, nil
 }
 
 // GetByCredentials retrieves a user from the database by taking in
@@ -164,12 +146,7 @@ func GetByCredentials(db *db.DB, email string, password string) (
 		return User{}, err
 	}
 
-	withBalance, err := userResult.WithBalance(db)
-	if err != nil {
-		log.WithError(err).Error("could not add balance")
-	}
-
-	return withBalance, nil
+	return userResult, nil
 }
 
 // CreateUserArgs is the struct required to create a new user using
@@ -503,18 +480,6 @@ func (u User) Update(database *db.DB, opts UpdateOptions) (User, error) {
 
 	return user, nil
 
-}
-
-// WithBalance fills in the BalanceSats property in the User struct
-func (u User) WithBalance(db *db.DB) (User, error) {
-	uBalance, err := balance.ForUser(db, u.ID)
-	if err != nil {
-		log.WithError(err).Error("could not get balance")
-	}
-	sats := uBalance.Sats()
-	u.BalanceSats = &sats
-
-	return u, nil
 }
 
 func (u User) String() string {
