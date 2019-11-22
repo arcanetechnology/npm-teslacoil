@@ -282,7 +282,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 // RunWithBitcoindAndLnd lets you test functionality that requires actual LND/bitcoind
 // nodes by creating the nodes, running your tests, and then performs the
 // necessary cleanup.
-func RunWithBitcoindAndLnd(t *testing.T, giveInitialBalance bool, test func(lnd lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind)) {
+func RunWithBitcoindAndLnd(t *testing.T, test func(lnd lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind)) {
 	prevLen := len(nodeCleaners)
 
 	bitcoindConf := bitcoindtestutil.GetBitcoindConfig(t)
@@ -296,24 +296,21 @@ func RunWithBitcoindAndLnd(t *testing.T, giveInitialBalance bool, test func(lnd 
 		return
 	}
 
-	if giveInitialBalance {
+	addr, err := lnd.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
+		Type: 0,
+	})
+	if !assert.NoError(t, err, "could not get new address from lnd") {
+		return
+	}
 
-		addr, err := lnd.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
-			Type: 0,
-		})
-		if !assert.NoError(t, err, "could not get new address from lnd") {
-			return
-		}
+	address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
 
-		address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
+	_, err = bitcoindtestutil.GenerateToSelf(10, bitcoin)
+	assert.NoError(t, err)
 
-		_, err = bitcoindtestutil.GenerateToSelf(10, bitcoin)
-		assert.NoError(t, err)
-
-		_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
-		if !assert.NoError(t, err, "could not generate to address") {
-			return
-		}
+	_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
+	if !assert.NoError(t, err, "could not generate to address") {
+		return
 	}
 
 	// if anything went south while initializing the nodes we want to abort the test
@@ -326,8 +323,8 @@ func RunWithBitcoindAndLnd(t *testing.T, giveInitialBalance bool, test func(lnd 
 // RunWithLnd lets you test functionality that requires actual LND/bitcoind
 // nodes by creating the nodes, running your tests, and then performs the
 // necessary cleanup.
-func RunWithLnd(t *testing.T, giveInitialBalance bool, test func(lnd lnrpc.LightningClient)) {
-	RunWithBitcoindAndLnd(t, giveInitialBalance, func(lnd lnrpc.LightningClient, _ bitcoind.TeslacoilBitcoind) {
+func RunWithLnd(t *testing.T, test func(lnd lnrpc.LightningClient)) {
+	RunWithBitcoindAndLnd(t, func(lnd lnrpc.LightningClient, _ bitcoind.TeslacoilBitcoind) {
 		test(lnd)
 	})
 }
@@ -335,8 +332,8 @@ func RunWithLnd(t *testing.T, giveInitialBalance bool, test func(lnd lnrpc.Light
 // RunWithBitcoind lets you test functionality that requires actual bitcoind
 // node by creating starting up bitcoind, running the test and then running
 // the necessary cleanup.
-func RunWithBitcoind(t *testing.T, giveInitialBalance bool, test func(bitcoin bitcoind.TeslacoilBitcoind)) {
-	RunWithBitcoindAndLnd(t, giveInitialBalance, func(_ lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind) {
+func RunWithBitcoind(t *testing.T, test func(bitcoin bitcoind.TeslacoilBitcoind)) {
+	RunWithBitcoindAndLnd(t, func(_ lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind) {
 		test(bitcoin)
 	})
 }

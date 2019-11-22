@@ -225,7 +225,7 @@ func getTeslacoilPaymentRequest(db *db.DB, paymentRequest string, userID int) (O
 	return offchain, true, nil
 }
 
-func sendOffchain(db *db.DB, lncli ln.DecodeSendClient, callbacker HttpPoster, payment Offchain) (Offchain, error) {
+func sendOffchain(db db.InsertGetter, lncli ln.DecodeSendClient, callbacker HttpPoster, payment Offchain) (Offchain, error) {
 	// TODO(bo): Add a websocket here, sending a message to the user that
 	//  the payment is initiated
 
@@ -241,10 +241,11 @@ func sendOffchain(db *db.DB, lncli ln.DecodeSendClient, callbacker HttpPoster, p
 		"paymentError": paymentResponse.PaymentError,
 		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
 		"paymentRoute": paymentResponse.PaymentRoute,
+		"id":           payment.ID,
 	}).Info("tried sending payment")
 
 	if paymentResponse.PaymentError != "" {
-		failed, err := payment.MarkAsFlopped(db)
+		failed, err := payment.MarkAsFlopped(db, paymentResponse.PaymentError)
 		if err != nil {
 			return Offchain{}, err
 		}
@@ -344,7 +345,7 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 			"balanceSats":     userBalancePrePayment.Sats(),
 			"requestedAmount": decoded.NumSatoshis,
 		}).Warn("User tried to pay invoice for more than their balance")
-		if _, err := payment.MarkAsFlopped(database); err != nil {
+		if _, err := payment.MarkAsFlopped(database, "balance was too low"); err != nil {
 			log.WithError(err).WithFields(logrus.Fields{
 				"userId": userID,
 				"id":     payment.ID,

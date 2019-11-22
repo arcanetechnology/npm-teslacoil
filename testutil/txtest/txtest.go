@@ -102,9 +102,9 @@ func MockOffchainStatus() transactions.OffchainStatus {
 	return s[rand.Intn(3)]
 }
 
-// MockMaybeString will sometimes return nil, and other times return a
+// mockMaybeString will sometimes return nil, and other times return a
 // string using the argument function
-func MockMaybeString(fn func() string) *string {
+func mockMaybeString(fn func() string) *string {
 	var res *string
 	if gofakeit.Bool() {
 		r := fn()
@@ -175,20 +175,25 @@ func MockOffchain(userID int) transactions.Offchain {
 	}
 
 	status := MockOffchainStatus()
+	var txError *string
 	if status == transactions.Offchain_COMPLETED {
 		now := time.Now()
 		start := now.Add(-(time.Hour * 24 * 60)) // 60 days ago
 		s := gofakeit.DateRange(start, now)
 		settledAt = &s
 	}
+	if status == transactions.Offchain_FLOPPED {
+		t := gofakeit.Sentence(gofakeit.Number(3, 20))
+		txError = &t
+	}
 
 	return transactions.Offchain{
 		UserID:          userID,
-		CallbackURL:     MockMaybeString(gofakeit.URL),
-		CustomerOrderId: MockMaybeString(gofakeit.Word),
+		CallbackURL:     mockMaybeString(gofakeit.URL),
+		CustomerOrderId: mockMaybeString(gofakeit.Word),
 		Expiry:          positiveInt64(),
 		Direction:       MockDirection(),
-		Description: MockMaybeString(func() string {
+		Description: mockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		PaymentRequest: MockPaymentRequest(),
@@ -197,28 +202,18 @@ func MockOffchain(userID int) transactions.Offchain {
 		AmountSat:      balance.Balance(amountMSat).Sats(),
 		AmountMilliSat: amountMSat,
 		SettledAt:      settledAt,
-		Memo: MockMaybeString(func() string {
+		Memo: mockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 
 		Status: status,
+		Error:  txError,
 	}
 }
 
-// MockOnchainWithTxid mocks onchain recursively until
-// a tx with a txid is returned
-func MockOnchainWithTxid(userID int) transactions.Onchain {
-	tx := MockOnchain(userID)
-	if tx.Txid != nil {
-		return tx
-	}
-
-	return MockOnchain(userID)
-}
-
-// MockOnchainWithoutTxid mocks onchain recursively until
+// onchainWithoutTxid generates an onchain recursively until
 // a tx without a txid is returned
-func MockOnchainWithoutTxid(userID int) transactions.Onchain {
+func onchainWithoutTxid(userID int) transactions.Onchain {
 	tx := MockOnchain(userID)
 	if tx.Txid == nil {
 		return tx
@@ -271,13 +266,13 @@ func MockOnchain(userID int) transactions.Onchain {
 
 	return transactions.Onchain{
 		UserID:          userID,
-		CallbackURL:     MockMaybeString(gofakeit.URL),
-		CustomerOrderId: MockMaybeString(gofakeit.Word),
+		CallbackURL:     mockMaybeString(gofakeit.URL),
+		CustomerOrderId: mockMaybeString(gofakeit.Word),
 		Expiry:          expiry,
 		Direction:       MockDirection(),
 		AmountSat:       amountSat,
 		ReceivedMoneyAt: receivedMoneyAt,
-		Description: MockMaybeString(func() string {
+		Description: mockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
 		ConfirmedAtBlock: confirmedAtBlock,
@@ -295,7 +290,7 @@ func InsertFakeOnchain(t *testing.T, db *db.DB, userID int) (transactions.Onchai
 }
 
 func InsertFakeOnchainWithoutTxid(t *testing.T, db *db.DB, userID int) (transactions.Onchain, error) {
-	onchain := MockOnchainWithoutTxid(userID)
+	onchain := onchainWithoutTxid(userID)
 	return transactions.InsertOnchain(db, onchain)
 }
 
@@ -306,14 +301,6 @@ func InsertFakeOffchain(t *testing.T, db *db.DB, userID int) (transactions.Offch
 
 func InsertFakeIncomingOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
 	onchain := MockOnchain(userID)
-	onchain.Direction = transactions.INBOUND
-	tx, err := transactions.InsertOnchain(db, onchain)
-	require.NoError(t, err, onchain)
-	return tx
-}
-
-func InsertFakeIncomingWithoutTxidOnchainorFail(t *testing.T, db *db.DB, userID int) transactions.Onchain {
-	onchain := MockOnchainWithoutTxid(userID)
 	onchain.Direction = transactions.INBOUND
 	tx, err := transactions.InsertOnchain(db, onchain)
 	require.NoError(t, err, onchain)

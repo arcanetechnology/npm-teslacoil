@@ -368,9 +368,12 @@ func TestOffchain_MarkAsFlopped(t *testing.T) {
 	inserted, err := transactions.InsertOffchain(testDB, tx)
 	require.NoError(t, err)
 
-	paid, err := inserted.MarkAsFlopped(testDB)
+	reason := gofakeit.Sentence(12)
+	paid, err := inserted.MarkAsFlopped(testDB, reason)
 	require.NoError(t, err)
 	assert.Equal(t, transactions.Offchain_FLOPPED, paid.Status)
+	require.NotNil(t, paid.Error)
+	assert.Equal(t, reason, *paid.Error)
 
 	assert.Nil(t, paid.SettledAt)
 }

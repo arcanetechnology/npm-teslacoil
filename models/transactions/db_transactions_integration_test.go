@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"github.com/brianvoe/gofakeit"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -322,5 +323,20 @@ func TestEverything(t *testing.T) {
 			assert.Equal(t, txid.String(), *foundTx.Txid)
 			assert.WithinDuration(t, time.Now(), *foundTx.ReceivedMoneyAt, time.Millisecond*300)
 		})
+	})
+}
+
+func TestOffchain_MarkAsFlopped2(t *testing.T) {
+
+	user := userstestutil.CreateUserWithBalanceOrFail(t, testDB, btcutil.SatoshiPerBitcoin)
+	nodetestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
+		invoice := txtest.MockPaymentRequest()
+		_, err := transactions.PayInvoice(testDB, lnd, testutil.GetMockHttpPoster(), user.ID, invoice)
+		require.Error(t, err)
+		tx, err := transactions.GetOffchainByPaymentRequest(testDB, invoice, user.ID)
+		require.NoError(t, err)
+
+		assert.Equal(t, transactions.Offchain_FLOPPED, tx.Status)
+		require.NotNil(t, tx.Error)
 	})
 }

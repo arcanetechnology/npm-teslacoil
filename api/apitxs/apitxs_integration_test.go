@@ -48,7 +48,7 @@ func init() {
 }
 
 func TestCreateInvoiceRoute(t *testing.T) {
-	nodetestutil.RunWithLnd(t, false, func(lnd lnrpc.LightningClient) {
+	nodetestutil.RunWithLnd(t, func(lnd lnrpc.LightningClient) {
 		app, err := api.NewApp(testDB,
 			lnd,
 			mock.GetMockSendGridClient(),
