@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -95,15 +94,9 @@ func getAllTransactions() gin.HandlerFunc {
 			return
 		}
 
-		results := make(chan interface{}, 2)
-		errs := make(chan error, 2)
-		var wg sync.WaitGroup
-
 		txParams := transactions.GetAllParams{
-			Offset: params.Offset,
-			Limit:  params.Limit,
-			End:    params.End,
-			Start:  params.Start,
+			End:   params.End,
+			Start: params.Start,
 		}
 		if params.Min != nil {
 			i := *params.Min * 1000 // sats to msats conversion
@@ -127,68 +120,34 @@ func getAllTransactions() gin.HandlerFunc {
 			}
 		}
 
-		// fetch transactions
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			txs, err := transactions.GetAllTransactions(database, userID, txParams)
-			if err != nil {
-				log.WithError(err).WithFields(logrus.Fields{
-					"limit":  params.Limit,
-					"offset": params.Offset,
-					"userID": userID,
-				}).Error("could not get transactions")
-				errs <- err
-				return
-			}
-			results <- txs
-		}()
-
-		// fetch the count
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			count, err := transactions.CountForUser(database, userID)
-			if err != nil {
-				log.WithError(err).WithField("userId", userID).
-					Error("Could not get TX count for user")
-				errs <- err
-				return
-			}
-			results <- count
-		}()
-
-		// close the channels
-		go func() {
-			wg.Wait()
-			close(results)
-			close(errs)
-		}()
-
-		for err := range errs {
+		allTxs, err := transactions.GetAllTransactions(database, userID, txParams)
+		if err != nil {
+			log.WithError(err).WithFields(logrus.Fields{
+				"limit":  params.Limit,
+				"offset": params.Offset,
+				"userID": userID,
+			}).Error("could not get transactions")
 			_ = c.Error(err)
 			return
 		}
 
-		var txs []transactions.Transaction
-		var total int
-		for res := range results {
-			switch r := res.(type) {
-			case []transactions.Transaction:
-				txs = r
-			case int:
-				total = r
-			default:
-				_ = c.Error(fmt.Errorf("unexpected result type when fetching TXs: %v", r))
-				return
-			}
+		// instead of implementing Limit and Offset on the DB level (which probably) is more efficient
+		// CPU and memory wise, we fetch everything, and do the slicing ourselves. the reason for this
+		// is that it is easier to get a consistent total count (the total count needs to account for
+		// the applied filters) when only executing one query, instead of doing two queries and keeping
+		// them in sync. if this ever becomes a bottleneck this might be a place to look for optimizations
+		var txs = allTxs
+		if params.Offset <= len(allTxs) {
+			txs = allTxs[params.Offset:]
+		}
+
+		if params.Limit != 0 && params.Limit <= len(txs) {
+			txs = txs[:params.Limit]
 		}
 
 		c.JSONP(http.StatusOK, response{
 			Transactions: txs,
-			Total:        total,
+			Total:        len(allTxs),
 			Limit:        params.Limit,
 			Offset:       params.Offset,
 		})
