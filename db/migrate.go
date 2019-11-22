@@ -110,29 +110,30 @@ func newMigrationFile(filePath string) error {
 }
 
 // CreateMigration creates a new empty migration file with correct name
-func (d *DB) CreateMigration(migrationText string) error {
+func (d *DB) CreateMigration(migrationText string) (string, error) {
 	migrationTime := time.Now().UTC().Format("20060102150405")
 
 	parts := strings.SplitN(d.MigrationsPath, ":", 2)
 	if len(parts) != 2 {
-		return fmt.Errorf("couldn't extract directory from migrations path: %s", d.MigrationsPath)
+		return "", fmt.Errorf("couldn't extract directory from migrations path: %s", d.MigrationsPath)
 	}
 	migrationsDir := parts[1]
+	baseFileName := migrationTime + "_" + strcase.ToSnake(migrationText)
 
 	fileNameUp := path.Join(
 		migrationsDir,
-		migrationTime+"_"+strcase.ToSnake(migrationText)+".up.pgsql")
+		baseFileName+".up.pgsql")
 	if err := newMigrationFile(fileNameUp); err != nil {
-		return err
+		return "", err
 	}
 
 	fileNameDown := path.Join(
 		migrationsDir,
-		migrationTime+"_"+strcase.ToSnake(migrationText)+".down.pgsql")
+		baseFileName+".down.pgsql")
 	if err := newMigrationFile(fileNameDown); err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	return baseFileName, nil
 }
 
 // ForceVersion sets the migration version. It does not check any

@@ -211,7 +211,12 @@ func Db() cli.Command {
 						return errors.New("you must provide a file name for the migration")
 					}
 
-					return database.CreateMigration(migrationText)
+					migration, err := database.CreateMigration(migrationText)
+					if err != nil {
+						return err
+					}
+					fmt.Printf("created migration %s\n", migration)
+					return nil
 				},
 			},
 			{
