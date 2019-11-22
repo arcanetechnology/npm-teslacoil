@@ -118,14 +118,11 @@ func TestBlockListener(t *testing.T) {
 		require.NoError(t, err, "could not generate %d blocks to self", blocksToMine)
 
 		check := func() bool {
-			if eventsReceived != blocksToMine {
-				return false
-			}
-			return true
+			return eventsReceived >= blocksToMine
 		}
 
-		err = async.Await(15, 100*time.Millisecond, check)
-		require.NoError(t, err, "expected to receive %d events, but received %d", blocksToMine, eventsReceived)
+		err = async.AwaitNoBackoff(15, 100*time.Millisecond, check)
+		require.NoError(t, err, "expected to receive at least %d events, but received %d", blocksToMine, eventsReceived)
 	})
 
 }
