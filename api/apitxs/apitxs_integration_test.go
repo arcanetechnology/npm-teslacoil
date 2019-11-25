@@ -332,6 +332,22 @@ func TestPayInvoice(t *testing.T) {
 			_, err_ := h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
 			assert.True(t, apierr.ErrCannotPayOwnInvoice.Is(err_))
 		})
+
+		t.Run("cannot pay invoice with 0 amount", func(t *testing.T) {
+			t.Parallel()
+			invoice, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{})
+			require.NoError(t, err)
+
+			req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+				AccessToken: accessToken,
+				Path:        "/invoices/pay",
+				Method:      "POST",
+				Body: fmt.Sprintf(`{
+					"paymentRequest": %q
+				}`, invoice.PaymentRequest)})
+
+			_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+		})
 	})
 }
 

@@ -64,6 +64,11 @@ var (
 		err:  errors.New("no user with the given email and password exists"),
 		code: "ERR_NO_SUCH_USER",
 	}
+	// Err0AmountInvoiceNotSupported means the user tried to pay a 0-amount invoice
+	Err0AmountInvoiceNotSupported = apiError{
+		err:  errors.New("cannot pay 0-amount invoices"),
+		code: "ERR_ZERO_AMOUNT_INVOICE",
+	}
 	// ErrBalanceTooLow means the user tried to spend or withdraw more money than
 	// they had available
 	ErrBalanceTooLow = apiError{
