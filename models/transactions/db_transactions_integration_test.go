@@ -103,7 +103,7 @@ func TestEverything(t *testing.T) {
 			})
 
 			require.NoError(t, err)
-			require.Equal(t, "", payment.PaymentError)
+			require.Empty(t, payment.PaymentError, inserted)
 
 			inv, err := lnd.LookupInvoice(context.Background(), &lnrpc.PaymentHash{
 				RHash: payment.PaymentHash,
