@@ -322,6 +322,11 @@ func payInvoice() gin.HandlerFunc {
 				return
 			}
 
+			if errors.Is(err, transactions.Err0AmountInvoiceNotSupported) {
+				apierr.Public(c, http.StatusBadRequest, apierr.Err0AmountInvoiceNotSupported)
+				return
+			}
+
 			_ = c.Error(err)
 			return
 		}
