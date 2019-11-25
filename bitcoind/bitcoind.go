@@ -342,8 +342,7 @@ func (c *Conn) blockEventHandler() {
 			block := &wire.MsgBlock{}
 			r := bytes.NewReader(msgBytes[1])
 			if err := block.Deserialize(r); err != nil {
-				log.Errorf("Unable to deserialize block: %v",
-					err)
+				log.WithError(err).Errorf("Unable to deserialize block")
 				continue
 			}
 
@@ -360,8 +359,7 @@ func (c *Conn) blockEventHandler() {
 				continue
 			}
 
-			log.Warnf("Received unexpected event type from "+
-				"rawblock subscription: %v", eventType)
+			log.WithField("eventType", eventType).Warn("Received unexpected event type from rawblock subscription")
 		}
 	}
 }

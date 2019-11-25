@@ -3,7 +3,9 @@ package ln
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -13,10 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/async"
 	"gitlab.com/arcanecrypto/teslacoil/build"
-
-	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/status"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -38,12 +40,6 @@ type AddLookupInvoiceClient interface {
 type DecodeSendClient interface {
 	DecodePayReq(ctx context.Context, in *lnrpc.PayReqString, opts ...grpc.CallOption) (*lnrpc.PayReq, error)
 	SendPaymentSync(ctx context.Context, in *lnrpc.SendRequest, opts ...grpc.CallOption) (*lnrpc.SendResponse, error)
-}
-
-// AddInvoiceData is the data required to add a invoice
-type AddInvoiceData struct {
-	Memo   string `json:"memo"`
-	Amount int    `json:"amount"`
 }
 
 // LightningConfig is a struct containing all possible options for configuring
@@ -255,8 +251,45 @@ func AddInvoice(lncli AddLookupInvoiceClient, invoiceData lnrpc.Invoice) (
 	return invoice, nil
 }
 
+// ListenShutdown listens for errors from LND, calling the given callback if LND quits
+func ListenShutdown(lncli lnrpc.LightningClient, onShutdown func()) error {
+	client, err := lncli.SubscribeInvoices(context.Background(), &lnrpc.InvoiceSubscription{})
+	if err != nil {
+		log.WithError(err).Error("Could not subscribe to invoice updates")
+		return errors.New("could not subscribe to LND updates")
+	}
+
+	for {
+		err := client.RecvMsg(&lnrpc.Invoice{})
+		switch {
+		case err == nil:
+			// pass
+		case errors.Is(err, io.EOF):
+			log.WithError(err).Warn("Received EOF, lost LND connection")
+			onShutdown()
+			return nil
+		default:
+			if stat, ok := status.FromError(err); ok {
+				log.WithError(stat.Err()).WithFields(logrus.Fields{
+					"message": stat.Message(),
+					"details": stat.Details(),
+					"code":    stat.Code(),
+				}).Warn("Received grpc status error")
+
+				if stat.Message() == "transport is closing" {
+					onShutdown()
+					return nil
+				}
+
+				continue
+			}
+			log.WithError(err).WithField("type", fmt.Sprintf("%T", err)).Warn("Received unknown error when listening for invoices/shutdown")
+		}
+	}
+}
+
 // ListenInvoices subscribes to lnd invoices
-func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
+func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan<- *lnrpc.Invoice) {
 	invoiceSubDetails := &lnrpc.InvoiceSubscription{}
 
 	invoiceClient, err := lncli.SubscribeInvoices(
@@ -282,17 +315,6 @@ func ListenInvoices(lncli lnrpc.LightningClient, msgCh chan *lnrpc.Invoice) {
 		msgCh <- &invoice
 	}
 
-}
-
-func (l LightningConfig) String() string {
-	return strings.Join([]string{
-		fmt.Sprintf("LndDir: %s", l.LndDir),
-		fmt.Sprintf("TLSCertPath: %s", l.TLSCertPath),
-		fmt.Sprintf("MacaroonPath: %s", l.MacaroonPath),
-		fmt.Sprintf("Network: %s", l.Network.Name),
-		fmt.Sprintf("RPCHost: %s", l.RPCHost),
-		fmt.Sprintf("RPCPort: %d", l.RPCPort),
-	}, ", ")
 }
 
 const (

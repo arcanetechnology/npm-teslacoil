@@ -338,10 +338,28 @@ func RunWithBitcoind(t *testing.T, test func(bitcoin bitcoind.TeslacoilBitcoind)
 	})
 }
 
+// LndWithPid is a regular LND client that's also got a PID
+type LndWithPid interface {
+	lnrpc.LightningClient
+	Pid() int
+}
+
+type lndWithPid struct {
+	lnrpc.LightningClient
+	pid int
+}
+
+// Pid returns the process identifier (PID) for the running LND process
+func (l lndWithPid) Pid() int {
+	return l.pid
+}
+
+var _ LndWithPid = lndWithPid{}
+
 // StartLndOrFail returns the created client, and register a cleanup action
 // that can be performed during test teardown.
 func StartLndOrFail(t *testing.T, bitcoindConfig bitcoind.Config,
-	lndConfig ln.LightningConfig) lnrpc.LightningClient {
+	lndConfig ln.LightningConfig) LndWithPid {
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -352,7 +370,7 @@ func StartLndOrFail(t *testing.T, bitcoindConfig bitcoind.Config,
 // StartLndOrFailAsync returns the created client, and register a cleanup action
 // that can be performed during test teardown.
 func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
-	lndConfig ln.LightningConfig, wg *sync.WaitGroup) lnrpc.LightningClient {
+	lndConfig ln.LightningConfig, wg *sync.WaitGroup) LndWithPid {
 	version, err := exec.Command("lnd", "--version").Output()
 	require.NoError(t, err)
 	require.Contains(t, string(version[:len(version)-1]), "lnd version 0.8", "You need to have the latest version of LND installed!")
@@ -488,7 +506,10 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 
 	wg.Done()
 
-	return lnd
+	return lndWithPid{
+		LightningClient: lnd,
+		pid:             pid,
+	}
 }
 
 // StartBitcoindOrFail starts a bitcoind node with the given configuration,
