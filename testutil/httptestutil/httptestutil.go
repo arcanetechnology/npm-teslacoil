@@ -53,13 +53,6 @@ func NewTestHarness(server Server, database *db.DB) TestHarness {
 	return TestHarness{server: server, database: database}
 }
 
-// Checks if the given string is valid JSON
-func isJSONString(s string) bool {
-	var js interface{}
-	err := json.Unmarshal([]byte(s), &js)
-	return err == nil
-}
-
 func (harness *TestHarness) CreateUserNoVerifyEmail(t *testing.T, args users.CreateUserArgs) map[string]interface{} {
 	t.Helper()
 
@@ -159,10 +152,15 @@ func GetRequest(t *testing.T, args RequestArgs) *http.Request {
 	require.NotEmpty(t, args.Method, "You forgot to set Method")
 
 	var body *bytes.Buffer
+	var js interface{}
 	if args.Body == "" {
 		body = &bytes.Buffer{}
-	} else if isJSONString(args.Body) {
-		body = bytes.NewBuffer([]byte(args.Body))
+		// we have valid JSON
+	} else if json.Unmarshal([]byte(args.Body), &js) == nil {
+		// marshal again, to remove uneccesary whitespace
+		marshalled, err := json.Marshal(js)
+		require.NoError(t, err)
+		body = bytes.NewBuffer(marshalled)
 	} else {
 		assert.FailNow(t, fmt.Sprintf("Body was not valid JSON: %s", args.Body))
 	}
