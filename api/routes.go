@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
-	"gitlab.com/arcanecrypto/teslacoil/build"
-
-	"github.com/gin-gonic/gin/binding"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
 	"gitlab.com/arcanecrypto/teslacoil/api/apikeyroutes"
 	"gitlab.com/arcanecrypto/teslacoil/api/apitxs"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiusers"
+	"gitlab.com/arcanecrypto/teslacoil/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/async"
+	"gitlab.com/arcanecrypto/teslacoil/build"
+
+	"github.com/gin-gonic/gin/binding"
 	"gitlab.com/arcanecrypto/teslacoil/api/validation"
 	"gitlab.com/arcanecrypto/teslacoil/ln"
 	"gitlab.com/arcanecrypto/teslacoil/models/transactions"
@@ -22,7 +25,6 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil"
-	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/email"
@@ -39,17 +41,17 @@ var log = build.AddSubLogger("APIM")
 // log level.
 type Config struct {
 	// The Bitcoin blockchain network we're on
-	Network chaincfg.Params
+	Network  chaincfg.Params
+	LnConfig *ln.LightningConfig // If set, we try to reconnect to LND on connection loss
 }
 
 // RestServer is the rest server for our app. It includes a Router,
 // a JWT middleware a db connection, and a grpc connection to lnd
 type RestServer struct {
-	Router      *gin.Engine
-	db          *db.DB
-	lncli       lnrpc.LightningClient
-	bitcoind    bitcoind.TeslacoilBitcoind
-	EmailSender email.Sender
+	Router   *gin.Engine
+	db       *db.DB
+	lncli    lnrpc.LightningClient
+	bitcoind bitcoind.TeslacoilBitcoind
 }
 
 var corsConfig = cors.Config{
@@ -141,7 +143,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 		)
 	}
 	validators := validation.RegisterAllValidators(engine, config.Network)
-	log.Infof("Registered custom validators: %s", validators)
+	log.WithField("validators", validators).Info("Registered custom validators")
 
 	log.Info("Checking bitcoind connection")
 	if err := checkBitcoindConnection(bitcoin.Btcctl(), config.Network); err != nil {
@@ -159,19 +161,11 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	go transactions.TxListener(db, bitcoin.ZmqTxChannel(), config.Network)
 	go transactions.BlockListener(db, bitcoin.Btcctl(), bitcoin.ZmqBlockChannel())
 
-	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
-	// Start a goroutine for getting notified of newly added/settled invoices.
-	go ln.ListenInvoices(lncli, invoiceUpdatesCh)
-
-	// Start a goroutine for handling the newly added/settled invoices.
-	go transactions.InvoiceListener(invoiceUpdatesCh, db, callbacks)
-
 	r := RestServer{
-		Router:      g,
-		db:          db,
-		lncli:       lncli,
-		bitcoind:    bitcoin,
-		EmailSender: sender,
+		Router:   g,
+		db:       db,
+		lncli:    lncli,
+		bitcoind: bitcoin,
 	}
 
 	// Ping handler
@@ -192,7 +186,48 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware)
 	apiauth.RegisterRoutes(r.Router, r.db, sender, middleware)
 
+	r.startListeningToLnd(callbacks, sender, config)
+
 	return r, nil
+}
+
+func (r *RestServer) startListeningToLnd(poster transactions.HttpPoster, emailSender email.Sender, config Config) {
+	log.Info("Adding LND invoice listener")
+	invoiceUpdatesCh := make(chan *lnrpc.Invoice)
+
+	// Start a goroutine for getting notified of newly added/settled invoices.
+	go ln.ListenInvoices(r.lncli, invoiceUpdatesCh)
+
+	// Start a goroutine for handling the newly added/settled invoices.
+	go transactions.InvoiceListener(invoiceUpdatesCh, r.db, poster)
+
+	// Start a goroutine to handle LND connection issues
+	go func() {
+		log.Info("Adding LND shutdown listener")
+		err := ln.ListenShutdown(r.lncli, func() {
+			if config.LnConfig == nil {
+				log.Warn("LND quit, not reconnecting")
+				return
+			}
+			log.Info("LND quit, trying to reconnect")
+			const attepmts = 10
+			const sleep = time.Second * 2
+			if err := async.RetryNoBackoff(attepmts, sleep, func() error {
+				return r.reconnectLnd(*config.LnConfig)
+			}); err != nil {
+				log.WithError(err).Error("Could not reconnect to LND")
+				return
+			}
+
+			log.Info("Got new connection to LND")
+			apitxs.SetLnd(r.lncli)
+			r.startListeningToLnd(poster, emailSender, config)
+		})
+		if err != nil {
+			log.WithError(err).Error("Could not listen for LND shutdown")
+		}
+	}()
+
 }
 
 // RegisterAdminRoutes registers routes related to administration of Teslacoil
@@ -252,4 +287,19 @@ func (r *RestServer) registerAdminRoutes() {
 	}
 
 	r.Router.GET("/info", getInfo)
+}
+
+func (r *RestServer) reconnectLnd(config ln.LightningConfig) error {
+	lncli, err := ln.NewLNDClient(config)
+	if err != nil {
+		return err
+	}
+
+	err = checkLndConnection(lncli, config.Network)
+	if err != nil {
+		return fmt.Errorf("could not verify LND connection when reconnecting: %w", err)
+	}
+
+	r.lncli = lncli
+	return nil
 }

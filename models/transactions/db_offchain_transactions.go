@@ -422,7 +422,7 @@ func settleInternalTransfer(database *db.DB, lncli ln.AddLookupInvoiceClient, ou
 
 // InvoiceListener receives lnrpc.Invoices on a channel and handles them
 // according to their State
-func InvoiceListener(invoiceUpdatesCh chan *lnrpc.Invoice,
+func InvoiceListener(invoiceUpdatesCh <-chan *lnrpc.Invoice,
 	database *db.DB, callbacker HttpPoster) {
 	for {
 		invoice := <-invoiceUpdatesCh

@@ -109,7 +109,8 @@ func Serve() cli.Command {
 			}
 
 			config := api.Config{
-				Network: bitcoindConfig.Network,
+				Network:  bitcoindConfig.Network,
+				LnConfig: &lnConfig, // add LN config, so we can reconnect on LND failures
 			}
 
 			var baseUrl string

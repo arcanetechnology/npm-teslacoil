@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,10 +28,20 @@ var log = build.AddSubLogger("APIT")
 // services that gets initiated in RegisterRoutes
 var (
 	database *db.DB
-	lncli    lnrpc.LightningClient
-	bitcoin  bitcoind.TeslacoilBitcoind
-	sender   transactions.HttpPoster
+
+	lncliMu sync.Mutex // guards lncli
+	lncli   lnrpc.LightningClient
+
+	bitcoin bitcoind.TeslacoilBitcoind
+	sender  transactions.HttpPoster
 )
+
+// SetLnd lets you change the LND client used for handling HTTP requests
+func SetLnd(lnd lnrpc.LightningClient) {
+	lncliMu.Lock()
+	defer lncliMu.Unlock()
+	lncli = lnd
+}
 
 // RegisterRoutes applies the authMiddleware to this packages routes
 // and registers routes on the gin Engine parameter
