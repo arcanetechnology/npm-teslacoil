@@ -65,15 +65,17 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, lnd lnrpc.LightningClient,
 // parameters, `limit` and `offset`
 func getAllTransactions() gin.HandlerFunc {
 	type Params struct {
-		Limit  int        `form:"limit" binding:"gte=0"`
-		Offset int        `form:"offset" binding:"gte=0"`
-		Max    *int64     `form:"max" binding:"omitempty"` // Sats
-		Min    *int64     `form:"min" binding:"omitempty"` // Sats
-		End    *time.Time `form:"end" binding:"omitempty"`
-		Start  *time.Time `form:"start" binding:"omitempty"`
+		Limit     int        `form:"limit" binding:"gte=0"`
+		Offset    int        `form:"offset" binding:"gte=0"`
+		Max       *int64     `form:"max" binding:"omitempty"` // Sats
+		Min       *int64     `form:"min" binding:"omitempty"` // Sats
+		End       *time.Time `form:"end" binding:"omitempty"`
+		Start     *time.Time `form:"start" binding:"omitempty"`
+		Direction *string    `form:"direction" binding:"omitempty,oneof=inbound outbound"`
+		Expired   *bool      `form:"expired" binding:"omitempty"`
 
 		// looks like it's not possible to use custom types here:  https://github.com/gin-gonic/gin/issues/1152
-		Direction *string `form:"direction" binding:"omitempty,oneof=asc ASC desc DESC"`
+		Sort *string `form:"sort" binding:"omitempty,oneof=asc desc"`
 	}
 
 	type response struct {
@@ -95,8 +97,9 @@ func getAllTransactions() gin.HandlerFunc {
 		}
 
 		txParams := transactions.GetAllParams{
-			End:   params.End,
-			Start: params.Start,
+			End:     params.End,
+			Start:   params.Start,
+			Expired: params.Expired,
 		}
 		if params.Min != nil {
 			i := *params.Min * 1000 // sats to msats conversion
@@ -106,16 +109,31 @@ func getAllTransactions() gin.HandlerFunc {
 			i := *params.Max * 1000 // sats to msats conversion
 			txParams.MaxMilliSats = &i
 		}
-		if params.Direction != nil {
-			switch strings.ToLower(*params.Direction) {
+		if params.Sort != nil {
+			switch strings.ToLower(*params.Sort) {
 			case "asc":
-				txParams.SortDirection = transactions.SortAscending
+				txParams.Sort = transactions.SortAscending
 			case "desc":
-				txParams.SortDirection = transactions.SortDescending
+				txParams.Sort = transactions.SortDescending
 			default:
 				// should never reach this thanks to binding check above, `oneof`
-				log.WithField("direction", params.Direction).Error("Reached unreachable point")
-				_ = c.Error(fmt.Errorf("bad sorting direction: %s", *params.Direction))
+				log.WithField("sort", *params.Sort).Error("Reached unreachable point")
+				_ = c.Error(fmt.Errorf("bad sorting direction: %s", *params.Sort))
+				return
+			}
+		}
+		if params.Direction != nil {
+			switch strings.ToLower(*params.Direction) {
+			case "inbound":
+				i := transactions.INBOUND
+				txParams.Direction = &i
+			case "outbound":
+				o := transactions.OUTBOUND
+				txParams.Direction = &o
+			default:
+				// should never reach this thanks to binding check above, `oneof`
+				log.WithField("direction", *params.Direction).Error("Reached unreachable point")
+				_ = c.Error(fmt.Errorf("bad direction: %s", *params.Direction))
 				return
 			}
 		}
@@ -145,7 +163,7 @@ func getAllTransactions() gin.HandlerFunc {
 			txs = txs[:params.Limit]
 		}
 
-		c.JSONP(http.StatusOK, response{
+		c.JSON(http.StatusOK, response{
 			Transactions: txs,
 			Total:        len(allTxs),
 			Limit:        params.Limit,

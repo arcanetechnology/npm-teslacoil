@@ -140,6 +140,33 @@ func TestGetAllTransactions(t *testing.T) {
 	count := gofakeit.Number(50, 500)
 	allTxs := createTxsForUser(t, count, user.ID)
 
+	// make sure we have at least one non-expired
+	tx := txtest.MockOffchain(user.ID)
+	const MinExpiry = 60 // one minute
+	for tx.Status != transactions.Offchain_CREATED || tx.Expiry < MinExpiry {
+		tx = txtest.MockOffchain(user.ID)
+	}
+	_, err := transactions.InsertOffchain(testDB, tx)
+	count += 1
+	require.NoError(t, err)
+
+	// make sure we have at least one expired
+	var createdAt time.Time
+	for {
+		tx = txtest.MockOffchain(user.ID)
+		tx.CreatedAt = gofakeit.Date()
+		createdAt = tx.CreatedAt
+		if tx.IsExpired() {
+			break
+		}
+	}
+	inserted, err := transactions.InsertOffchain(testDB, tx)
+	count += 1
+	require.NoError(t, err)
+
+	_, err = testDB.Exec(`UPDATE transactions SET created_at = $1 WHERE id = $2`, createdAt, inserted.ID)
+	require.NoError(t, err)
+
 	sortedByAmount := txListByAmount(allTxs)
 	sort.Sort(sortedByAmount)
 
@@ -149,7 +176,7 @@ func TestGetAllTransactions(t *testing.T) {
 	t.Run("sort by ascending", func(t *testing.T) {
 		t.Parallel()
 		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
-			SortDirection: transactions.SortAscending,
+			Sort: transactions.SortAscending,
 		})
 		require.NoError(t, err)
 		require.Len(t, all, count)
@@ -161,7 +188,7 @@ func TestGetAllTransactions(t *testing.T) {
 	t.Run("sort by descending", func(t *testing.T) {
 		t.Parallel()
 		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
-			SortDirection: transactions.SortDescending,
+			Sort: transactions.SortDescending,
 		})
 		require.NoError(t, err)
 		require.Len(t, all, count)
@@ -293,6 +320,64 @@ func TestGetAllTransactions(t *testing.T) {
 				assert.True(t, elem.CreatedAt.After(after))
 				assert.True(t, elem.CreatedAt.Before(before))
 			}
+		}
+	})
+
+	t.Run("only get incoming", func(t *testing.T) {
+		t.Parallel()
+		inbound := transactions.INBOUND
+		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+			Direction: &inbound,
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, all)
+
+		for _, elem := range all {
+			assert.Equal(t, transactions.INBOUND, elem.Direction)
+		}
+	})
+
+	t.Run("only get outgoing", func(t *testing.T) {
+		t.Parallel()
+		outbound := transactions.OUTBOUND
+		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+			Direction: &outbound,
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, all)
+
+		for _, elem := range all {
+			assert.Equal(t, transactions.OUTBOUND, elem.Direction)
+		}
+	})
+
+	t.Run("only get non-expired", func(t *testing.T) {
+		t.Parallel()
+
+		f := false
+		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+			Expired: &f,
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, all)
+
+		for _, elem := range all {
+			assert.False(t, elem.IsExpired())
+		}
+	})
+
+	t.Run("only get expired", func(t *testing.T) {
+		t.Parallel()
+
+		tr := true
+		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+			Expired: &tr,
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, all)
+
+		for _, elem := range all {
+			assert.True(t, elem.IsExpired())
 		}
 	})
 }

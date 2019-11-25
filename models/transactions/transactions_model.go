@@ -560,7 +560,7 @@ func (o Onchain) withAdditionalFields() onchainWithDerived {
 	if o.Expiry != nil {
 		eAt := o.CreatedAt.Add(time.Second * time.Duration(*o.Expiry))
 		expiresAt = &eAt
-		e := expiresAt.After(time.Now())
+		e := expiresAt.Before(time.Now())
 		expired = &e
 	}
 	return onchainWithDerived{
@@ -759,25 +759,36 @@ const (
 )
 
 type GetAllParams struct {
-	Offset        int
-	Limit         int
-	MaxMilliSats  *int64
-	MinMilliSats  *int64 // Millisats
-	End           *time.Time
-	Start         *time.Time
-	SortDirection SortingDirection
+	Offset       int
+	Limit        int
+	MaxMilliSats *int64
+	MinMilliSats *int64 // Millisats
+	End          *time.Time
+	Start        *time.Time
+	Sort         SortingDirection
+	Direction    *Direction // If set, only include this direction in result
+	Expired      *bool      // If set only include TXs with expiry status that match this argument
 }
 
 func (g GetAllParams) toFields() logrus.Fields {
-	return logrus.Fields{
-		"offset":        g.Offset,
-		"limit":         g.Limit,
-		"maxMilliSats":  g.MaxMilliSats,
-		"minMilliSats":  g.MinMilliSats,
-		"sortDirection": g.SortDirection.String(),
-		"end":           g.End,
-		"start":         g.Start,
+	fields := logrus.Fields{
+		"offset":       g.Offset,
+		"limit":        g.Limit,
+		"maxMilliSats": g.MaxMilliSats,
+		"minMilliSats": g.MinMilliSats,
+		"sort":         g.Sort.String(),
+		"end":          g.End,
+		"start":        g.Start,
 	}
+
+	if g.Direction != nil {
+		fields["direction"] = *g.Direction
+	}
+	if g.Expired != nil {
+		fields["expired"] = *g.Expired
+	}
+
+	return fields
 }
 
 // GetAllTransactions selects all the transactions for a user
@@ -801,6 +812,20 @@ func GetAllTransactions(database *db.DB, userID int, params GetAllParams) ([]Tra
 		whereQuery = fmt.Sprintf(` %s AND amount_milli_sat > $%d`, whereQuery, argCounter)
 		args = append(args, *params.MinMilliSats)
 		argCounter += 1
+	}
+
+	if params.Direction != nil {
+		whereQuery = fmt.Sprintf(` %s AND direction = $%d`, whereQuery, argCounter)
+		args = append(args, *params.Direction)
+		argCounter += 1
+	}
+
+	if params.Expired != nil {
+		var operand = ">"
+		if *params.Expired {
+			operand = "<"
+		}
+		whereQuery = fmt.Sprintf(" %s AND ((expiry * INTERVAL '1 second') + created_at) %s now()", whereQuery, operand)
 	}
 
 	if params.End != nil {
@@ -831,12 +856,13 @@ func GetAllTransactions(database *db.DB, userID int, params GetAllParams) ([]Tra
 		FROM transactions ` + whereQuery +
 		// when dealing with onchain TXs we count their received_tx_at as their creation date,
 		// not when the address was registered in the DB
-		fmt.Sprintf(` ORDER BY CASE
+		fmt.Sprintf(` 
+		ORDER BY (CASE
 			WHEN received_tx_at IS NOT NULL THEN received_tx_at
 			ELSE created_at 
-		END %s
+		END) %s
 		LIMIT $%d
-		OFFSET $%d`, params.SortDirection, argCounter, argCounter+1)
+		OFFSET $%d`, params.Sort, argCounter, argCounter+1)
 	args = append(args, params.Limit, params.Offset)
 
 	log.WithFields(params.toFields()).WithFields(logrus.Fields{

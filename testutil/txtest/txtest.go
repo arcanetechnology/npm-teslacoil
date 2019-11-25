@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -126,10 +125,6 @@ func int64Between(min, max int64) int64 {
 	return rand.Int63n(max-min+1) + min
 }
 
-func positiveInt64() int64 {
-	return rand.Int63n(math.MaxInt64)
-}
-
 // MockPaymentRequest mocks a payment request using lnd's zpay32 library
 func MockPaymentRequest() string {
 	b := make([]byte, 32)
@@ -191,8 +186,11 @@ func MockOffchain(userID int) transactions.Offchain {
 		UserID:          userID,
 		CallbackURL:     mockMaybeString(gofakeit.URL),
 		CustomerOrderId: mockMaybeString(gofakeit.Word),
-		Expiry:          positiveInt64(),
-		Direction:       MockDirection(),
+		Expiry: int64(gofakeit.Number(
+			200,      // 200 seconds
+			60*60*12, // 12 hours
+		)),
+		Direction: MockDirection(),
 		Description: mockMaybeString(func() string {
 			return gofakeit.Sentence(gofakeit.Number(1, 10))
 		}),
@@ -260,7 +258,10 @@ func MockOnchain(userID int) transactions.Onchain {
 
 	var expiry *int64
 	if gofakeit.Bool() {
-		e := int64(gofakeit.Number(100, 100000))
+		e := int64(gofakeit.Number(
+			100,      // 100 seconds
+			60*60*12, // 12 hours
+		))
 		expiry = &e
 	}
 
