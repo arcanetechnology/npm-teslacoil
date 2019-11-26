@@ -125,8 +125,8 @@ func createUser(d *db.DB, wg *sync.WaitGroup) {
 	}()
 }
 
-const maxTxs = 40
-const minTxs = 20
+const maxTxs = 200
+const minTxs = 100
 
 func genOffchain(user users.User) transactions.Offchain {
 	tx := txtest.MockOffchain(user.ID)
@@ -147,6 +147,24 @@ func genOnchain(user users.User) transactions.Onchain {
 
 }
 
+var location = func() *time.Location {
+	loc, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		panic(err)
+	}
+	return loc
+}()
+
+var startDate = time.Date(2019, 1, 1, 1, 1, 1, 1, location)
+
+func updateCreatedAt(database *db.DB, id int) {
+	createdAt := gofakeit.DateRange(startDate, time.Now())
+	_, err := database.Exec(`UPDATE transactions SET created_at = $1 WHERE id = $2`, createdAt, id)
+	if err != nil {
+		log.WithError(err).Error("Could not update createdAt for TX")
+	}
+}
+
 func createTxsForUser(db *db.DB, user users.User) {
 	txCount := gofakeit.Number(minTxs, maxTxs)
 
@@ -162,6 +180,7 @@ func createTxsForUser(db *db.DB, user users.User) {
 					"id":     inserted.ID,
 				}).Debug("Inserted dummy offchain TX")
 			}
+			updateCreatedAt(db, inserted.ID)
 		} else {
 			on := genOnchain(user)
 			inserted, err := transactions.InsertOnchain(db, on)
@@ -173,6 +192,7 @@ func createTxsForUser(db *db.DB, user users.User) {
 					"id":     inserted.ID,
 				}).Debug("Inserted dummy on TX")
 			}
+			updateCreatedAt(db, inserted.ID)
 		}
 	}
 
