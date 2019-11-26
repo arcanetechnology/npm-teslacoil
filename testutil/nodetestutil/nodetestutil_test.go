@@ -10,7 +10,6 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/bitcoindtestutil"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/lntestutil"
 )
@@ -42,29 +41,28 @@ func TestStartLndOrFail(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestRunWithBitcoindAndLndPair(t *testing.T) {
+func TestGetLndPairAndBitcoind(t *testing.T) {
 	var test testing.T
 
 	prevNodeLen := len(nodeCleaners)
-	RunWithBitcoindAndLndPair(&test, func(lnd1 lnrpc.LightningClient,
-		lnd2 lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind) {
-		request, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
-			Value: 1337,
-		})
-		if err != nil {
-			t.Error(err)
-			test.Fail()
-			return
-		}
-
-		if _, err := lnd1.SendPaymentSync(context.Background(), &lnrpc.SendRequest{
-			PaymentRequest: request.PaymentRequest,
-		}); err != nil {
-			t.Error(err)
-			test.Fail()
-			return
-		}
+	lnd1, lnd2, _ := GetLndPairAndBitcoind(&test)
+	request, err := lnd2.AddInvoice(context.Background(), &lnrpc.Invoice{
+		Value: 1337,
 	})
+	if err != nil {
+		t.Error(err)
+		test.Fail()
+		return
+	}
+
+	if _, err := lnd1.SendPaymentSync(context.Background(), &lnrpc.SendRequest{
+		PaymentRequest: request.PaymentRequest,
+	}); err != nil {
+		t.Error(err)
+		test.Fail()
+		return
+	}
+
 	assert.False(t, test.Failed(), "test was failed")
 
 	// two LND nodes and one bitcoind
