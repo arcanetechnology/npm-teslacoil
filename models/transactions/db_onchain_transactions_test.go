@@ -73,7 +73,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 			onchain.ID = inserted.ID
 			assert.Equal(t, onchain, inserted)
 
-			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
+			foundTx, err := transactions.GetByID(testDB, inserted.ID, user.ID)
 			require.NoError(t, err)
 
 			foundOnChain, err := foundTx.ToOnchain()
@@ -86,7 +86,7 @@ func TestInsertOnchainTransaction(t *testing.T) {
 				return
 			}
 
-			allTXs, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{})
+			allTXs, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{})
 			require.NoError(t, err)
 
 			found := false
@@ -149,7 +149,7 @@ func TestGetTransactionByID(t *testing.T) {
 	}
 
 	for _, test := range testCases {
-		t.Run(fmt.Sprintf("GetTransactionByID() for transaction with amount %d", test.expectedResult.AmountMilliSat),
+		t.Run(fmt.Sprintf("GetByID() for transaction with amount %d", test.expectedResult.AmountMilliSat),
 			func(t *testing.T) {
 				t.Parallel()
 
@@ -166,7 +166,7 @@ func TestGetTransactionByID(t *testing.T) {
 					require.FailNow(t, "Not onchain nor offchain", test.expectedResult)
 				}
 
-				transaction, err := transactions.GetTransactionByID(testDB, transaction.ID, test.expectedResult.UserID)
+				transaction, err := transactions.GetByID(testDB, transaction.ID, test.expectedResult.UserID)
 				require.NoError(t, err)
 
 				test.expectedResult.ID = transaction.ID
@@ -366,7 +366,7 @@ func TestOnchain_AddReceivedMoney(t *testing.T) {
 		_, err = transaction.PersistReceivedMoney(testDB, *hash, 0, amountSat)
 		require.NoError(t, err)
 
-		found, err := transactions.GetTransactionByID(testDB, transaction.ID, transaction.UserID)
+		found, err := transactions.GetByID(testDB, transaction.ID, transaction.UserID)
 		require.NoError(t, err)
 
 		foundOnChain, err := found.ToOnchain()
@@ -435,7 +435,7 @@ func TestOnchain_MarkAsConfirmed(t *testing.T) {
 		confirmed, err := spent.MarkAsConfirmed(testDB, confHeight)
 		require.NoError(t, err)
 
-		found, err := transactions.GetTransactionByID(testDB, confirmed.ID, user.ID)
+		found, err := transactions.GetByID(testDB, confirmed.ID, user.ID)
 		require.NoError(t, err)
 
 		foundOnChain, err := found.ToOnchain()

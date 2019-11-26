@@ -149,7 +149,7 @@ func getAllTransactions() gin.HandlerFunc {
 			}
 		}
 
-		allTxs, err := transactions.GetAllTransactions(database, userID, txParams)
+		allTxs, err := transactions.GetAll(database, userID, txParams)
 		if err != nil {
 			log.WithError(err).WithFields(logrus.Fields{
 				"limit":  params.Limit,
@@ -199,7 +199,7 @@ func getTransactionByID() gin.HandlerFunc {
 			return
 		}
 
-		t, err := transactions.GetTransactionByID(database, req.ID, userID)
+		t, err := transactions.GetByID(database, req.ID, userID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				apierr.Public(c, http.StatusNotFound, apierr.ErrTransactionNotFound)
