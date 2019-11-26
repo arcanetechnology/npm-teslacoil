@@ -4,6 +4,9 @@ go 1.13
 
 replace github.com/gin-gonic/gin => github.com/thinkerou/gin v1.1.5-0.20191114124330-14f15bb81460
 
+// until https://github.com/btcsuite/btcd/pull/1500 is merged
+replace github.com/btcsuite/btcd => github.com/arcanecryptoas/btcd v0.20.1-beta.0.20191126133409-e9546acdb9a0
+
 require (
 	github.com/araddon/dateparse v0.0.0-20190622164848-0fb0a474d195
 	github.com/brianvoe/gofakeit v3.18.0+incompatible

@@ -59,6 +59,22 @@ func GetBitcoinMockClient() TeslacoilBitcoindMockClient {
 // don't contain any meaningful info at all.
 type BitcoindRpcMockClient struct{}
 
+func (b BitcoindRpcMockClient) GenerateToAddress(numBlocks int64, address string, maxTries *int64) ([]*chainhash.Hash, error) {
+	panic("implement me")
+}
+
+func (b BitcoindRpcMockClient) GenerateToAddressAsync(numBlocks int64, address string, maxTries *int64) rpcclient.FutureGenerateToAddressResult {
+	panic("implement me")
+}
+
+func (b BitcoindRpcMockClient) EstimateSmartFeeAsync(int64, *btcjson.EstimateSmartFeeMode) rpcclient.FutureEstimateSmartFeeResult {
+	panic("implement me")
+}
+
+func (b BitcoindRpcMockClient) EstimateSmartFee(int64, *btcjson.EstimateSmartFeeMode) (*btcjson.EstimateSmartFeeResult, error) {
+	panic("implement me")
+}
+
 func (b BitcoindRpcMockClient) AddMultisigAddress(requiredSigs int, addresses []btcutil.Address, account string) (btcutil.Address, error) {
 	panic("not implemented: AddMultisigAddress")
 }
@@ -1186,8 +1202,4 @@ func (b BitcoindRpcMockClient) WalletPassphraseChange(old, new string) error {
 
 func (b BitcoindRpcMockClient) WalletPassphraseChangeAsync(old, new string) rpcclient.FutureWalletPassphraseChangeResult {
 	panic("not implemented: WalletPassphraseChangeAsync")
-}
-
-func (b BitcoindRpcMockClient) GenerateToAddress(numBlocks uint32, address btcutil.Address) ([]*chainhash.Hash, error) {
-	panic("not implemented: GenerateToAddress")
 }

@@ -116,13 +116,13 @@ func fundLndOrFail(t *testing.T, lnd lnrpc.LightningClient, bitcoin bitcoind.Tes
 			wg.Done()
 		}()
 	}
-	const timeout = time.Second * 3
+	const timeout = time.Second * 10
 	if async.WaitTimeout(&wg, timeout) {
 		t.Fatalf("Funding LND timed out after %s", timeout)
 	}
 
 	// confirm the TX
-	_, err = bitcoind.GenerateToAddress(bitcoin, 6, btcAddr)
+	_, err = bitcoin.Btcctl().GenerateToAddress(6, btcAddr.String(), nil)
 	require.NoError(t, err)
 
 	// wait for lnd to catch up
@@ -153,7 +153,7 @@ func GetLndPairAndBitcoind(t *testing.T) (lnrpc.LightningClient, lnrpc.Lightning
 	go func() {
 		addr, err := bitcoin.Btcctl().GetNewAddress("")
 		require.NoError(t, err)
-		_, err = bitcoind.GenerateToAddress(bitcoin, 110, addr)
+		_, err = bitcoin.Btcctl().GenerateToAddress(110, addr.String(), nil)
 		require.NoError(t, err, "could not generate to address")
 	}()
 
@@ -254,7 +254,7 @@ func GetLndPairAndBitcoind(t *testing.T) (lnrpc.LightningClient, lnrpc.Lightning
 	require.NoError(t, err)
 
 	// we generate to address to be able to confirm the channel we created
-	_, err = bitcoind.GenerateToAddress(bitcoin, 6, lnd1Address)
+	_, err = bitcoin.Btcctl().GenerateToAddress(6, lnd1Address.String(), nil)
 	require.NoError(t, err, "could not confirm channel")
 
 	return lnd1, lnd2, bitcoin
@@ -283,7 +283,7 @@ func GetLndAndBitcoind(t *testing.T) (lnrpc.LightningClient, bitcoind.TeslacoilB
 	_, err = bitcoindtestutil.GenerateToSelf(10, bitcoin)
 	require.NoError(t, err)
 
-	_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
+	_, err = bitcoin.Btcctl().GenerateToAddress(101, address.String(), nil)
 	require.NoError(t, err, "could not generate to address")
 
 	return lnd, bitcoin

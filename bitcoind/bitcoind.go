@@ -2,13 +2,10 @@ package bitcoind
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
-	"net/http"
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/build"
@@ -21,7 +18,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
 	"github.com/lightninglabs/gozmq"
 )
 
@@ -121,48 +117,6 @@ func (c *Conn) Config() Config {
 }
 func (c *Conn) Network() chaincfg.Params {
 	return c.network
-}
-
-func GenerateToAddress(bitcoin TeslacoilBitcoind, numBlocks uint32, address btcutil.Address) ([]*chainhash.Hash, error) {
-	body := fmt.Sprintf(`{
-		"jsonrpc": "1.0",
-		"method": "generatetoaddress",
-		"params": [%d, %q]
-	}`, numBlocks, address)
-	conf := bitcoin.Config()
-	url := fmt.Sprintf("http://%s:%s@%s:%d", conf.User, conf.Password, conf.RpcHost, conf.RpcPort)
-	req, err := http.Post(
-		url,
-		"application/json",
-		bytes.NewReader([]byte(body)))
-	if err != nil {
-		return nil, fmt.Errorf("generatetoaddress: %w", err)
-	}
-
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		return nil, fmt.Errorf("could not ready body: %w", err)
-	}
-
-	type GenerateResponse struct {
-		Hashes []string `json:"result"`
-	}
-
-	var res GenerateResponse
-	if err := json.Unmarshal(bodyBytes, &res); err != nil {
-		return nil, fmt.Errorf("could not unmarshal JSON: %w. Body : %s", err, string(bodyBytes))
-	}
-	var hashes []*chainhash.Hash
-	for _, hash := range res.Hashes {
-		newHash, err := chainhash.NewHashFromStr(hash)
-		if err != nil {
-			log.Errorf("could not create new hash from %s", hash)
-			continue
-		}
-		hashes = append(hashes, newHash)
-	}
-
-	return hashes, nil
 }
 
 // NewConn returns a BitcoindConn corresponding to the given
