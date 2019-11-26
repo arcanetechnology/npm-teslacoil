@@ -68,10 +68,14 @@ type RpcClient interface {
 	DumpPrivKeyAsync(address btcutil.Address) rpcclient.FutureDumpPrivKeyResult
 	EstimateFee(numBlocks int64) (float64, error)
 	EstimateFeeAsync(numBlocks int64) rpcclient.FutureEstimateFeeResult
+	EstimateSmartFeeAsync(int64, *btcjson.EstimateSmartFeeMode) rpcclient.FutureEstimateSmartFeeResult
+	EstimateSmartFee(int64, *btcjson.EstimateSmartFeeMode) (*btcjson.EstimateSmartFeeResult, error)
 	ExportWatchingWallet(account string) ([]byte, []byte, error)
 	ExportWatchingWalletAsync(account string) rpcclient.FutureExportWatchingWalletResult
 	Generate(numBlocks uint32) ([]*chainhash.Hash, error)
 	GenerateAsync(numBlocks uint32) rpcclient.FutureGenerateResult
+	GenerateToAddress(numBlocks int64, address string, maxTries *int64) ([]*chainhash.Hash, error)
+	GenerateToAddressAsync(numBlocks int64, address string, maxTries *int64) rpcclient.FutureGenerateToAddressResult
 	GetAccount(address btcutil.Address) (string, error)
 	GetAccountAddress(account string) (btcutil.Address, error)
 	GetAccountAddressAsync(account string) rpcclient.FutureGetAccountAddressResult

@@ -81,14 +81,13 @@ func ConvertToAddressOrFail(address string, params chaincfg.Params) btcutil.Addr
 
 // GenerateToSelf is a helper function for easily generating a block
 // with the coinbase going to us
-func GenerateToSelf(numBlocks uint32, bitcoin bitcoind.TeslacoilBitcoind) ([]*chainhash.Hash, error) {
-	b := bitcoin.Btcctl()
-	address, err := b.GetNewAddress("")
+func GenerateToSelf(numBlocks int64, bitcoin bitcoind.TeslacoilBitcoind) ([]*chainhash.Hash, error) {
+	address, err := bitcoin.Btcctl().GetNewAddress("")
 	if err != nil {
 		return nil, errors.Wrap(err, "could not GetNewAddress")
 	}
 
-	hash, err := bitcoind.GenerateToAddress(bitcoin, numBlocks, address)
+	hash, err := bitcoin.Btcctl().GenerateToAddress(numBlocks, address.String(), nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not GenerateToAddress")
 	}
