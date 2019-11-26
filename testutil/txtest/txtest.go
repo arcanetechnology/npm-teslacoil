@@ -98,7 +98,7 @@ func MockOffchainStatus() transactions.OffchainStatus {
 		transactions.Offchain_COMPLETED,
 		transactions.Offchain_FLOPPED,
 	}
-	return s[rand.Intn(3)]
+	return s[rand.Intn(4)]
 }
 
 // mockMaybeString will sometimes return nil, and other times return a
