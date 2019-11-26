@@ -243,9 +243,6 @@ func (harness *TestHarness) AssertResponseOkWithJson(t *testing.T, request *http
 	t.Helper()
 	var destination map[string]interface{}
 	harness.AssertResponseOKWithStruct(t, request, &destination)
-	if err, ok := destination["error"]; ok {
-		assert.Fail(t, `JSON body had field named "error": %v`, err)
-	}
 	return destination
 }
 
