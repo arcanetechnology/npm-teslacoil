@@ -42,7 +42,7 @@ const (
 
 var (
 	log         = build.AddSubLogger("NODETESTUTIL")
-	_   Cleaner = nodeCleaner{}
+	_   cleaner = nodeCleaner{}
 )
 
 type nodeCleaner struct {
@@ -62,18 +62,18 @@ func (b nodeCleaner) Clean() error {
 
 // Cleaner can clean up after a node has been spun up. It keeps track of
 // whether or not the cleanup action has been performed.
-type Cleaner interface {
+type cleaner interface {
 	// HasBeenCleaned returns whether or not the cleanup action has been performed
 	HasBeenCleaned() bool
 	// Clean performs the cleanup action
 	Clean() error
 }
 
-var nodeCleaners []Cleaner
+var nodeCleaners []cleaner
 
-// RegisterCleaner appends the given cleanup action to our local list of
+// registerCleaner appends the given cleanup action to our local list of
 // actions that should be performed.
-func RegisterCleaner(cleaner Cleaner) {
+func registerCleaner(cleaner cleaner) {
 	nodeCleaners = append(nodeCleaners, cleaner)
 }
 
@@ -140,7 +140,9 @@ func fundLndOrFail(t *testing.T, lnd lnrpc.LightningClient, bitcoin bitcoind.Tes
 
 }
 
-func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClient, lnd2 lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind)) {
+// GetLndPairAndBitcoind starts two LND nodes and a bitcoind nodes, funds them, and registers cleanup actions that
+// can be performed at test teardown.
+func GetLndPairAndBitcoind(t *testing.T) (lnrpc.LightningClient, lnrpc.LightningClient, bitcoind.TeslacoilBitcoind) {
 	prevLen := len(nodeCleaners)
 
 	bitcoindConf := bitcoindtestutil.GetBitcoindConfig(t)
@@ -163,7 +165,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 	lndConf := lntestutil.GetLightingConfig(t)
 	go func() {
 		defer wg.Done()
-		lnd1 = StartLndOrFailAsync(t, bitcoindConf, lndConf, &wg)
+		lnd1 = startLndOrFailAsync(t, bitcoindConf, lndConf, &wg)
 		if t.Failed() {
 			return
 		}
@@ -174,7 +176,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 	lndConf2 := lntestutil.GetLightingConfig(t)
 	go func() {
 		defer wg.Done()
-		lnd2 = StartLndOrFailAsync(t, bitcoindConf, lndConf2, &wg)
+		lnd2 = startLndOrFailAsync(t, bitcoindConf, lndConf2, &wg)
 		if t.Failed() {
 			return
 		}
@@ -184,37 +186,23 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 
 	timeout := time.Second * 20
 	if async.WaitTimeout(&wg, timeout) {
-		assert.Fail(t, "LND nodes did not start", "timeout: %s", timeout)
-		return
+		assert.FailNow(t, "LND nodes did not start", "timeout: %s", timeout)
 	}
 
 	afterLen := len(nodeCleaners)
-	if afterLen-prevLen < 2 {
-		assert.Fail(t, "Node cleaners weren't registered correctly!: %d", afterLen-prevLen)
-		return
-	}
-
-	// bail out if setup failed, somehow
-	if !assert.False(t, t.Failed()) {
-		return
-	}
+	require.Greater(t, afterLen-prevLen, 2, "Node cleaners weren't registered correctly!: %d", afterLen-prevLen)
 
 	// Create new address for node 1 and fund it with a lot of money
 	addr, err := lnd1.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		Type: lnrpc.AddressType_WITNESS_PUBKEY_HASH,
 	})
-	if err != nil {
-		assert.Fail(t, "could not get new address from lnd")
-		return
-	}
+	require.NoError(t, err, "could not get new address from lnd")
+
 	lnd1Address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
 
 	// get info to open channels with the node
 	lnd2Info, err := lnd2.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
-	if err != nil {
-		assert.Fail(t, "could not get node info from lnd2: %v", err)
-		return
-	}
+	require.NoError(t, err, "could not get node info from lnd2: %v", err)
 
 	connect := func() error {
 		lnAddress := lnrpc.LightningAddress{
@@ -228,10 +216,9 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 
 	}
 
-	if err = async.RetryNoBackoff(10, 300*time.Millisecond, connect); err != nil {
-		assert.Fail(t, "could not connect nodes %v", err)
-		return
-	}
+	err = async.RetryNoBackoff(10, 300*time.Millisecond, connect)
+	require.NoError(t, err, "could not connect nodes %v", err)
+
 	log.WithFields(logrus.Fields{
 		"lnd1": lndConf.LndDir,
 		"lnd2": lndConf2.LndDir,
@@ -249,9 +236,7 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 
 	}
 	err = async.RetryNoBackoff(10, time.Millisecond*200, isSyncedToChain)
-	if !assert.NoError(t, err) {
-		return
-	}
+	require.NoError(t, err)
 
 	log.WithField("lndDir", lndConf.LndDir).Info("Synced to chain")
 
@@ -266,23 +251,17 @@ func RunWithBitcoindAndLndPair(t *testing.T, test func(lnd1 lnrpc.LightningClien
 	}
 
 	err = async.RetryNoBackoff(30, 100*time.Millisecond, openchannel)
-	if !assert.NoError(t, err) {
-		return
-	}
+	require.NoError(t, err)
 
 	// we generate to address to be able to confirm the channel we created
 	_, err = bitcoind.GenerateToAddress(bitcoin, 6, lnd1Address)
-	if !assert.NoError(t, err, "could not confirm channel") {
-		return
-	}
+	require.NoError(t, err, "could not confirm channel")
 
-	test(lnd1, lnd2, bitcoin)
+	return lnd1, lnd2, bitcoin
 }
 
-// RunWithBitcoindAndLnd lets you test functionality that requires actual LND/bitcoind
-// nodes by creating the nodes, running your tests, and then performs the
-// necessary cleanup.
-func RunWithBitcoindAndLnd(t *testing.T, test func(lnd lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind)) {
+// GetLndAndBitcoind starts a LND and bitcoind node and registers cleanup actions that can be performed at test teardown
+func GetLndAndBitcoind(t *testing.T) (lnrpc.LightningClient, bitcoind.TeslacoilBitcoind) {
 	prevLen := len(nodeCleaners)
 
 	bitcoindConf := bitcoindtestutil.GetBitcoindConfig(t)
@@ -292,50 +271,44 @@ func RunWithBitcoindAndLnd(t *testing.T, test func(lnd lnrpc.LightningClient, bi
 	lnd := StartLndOrFail(t, bitcoindConf, lndConf)
 
 	afterLen := len(nodeCleaners)
-	if !assert.GreaterOrEqual(t, afterLen-prevLen, 2, "after: %d, prev: %d", afterLen, prevLen) {
-		return
-	}
+	require.GreaterOrEqual(t, afterLen-prevLen, 2, "after: %d, prev: %d", afterLen, prevLen)
 
 	addr, err := lnd.NewAddress(context.Background(), &lnrpc.NewAddressRequest{
 		Type: 0,
 	})
-	if !assert.NoError(t, err, "could not get new address from lnd") {
-		return
-	}
+	require.NoError(t, err, "could not get new address from lnd")
 
 	address := bitcoindtestutil.ConvertToAddressOrFail(addr.Address, bitcoindConf.Network)
 
 	_, err = bitcoindtestutil.GenerateToSelf(10, bitcoin)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = bitcoind.GenerateToAddress(bitcoin, 101, address)
-	if !assert.NoError(t, err, "could not generate to address") {
-		return
-	}
+	require.NoError(t, err, "could not generate to address")
 
-	// if anything went south while initializing the nodes we want to abort the test
-	require.False(t, t.Failed())
-
-	test(lnd, bitcoin)
-
+	return lnd, bitcoin
 }
 
-// RunWithLnd lets you test functionality that requires actual LND/bitcoind
+// GetLnd lets you test functionality that requires actual LND/bitcoind
 // nodes by creating the nodes, running your tests, and then performs the
 // necessary cleanup.
-func RunWithLnd(t *testing.T, test func(lnd lnrpc.LightningClient)) {
-	RunWithBitcoindAndLnd(t, func(lnd lnrpc.LightningClient, _ bitcoind.TeslacoilBitcoind) {
-		test(lnd)
-	})
+func GetLnd(t *testing.T) lnrpc.LightningClient {
+	lnd, _ := GetLndAndBitcoind(t)
+	return lnd
 }
 
-// RunWithBitcoind lets you test functionality that requires actual bitcoind
+// GetBitcoind lets you test functionality that requires actual bitcoind
 // node by creating starting up bitcoind, running the test and then running
 // the necessary cleanup.
-func RunWithBitcoind(t *testing.T, test func(bitcoin bitcoind.TeslacoilBitcoind)) {
-	RunWithBitcoindAndLnd(t, func(_ lnrpc.LightningClient, bitcoin bitcoind.TeslacoilBitcoind) {
-		test(bitcoin)
-	})
+func GetBitcoind(t *testing.T) bitcoind.TeslacoilBitcoind {
+	bitcoindConf := bitcoindtestutil.GetBitcoindConfig(t)
+	bitcoin := StartBitcoindOrFail(t, bitcoindConf)
+
+	// fund the node
+	_, err := bitcoindtestutil.GenerateToSelf(101, bitcoin)
+	require.NoError(t, err)
+
+	return bitcoin
 }
 
 // LndWithPid is a regular LND client that's also got a PID
@@ -364,12 +337,12 @@ func StartLndOrFail(t *testing.T, bitcoindConfig bitcoind.Config,
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	return StartLndOrFailAsync(t, bitcoindConfig, lndConfig, &wg)
+	return startLndOrFailAsync(t, bitcoindConfig, lndConfig, &wg)
 }
 
-// StartLndOrFailAsync returns the created client, and register a cleanup action
+// startLndOrFailAsync returns the created client, and register a cleanup action
 // that can be performed during test teardown.
-func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
+func startLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 	lndConfig ln.LightningConfig, wg *sync.WaitGroup) LndWithPid {
 	version, err := exec.Command("lnd", "--version").Output()
 	require.NoError(t, err)
@@ -453,11 +426,11 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		return nil
 	}
 
-	attempts := 20
-	timeout := time.Millisecond * 300
+	attempts := 30
+	timeout := time.Millisecond * 500
 	if os.Getenv("CI") != "" {
-		timeout = time.Millisecond * 500
-		attempts = 40
+		timeout = time.Millisecond * 750
+		attempts = 50
 	}
 	err = async.RetryNoBackoff(attempts, timeout, isReady)
 	if !assert.NoError(t, err) {
@@ -502,7 +475,7 @@ func StartLndOrFailAsync(t *testing.T, bitcoindConfig bitcoind.Config,
 		return nil
 	}
 	// pointer so we can mutate the object
-	RegisterCleaner(&cleanup)
+	registerCleaner(&cleanup)
 
 	wg.Done()
 
@@ -611,7 +584,7 @@ func StartBitcoindOrFail(t *testing.T, conf bitcoind.Config) *bitcoind.Conn {
 		return async.RetryNoBackoff(10, time.Second, deleteBitcoin)
 	}
 	// pointer so we can mutate the object
-	RegisterCleaner(&cleaner)
+	registerCleaner(&cleaner)
 
 	// TODO interval here
 	conn, err := bitcoind.NewConn(conf, time.Millisecond*7)
