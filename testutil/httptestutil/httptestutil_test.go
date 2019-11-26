@@ -44,16 +44,6 @@ func (s goodList) ServeHTTP(response http.ResponseWriter, request *http.Request)
 	}
 }
 
-type badServer struct{}
-
-func (s badServer) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if _, err := response.Write([]byte(`{
-		"error": "bar"
-	}`)); err != nil {
-		panic(err)
-	}
-}
-
 func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 	t.Run("accept a normal JSON body", func(t *testing.T) {
 		server := goodObject{}
@@ -63,18 +53,6 @@ func TestTestHarness_AssertResponseOkWithJson(t *testing.T) {
 			Method: "GET",
 		})
 		h.AssertResponseOkWithJson(t, req)
-	})
-
-	t.Run(`fail with a JSON body containing "error"`, func(t *testing.T) {
-		server := badServer{}
-		h := NewTestHarness(server, emptyDb)
-		req := GetRequest(t, RequestArgs{
-			Path:   "/ping",
-			Method: "GET",
-		})
-		testThatShouldFail := testing.T{}
-		h.AssertResponseOkWithJson(&testThatShouldFail, req)
-		assert.True(t, testThatShouldFail.Failed(), "Test didn't fail with bad response")
 	})
 
 	t.Run(`fail with invalid JSON`, func(t *testing.T) {
