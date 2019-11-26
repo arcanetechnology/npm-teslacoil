@@ -701,10 +701,10 @@ func (o Onchain) PersistReceivedMoney(database db.Inserter, txid chainhash.Hash,
 	return insertedOnchain, nil
 }
 
-// GetTransactionByID performs this query:
+// GetByID performs this query:
 // `SELECT * FROM transactions WHERE id=id AND user_id=userID`,
 // where id is the primary key of the table(autoincrementing)
-func GetTransactionByID(database *db.DB, id int, userID int) (Transaction, error) {
+func GetByID(database *db.DB, id int, userID int) (Transaction, error) {
 	if id < 0 || userID < 0 {
 		return Transaction{}, fmt.Errorf("GetByID(): neither id nor userID can be less than 0")
 	}
@@ -791,8 +791,8 @@ func (g GetAllParams) toFields() logrus.Fields {
 	return fields
 }
 
-// GetAllTransactions selects all the transactions for a user
-func GetAllTransactions(database *db.DB, userID int, params GetAllParams) ([]Transaction, error) {
+// GetAll selects all the transactions for a user
+func GetAll(database *db.DB, userID int, params GetAllParams) ([]Transaction, error) {
 	if params.Limit == 0 {
 		params.Limit = math.MaxInt64
 	}

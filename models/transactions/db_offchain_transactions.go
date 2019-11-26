@@ -60,7 +60,7 @@ func InsertOffchain(db db.Inserter, offchain Offchain) (Offchain, error) {
 // if the transaction cannot be converted to an Offchain transaction
 // an error is returned
 func GetOffchainByID(database *db.DB, id int, userID int) (Offchain, error) {
-	tx, err := GetTransactionByID(database, id, userID)
+	tx, err := GetByID(database, id, userID)
 	if err != nil {
 		return Offchain{}, err
 	}

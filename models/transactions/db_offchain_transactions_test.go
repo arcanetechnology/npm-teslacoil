@@ -314,7 +314,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 			offchain.ID = inserted.ID
 			assert.Equal(t, offchain, inserted)
 
-			foundTx, err := transactions.GetTransactionByID(testDB, inserted.ID, user.ID)
+			foundTx, err := transactions.GetByID(testDB, inserted.ID, user.ID)
 			require.NoError(t, err)
 
 			foundOffChain, err := foundTx.ToOffchain()
@@ -322,7 +322,7 @@ func TestInsertOffchainTransaction(t *testing.T) {
 
 			assert.Equal(t, foundOffChain, inserted)
 
-			allTXs, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{})
+			allTXs, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{})
 			require.NoError(t, err)
 			found := false
 			for _, tx := range allTXs {

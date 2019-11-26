@@ -175,7 +175,7 @@ func TestGetAllTransactions(t *testing.T) {
 
 	t.Run("sort by ascending", func(t *testing.T) {
 		t.Parallel()
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Sort: transactions.SortAscending,
 		})
 		require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestGetAllTransactions(t *testing.T) {
 
 	t.Run("sort by descending", func(t *testing.T) {
 		t.Parallel()
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Sort: transactions.SortDescending,
 		})
 		require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestGetAllTransactions(t *testing.T) {
 		first := *sortedByAmount[0].AmountMilliSat
 		last := *sortedByAmount[len(sortedByAmount)-1].AmountMilliSat
 		min := first - last
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			MinMilliSats: &min,
 		})
 		require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestGetAllTransactions(t *testing.T) {
 		first := *sortedByAmount[0].AmountMilliSat
 		last := *sortedByAmount[len(sortedByAmount)-1].AmountMilliSat
 		max := first - last
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			MaxMilliSats: &max,
 		})
 		require.NoError(t, err)
@@ -238,7 +238,7 @@ func TestGetAllTransactions(t *testing.T) {
 		last := *sortedByAmount[len(sortedByAmount)-1].AmountMilliSat
 		max := first - last
 		min := rand.Int63n(max+last) - first
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			MaxMilliSats: &max,
 			MinMilliSats: &min,
 		})
@@ -258,7 +258,7 @@ func TestGetAllTransactions(t *testing.T) {
 		if middleElem.ReceivedMoneyAt != nil {
 			before = *middleElem.ReceivedMoneyAt
 		}
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			End: &before,
 		})
 		require.NoError(t, err)
@@ -281,7 +281,7 @@ func TestGetAllTransactions(t *testing.T) {
 		if middleElem.ReceivedMoneyAt != nil {
 			after = *middleElem.ReceivedMoneyAt
 		}
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Start: &after,
 		})
 		require.NoError(t, err)
@@ -305,7 +305,7 @@ func TestGetAllTransactions(t *testing.T) {
 		}
 		before := after.Add(10 * 24 * 365 * time.Hour) // ten years
 
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			End:   &before,
 			Start: &after,
 		})
@@ -326,7 +326,7 @@ func TestGetAllTransactions(t *testing.T) {
 	t.Run("only get incoming", func(t *testing.T) {
 		t.Parallel()
 		inbound := transactions.INBOUND
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Direction: &inbound,
 		})
 		require.NoError(t, err)
@@ -340,7 +340,7 @@ func TestGetAllTransactions(t *testing.T) {
 	t.Run("only get outgoing", func(t *testing.T) {
 		t.Parallel()
 		outbound := transactions.OUTBOUND
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Direction: &outbound,
 		})
 		require.NoError(t, err)
@@ -355,7 +355,7 @@ func TestGetAllTransactions(t *testing.T) {
 		t.Parallel()
 
 		f := false
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Expired: &f,
 		})
 		require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestGetAllTransactions(t *testing.T) {
 		t.Parallel()
 
 		tr := true
-		all, err := transactions.GetAllTransactions(testDB, user.ID, transactions.GetAllParams{
+		all, err := transactions.GetAll(testDB, user.ID, transactions.GetAllParams{
 			Expired: &tr,
 		})
 		require.NoError(t, err)

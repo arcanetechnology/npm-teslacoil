@@ -54,7 +54,7 @@ func InsertOnchain(db db.Inserter, onchain Onchain) (Onchain, error) {
 // if the transaction cannot be converted to an Onchain transaction
 // an error is returned
 func GetOnchainByID(d *db.DB, id int, userID int) (Onchain, error) {
-	tx, err := GetTransactionByID(d, id, userID)
+	tx, err := GetByID(d, id, userID)
 	if err != nil {
 		return Onchain{}, err
 	}
