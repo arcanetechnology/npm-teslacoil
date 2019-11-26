@@ -237,14 +237,16 @@ func sendOffchain(db db.InsertGetter, lncli ln.DecodeSendClient, callbacker Http
 		return Offchain{}, fmt.Errorf("could not send offchain TX: %w", err)
 	}
 
-	log.WithFields(logrus.Fields{
-		"paymentError": paymentResponse.PaymentError,
+	fields := logrus.Fields{
+		"id":           payment.ID,
 		"paymentHash":  hex.EncodeToString(paymentResponse.PaymentHash),
 		"paymentRoute": paymentResponse.PaymentRoute,
-		"id":           payment.ID,
-	}).Info("tried sending payment")
+		"preimage":     paymentResponse.PaymentPreimage,
+		"paymentError": paymentResponse.PaymentError,
+	}
 
 	if paymentResponse.PaymentError != "" {
+		log.WithFields(fields).Info("could not pay invoice")
 		failed, err := payment.MarkAsFlopped(db, paymentResponse.PaymentError)
 		if err != nil {
 			return Offchain{}, err
@@ -252,6 +254,8 @@ func sendOffchain(db db.InsertGetter, lncli ln.DecodeSendClient, callbacker Http
 
 		return failed, errors.New(paymentResponse.PaymentError)
 	}
+
+	log.WithFields(fields).Info("successfully paid invoice")
 
 	paid, err := payment.MarkAsCompleted(db, paymentResponse.PaymentPreimage, callbacker)
 	if err != nil {
@@ -284,6 +288,7 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 	}
 
 	log.WithFields(logrus.Fields{
+		"userId":          userID,
 		"paymentRequest":  paymentRequest,
 		"memo":            decoded.Description,
 		"hash":            decoded.PaymentHash,
@@ -291,9 +296,8 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 		"expiry":          decoded.Expiry,
 		"numSats":         decoded.NumSatoshis,
 		"destination":     decoded.Destination,
-		"userId":          userID,
 		"cltvExpiry":      decoded.CltvExpiry,
-	}).Infof("paying payment request")
+	}).Infof("attempting to pay invoice")
 
 	if decoded.NumSatoshis == 0 {
 		log.WithFields(logrus.Fields{
@@ -583,6 +587,12 @@ func postCallback(database db.Getter, payment Offchain, callbacker HttpPoster) e
 		return errors.New("callback URL was nil")
 	}
 
+	log.WithFields(logrus.Fields{
+		"paymentID":      payment.ID,
+		"userID":         payment.UserID,
+		"paymentRequest": payment.PaymentRequest,
+	}).Info("attempting to post callback")
+
 	key := apikeys.Key{}
 	if err := database.Get(&key,
 		`SELECT * FROM api_keys WHERE user_id = $1 LIMIT 1`,
@@ -608,12 +618,18 @@ func postCallback(database db.Getter, payment Offchain, callbacker HttpPoster) e
 		// TODO: add logging of when the URL was hit
 		go func() {
 			logger := log.WithFields(logrus.Fields{
-				"url": *payment.CallbackURL,
+				"paymentID":   payment.ID,
+				"callbackURL": *payment.CallbackURL,
 			})
 			var response *http.Response
+			counter := 1
 			retry := func() error {
 				res, err := callbacker.Post(*payment.CallbackURL, "application/json",
 					bytes.NewReader(paymentBytes))
+
+				logger.WithField("attempt", counter).Info("attempted to post callback")
+				counter++
+
 				response = res
 				return err
 			}
@@ -621,7 +637,7 @@ func postCallback(database db.Getter, payment Offchain, callbacker HttpPoster) e
 			if err != nil {
 				logger.WithError(err).Error("Error when POSTing callback")
 			} else {
-				logger.WithField("status", response.StatusCode).Debug("POSTed callback")
+				logger.WithField("status", response.StatusCode).Info("POSTed callback")
 			}
 		}()
 		return nil

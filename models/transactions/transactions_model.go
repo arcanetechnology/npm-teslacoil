@@ -361,7 +361,7 @@ func (s OffchainStatus) MarshalText() (text []byte, err error) {
 	return []byte(lower), nil
 }
 
-// MarkAsCompleted marks the given payment request as paid at the given date
+// MarkAsCompleted marks the given payment request as completed at the given date
 func (o Offchain) MarkAsCompleted(database db.InsertGetter, preimage []byte,
 	callbacker HttpPoster) (Offchain, error) {
 	updateOffchainTxQuery := `UPDATE transactions
@@ -371,7 +371,7 @@ func (o Offchain) MarkAsCompleted(database db.InsertGetter, preimage []byte,
 	log.WithFields(logrus.Fields{
 		"paymentRequest": o.PaymentRequest,
 		"id":             o.ID,
-	}).Info("Marking invoice as paid")
+	}).Info("Marking invoice as completed")
 
 	now := time.Now()
 	o.SettledAt = &now
@@ -381,14 +381,14 @@ func (o Offchain) MarkAsCompleted(database db.InsertGetter, preimage []byte,
 	tx := o.ToTransaction()
 	rows, err := database.NamedQuery(updateOffchainTxQuery, &tx)
 	if err != nil {
-		log.WithError(err).Error("couldnt mark invoice as paid")
+		log.WithError(err).Error("couldnt mark invoice as completed")
 		return Offchain{}, err
 	}
 	// we defer CloseRows in case rows.Next() or StructScan fails
 	defer db.CloseRows(rows)
 
 	if !rows.Next() {
-		return Offchain{}, fmt.Errorf("could not mark invoice as paid: %w", sql.ErrNoRows)
+		return Offchain{}, fmt.Errorf("could not mark invoice as completed: %w", sql.ErrNoRows)
 	}
 
 	var updated Transaction
