@@ -245,6 +245,11 @@ var logging = []cli.Flag{
 		Usage: "Logging level for all subsystems {trace, debug, info, warn, error, fatal, panic}",
 	},
 	cli.StringFlag{
+		Name:  "logging.httplevel",
+		Value: logrus.InfoLevel.String(),
+		Usage: "Logging level for HTTP requests {trace, debug, info, warn, error, fatal, panic}",
+	},
+	cli.StringFlag{
 		Name:      "logging.directory",
 		TakesFile: true,
 		Value: func() string {

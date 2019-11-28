@@ -30,6 +30,7 @@ BITCOIND_IP=`docker inspect --format '{{json .NetworkSettings}}' bitcoind | jq .
 exe ./tlc-dev \
 	--network $BITCOIN_NETWORK \
 	--logging.level debug \
+    --logging.httplevel info \
 	serve \
 	--db.user tlc \
 	--db.password password \

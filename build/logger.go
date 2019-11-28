@@ -143,7 +143,7 @@ func ToLogLevel(s string) (logrus.Level, error) {
 
 // GinLoggingMiddleWare returns  a middleware that logs incoming requests with Logrus.
 // It is based on the discontinued Ginrus middleware: https://github.com/gin-gonic/contrib/blob/master/ginrus/ginrus.go
-func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string) gin.HandlerFunc {
+func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string, level logrus.Level) gin.HandlerFunc {
 	blackListMap := make(map[string]struct{})
 	for _, elem := range blacklist {
 		blackListMap[elem] = struct{}{}
@@ -214,7 +214,10 @@ func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string) gin.Handler
 
 		withFields = withFields.WithField("latency", latency)
 		status := c.Writer.Status()
-		requestLevel := logger.Level
+
+		// we log with the given logging level
+		requestLevel := level
+		// unless we're dealing with a failed request, we then log at error
 		if status >= 300 {
 			requestLevel = logrus.ErrorLevel
 		}

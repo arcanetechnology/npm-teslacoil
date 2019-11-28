@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"gitlab.com/arcanecrypto/teslacoil/build"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/gin-gonic/gin"
@@ -108,9 +109,15 @@ func Serve() cli.Command {
 				return err
 			}
 
+			httpLogLevel, err := build.ToLogLevel(c.GlobalString("logging.httplevel"))
+			if err != nil {
+				return err
+			}
+
 			config := api.Config{
-				Network:  bitcoindConfig.Network,
-				LnConfig: &lnConfig, // add LN config, so we can reconnect on LND failures
+				Network:      bitcoindConfig.Network,
+				LnConfig:     &lnConfig, // add LN config, so we can reconnect on LND failures
+				HttpLogLevel: httpLogLevel,
 			}
 
 			var baseUrl string

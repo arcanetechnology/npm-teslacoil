@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
 	"gitlab.com/arcanecrypto/teslacoil/api/apikeyroutes"
 	"gitlab.com/arcanecrypto/teslacoil/api/apitxs"
@@ -43,6 +44,9 @@ type Config struct {
 	// The Bitcoin blockchain network we're on
 	Network  chaincfg.Params
 	LnConfig *ln.LightningConfig // If set, we try to reconnect to LND on connection loss
+
+	// Which level HTTP requests are logged on. Defaults to info.
+	HttpLogLevel logrus.Level
 }
 
 // RestServer is the rest server for our app. It includes a Router,
@@ -76,14 +80,14 @@ var routeBlackList = []string{
 // getGinEngine creates a new Gin engine, and applies middlewares used by
 // our API. This includes recovering from panics, logging with Logrus and
 // applying CORS configuration.
-func getGinEngine() *gin.Engine {
+func getGinEngine(config Config) *gin.Engine {
 	engine := gin.New()
 
 	log.Debug("Applying gin.Recovery middleware")
 	engine.Use(gin.Recovery())
 
 	log.Debug("Applying Gin logging middleware")
-	engine.Use(build.GinLoggingMiddleWare(log, routeBlackList))
+	engine.Use(build.GinLoggingMiddleWare(log, routeBlackList, config.HttpLogLevel))
 
 	log.Debug("Applying CORS middleware")
 	engine.Use(cors.New(corsConfig))
@@ -133,7 +137,12 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 		return RestServer{}, errors.New("config.Network is not set")
 	}
 
-	g := getGinEngine()
+	// if log level is not set, default to info
+	if config.HttpLogLevel == logrus.Level(0) {
+		config.HttpLogLevel = logrus.InfoLevel
+	}
+
+	g := getGinEngine(config)
 
 	engine, ok := binding.Validator.Engine().(*validator.Validate)
 	if !ok {
