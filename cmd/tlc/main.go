@@ -40,7 +40,8 @@ func main() { //nolint:deadcode,unused
 		}
 
 		log.WithFields(logrus.Fields{
-			"version": app.Version,
+			"version":  app.Version,
+			"loglevel": level,
 		}).Info("starting tlc")
 		return nil
 	}

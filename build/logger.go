@@ -24,6 +24,7 @@ type hook struct {
 	console     *consoleLogHook
 	jsonFile    *jsonFileHook
 	regularFile *humanReadableFileHook
+	logger      *logrus.Logger
 }
 
 var _ tunableLogger = &hook{}
@@ -47,16 +48,17 @@ func (h *hook) setLevel(level logrus.Level) {
 	h.console.setLevel(level)
 	h.jsonFile.setLevel(level)
 	h.regularFile.setLevel(level)
+	h.logger.SetLevel(level)
 }
 
 var logConfigLock sync.Mutex
-var subsystemHooks = map[string]tunableLogger{}
+var subsystemLoggers = map[string]tunableLogger{}
 
 func SetLogLevel(subsystem string, level logrus.Level) {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	hook, ok := subsystemHooks[subsystem]
+	hook, ok := subsystemLoggers[subsystem]
 	if !ok {
 		return
 	}
@@ -67,7 +69,7 @@ func SetLogLevels(level logrus.Level) {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	for _, hook := range subsystemHooks {
+	for _, hook := range subsystemLoggers {
 		hook.setLevel(level)
 	}
 }
@@ -96,8 +98,9 @@ func AddSubLogger(subsystem string) *logrus.Logger {
 		console:     consoleHook,
 		jsonFile:    jsonHook,
 		regularFile: fileHook,
+		logger:      logger,
 	}
-	subsystemHooks[subsystem] = trio
+	subsystemLoggers[subsystem] = trio
 
 	return logger
 }
@@ -111,7 +114,7 @@ func SetLogDir(dir string) error {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	for _, hook := range subsystemHooks {
+	for _, hook := range subsystemLoggers {
 		if err := hook.setDir(dir); err != nil {
 			return err
 		}
@@ -143,7 +146,7 @@ func ToLogLevel(s string) (logrus.Level, error) {
 
 // GinLoggingMiddleWare returns  a middleware that logs incoming requests with Logrus.
 // It is based on the discontinued Ginrus middleware: https://github.com/gin-gonic/contrib/blob/master/ginrus/ginrus.go
-func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string) gin.HandlerFunc {
+func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string, level logrus.Level) gin.HandlerFunc {
 	blackListMap := make(map[string]struct{})
 	for _, elem := range blacklist {
 		blackListMap[elem] = struct{}{}
@@ -214,7 +217,10 @@ func GinLoggingMiddleWare(logger *logrus.Logger, blacklist []string) gin.Handler
 
 		withFields = withFields.WithField("latency", latency)
 		status := c.Writer.Status()
-		requestLevel := logger.Level
+
+		// we log with the given logging level
+		requestLevel := level
+		// unless we're dealing with a failed request, we then log at error
 		if status >= 300 {
 			requestLevel = logrus.ErrorLevel
 		}
