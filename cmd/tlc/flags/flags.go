@@ -3,7 +3,9 @@ package flags
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -48,6 +50,15 @@ func ReadDbConf(c *cli.Context) db.DatabaseConfig {
 		MigrationsPath: c.String("db.migrationspath"),
 	}
 
+	// if no scheme was supplied to migrations path, default to file:
+	parsedPath, err := url.Parse(conf.MigrationsPath)
+	if err != nil {
+		panic(fmt.Errorf("could not parse migrations path into URL: %w", err))
+	}
+	if len(parsedPath.Scheme) == 0 {
+		conf.MigrationsPath = path.Join("file:", conf.MigrationsPath)
+	}
+
 	// how flags work in urfave/cli can be a bit confusing. flags belongs to a
 	// context, and I haven't been able to find a natural way of scoping flags
 	// correctly. so one issue that kept popping up was that DB flags were passed
@@ -56,7 +67,11 @@ func ReadDbConf(c *cli.Context) db.DatabaseConfig {
 	// either. therefore, we recurse here until we find a context where the flags
 	// are defined
 	if conf.User == "" {
-		return ReadDbConf(c.Parent())
+		parent := c.Parent()
+		if parent == nil {
+			panic("Reached root CLI context without hitting valid DB credentials!")
+		}
+		return ReadDbConf(parent)
 	}
 	return conf
 }
@@ -216,7 +231,7 @@ var Db = []cli.Flag{
 	cli.IntFlag{
 		Name:   "db.port",
 		Usage:  "Database port",
-		Value:  5434,
+		Value:  5432,
 		EnvVar: "DATABASE_PORT",
 	},
 	cli.StringFlag{

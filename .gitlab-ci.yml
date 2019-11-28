@@ -53,6 +53,22 @@ test:
     - ssh -o StrictHostKeyChecking=no root@ci.teslacoil.io mkdir -p /var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME
     - scp -o StrictHostKeyChecking=no coverage.html root@ci.teslacoil.io:/var/www/html/backend-pr-coverage/$CI_BUILD_REF_NAME/index.html
 
+# want all commits to be available on our private Docker registry
+build-commit:
+  script: 
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD registry.gitlab.com
+    - docker build --tag registry.gitlab.com/arcanecrypto/teslacoil:${CI_COMMIT_SHA}
+  only: 
+    - master
+
+# want all tags to be available on our private Docker registry
+build-tag: 
+  script: 
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD registry.gitlab.com
+    - docker build --tag registry.gitlab.com/arcanecrypto/teslacoil:${CI_COMMIT_TAG}
+  only: 
+    - tags
+
 lint:
   image: golangci/golangci-lint
   cache:

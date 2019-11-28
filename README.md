@@ -70,7 +70,7 @@ So, all error logging occurs in the top level package.
 
 ```shell
 ln -sf $PWD/contrib/lncli.fish $HOME/.config/fish/completions/lncli.fish
-make build && ./tlc-dev fish-completion | source
+make build && ./tlc fish-completion | source
 ```
 
 ## Docker

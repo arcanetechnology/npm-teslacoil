@@ -57,7 +57,10 @@ PARAMS="\
 --bitcoind.rpcpass=$RPCPASS \
 --bitcoind.zmqpubrawtx=tcp://$RPCHOST:$ZMQPUBRAWTX_PORT
 --bitcoind.zmqpubrawblock=tcp://$RPCHOST:$ZMQPUBRAWBLOCK_PORT
---debuglevel=$DEBUG"
+--debuglevel=$DEBUG
+--tlsextradomain=bob
+--tlsextradomain=alice" 
+# last two lines are necessary for inter-container communication with TLS
 
 
 echo "Command: lnd $PARAMS $@"
