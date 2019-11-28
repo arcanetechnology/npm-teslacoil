@@ -94,6 +94,12 @@ var (
 		err:  errors.New("route not found"),
 		code: "ERR_ROUTE_NOT_FOUND",
 	}
+	// ErrLnRouteNotFound means we couldn't find a Lightning Network route to the
+	// requested destination
+	ErrLnRouteNotFound = apiError{
+		err:  errors.New("LN route not found"),
+		code: "ERR_LN_ROUTE_NOT_FOUND",
+	}
 	// ErrMissingAuthHeader means the HTTP request had an empty auth header
 	ErrMissingAuthHeader = apiError{
 		err:  errors.New("missing authentication header"),
@@ -398,15 +404,15 @@ func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.F
 				message = fmt.Sprintf("%q field does not contain a valid email", field)
 				code = "email"
 			case "gte":
-				message = fmt.Sprintf("%q field must be greater than or equal %s. Got: %s",
+				message = fmt.Sprintf("%q field must be greater than or equal %s. Got: %v",
 					field, validationErr.Param(), validationErr.Value())
 				code = "gte"
 			case "lte":
-				message = fmt.Sprintf("%q field must be less than or equal %s. Got: %s",
+				message = fmt.Sprintf("%q field must be less than or equal %s. Got: %v",
 					field, validationErr.Param(), validationErr.Value())
 				code = "gte"
 			case "gt":
-				message = fmt.Sprintf("%q field must be greater than %s. Got: %s",
+				message = fmt.Sprintf("%q field must be greater than %s. Got: %v",
 					field, validationErr.Param(), validationErr.Value())
 				code = "gt"
 			case "url":

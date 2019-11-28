@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apiauth"
+	"gitlab.com/arcanecrypto/teslacoil/api/apifees"
 	"gitlab.com/arcanecrypto/teslacoil/api/apikeyroutes"
 	"gitlab.com/arcanecrypto/teslacoil/api/apitxs"
 	"gitlab.com/arcanecrypto/teslacoil/api/apiusers"
@@ -185,6 +186,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 	apitxs.RegisterRoutes(r.Router, r.db, r.lncli, r.bitcoind, callbacks, middleware)
 	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware)
 	apiauth.RegisterRoutes(r.Router, r.db, sender, middleware)
+	apifees.RegisterRoutes(r.Router, lncli, bitcoin, &config.Network)
 
 	r.startListeningToLnd(callbacks, sender, config)
 
@@ -221,6 +223,7 @@ func (r *RestServer) startListeningToLnd(poster transactions.HttpPoster, emailSe
 
 			log.Info("Got new connection to LND")
 			apitxs.SetLnd(r.lncli)
+			apifees.SetLnd(r.lncli)
 			r.startListeningToLnd(poster, emailSender, config)
 		})
 		if err != nil {

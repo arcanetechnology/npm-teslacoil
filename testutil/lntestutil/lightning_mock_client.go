@@ -29,8 +29,9 @@ type LightningMockClient struct {
 	SendCoinsResponse       lnrpc.SendCoinsResponse
 	AddInvoiceResponse      lnrpc.AddInvoiceResponse
 	// ExtendedKey is an extended private key
-	ExtendedKey        *hdkeychain.ExtendedKey
-	NewAddressResponse lnrpc.NewAddressResponse
+	ExtendedKey         *hdkeychain.ExtendedKey
+	NewAddressResponse  lnrpc.NewAddressResponse
+	QueryRoutesResponse lnrpc.QueryRoutesResponse
 }
 
 func (client LightningMockClient) ChannelAcceptor(ctx context.Context, opts ...grpc.CallOption) (lnrpc.Lightning_ChannelAcceptorClient, error) {
@@ -169,7 +170,7 @@ func (client LightningMockClient) GetNodeInfo(ctx context.Context, in *lnrpc.Nod
 }
 
 func (client LightningMockClient) QueryRoutes(ctx context.Context, in *lnrpc.QueryRoutesRequest, opts ...grpc.CallOption) (*lnrpc.QueryRoutesResponse, error) {
-	panic("QueryRoutes")
+	return &client.QueryRoutesResponse, nil
 }
 
 func (client LightningMockClient) GetNetworkInfo(ctx context.Context, in *lnrpc.NetworkInfoRequest, opts ...grpc.CallOption) (*lnrpc.NetworkInfo, error) {
