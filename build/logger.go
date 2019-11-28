@@ -24,6 +24,7 @@ type hook struct {
 	console     *consoleLogHook
 	jsonFile    *jsonFileHook
 	regularFile *humanReadableFileHook
+	logger      *logrus.Logger
 }
 
 var _ tunableLogger = &hook{}
@@ -47,16 +48,17 @@ func (h *hook) setLevel(level logrus.Level) {
 	h.console.setLevel(level)
 	h.jsonFile.setLevel(level)
 	h.regularFile.setLevel(level)
+	h.logger.SetLevel(level)
 }
 
 var logConfigLock sync.Mutex
-var subsystemHooks = map[string]tunableLogger{}
+var subsystemLoggers = map[string]tunableLogger{}
 
 func SetLogLevel(subsystem string, level logrus.Level) {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	hook, ok := subsystemHooks[subsystem]
+	hook, ok := subsystemLoggers[subsystem]
 	if !ok {
 		return
 	}
@@ -67,7 +69,7 @@ func SetLogLevels(level logrus.Level) {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	for _, hook := range subsystemHooks {
+	for _, hook := range subsystemLoggers {
 		hook.setLevel(level)
 	}
 }
@@ -96,8 +98,9 @@ func AddSubLogger(subsystem string) *logrus.Logger {
 		console:     consoleHook,
 		jsonFile:    jsonHook,
 		regularFile: fileHook,
+		logger:      logger,
 	}
-	subsystemHooks[subsystem] = trio
+	subsystemLoggers[subsystem] = trio
 
 	return logger
 }
@@ -111,7 +114,7 @@ func SetLogDir(dir string) error {
 	logConfigLock.Lock()
 	defer logConfigLock.Unlock()
 
-	for _, hook := range subsystemHooks {
+	for _, hook := range subsystemLoggers {
 		if err := hook.setDir(dir); err != nil {
 			return err
 		}
