@@ -2,7 +2,6 @@ package httptestutil
 
 import (
 	"bytes"
-	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -17,14 +16,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gitlab.com/arcanecrypto/teslacoil/db"
-
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
 	"gitlab.com/arcanecrypto/teslacoil/api/httptypes"
-	"gitlab.com/arcanecrypto/teslacoil/bitcoind"
+	"gitlab.com/arcanecrypto/teslacoil/db"
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
-	"github.com/lightningnetwork/lnd/lnrpc"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 )
 
@@ -394,34 +390,4 @@ func (harness *TestHarness) CreateAndAuthenticateUser(t *testing.T, args users.C
 
 	return harness.AuthenticaticateUser(t, args)
 
-}
-
-func (harness *TestHarness) GiveUserBalance(t *testing.T, lncli lnrpc.LightningClient,
-	bitcoin bitcoind.TeslacoilBitcoind, accessToken string, amount int64) {
-
-	getDepositAddr := GetAuthRequest(t, AuthRequestArgs{
-		AccessToken: accessToken,
-		Path:        "/deposit",
-		Method:      "POST",
-		Body: fmt.Sprintf(`{
-			"forceNewAddress": %t
-		}`, false),
-	})
-
-	type res struct {
-		Address string `json:"address"`
-	}
-	var r res
-
-	harness.AssertResponseOKWithStruct(t, getDepositAddr, &r)
-
-	_, err := lncli.SendCoins(context.Background(), &lnrpc.SendCoinsRequest{
-		Addr:   r.Address,
-		Amount: amount,
-	})
-	require.NoError(t, err)
-
-	// confirm it
-	_, err = bitcoin.Btcctl().Generate(7)
-	require.NoError(t, err)
 }

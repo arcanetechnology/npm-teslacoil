@@ -64,7 +64,7 @@ func TestCreateJWT(t *testing.T) {
 	token, err := CreateJwt(email, id)
 	require.NoError(t, err)
 
-	parsed, claims, err := parseBearerJwt(token)
+	parsed, claims, err := ParseBearerJwt(token)
 	require.NoError(t, err)
 
 	assert.True(t, parsed.Valid, "Token was invalid")
@@ -88,7 +88,7 @@ func TestParseBearerJwt(t *testing.T) {
 		}
 		token, err := createJwt(args)
 		require.NoError(t, err)
-		_, _, err = parseBearerJwt(token)
+		_, _, err = ParseBearerJwt(token)
 		require.NotNil(t, err)
 		assert.Equal(t, err.Error(), rsa.ErrVerification.Error())
 	})

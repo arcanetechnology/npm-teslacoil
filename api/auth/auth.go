@@ -173,7 +173,7 @@ func authenticateJWT(c *gin.Context) (int, error) {
 	// Here we extract the token from the header
 	tokenString := c.GetHeader(Header)
 
-	_, claims, err := parseBearerJwt(tokenString)
+	_, claims, err := ParseBearerJwt(tokenString)
 	if err != nil {
 		var validationError *jwt.ValidationError
 		if errors.As(err, &validationError) {
@@ -261,10 +261,10 @@ func parseBearerJwtWithKey(tokenString string, publicKey *rsa.PublicKey) (*jwt.T
 	return token, jwtClaims, nil
 }
 
-// parseBearerJwt parses a string representation of a JWT and validates
+// ParseBearerJwt parses a string representation of a JWT and validates
 // it is signed by us. It returns the token and the extracted claims.
 // If anything goes wrong, an error with a descriptive reason is returned.
-func parseBearerJwt(tokenString string) (*jwt.Token, *jwtClaims, error) {
+func ParseBearerJwt(tokenString string) (*jwt.Token, *jwtClaims, error) {
 	if jwtPublicKey == nil {
 		log.Panic(ErrJwtKeyHasNotBeenSet)
 	}
