@@ -112,9 +112,11 @@ func TestCreateInvoiceRoute(t *testing.T) {
 
 func TestPayInvoice(t *testing.T) {
 
-	assertPreimageIsOfHash := func(t *testing.T, preimage string, hash string) {
+	assertPreimageIsOfHash := func(t *testing.T, preimage, hash interface{}) {
+		preimageStr, ok := preimage.(string)
+		require.True(t, ok, "preimage was not string: %v", preimage)
 		// we decode the base64 encoded string into a []byte
-		decodedPreimage, err := hex.DecodeString(preimage)
+		decodedPreimage, err := hex.DecodeString(preimageStr)
 		require.NoError(t, err)
 
 		// then we hash the preimage using shasum256
@@ -270,7 +272,14 @@ func TestPayInvoice(t *testing.T) {
 		assert.NotNil(t, res["preimage"])
 		assert.Equal(t, hex.EncodeToString(offchain.HashedPreimage), res["hash"])
 		assert.Equal(t, float64(offchain.AmountSat), res["amountSat"])
-		assertPreimageIsOfHash(t, res["preimage"].(string), res["hash"].(string))
+
+		preimage := res["preimage"]
+		require.NotNil(t, preimage)
+
+		hash := res["hash"]
+		require.NotNil(t, hash)
+
+		assertPreimageIsOfHash(t, preimage, hash)
 
 	})
 
