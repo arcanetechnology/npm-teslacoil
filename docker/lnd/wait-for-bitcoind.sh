@@ -19,7 +19,7 @@ ATTEMPTS=50
 SLEEP_DURATION=1
 URL="http://$RPCUSER:$RPCPASS@$RPCHOST:$PORT"
 SUCCESS=0
-echo Trying to get contact with Bitcoin Core
+echo Trying to get contact with Bitcoin Core at URL $URL
 for i in $(seq 1 $ATTEMPTS); do
     RESULT=`curl -s -o /dev/null -w '%{http_code}\n' $URL \
       --data-binary '{"jsonrpc": "1.0", "method": "getblockchaininfo", "params": [] }'`

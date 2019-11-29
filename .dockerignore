@@ -1,0 +1,14 @@
+# binaries
+tlc-dev
+tlc
+
+# non-source folders
+logs/
+docker/
+doc/
+scripts/
+.vscode/
+.idea/
+
+# files
+docker-compose.yml

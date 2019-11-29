@@ -1,4 +1,5 @@
-version: '2.2'
+version: "3.7"
+
 services:
   db:
     container_name: postgres
@@ -16,12 +17,15 @@ services:
       context: docker/postgres
     volumes:
       - postgres:/var/lib/postgresql
-    environment:
-      - DATABASE_USER
-      - POSTGRES_PASSWORD
+    environment: 
+      PG_PASSWORD: ${DATABASE_PASSWORD}
     ports:
       # expose default Postgres port as 5434 on host
+      # This won't matter for our app (as that'll run in a Docker container that can
+      # communicate directly with the container, but it makes it possible to run tests
+      # against the docker DB)
       - 5434:5432
+
   bitcoind:
     # https://github.com/ruimarinho/docker-bitcoin-core
     image: ruimarinho/bitcoin-core:0.18
@@ -32,7 +36,7 @@ services:
     command:
       - -debug=rpc
       - -printtoconsole
-      - -$BITCOIN_NETWORK
+      - -${BITCOIN_NETWORK:-regtest}
       - -rpcuser=$RPCUSER
       - -rpcpassword=$RPCPASS
       - -rpcbind=0.0.0.0
@@ -41,7 +45,51 @@ services:
       - -zmqpubrawtx=tcp://0.0.0.0:$ZMQPUBRAWTX_PORT
       - -zmqpubrawblock=tcp://0.0.0.0:$ZMQPUBRAWBLOCK_PORT
 
-  lnd:
+  # container for running the API
+  dev:
+    depends_on:
+      - db
+      - alice
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: teslacoil
+    container_name: teslacoil
+    # we need to read Alice's data, to get her macaroon and certificate
+    volumes:
+      - ./docker/.alice:/root/alice
+      - ./logs:/root/logs
+    ports:
+      # expose the API port
+      - "5000:5000"
+    environment:
+      SENDGRID_API_KEY: # we don't want this to end up in logs
+    command:
+      - ./tlc
+      - --network=${BITCOIN_NETWORK:-regtest}
+      - --logging.level=trace
+      - --logging.httplevel=info
+      - serve
+      - --db.password=${DATABASE_PASSWORD}
+      - --db.user=${DATABASE_USER}
+      - --db.host=postgres # connect to DB running in Postgres container
+      - --db.migrationspath=/root/migrations
+      - --db.migrateup # always migrate up to newest version
+      - --dummy.gen-data # generate dummy data
+      - --dummy.force # don't ask for confirmation when generating dummy data
+      - --dummy.only-once # only generate dummy data if the DB is empty
+      - --lnd.rpchost=alice # Connect to Docker container
+      - --lnd.dir=/root/alice
+      - --bitcoind.rpcuser=${RPCUSER}
+      - --bitcoind.rpcpassword=${RPCPASS}
+      - --bitcoind.rpchost=bitcoind # Connect to Docker container
+      - --bitcoind.zmqpubrawtx=${ZMQPUBRAWTX_PORT}
+      - --bitcoind.zmqpubrawblock=${ZMQPUBRAWBLOCK_PORT}
+      - --rsa-jwt-key=sample-private-pkcs1-rsa.pem
+
+  lnd: &lnd
+    depends_on:
+      - bitcoind
     build:
       context: docker/lnd
       args:
@@ -56,43 +104,31 @@ services:
       - RPCUSER
       - RPCPASS
       - BITCOIN_NETWORK
-      - RPCHOST
+      - RPCHOST=bitcoind
       - DEBUG
       - ZMQPUBRAWTX_PORT
       - ZMQPUBRAWBLOCK_PORT
     command: sh -c './wait-for-bitcoind.sh && ./start-lnd.sh'
 
   bob:
-    depends_on:
-      - bitcoind
-    extends: lnd
+    <<: *lnd
     container_name: bob
-    environment:
-      - RPCHOST=blockchain
     # expose Bob's LND RPC as a different than ALice's port
     ports:
-      - '10010:10009'
+      - "10010:10009"
     volumes:
       # Map ./.bob to Bobs LND data dir
       - ./docker/.bob:/home/lnd/.lnd
-    links:
-      - 'bitcoind:blockchain'
 
   alice:
-    depends_on:
-      - bitcoind
-    extends: lnd
+    <<: *lnd
     container_name: alice
-    environment:
-      - RPCHOST=blockchain
     # expose Alice's LND RPC port
     ports:
-      - '10009:10009'
+      - "10009:10009"
     volumes:
       # Map ./.alice to Alice's LND data dir
       - ./docker/.alice:/home/lnd/.lnd
-    links:
-      - 'bitcoind:blockchain'
 
 volumes:
   # bitcoin volume is needed for maintaining blockchain persistence

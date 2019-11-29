@@ -11,7 +11,10 @@ COVERAGE_ARTIFACTS := coverage.out coverage.html
 
 .PHONY: build
 build:
-	go build ${LDFLAGS} -o tlc-dev ./cmd/tlc/main.go
+	go build ${LDFLAGS} -o tlc ./cmd/tlc/main.go
+
+images:
+	docker-compose build --parallel
 
 deploy-testnet: install
 	./scripts/deployTestnet.sh
@@ -30,7 +33,7 @@ start-regtest-alice:
 	 ZMQPUBRAWTX_PORT=23473 ZMQPUBRAWBLOCK_PORT=23472 BITCOIN_NETWORK=regtest docker-compose up -d alice 
 
 drop: build start-db
-	./tlc-dev db drop --force
+	./tlc db drop --force
 
 clean:
 	rm -f ${BINARIES} ${COVERAGE_ARTIFACTS}
@@ -46,11 +49,12 @@ ifeq (test-only,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-serve: start-db build
-	env BITCOIN_NETWORK=regtest ./scripts/serve.sh
 
-serve-testnet: start-db build
-	env BITCOIN_NETWORK=testnet ./scripts/serve.sh
+serve: images
+	env BITCOIN_NETWORK=regtest docker-compose up dev 
+
+serve-testnet: images
+	env BITCOIN_NETWORK=testnet docker-compose up dev 
 
 test-only: 
 	go test ./... -run ${TEST_ARGS}
