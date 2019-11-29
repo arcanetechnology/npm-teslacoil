@@ -37,7 +37,7 @@ type ConnFieldGetter interface {
 	Network() chaincfg.Params
 }
 
-// RpcMethods is a client that can query bitcoind/btcd.
+// RpcClient is a client that can query bitcoind/btcd.
 type RpcClient interface {
 	// All methods below are cribbed from https://godoc.org/github.com/btcsuite/btcd/rpcclient
 
@@ -68,8 +68,8 @@ type RpcClient interface {
 	DumpPrivKeyAsync(address btcutil.Address) rpcclient.FutureDumpPrivKeyResult
 	EstimateFee(numBlocks int64) (float64, error)
 	EstimateFeeAsync(numBlocks int64) rpcclient.FutureEstimateFeeResult
-	EstimateSmartFeeAsync(int64, *btcjson.EstimateSmartFeeMode) rpcclient.FutureEstimateSmartFeeResult
-	EstimateSmartFee(int64, *btcjson.EstimateSmartFeeMode) (*btcjson.EstimateSmartFeeResult, error)
+	EstimateSmartFeeAsync(confTarget int64, estimateMode *btcjson.EstimateSmartFeeMode) rpcclient.FutureEstimateSmartFeeResult
+	EstimateSmartFee(confTarget int64, estimateMode *btcjson.EstimateSmartFeeMode) (*btcjson.EstimateSmartFeeResult, error)
 	ExportWatchingWallet(account string) ([]byte, []byte, error)
 	ExportWatchingWalletAsync(account string) rpcclient.FutureExportWatchingWalletResult
 	Generate(numBlocks uint32) ([]*chainhash.Hash, error)

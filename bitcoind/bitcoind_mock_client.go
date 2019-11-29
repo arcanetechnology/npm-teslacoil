@@ -72,7 +72,12 @@ func (b BitcoindRpcMockClient) EstimateSmartFeeAsync(int64, *btcjson.EstimateSma
 }
 
 func (b BitcoindRpcMockClient) EstimateSmartFee(int64, *btcjson.EstimateSmartFeeMode) (*btcjson.EstimateSmartFeeResult, error) {
-	panic("implement me")
+	var fee float64 = 1
+	return &btcjson.EstimateSmartFeeResult{
+		FeeRate: &fee,
+		Errors:  nil,
+		Blocks:  10,
+	}, nil
 }
 
 func (b BitcoindRpcMockClient) AddMultisigAddress(requiredSigs int, addresses []btcutil.Address, account string) (btcutil.Address, error) {
