@@ -18,6 +18,9 @@ import (
 
 var validate *validator.Validate
 
+// NOTE: tests here shouldn't run in parallell. it sometimes causes the validator lib to panic because of
+// concurrent map reads and writes. not really sure how to work around it, best to just not do parallell
+
 func TestMain(m *testing.M) {
 	build.SetLogLevels(logrus.ErrorLevel)
 	gofakeit.Seed(0)
@@ -29,7 +32,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestIsValidUrlBase64(t *testing.T) {
-	t.Parallel()
 
 	require.NoError(t, registerValidator(validate, urlbase64, isValidUrlBase64))
 
@@ -45,7 +47,6 @@ func TestIsValidUrlBase64(t *testing.T) {
 }
 
 func TestIsValidPassword(t *testing.T) {
-	t.Parallel()
 
 	err := registerValidator(validate, password, isValidPassword)
 	require.NoError(t, err)
@@ -56,14 +57,12 @@ func TestIsValidPassword(t *testing.T) {
 
 	goodStruct := Struct{Password: gofakeit.Password(true, true, true, true, true, 32)}
 	t.Run("validate a good password", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(goodStruct)
 		assert.NoError(t, err)
 	})
 
 	badStruct := Struct{Password: "bad_password"}
 	t.Run("invalidate a bad password", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(badStruct)
 		assert.Error(t, err)
 	})
@@ -71,7 +70,6 @@ func TestIsValidPassword(t *testing.T) {
 }
 
 func TestIsValidPaymentRequest(t *testing.T) {
-	t.Parallel()
 
 	err := registerValidator(validate, paymentrequest, isValidPaymentRequest(chaincfg.RegressionNetParams))
 	require.NoError(t, err)
@@ -82,14 +80,12 @@ func TestIsValidPaymentRequest(t *testing.T) {
 
 	goodPaymentRequest := Struct{PaymentRequest: "lnbcrt500u1pw6gmx6pp5lnv93hd3vzxhu2zt4rfk8tdtrsweul45x32zchmd44gdvx7a8edsdqqcqzpgazxk578m8w2uccc3fka4nvk6ugv7g3fcj2j74vpwksvac4tysg6kkszhk5cwdh5qwtp0ay5s7ukm782z077glqh7p8w0j0zwvwsjj9gq0lumug"}
 	t.Run("validate a good payment request", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(goodPaymentRequest)
 		assert.NoError(t, err)
 	})
 
 	badPaymentRequest := Struct{PaymentRequest: "bad_payment_request"}
 	t.Run("invalidate a bad payment request", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(badPaymentRequest)
 		assert.Error(t, err)
 	})
@@ -97,7 +93,6 @@ func TestIsValidPaymentRequest(t *testing.T) {
 }
 
 func TestIsValidBitcoinAddress(t *testing.T) {
-	t.Parallel()
 
 	err := registerValidator(validate, address, isValidBitcoinAddress(chaincfg.RegressionNetParams))
 	require.NoError(t, err)
@@ -109,14 +104,12 @@ func TestIsValidBitcoinAddress(t *testing.T) {
 	// address for regtest
 	goodAddress := Struct{Address: "bcrt1qu6zvu2uxfmac6xyzq9zn5r70ke92w7ndrfme4t"}
 	t.Run("validate a good address", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(goodAddress)
 		require.NoError(t, err)
 	})
 
 	badAddress := Struct{Address: "bad_address"}
 	t.Run("invalidate a bad address", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(badAddress)
 		require.Error(t, err)
 	})
@@ -124,7 +117,6 @@ func TestIsValidBitcoinAddress(t *testing.T) {
 	// address for mainnet, as chainCfg.RegressionNetParams identify as testnet
 	wrongNetworkAddress := Struct{Address: "39qSSDqoBcGpQfFALNxozB9JQKv66tjjDy"}
 	t.Run("invalidate address for the wrong network", func(t *testing.T) {
-		t.Parallel()
 		err = validate.Struct(wrongNetworkAddress)
 		require.Error(t, err)
 	})
