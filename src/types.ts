@@ -28,3 +28,7 @@ export interface Invoice {
   memo?: string
   settledAt?: Date
 }
+
+export interface TeslaError {
+  error: { message: string; code: string; fields: [] }
+}

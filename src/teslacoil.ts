@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Direction, Invoice, Status } from './types'
+import { Direction, Invoice, Status, TeslaError } from './types'
 
 const api = axios.create({
   validateStatus: () => true,
@@ -58,9 +58,7 @@ interface PayInvoiceArgs {
   description?: string
 }
 
-export const payInvoice = async (
-  args: PayInvoiceArgs
-): Promise<Invoice | { error: { message: string; code: string; fields: [] } }> => {
+export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice | TeslaError> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
