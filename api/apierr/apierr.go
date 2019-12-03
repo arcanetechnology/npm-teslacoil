@@ -429,6 +429,9 @@ func handleValidationErrors(c *gin.Context, logger *logrus.Logger) []httptypes.F
 			case "oneof":
 				message = fmt.Sprintf("%q must be one of %q", field, validationErr.Param())
 				code = "oneof"
+			case "required_without":
+				message = fmt.Sprintf("%q must be set if %q is not set", field, decapitalize(validationErr.Param()))
+				code = "required_without"
 			default:
 				logger.WithField("tag", validationErr.Tag()).Warn("Encountered unknown validation field")
 				message = fmt.Sprintf("%s is invalid", field)

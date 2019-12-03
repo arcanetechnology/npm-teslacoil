@@ -961,6 +961,77 @@ func getTx(minAmountSat int64, userId int) transactions.Offchain {
 func TestWithdrawOnChain(t *testing.T) {
 	t.Parallel()
 
+	t.Run("fail to withdraw without amount", func(t *testing.T) {
+		t.Parallel()
+
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+
+		accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
+			Email:    user.Email,
+			Password: pass,
+		})
+
+		const address = "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/withdraw",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+			"address": %q
+		}`, address),
+		})
+
+		_, _ = h.AssertResponseNotOkWithCode(t, req, http.StatusBadRequest)
+	})
+
+	t.Run("succeed to withdraw without amount and sendAll: true", func(t *testing.T) {
+		t.Parallel()
+		const withdrawAmount = 1234
+
+		pass := gofakeit.Password(true, true, true, true, true, 32)
+		user := userstestutil.CreateUserOrFailWithPassword(t, testDB, pass)
+		tx := getTx(withdrawAmount, user.ID)
+		_, err := transactions.InsertOffchain(testDB, tx)
+		require.NoError(t, err)
+
+		bal, err := balance.ForUser(testDB, user.ID)
+		require.NoError(t, err)
+		require.True(t, bal.Sats() > withdrawAmount, tx)
+
+		accessToken, _ := h.AuthenticaticateUser(t, users.CreateUserArgs{
+			Email:    user.Email,
+			Password: pass,
+		})
+
+		const address = "bcrt1qvn9hnzlpgrvcmrusj6cfh6cvgppp2z8fqeuxmy"
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/withdraw",
+			Method:      "POST",
+			Body: fmt.Sprintf(`{
+			"sendAll": true,
+			"address": %q
+		}`, address),
+		})
+
+		res := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, address, res["address"])
+		assert.Equal(t, float64(bal.Sats()), res["amountSat"])
+		assert.Equal(t, false, res["confirmed"])
+		assert.Equal(t, "blockchain", res["type"])
+
+		balanceReq := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: accessToken,
+			Path:        "/users",
+			Method:      "GET",
+		})
+
+		balanceRes := h.AssertResponseOkWithJson(t, balanceReq)
+
+		assert.InDelta(t, 0, balanceRes["balanceSats"], 0)
+	})
+
 	t.Run("regular withdrawal", func(t *testing.T) {
 		t.Parallel()
 		const withdrawAmount = 1234

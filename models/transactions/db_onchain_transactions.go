@@ -289,7 +289,7 @@ func SendOnChain(lncli lnrpc.LightningClient, args *lnrpc.SendCoinsRequest) (
 type WithdrawOnChainArgs struct {
 	UserID int `json:"-"`
 	// The amount in satoshis to send
-	AmountSat int64 `json:"amountSat" binding:"required"`
+	AmountSat int64 `json:"amountSat" binding:"required_without=SendAll"`
 	// The address to send coins to
 	Address string `json:"address" binding:"required,address"`
 	// The target number of blocks the transaction should be confirmed by
