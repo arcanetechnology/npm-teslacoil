@@ -27,6 +27,8 @@ export interface Invoice {
   preimage?: string
   memo?: string
   settledAt?: Date
+
+  error: undefined
 }
 
 export interface TeslaError {
