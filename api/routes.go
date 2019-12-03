@@ -93,6 +93,11 @@ func getGinEngine(config Config) *gin.Engine {
 	log.Debug("Applying CORS middleware")
 	engine.Use(cors.New(corsConfig))
 
+	// write JSON header to all responses
+	engine.Use(func(c *gin.Context) {
+		c.Header("Content-Type", "application/json")
+	})
+
 	log.Debug("Applying error handler middleware")
 	engine.Use(apierr.GetMiddleware(log))
 	return engine
