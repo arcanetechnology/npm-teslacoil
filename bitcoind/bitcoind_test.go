@@ -4,6 +4,7 @@ package bitcoind_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -123,8 +124,8 @@ func TestFindVout(t *testing.T) {
 		address, err := bitcoin.Btcctl().GetNewAddress("")
 		require.NoError(t, err)
 
-		amount := gofakeit.Number(0, ln.MaxAmountMsatPerInvoice)
-		tx, err := bitcoin.Btcctl().SendToAddress(address, btcutil.Amount(amount))
+		amount := btcutil.Amount(gofakeit.Number(0, ln.MaxAmountSatPerInvoice))
+		tx, err := bitcoin.Btcctl().SendToAddress(address, amount)
 		require.NoError(t, err)
 
 		rawTx, err := bitcoin.Btcctl().GetRawTransactionVerbose(tx)
@@ -132,7 +133,10 @@ func TestFindVout(t *testing.T) {
 
 		var correctVout uint32
 		for _, output := range rawTx.Vout {
-			if float64(amount) == (output.Value * btcutil.SatoshiPerBitcoin) {
+			outputValue, err := btcutil.NewAmount(output.Value)
+			require.NoError(t, err)
+
+			if amount == outputValue {
 				correctVout = output.N
 			}
 		}
@@ -143,6 +147,7 @@ func TestFindVout(t *testing.T) {
 			log.WithFields(logrus.Fields{
 				"amount":  amount,
 				"address": address,
+				"rawTx":   fmt.Sprintf("%+v", rawTx),
 			}).Errorf("rawTx.Hex: %s", rawTx.Hex)
 		}
 	})

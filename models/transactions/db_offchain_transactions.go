@@ -293,6 +293,7 @@ func PayInvoiceWithDescription(database *db.DB, lncli lnrpc.LightningClient, cal
 		"memo":            decoded.Description,
 		"hash":            decoded.PaymentHash,
 		"fallbackAddress": decoded.FallbackAddr,
+		"amountSat":       decoded.NumSatoshis,
 		"expiry":          decoded.Expiry,
 		"numSats":         decoded.NumSatoshis,
 		"destination":     decoded.Destination,

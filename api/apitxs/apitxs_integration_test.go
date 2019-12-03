@@ -12,6 +12,7 @@ import (
 
 	"github.com/btcsuite/btcutil"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 	"gitlab.com/arcanecrypto/teslacoil/testutil/userstestutil"
 
 	"gitlab.com/arcanecrypto/teslacoil/api/apierr"
@@ -115,8 +116,25 @@ func TestCreateInvoiceRoute(t *testing.T) {
 	})
 }
 
-func TestPayInvoice(t *testing.T) {
+func getIncomingWithMoney(userId int, amount btcutil.Amount) transactions.Onchain {
+	tx := txtest.MockOnchain(userId)
+	if tx.Direction != transactions.INBOUND {
+		return getIncomingWithMoney(userId, amount)
+	}
 
+	if tx.ConfirmedAt == nil {
+		return getIncomingWithMoney(userId, amount)
+	}
+
+	if tx.AmountSat == nil || *tx.AmountSat < int64(amount) {
+		a := int64(amount)
+		tx.AmountSat = &a
+	}
+
+	return tx
+}
+
+func TestPayInvoice(t *testing.T) {
 	assertPreimageIsOfHash := func(t *testing.T, preimage, hash interface{}) {
 		preimageStr, ok := preimage.(string)
 		require.True(t, ok, "preimage was not string: %v", preimage)
@@ -145,8 +163,10 @@ func TestPayInvoice(t *testing.T) {
 		Email:    gofakeit.Email(),
 		Password: password,
 	})
-	const initialBalance = 5 * btcutil.SatoshiPerBitcoin
-	h.GiveUserBalance(t, lnd1, bitcoind, accessToken, initialBalance)
+	const initialBalance = btcutil.Amount(5 * btcutil.SatoshiPerBitcoin)
+	onchain := getIncomingWithMoney(userID, initialBalance)
+	_, err = transactions.InsertOnchain(testDB, onchain)
+	require.NoError(t, err)
 
 	t.Run("can send payment", func(t *testing.T) {
 		amountSat := fakeInvoiceAmount()
