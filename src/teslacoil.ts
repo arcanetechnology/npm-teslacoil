@@ -58,16 +58,12 @@ interface PayInvoiceArgs {
   description?: string
 }
 
-export const payInvoice = async (args: PayInvoiceArgs): Promise<any> => {
+export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
   const response = await api.post('/invoices/pay', args)
-  if (response.status >= 200 && response.status <= 300) {
-    return response.data as Invoice
-  } else {
-    return response
-  }
+  return response.data as Invoice
 }
 
 export { Invoice, Status, Direction }
