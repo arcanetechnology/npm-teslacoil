@@ -215,7 +215,7 @@ type offchainWithDerived struct {
 	offchainNoJson
 
 	HexHashedPreimage string    `json:"hash"`
-	HexPreimage       string    `json:"preimage"`
+	HexPreimage       string    `json:"preimage,omitempty"`
 	Expired           bool      `json:"expired"`
 	ExpiresAt         time.Time `json:"expiresAt"`
 	AmountSat         int64     `json:"amountSat"`
