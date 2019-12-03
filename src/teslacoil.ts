@@ -58,12 +58,14 @@ interface PayInvoiceArgs {
   description?: string
 }
 
-export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice | {error: { message: string, code: string, fields: [] }}> => {
+export const payInvoice = async (
+  args: PayInvoiceArgs
+): Promise<Invoice | { error: { message: string; code: string; fields: [] } }> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
   const response = await api.post('/invoices/pay', args)
-    return response.data
+  return response.data
 }
 
 export { Invoice, Status, Direction }
