@@ -17,7 +17,6 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
-	pkgerrors "github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 
 	"gitlab.com/arcanecrypto/teslacoil/db"
@@ -67,7 +66,7 @@ func SetRawJwtPrivateKey(key, password []byte) (err error) {
 	} else {
 		privPemBytes, err = x509.DecryptPEMBlock(privPem, password)
 		if err != nil {
-			return pkgerrors.Wrap(err, "unable to decode PEM block")
+			return fmt.Errorf("unable to decode PEM block: %w", err)
 		}
 	}
 

@@ -2,6 +2,7 @@ package users
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dchest/passwordreset"
-	"github.com/pkg/errors"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -106,7 +106,7 @@ func GetByID(db *db.DB, id int) (User, error) {
 		selectFromUsersTable)
 
 	if err := db.Get(&userResult, uQuery, id); err != nil {
-		return User{}, errors.Wrapf(err, "GetByID(db, %d)", id)
+		return User{}, fmt.Errorf("GetByID(db, %d): %w", id, err)
 	}
 
 	return userResult, nil
@@ -291,20 +291,20 @@ func VerifyPasswordResetToken(db *db.DB, token string) (string, error) {
 func (u User) ChangePassword(db *db.DB, newPassword string) (User, error) {
 	hash, err := hashAndSalt(newPassword)
 	if err != nil {
-		return User{}, errors.Wrap(err, "could not hash new password")
+		return User{}, fmt.Errorf("could not hash new password: %w", err)
 	}
 
 	// UPDATE user with new password
 	query := `UPDATE users SET hashed_password = $1 WHERE id = $2 ` + returningFromUsersTable
 	rows, err := db.Query(query, hash, u.ID)
 	if err != nil {
-		return User{}, errors.Wrap(err, "could not update user password")
+		return User{}, fmt.Errorf("could not update user password: %w", err)
 	}
 
 	// read updated user from db
 	user, err := scanUser(rows)
 	if err != nil {
-		return User{}, errors.Wrap(err, "could not scan user when changing password")
+		return User{}, fmt.Errorf("could not scan user when changing password: %w", err)
 	}
 
 	return user, nil
@@ -336,7 +336,7 @@ func (u *User) Create2faCredentials(d *db.DB) (*otp.Key, error) {
 		WHERE id = $2`
 	_, err = d.Query(updateTotpSecret, key.Secret(), u.ID)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not update totp_secret in DB")
+		return nil, fmt.Errorf("could not update totp_secret in DB: %w", err)
 	}
 	return key, nil
 }
@@ -358,7 +358,7 @@ func (u *User) Delete2faCredentials(d *db.DB, passcode string) (User, error) {
 		WHERE id = $1 ` + returningFromUsersTable
 	rows, err := d.Query(unsetTotpQuery, u.ID)
 	if err != nil {
-		return *u, errors.Wrap(err, "could not unset TOTP status in DB")
+		return *u, fmt.Errorf("could not unset TOTP status in DB: %w", err)
 	}
 
 	updatedUser, err := scanUser(rows)
@@ -388,7 +388,7 @@ func (u *User) Confirm2faCredentials(d *db.DB, passcode string) (User, error) {
 		WHERE id = $1 ` + returningFromUsersTable
 	rows, err := d.Query(confirmTotpQuery, u.ID)
 	if err != nil {
-		return *u, errors.Wrap(err, "could not confirm TOTP status in DB")
+		return *u, fmt.Errorf("could not confirm TOTP status in DB: %w", err)
 	}
 
 	updatedUser, err := scanUser(rows)
@@ -469,13 +469,12 @@ func (u User) Update(database *db.DB, opts UpdateOptions) (User, error) {
 		&queryUser,
 	)
 	if err != nil {
-		return User{}, errors.Wrap(err, "could not update user")
+		return User{}, fmt.Errorf("could not update user: %w", err)
 	}
 	user, err := scanUser(rows)
 
 	if err != nil {
-		msg := fmt.Sprintf("updating user with ID %d failed", u.ID)
-		return User{}, errors.Wrap(err, msg)
+		return User{}, fmt.Errorf("updating user with ID %d failed: %w", u.ID, err)
 	}
 
 	return user, nil
@@ -526,8 +525,7 @@ func scanUser(rows dbScanner) (User, error) {
 			&user.Firstname,
 			&user.Lastname,
 		); err != nil {
-			return user, errors.Wrap(
-				err, "could not scan user returned from DB")
+			return user, fmt.Errorf("could not scan user returned from DB: %w", err)
 		}
 	} else {
 		return user, errors.New("given rows did not have any elements")
