@@ -82,6 +82,11 @@ func TestCreateInvoiceRoute(t *testing.T) {
 		assert.Nil(t, res["memo"])
 		assert.Nil(t, res["description"])
 
+		assert.Nil(t, res["preimage"])
+		assert.Equal(t, float64(amountSat), res["amountSat"])
+		assert.Equal(t, false, res["expired"])
+		assert.Equal(t, "created", res["status"])
+
 	})
 
 	t.Run("Create an invoice with memo and description", func(t *testing.T) {
