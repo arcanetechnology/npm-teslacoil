@@ -1,7 +1,9 @@
 import axios from 'axios'
 import { Direction, Invoice, Status } from './types'
 
-const api = axios.create()
+const api = axios.create({
+  validateStatus: () => true,
+})
 
 const apiKeyNotSetMessage = "looks like you haven't set your api-key! set api-key by calling setCredentials(key)"
 type environments = 'MAINNET' | 'TESTNET'
@@ -56,15 +58,15 @@ interface PayInvoiceArgs {
   description?: string
 }
 
-export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice> => {
+export const payInvoice = async (args: PayInvoiceArgs): Promise<any> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
-  try {
-    const response = await api.post('/invoices/pay', args)
+  const response = await api.post('/invoices/pay', args)
+  if (response.status >= 200 && response.status <= 300) {
     return response.data as Invoice
-  } catch (error) {
-    throw Error(error)
+  } else {
+    return response
   }
 }
 
