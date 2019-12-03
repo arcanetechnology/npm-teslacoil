@@ -25,7 +25,6 @@ import (
 	"gitlab.com/arcanecrypto/teslacoil/models/users"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/pkg/errors"
 	"gitlab.com/arcanecrypto/teslacoil/api/auth"
 )
 
@@ -46,7 +45,7 @@ type TestHarness struct {
 func NewTestHarness(server Server, database *db.DB) TestHarness {
 	randomKey, err := rsa.GenerateKey(cryptorand.Reader, 4096)
 	if err != nil {
-		panic(errors.Wrap(err, "could not generate RSA key"))
+		panic(fmt.Errorf("could not generate RSA key: %w", err))
 	}
 
 	auth.SetJwtPrivateKey(randomKey)

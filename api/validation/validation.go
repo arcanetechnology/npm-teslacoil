@@ -4,6 +4,7 @@ package validation
 
 import (
 	"encoding/base64"
+	"fmt"
 
 	"github.com/btcsuite/btcutil"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/lightningnetwork/lnd/zpay32"
 
 	"github.com/nbutton23/zxcvbn-go"
-	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -93,7 +93,7 @@ func isValidUrlBase64(level validator.FieldLevel) bool {
 func registerValidator(engine *validator.Validate, name string, function validator.Func) error {
 	err := engine.RegisterValidation(name, function)
 	if err != nil {
-		return errors.Wrapf(err, "could not register %q validation", name)
+		return fmt.Errorf("could not register %q validation: %w", name, err)
 	}
 	return nil
 }
