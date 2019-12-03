@@ -286,7 +286,7 @@ func (b BitcoindRpcMockClient) GetBlockAsync(blockHash *chainhash.Hash) rpcclien
 
 func (b BitcoindRpcMockClient) GetBlockChainInfo() (*btcjson.GetBlockChainInfoResult, error) {
 	return &btcjson.GetBlockChainInfoResult{
-		Chain:                "regtes",
+		Chain:                "regtest",
 		Blocks:               0,
 		Headers:              0,
 		BestBlockHash:        "",

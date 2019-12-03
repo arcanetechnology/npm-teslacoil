@@ -66,9 +66,6 @@ func GetRandomLightningMockClient() LightningMockClient {
 			NumSatoshis: int64(gofakeit.Number(1, ln.MaxAmountSatPerInvoice)),
 			Description: "HelloPayment",
 		},
-		SendCoinsResponse: lnrpc.SendCoinsResponse{
-			Txid: "0c10119609137327c72fe605452375c40727871bd18dad18db16da649e9bdcc1",
-		},
 		ExtendedKey: extendedKey,
 	}
 }
@@ -107,9 +104,6 @@ func GetLightningMockClient() LightningMockClient {
 			PaymentHash: SampleHashHex,
 			NumSatoshis: int64(1823472358),
 			Description: "HelloPayment",
-		},
-		SendCoinsResponse: lnrpc.SendCoinsResponse{
-			Txid: "0c10119609137327c72fe605452375c40727871bd18dad18db16da649e9bdcc1",
 		},
 		NewAddressResponse: lnrpc.NewAddressResponse{
 			Address: "bcrt1q32nla0f0g4k9nhy5dahklcqspsrumvt4dv2xlg",
