@@ -461,7 +461,8 @@ func GetOrCreateDeposit(db *db.DB, lncli lnrpc.LightningClient, userID int, forc
 	log.WithFields(logrus.Fields{"userID": userID, "forceNewAddress": forceNewAddress,
 		"description": description}).Tracef("Getting or creating a new deposit")
 	// If forceNewAddress is supplied, we return a new deposit instantly
-	if forceNewAddress {
+	// also if description is set, otherwise we would return a TX which potentially has a different description
+	if forceNewAddress || description != "" {
 		return NewDepositWithDescription(db, lncli, userID, description)
 	}
 

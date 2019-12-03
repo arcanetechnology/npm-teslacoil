@@ -718,6 +718,29 @@ func TestNewDeposit(t *testing.T) {
 		assert.Equal(t, tx["description"], description)
 	})
 
+	t.Run("providing a description forces a new deposit", func(t *testing.T) {
+		t.Parallel()
+		description := gofakeit.Sentence(12)
+		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
+			AccessToken: token,
+			Path:        "/deposit",
+			Method:      "POST",
+			Body: fmt.Sprintf(
+				`{ "forceNewAddress": %t, "description": %q }`,
+				false,
+				description),
+		})
+
+		firstDeposit := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, firstDeposit["description"], description)
+
+		secondDeposit := h.AssertResponseOkWithJson(t, req)
+		assert.Equal(t, secondDeposit["description"], description)
+
+		assert.NotNil(t, firstDeposit["id"])
+		assert.NotEqual(t, firstDeposit["id"], secondDeposit["id"])
+	})
+
 	t.Run("can create new deposit without description", func(t *testing.T) {
 		t.Parallel()
 		req := httptestutil.GetAuthRequest(t, httptestutil.AuthRequestArgs{
