@@ -180,8 +180,8 @@ func assertErrorIsOk(t *testing.T, response *httptest.ResponseRecorder) (*httpte
 	var parsed httptypes.StandardErrorResponse
 	require.NoError(t, json.Unmarshal(body, &parsed))
 
-	assert.NotEqual(t, "", parsed.ErrorField.Message, string(body))
-	assert.NotEqual(t, "", parsed.ErrorField.Code, string(body))
+	assert.NotEmpty(t, parsed.ErrorField.Message, string(body))
+	assert.NotEmpty(t, parsed.ErrorField.Code, string(body))
 	assert.Regexp(t, uppercaseAndUnderScoreRegex, parsed.ErrorField.Code)
 
 	assert.False(t, stderrors.Is(parsed, apierr.ErrUnknownError), "Error was ErrUnknownError! We should always make sure we're setting a sensible error")
@@ -286,6 +286,9 @@ func (harness *TestHarness) AssertResponseOk(t *testing.T, request *http.Request
 		assert.Failf(t, "Got failure response", "code: %d, path %s: %s", response.Code, methodAndPath, body)
 		_, _ = assertErrorIsOk(t, response)
 	}
+
+	// restore the request body so it can be served again
+	request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	return response
 }
