@@ -70,6 +70,10 @@ services:
       - --logging.level=trace
       - --logging.httplevel=info
       - serve
+      - --whitelisted.domains=arcane.no
+      - --whitelisted.domains=arcanecrypto.no
+      - --whitelisted.emails=torkel@example.com
+      - --whitelisted.emails=bo@example.com
       - --db.password=${DATABASE_PASSWORD}
       - --db.user=${DATABASE_USER}
       - --db.host=postgres # connect to DB running in Postgres container

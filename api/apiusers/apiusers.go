@@ -27,12 +27,17 @@ var log = build.AddSubLogger("APIU")
 var (
 	database    *db.DB
 	emailSender email.Sender
+	domains     []string // whitelisted domains
+	emails      []string // whitelisted emails
 )
 
-func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmiddleware gin.HandlerFunc) {
+func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmiddleware gin.HandlerFunc,
+	whitelistedDomains, whitelistedEmails []string) {
 	// assign the services given
 	database = db
 	emailSender = sender
+	domains = whitelistedDomains
+	emails = whitelistedEmails
 
 	// Creating a user doesn't require authentication
 	server.POST("/users", createUser())
@@ -42,10 +47,10 @@ func RegisterRoutes(server *gin.Engine, db *db.DB, sender email.Sender, authmidd
 	server.PUT("/users/verify_email", verifyEmail())
 	server.POST("/users/verify_email", sendEmailVerificationEmail())
 
-	users := server.Group("")
-	users.Use(authmiddleware)
-	users.GET("/users", getUser())
-	users.PUT("/users", updateUser())
+	usersGroup := server.Group("")
+	usersGroup.Use(authmiddleware)
+	usersGroup.GET("/users", getUser())
+	usersGroup.PUT("/users", updateUser())
 }
 
 // Response is the type returned by the API for user related request
@@ -236,32 +241,16 @@ func getUser() gin.HandlerFunc {
 }
 
 func emailInWhitelist(email string) bool {
-	whitelist := []string{
-		// add friends and family here
-		"bojalbor@gmail.com",
-	}
-	email = strings.ToLower(email)
-
-	for _, whitelistedEmail := range whitelist {
-		if whitelistedEmail == email {
+	for _, whitelistedEmail := range emails {
+		if strings.EqualFold(whitelistedEmail, email) {
 			return true
 		}
 	}
 
-	if strings.HasSuffix(email, "arcane.no") {
-		return true
-	}
-	if strings.HasSuffix(email, "arcanecrypto.no") {
-		return true
-	}
-	if strings.HasSuffix(email, "tigerstaden.com") {
-		return true
-	}
-	if strings.HasSuffix(email, "middelborg.no") {
-		return true
-	}
-	if strings.HasSuffix(email, "kleingroup.no") {
-		return true
+	for _, whitelistedDomain := range domains {
+		if strings.HasSuffix(strings.ToLower(email), whitelistedDomain) {
+			return true
+		}
 	}
 
 	return false

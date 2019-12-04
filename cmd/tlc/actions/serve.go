@@ -115,9 +115,11 @@ func Serve() cli.Command {
 			}
 
 			config := api.Config{
-				Network:      bitcoindConfig.Network,
-				LnConfig:     &lnConfig, // add LN config, so we can reconnect on LND failures
-				HttpLogLevel: httpLogLevel,
+				Network:            bitcoindConfig.Network,
+				LnConfig:           &lnConfig, // add LN config, so we can reconnect on LND failures
+				HttpLogLevel:       httpLogLevel,
+				WhitelistedDomains: c.StringSlice("whitelisted.domains"),
+				WhitelistedEmails:  c.StringSlice("whitelisted.emails"),
 			}
 
 			var baseUrl string
@@ -163,12 +165,24 @@ func Serve() cli.Command {
 
 			port := c.Int("port")
 			address := fmt.Sprintf(":%d", port)
-			log.WithField("port", port).Info("Listening and serving HTTP")
+			log.WithFields(logrus.Fields{
+				"port":                port,
+				"whitelisted.domains": config.WhitelistedDomains,
+				"whitelisted.emails":  config.WhitelistedEmails,
+			}).Info("Listening and serving HTTP")
 			return a.Router.Run(address)
 		},
 	}
 
 	baseFlags := []cli.Flag{
+		cli.StringSliceFlag{
+			Name:  "whitelisted.domains",
+			Usage: "Domains to whitelist for sign up purposes",
+		},
+		cli.StringSliceFlag{
+			Name:  "whitelisted.emails",
+			Usage: "Emails to whitelist for sign up purposes",
+		},
 		cli.IntFlag{
 			Name:  "port",
 			Value: 5000,

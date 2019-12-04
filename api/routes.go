@@ -48,6 +48,9 @@ type Config struct {
 
 	// Which level HTTP requests are logged on. Defaults to info.
 	HttpLogLevel logrus.Level
+
+	WhitelistedDomains []string
+	WhitelistedEmails  []string
 }
 
 // RestServer is the rest server for our app. It includes a Router,
@@ -198,7 +201,7 @@ func NewApp(db *db.DB, lncli lnrpc.LightningClient, sender email.Sender,
 
 	apikeyroutes.RegisterRoutes(r.Router, r.db, middleware)
 	apitxs.RegisterRoutes(r.Router, r.db, r.lncli, r.bitcoind, callbacks, middleware)
-	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware)
+	apiusers.RegisterRoutes(r.Router, r.db, sender, middleware, config.WhitelistedDomains, config.WhitelistedEmails)
 	apiauth.RegisterRoutes(r.Router, r.db, sender, middleware)
 	apifees.RegisterRoutes(r.Router, lncli, bitcoin, &config.Network)
 
