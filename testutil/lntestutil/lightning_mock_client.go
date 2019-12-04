@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"gitlab.com/arcanecrypto/teslacoil/testutil/txtest"
 
 	"github.com/btcsuite/btcutil/hdkeychain"
 
@@ -249,7 +250,13 @@ func (client LightningMockClient) AddInvoice(ctx context.Context,
 }
 
 func (client LightningMockClient) SendCoins(ctx context.Context, in *lnrpc.SendCoinsRequest, opts ...grpc.CallOption) (*lnrpc.SendCoinsResponse, error) {
-	return &client.SendCoinsResponse, nil
+	if client.SendCoinsResponse.Txid != "" {
+		return &client.SendCoinsResponse, nil
+	}
+
+	return &lnrpc.SendCoinsResponse{
+		Txid: txtest.MockTxid(),
+	}, nil
 }
 
 func (client LightningMockClient) LookupInvoice(ctx context.Context,
