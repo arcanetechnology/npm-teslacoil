@@ -53,6 +53,8 @@ export const createInvoice = async (args: CreateInvoiceArgs): Promise<Invoice> =
   }
 }
 
+
+
 interface PayInvoiceArgs {
   paymentRequest: string
   description?: string
@@ -64,6 +66,19 @@ export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice | TeslaE
   }
   const response = await api.post('/invoices/pay', args)
   return response.data
+}
+
+export const payInvoiceSync = async (args: CreateInvoiceArgs): Promise<Invoice> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+    const syncApi = axios.create();
+    syncApi.defaults.baseURL = api.defaults.baseURL
+    syncApi.defaults.timeout = 120000;
+    syncApi.defaults.headers = api.defaults.headers
+
+    const response = await syncApi.post('/invoices/pay', args);
+    return response.data;
 }
 
 export { Invoice, Status, Direction }
