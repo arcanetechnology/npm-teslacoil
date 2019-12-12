@@ -70,7 +70,10 @@ export const payInvoiceSync = async (args: PayInvoiceArgs): Promise<Invoice> => 
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
-  const syncApi = axios.create()
+  const syncApi = axios.create({
+    validateStatus: () => true,
+  })
+
   syncApi.defaults.baseURL = api.defaults.baseURL
   syncApi.defaults.timeout = 120000
   syncApi.defaults.headers = api.defaults.headers
