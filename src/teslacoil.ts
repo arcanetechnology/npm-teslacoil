@@ -66,7 +66,7 @@ export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice | TeslaE
   return response.data
 }
 
-export const payInvoiceSync = async (args: CreateInvoiceArgs): Promise<Invoice> => {
+export const payInvoiceSync = async (args: PayInvoiceArgs): Promise<Invoice> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
