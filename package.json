@@ -1,6 +1,6 @@
 {
   "name": "teslacoil",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "main": "src/index.js",
   "author": "dev@arcane.no",
   "license": "MIT",
@@ -19,10 +19,9 @@
     "ts-protoc-gen": "^0.12.0"
   },
   "scripts": {
-    "build": "yarn tsc",
     "clean": "rimraf lib",
     "format": "prettier --write \"src/**/*.js\"",
-    "prepublishOnly": "npm-run-all clean build",
+    "prepublishOnly": "npm-run-all clean",
     "preversion": "npm run",
     "version": "npm run format && git add -A src",
     "postversion": "git push && git push --tags"
