@@ -1,0 +1,1729 @@
+syntax = "proto3";
+
+package teslarpc;
+
+import "gogo.proto";                      // used for gogoproto struct tags
+import "google/api/annotations.proto";    // HTTP proxy support
+import "google/protobuf/timestamp.proto"; // import google.protobuf.Timestamp type
+import "protoc-gen-swagger/options/annotations.proto"; // options for Swagger/OpenAPI generation
+
+option go_package = "teslarpc";
+option java_package = "io.teslacoil.teslarpc";
+
+// clang-format off
+// General options that apply to our generated Swagger definition
+option (grpc.gateway.protoc_gen_swagger.options.openapiv2_swagger) = {
+  // swap out the lines below to make swagger-ui interact with
+  // a locally running API
+   host : "api.localhost"
+  // host : "testnetapi.teslacoil.io"
+
+  info : {
+    title : "Teslacoil payment processing API"
+    contact : {
+      name : "Teslacoil Testnet"
+      url : "https://testnet.teslacoil.io"
+      email : "hello@teslacoil.io"
+    }
+  };
+  // TODO: add external_docs
+  schemes : HTTPS;
+  consumes : "application/json";
+  produces : "application/json";
+
+  // TODO: add definition for Bearer token
+  security_definitions : {
+    security : {
+      key: "API key authorization";
+      value : {
+        type: TYPE_API_KEY;
+        in: IN_HEADER
+        name: "Authorization"
+        description : "Authorize with the API by using an API key. API keys have "
+                      "different permissions, so make sure you generate and use a "
+                      "key "
+                      "with the set of permissions you require. You can generate and "
+                      "see your existing API-keys through the user interface. "
+                      "You can also contact your account manager or reach out to us "
+                      "on support@teslacoil.io for assistance."
+      }
+    }
+  }
+
+  // apply API key auth for all requests by default
+  security : {
+    security_requirement : {
+      key: "API key authorization"
+    }
+  }
+
+  // define common error response
+  // NOTE: all responses must include the schema part, to not mangle the generated Swagger spec
+  responses : {
+    key: "400";
+    value : {
+      description: "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why.";
+      schema : {
+        json_schema : {
+          ref: ".teslarpc.ErrorResponse"
+        }
+      }
+    }
+  }
+
+  responses : {
+    key: "401";
+    value : {
+      description: "Unauthorized: Authentication was required, but none was given.";
+      schema : {
+        json_schema : {
+          ref: ".teslarpc.ErrorResponse"
+        }
+      }
+    }
+  }
+};
+// clang-format on
+
+// https://github.com/grpc-ecosystem/grpc-gateway/issues/1063
+// needed for enums to be marshallable to and from strings
+option (gogoproto.goproto_registration) = true;
+/*
+ * Comments in this file will be directly parsed into the API
+ * Documentation as descriptions of the associated method, message, or field.
+ * These descriptions should go right above the definition of the object, and
+ * can be in either block or /// comment format.
+ */
+
+service Transactions {
+  // Pay a Bitcoin Lightning payment request
+  rpc SendLightning(SendLightningRequest) returns (LightningTransaction) {
+    option (google.api.http) = {
+      post : "/v0/transactions/lightning/send"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Send a lightning payment by paying a Lightning payment "
+                    "request."
+                    " Lightning payment requests include information about "
+                    "both the"
+                    " recipient and the amount required, among other things. "
+                    "For more on "
+                    "Lightning payment requests, see this [link](TODO)"
+      summary : "Send a lightning network payment"
+    };
+  }
+
+  // Retrieve a specific Bitcoin Lightning transaction
+  rpc GetLightning(GetLightningTransactionRequest)
+      returns (LightningTransaction) {
+    option (google.api.http) = {
+      get : "/v0/transactions/lightning"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Bitcoin Lightning transactions can be retrieved by "
+                    "various different identification methods. These include "
+                    "the Teslacoil ID, the client ID (set by the creator of "
+                    "the transaction) or the associated Lightning payment "
+                    "request"
+      operation_id : "GetLightningTransaction"
+      summary : "Get a specific bitcoin lightning transaction"
+    };
+  }
+
+  // List all Bitcoin Lightning transactions sent from and received to your
+  // wallet
+  rpc ListLightning(TransactionFilteringRequest)
+      returns (ListLightningResponse) {
+    option (google.api.http) = {
+      get : "/v0/transactions/lightning/all"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "List all Lightning transactions that have been made with "
+                    "your "
+                    "wallet. You can speciy certain filtering and sorting "
+                    "options, all "
+                    "of which are optional."
+      operation_id : "ListLightningTransactions"
+      summary : "List all Bitcoin Lightning transactions sent from and "
+                "received to your"
+    };
+  }
+
+  // Retrieve a specific Bitcoin blockchain transaction
+  rpc GetOnchain(GetOnchainTransactionRequest) returns (OnchainTransaction) {
+    option (google.api.http) = {
+      get : "/v0/transactions/onchain"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Retrieve the Bitcoin blockchain transaction associated "
+                    "with the given identifier."
+      operation_id : "GetOnchainTransaction"
+      summary : "Retrieve a Bitcoin blockchain transaction"
+    };
+  }
+
+  // List all Bitcoin blockchain transactions sent from and received to your
+  // wallet
+  rpc ListOnchain(TransactionFilteringRequest)
+      returns (ListOnchainTransactionsResponse) {
+    option (google.api.http) = {
+      get : "/v0/transactions/onchain/all"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "List all Bitcoin blockchain transactions that have been "
+                    "made with your "
+                    "wallet. You can speciy certain filtering and sorting "
+                    "options, all "
+                    "of which are optional."
+      summary : "List all Bitcoin Lightning transactions sent from and "
+                "received to your"
+    };
+  }
+
+  // Send a transaction to a Bitcoin address.
+  rpc SendOnchain(SendOnchainRequest) returns (OnchainTransaction) {
+    option (google.api.http) = {
+      post : "/v0/transactions/onchain/send"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Send a transaction to a Bitcoin address, on the Bitcoin "
+                    "blockchain. You need to specify at least an amount (or "
+                    "optionally, that all funds in the wallet should be sent) "
+                    "and an address"
+      summary : "Send a transaction to a Bitcoin address"
+    };
+  }
+
+  // List all transactions sent from and received to your wallet
+  rpc ListTransactions(TransactionFilteringRequest)
+      returns (ListTransactionsResponse) {
+    option (google.api.http) = {
+      get : "/v0/transactions/all"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      summary : "List all transactions sent from and received to your wallet "
+      description : "List all transactions that have been made with your "
+                    "wallet. You can speciy certain filtering and sorting "
+                    "options, all "
+                    "of which are optional."
+    };
+  }
+
+  // Retrieve a specific transaction
+  rpc GetTransaction(GetTransactionRequest) returns (Transaction) {
+    option (google.api.http) = {
+      get : "/v0/transactions"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      summary : "Retrieve a specific transaction."
+      description : "Retrieve a specific transaction that's been sent to or "
+                    "from the wallet."
+    };
+  }
+}
+
+// The different parameters that can be used to retrieve an onchain transaction
+message GetOnchainTransactionRequest {
+  oneof onchain_transaction_identifier {
+    // The Teslacoil ID of this transaction
+    string uuid = 1 [ (gogoproto.moretags) = "validate:\"uuid4\"" ];
+
+    // The client ID associated with this transaction
+    string client_id = 2;
+  }
+};
+
+// The different parameters that can be used to retrieve a transaction.
+message GetTransactionRequest {
+  oneof transaction_identifier {
+    // The Teslacoil ID of this transaction
+    string uuid = 1 [ (gogoproto.moretags) = "validate:\"uuid4\"" ];
+
+    // The client ID associated with this transaction
+    string client_id = 2;
+  }
+}
+
+// Different sorting and filtering options for listing all wallet transactions.
+message TransactionFilteringRequest {
+  // The offset into the result set to retrieve from. Combined with specifying a
+  // limit, allows for implementation of pagination.
+  uint32 offset = 1;
+
+  // How many transactions to fetch. Together with specifying an offset, allows
+  // for implementation of pagination.
+  uint32 limit = 2;
+
+  // Only retrieve transactions that spent or received below this number of
+  // satoshis.
+  uint64 max_satoshi = 3;
+
+  // Only retrieve transactions that spent or received above this number of
+  // satoshis.
+  uint64 min_satoshi = 4;
+
+  // Only retrieve transactions that were sent or received after this time.
+  google.protobuf.Timestamp start_time = 5;
+
+  // Only retrieve transactions that were sent or received before this time.
+  google.protobuf.Timestamp end_time = 6;
+
+  // Only retrieve transactions that match this direction
+  TransactionDirection direction = 7;
+
+  // Which direction to sort transactions, chronologically.
+  SortingDirection sort = 8;
+}
+
+// List of transactions to and from Teslacoil
+message ListTransactionsResponse {
+  // The transactions fetched from Teslacoil
+  repeated Transaction transactions = 1;
+
+  // How many transactions matched the filtering options sent. Can be used to
+  // implement pagination client-side.
+  uint32 total = 4;
+}
+
+// List of on-chain transactions to and from Teslacoil
+message ListOnchainTransactionsResponse {
+  // The transactions fetched from Teslacoil
+  repeated OnchainTransaction transactions = 1;
+
+  // How many transactions matched the filtering options sent. Can be used to
+  // implement pagination client-side.
+  uint32 total = 4;
+}
+
+// A transaction made to or from Teslacoil
+message Transaction {
+  // The Teslacoil ID of this transaction
+  string uuid = 1;
+
+  // The ID of the user that made this transaction
+  string user_uuid = 2;
+
+  // The invoice ID this transaction was made to
+  string invoice_uuid = 17;
+
+  // The URL, if any, to send updates to whenever events related to this
+  // transaction occurs.
+  string callback_url = 3;
+
+  // An (optional) ID you can associate with this transaction. This is never
+  // used by Teslacoil, other than to identify your transaction when notifying
+  // you of updates, as well as letting you retrieve the transaction by this ID.
+  // We wont validate that this ID is unique to your transactions. So if you
+  // want to use this field to later retrieve a transaction, you will have to
+  // make sure yourself that it only identifies a single element
+  string client_id = 4;
+
+  // Specifies if this transaction was sent to or from Teslacoil
+  TransactionDirection direction = 5;
+
+  // The amount sent in this transaction, measured in satoshi
+  uint64 amount_satoshi = 7;
+
+  // The amount sent in this transaction, measured in bitcoin
+  double amount_bitcoin = 12;
+
+  // The network fee paid for this transaction, measured in satoshi
+  uint64 network_fee_satoshi = 8;
+
+  // The network fee paid for this transaction, measured in bitcoin
+  double network_fee_bitcoin = 13;
+
+  // The description associated with this transaction, if any
+  string description = 10;
+
+  // Specifies if this transaction was made over Lightning or on-chain
+  NetworkType type = 11;
+
+  // indicates the current status of this transaction.
+  TransactionStatus status = 14;
+
+  // When this transaction was sent or received
+  google.protobuf.Timestamp create_time = 16 [ (gogoproto.nullable) = false ];
+}
+
+// The different ways transactions can be sorted
+enum SortingDirection {
+  // Sort transactions descending, chronologically
+  DESCENDING = 0; // protolint:disable:this ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
+
+  // Sort transactions ascending, chronologically
+  ASCENDING = 1;
+}
+
+// A transaction is either sent from or received to Teslacoil
+enum TransactionDirection {
+  TRANSACTION_DIRECTION_UNSPECIFIED =
+      0; // protolint:disable:this  ENUM_FIELDS_HAVE_COMMENT
+
+  // Received to Teslacoil, a deposit
+  INCOMING = 1;
+
+  // Sent from Teslacoil, a withdrawal
+  OUTGOING = 2;
+}
+
+// List of transactions made on the Lightning Network
+message ListLightningResponse {
+  // The requested transactions
+  repeated LightningTransaction transactions = 1;
+}
+
+// The available options when sending transactions on-chain
+message SendOnchainRequest {
+  // The amount to send, denominated in the currency supplied. You must
+  // either set a value, or send everything in the wallet. Cannot
+  // be zero or negative
+  double amount = 1
+      [ (gogoproto.moretags) = "validate:\"required_max_one=SendAll,required_"
+                               "together=Currency,omitempty,gt=0\"" ];
+
+  // The currency amount is denominated in. You must either set a value,
+  // or send everything in the wallet. Cannot be _UNSPECIFIED
+  Currency currency = 2
+      [ (gogoproto.moretags) = "validate:\"required_max_one=SendAll,required_"
+                               "together=Amount,omitempty,gt=0\"" ];
+
+  // The destination bitcoin address. Must be set.
+  string address = 3 [ (gogoproto.moretags) = "validate:\"required,address\"" ];
+
+  // If set, sends all the funds in the wallet. Cannot be specified together
+  // with a monetary amount.
+  bool send_all = 4 [ (gogoproto.moretags) =
+                          "validate:\"required_max_one=Amount Currency\"" ];
+
+  // If set, we try and construct the transaction such that it is confirmed by
+  // this number of blocks. A higher value here means a lower network fee, but
+  // you will have to wait longer until the transaction is included in the
+  // blockchain. A lower value would make your transaction confirm quicked, but
+  // it would be more expensive.
+  uint32 target_confirmation = 5
+      [ (gogoproto.moretags) =
+            "validate:\"required_max_one=FeeSatoshiPerByte,lte=1008,gte=0\"" ];
+
+  // If set, we use this as the fee rate for your transaction, measured in
+  // satoshi per (virtual) byte.
+  double fee_satoshi_per_byte = 6
+      [ (gogoproto.moretags) =
+            "validate:\"required_max_one=TargetConfirmation\"" ];
+
+  // An (optional) description to associate with this transaction. Only visible
+  // to the sender of the transaction.
+  string description = 7;
+
+  // An (optional) ID you can associate with this transaction. This is never
+  // used by Teslacoil, other than to identify your transaction when notifying
+  // you of updates, as well as letting you retrieve the transaction by this ID.
+  // We wont validate that this ID is unique to your transactions. So if you
+  // want to use this field to later retrieve a transaction, you will have to
+  // make sure yourself that it only identifies a single element.
+  string client_id = 8;
+
+  // The URL, if any, to send updates to whenever events related to this
+  // transaction occurs.
+  string callback_url = 9
+      [ (gogoproto.moretags) = "validate:\"omitempty,url\"" ];
+}
+
+// A transaction that occured on the Bitcoin blockchain
+message OnchainTransaction {
+  // The internal Teslacoil ID of this transaction. Can be used to retrieve the
+  // transaction at a later point in time.
+  string uuid = 14;
+
+  // The invoice ID this transaction was made to
+  string invoice_uuid = 17;
+
+  // The address this transaction was sent to. If this is an outgoing
+  // transaction, this is the recipient. If this as incoming, it is our deposit
+  // address.
+  string address = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) =
+        "github.com/arcanetechnology/teslacoil/btctypes.Address"
+  ];
+
+  // The Bitcoin network transaction ID of this transaction. This can be used to
+  // look up the transaction in a block explorer or a Bitcoin node.
+  string transaction_uuid = 11 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) =
+        "github.com/arcanetechnology/teslacoil/btctypes.Hash"
+  ];
+
+  // The output index of the underlying Bitcoin transaction that this specfic
+  // transfer of funds refer to.
+  uint64 transaction_output = 12;
+
+  // How much fees we paid to the bitcoin miners for this transaction. Not set
+  // if this transaction was sent to us, as we can't know that.
+  uint64 network_fee_satoshi = 2;
+
+  // How much fees we paid to the bitcoin miners for this transaction. Not set
+  // if this transaction was sent to us, as we can't know that.
+  double network_fee_bitcoin = 16;
+
+  // How much this transaction was for, i.e. how much it credited/debited the
+  // users account. Measured in satoshis.
+  uint64 amount_satoshi = 3;
+
+  // How much this transaction was for, i.e. how much it credited/debited the
+  // users account. Measured in bitcoin.
+  double amount_bitcoin = 15;
+
+  // Whether or not this transaction has been confirmed by being placed into the
+  // Bitcoin blockchain. This does not happen immediately after a transaction is
+  // made, because a Bitcoin miner needs to process it first.
+  bool confirmed = 4;
+
+  // The description associated with this transaction, if any
+  string description = 5;
+
+  // The URL, if any, to send updates to whenever events related to this
+  // transaction occurs.
+  string callback_url = 6;
+
+  // Every transaction can have a client ID associated to it. This is not used
+  // by Teslacoil, but can be used to correlate transactions with your internal
+  // database when handling callbacks and other interactions with the Teslacoil
+  // API.
+  string client_id = 10;
+
+  // The direction (sent/received) of this transaction.
+  TransactionDirection direction = 7;
+
+  // If this transaction is confirmed, this is the block height that the
+  // transaction was confirmed at.
+  uint64 confirmation_block_height = 8;
+
+  // If this transaction is confirmed, this is the time that the transaction was
+  // confirmed.
+  google.protobuf.Timestamp confirmation_time = 9;
+
+  // When this transaction was created.
+  google.protobuf.Timestamp create_time = 13 [ (gogoproto.nullable) = false ];
+}
+
+// The available options when fetching a specific Lightning transaction
+message GetLightningTransactionRequest {
+  oneof lightning_transaction_identifier {
+    // The Teslacoil ID of the transaction you want to get
+    string uuid = 1 [ (gogoproto.moretags) = "validate:\"uuid4\"" ];
+
+    // The Lightning payment request of the transaction you want to get
+    string payment_request = 2
+        [ (gogoproto.moretags) = "validate:\"paymentrequest\"" ];
+  }
+}
+
+// The available options when sending a transaction over Ligtning
+message SendLightningRequest {
+  // The Lightning payment request to pay
+  string payment_request = 1
+      [ (gogoproto.moretags) = "validate:\"paymentrequest,required\"" ];
+
+  // An optional description to associate with this transaction. This is only
+  // visible to the sender of this request.
+  string description = 2;
+}
+
+// A Lightning transaction that has been made to or from Teslacoil
+message LightningTransaction {
+  // The Teslacoil ID for this transaction
+  string uuid = 1;
+
+  // The invoice ID this transaction was made to
+  string invoice_uuid = 18;
+
+  // The URL to hit when the status of this transaction changes.
+  string callback_url = 2;
+
+  // Every transaction can have a client ID associated to it. This is not used
+  // by Teslacoil, but can be used to correlate transactions with your internal
+  // database when handling callbacks and other interactions with the Teslacoil
+  // API.
+  string client_id = 3;
+
+  // The satoshi amount sent or received in this transaction
+  uint64 amount_satoshi = 4;
+
+  // The bitcoin amount sent or received in this transaction
+  double amount_bitcoin = 15;
+
+  // The network fee paid for this transaction, in satoshis
+  uint64 network_fee_satoshi = 5;
+
+  // The network fee paid for this transaction, in bitcoin
+  double network_fee_bitcoin = 16;
+
+  // An internal description associated with this transaction. This is only
+  // visible to the creator of the transaction.
+  string description = 6;
+
+  // The hashed preimage of this transaction.
+  bytes hashed_preimage = 7;
+
+  // The preimage of this transaction, if any. Preimages for transactions are
+  // only available if they are settled.
+  bytes preimage = 8;
+
+  // The payment request belonging to this transactions. All Lightning
+  // transactions have a payment request associated with them. Payment requests
+  // specify the recipient and amount of a transaction, as well as other,
+  // optional, information.
+  string payment_request = 9;
+
+  // The encoded payment request description of this transaction. This is
+  // encoded into the payment request, and is publicly visible.
+  string memo = 10;
+
+  // The status of this transaction
+  TransactionStatus status = 11;
+
+  // If the transaction failed, this field specifies why this happened.
+  string error = 12;
+
+  // The settlement time of this transaction. This is only available for
+  // completed transactions.
+  google.protobuf.Timestamp settlement_time = 13;
+
+  // The creation time of this transaction.
+  google.protobuf.Timestamp create_time = 14;
+
+  // Whether this transaction was received to or sent from Teslacoil
+  TransactionDirection direction = 17;
+}
+
+// The states a Lightning transaction can be in
+enum TransactionStatus {
+  LIGHTNING_STATUS_UNSPECIFIED =
+      0; // protolint:disable:this ENUM_FIELDS_HAVE_COMMENT
+
+  // The transaction has not reached a conclusion whether it's completed or
+  // failed yet
+  PENDING = 1;
+
+  // The transaction has been received by the recipient, and is settled.
+  COMPLETED = 2;
+
+  // The transaction has failed
+  FAILED = 3;
+}
+
+// The different transaction/invoice types Teslacoil support
+enum NetworkType {
+  NETWORK_TYPE_UNSPECIFIED =
+      0; // protolint:disable:this ENUM_FIELDS_HAVE_COMMENT
+
+  // A transaction made on the Bitcoin blockchain
+  ONCHAIN = 1;
+
+  // A transaction sent on the Lightning Network
+  LIGHTNING = 2;
+}
+
+// FeeService lets users query for onchain and lightning network fees
+service Fees {
+
+  // Query for fee levels for sending a transaction on the Bitcoin blockchain
+  rpc BlockchainFees(BlockchainFeesRequest)
+      returns (BlockchainFeesResponse) { // TODO add RPC for getting a summary
+    // of fee levels for different targets
+
+    option (google.api.http) = {
+      get : "/v0/fees/blockchain"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Query for current fee levels for Bitcoin blockchain "
+                    "transactions. You can specify the required target block "
+                    "confirmation time, e.g. how many blocks you want to wait "
+                    "before your transaction is confirmed. A low target "
+                    "confirmation time would mean you would pay more in fees, "
+                    "but the transaction would be confirmed quicker. 6 blocks "
+                    "averages to 60 minutes waiting time. It is not guaranteed "
+                    "the transaction will be confirmed in 'target' blocks "
+                    "given "
+                    "a sat_per_byte fee"
+      summary : "Query for current fee levels for Bitcoin blockchain "
+                "transactions"
+      security : {} // disable authentication
+    };
+  }
+
+  // Query for fee levels for sending a transaction on the Lightning Network
+  rpc LightningFees(LightningFeesRequest) returns (LightningFeesResponse) {
+    option (google.api.http) = {
+      get : "/v0/fees/lightning"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Get an estimate for how much the given payment request "
+                    "would cost in network fees to pay. This would be affected "
+                    "by how many nodes (if any) we would need to route through "
+                    "to get to the destination, as well as how expensive those "
+                    "nodes are to use. We will always return the cheapest "
+                    "route."
+      summary : "Check how much fees would be needed to pay the given payment "
+                "request"
+      security : {} // disable authentication
+    };
+  }
+}
+
+// Fees for sending a transaction on the Bitcoin blockchain
+message BlockchainFeesResponse {
+  // The fee rate per virtual byte. total_fee = sats_per_byte *
+  // virtual_transaction_size
+  double sats_per_byte = 1;
+
+  // The total fees needed for a 250 byte transacton, measured in satoshis
+  int32 average_transaction_satoshi = 2;
+
+  // The total fees needed for a 250 byte transacton, measured in bitcoin
+  double average_transaction_bitcoin = 3;
+}
+
+// Available options for querying for Bitcoin blockchain fees
+message BlockchainFeesRequest {
+  // The desired block time confirmation target. Defaults to 6.
+  int32 target = 1 [ (gogoproto.moretags) = "validate:\"omitempty,gte=1\"" ]; //
+}
+
+// Fees for sending a transaction on the Lightning Network
+message LightningFeesResponse {
+  // Total millisatoshis needed to pay the given payment request
+  int32 milli_satoshi = 1;
+
+  // Total satoshis needed to pay the given payment request
+  int32 satoshi = 2;
+}
+
+// Available options for querying for Lightning Network fees
+message LightningFeesRequest {
+  // The payment request to query for fees needed to pay
+  string payment_request = 1
+      [ (gogoproto.moretags) = "validate:\"required,paymentrequest\"" ];
+}
+
+// Create and manage deposit addresses for Teslacoil
+service Deposits {
+
+  // Create a new onchain deposit address with the specified arguments.
+  rpc CreateOnchainDeposit(CreateOnchainDepositRequest)
+      returns (OnchainDepositResponse) {
+    option (google.api.http) = {
+      post : "/v0/deposits/onchain"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Get a new onchain deposit address. You can set various "
+                    "options here, such as a description (only visible to the "
+                    "creator of the deposit address), a callback URL we'll "
+                    "notify whenever the address receives money or a client ID "
+                    "you can use to correlate the address with your own system."
+      summary : "Get a new onchain deposit address."
+    };
+  }
+
+  // Get the first unused onchain deposit for your account, or create one if
+  // there are none.
+  rpc CreateUnusedOnchainDeposit(EmptyRequest)
+      returns (OnchainDepositResponse) {
+    option (google.api.http) = {
+      post : "/v0/deposits/onchain/unused"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Get an unused onchain deposit address. If you have "
+                    "generated a deposit address but never received any money "
+                    "to this, we return this address. Otherwise, we generate a "
+                    "new address. Receiving money multiple times to the same "
+                    "address works, but it severely harms your (or your "
+                    "customers) "
+                    "privacy. We therefore strongly encourage not reusing "
+                    "addresses."
+      summary : "Get an unused onchain deposit address."
+    };
+  }
+
+  // Get more information about the given onchain deposit address.
+  rpc GetOnchainDeposit(GetOnchainDepositRequest)
+      returns (OnchainDepositResponse) {
+    option (google.api.http) = {
+      get : "/v0/deposits/onchain"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Get an unused onchain deposit address. If you have "
+                    "generated a deposit address but never received any money "
+                    "to this, we return this address. Otherwise, we generate a "
+                    "new address. Receiving money multiple times to the same "
+                    "address works perfectly fine, but it severely harms your "
+                    "(or your customers) privacy. We therefore strongly not "
+                    "reusing new addresses."
+      summary : "Get more information about the given onchain deposit address."
+    };
+  }
+}
+
+// Options for fetching a specific on-chain deposit address
+message GetOnchainDepositRequest {
+  // The address to retrieve
+  string address = 1 [ (gogoproto.moretags) = "validate:\"required,address\"" ];
+}
+
+// Options for creating a new on-chain deposit address
+message CreateOnchainDepositRequest {
+  // A description associated with the deposit address. Not visible to anyone
+  // except the creator of the address.
+  string description = 1; // TODO max length?
+
+  // The URL we send a POST request to when a transaction is sent to this
+  // address.
+  string callback_url = 2
+      [ (gogoproto.moretags) = "validate:\"omitempty,url\"" ];
+};
+
+// Result of creating an on-chain deposit address
+message OnchainDepositResponse {
+  // The bitcoin address you can deposit money to. All money received to this
+  // address is credited to your account.
+  string address = 1
+      [ (gogoproto.customtype) =
+            "github.com/arcanetechnology/teslacoil/btctypes.Address" ];
+  // A description (if any) associated to this deposit address.
+  string description = 2;
+
+  // The time of creation for this deposit address.
+  google.protobuf.Timestamp create_time = 3 [ (gogoproto.nullable) = false ];
+
+  // The URL (if any) we'll notify you on whenever money is sent to this
+  // address.
+  string callback_url = 4;
+}
+
+// Provides functionality for creating, verifying and updating
+// users.
+service Users {
+  // TODO: it is not possible to delete a users first and last name with the
+  // TODO: current implementation. might want to come back and reconsider this
+  // at a later point
+
+  // Updates the currently authenticated user
+  rpc UpdateUser(UpdateUserRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      put : "/v0/users"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Update the information associated with the currently "
+                    "authenticated user. These changes will require "
+                    "confirmation by email before they are persisted."
+      summary : "Update user data"
+    };
+  }
+
+  // Returns the currently authenticated user
+  rpc GetUser(EmptyRequest) returns (User) {
+    option (google.api.http) = {
+      get : "/v0/users"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Retrieves the information associated with the currently "
+                    "authenticated user. The user ID is read from the "
+                    "authentication header, so no parameters are required "
+                    "here. "
+      summary : "Get user data"
+    };
+  }
+
+  // Creates a new user
+  rpc CreateUser(CreateUserRequest) returns (User) {
+    option (google.api.http) = {
+      post : "/v0/users"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Creates a new user with the given credentials. After "
+                    "creating the user, an email will be sent to the user, "
+                    "which they have to confirm before they can sign in."
+      summary : "Create a new user"
+      security : {} // disable authentication
+    };
+  }
+
+  // Given a correct email verification token, set the users email as
+  // verified. The token is obtained through requesting it being sent to the
+  // users email.
+  rpc VerifyEmail(VerifyEmailRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      post : "/v0/users/verify_email"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Given a correct email verification token, mark the "
+                    "email "
+                    "associated with the given token as verified. The token "
+                    "is "
+                    "obtained through requesting one being sent to the email "
+                    "used for sign up. This is done automatically when a new "
+                    "user is created."
+      summary : "Verify email"
+      security : {} // disable authentication
+    };
+  }
+
+  // If the given email isn't already verified, send out a message to it with
+  // a link the user can click to verify their email.
+  rpc SendEmailVerificationToken(SendEmailVerificationTokenRequest)
+      returns (EmptyResponse) {
+    option (google.api.http) = {
+      post : "/v0/users/send_verification_email"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "If the given email is not verified *and* has signed up "
+                    "with Teslacoil, we send a email verification token to "
+                    "this email. The user can then click on a link in said "
+                    "email, which forwards them to a page that verifies "
+                    "their "
+                    "email."
+      summary : "Request an email verification token"
+      security : {} // disable authentication
+    };
+  }
+}
+
+// EmptyResponse is a response without any fields
+message EmptyResponse {}
+
+// EmptyRequest is a request without any fields
+message EmptyRequest {}
+
+// Options for updating user data
+message UpdateUserRequest {
+  // If set, updates the users email to this value
+  string email = 1 [ (gogoproto.moretags) = "validate:\"omitempty,email\"" ];
+
+  // If set, updates the users first name to this value
+  string first_name = 2;
+
+  // If set, updates the users last name to this value
+  string last_name = 3;
+}
+
+// A Teslacoil user
+message User {
+  // Teslacoil's internal id for this user
+  string uuid = 1;
+
+  // The email for this user
+  string email = 2;
+
+  // The users balance, measured in satoshi
+  int64 balance_satoshi = 3;
+
+  // The users balance, measured in bitcoin
+  double balance_bitcoin = 6;
+
+  // The first name, if any, of this user
+  string first_name = 4;
+
+  // The last name, if any, of this user
+  string last_name = 5;
+}
+
+// The available options for creating a user
+message CreateUserRequest {
+  // The email of the user you want to create. This is a required field. After
+  // the user is created, we'll send a message to this email address. The user
+  // will then have to verify their address by clicking on a link in said email.
+  // Until this is done, the user cannot sign in or otherwise use Teslacoil.
+  string email = 1 [ (gogoproto.moretags) = "validate:\"required,email\"" ];
+
+  // The password of the user you want to create. This is a required field.
+  string password = 2
+      [ (gogoproto.moretags) = "validate:\"required,password\"" ];
+  // first name is optional
+  string first_name = 3;
+  // last name is optional
+  string last_name = 4;
+}
+
+// Options for verifying emails
+message VerifyEmailRequest {
+  // Signed token that lets us securely verify a users email. This token is
+  // obtained by being sent to the users registered email.
+  string token = 1 [ (gogoproto.moretags) = "validate:\"required\"" ];
+}
+
+// Options for requesting a email verification token
+message SendEmailVerificationTokenRequest {
+  // The email address you want a verification message to be sent to. This is a
+  // required field.
+  string email = 1 [ (gogoproto.moretags) = "validate:\"required,email\"" ];
+}
+
+// Manage authentication credentials for Teslacoil
+service Authentication {
+  // Authenticate the user with a email:password combination,
+  // (with an optional 2FA code if the user has enabled 2FA),
+  // and returns a JWT. Can be used to 'login' users for
+  // further interaction with the API.
+  rpc GetJwt(GetJwtRequest) returns (GetJwtResponse) {
+    option (google.api.http) = {
+      post : "/v0/auth/get_jwt"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Authenticate the user with a email:password combination, "
+                    "(with an optional 2FA code if the user has enabled 2FA), "
+                    "and returns a JWT. Can be used to 'login' users for "
+                    "further interaction with the API."
+      summary : "Authenticate with email, password and (optionally) a 2FA code"
+      security : {} // disable authentication
+    };
+  }
+
+  // Refresh the attached JWT
+  rpc RefreshJwt(EmptyRequest) returns (GetJwtResponse) {
+    option (google.api.http) = {
+      get : "/v0/auth/refresh_jwt"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      summary : "Refresh the JWT found in the authentication header"
+    };
+  }
+  /**
+  Change the password for a user. It requires
+  header authentication AND the current password in the request to be
+  successful.
+  */
+  rpc ChangePassword(ChangePasswordRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      put : "/v0/auth/change_password"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Change the password for a user. It requires"
+                    "header authentication AND the current password in the "
+                    "request to be"
+                    "successful."
+      summary : "Change the user password."
+    };
+  }
+  /**
+  Reset the user password. A password reset token
+  is required to change the password. This token is obtained through requesting
+  a password reset email. No header authentication required.
+  */
+  rpc ResetPassword(ResetPasswordRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      put : "/v0/auth/reset_password"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Reset the user password. A password reset token"
+                    "is required to change the password. This token is "
+                    "obtained through requesting a password reset email."
+      summary : "Reset the user password."
+      security : {} // disable authentication
+    };
+  }
+  /**
+  Send a password reset token to the email in the
+  request. If the user is not registered, no email is sent, but the function
+  returns as if an email is sent. This is done to preserve user privacy.
+  No header authentication required.
+  */
+  rpc SendPasswordResetEmail(SendPasswordResetEmailRequest)
+      returns (EmptyResponse) {
+    option (google.api.http) = {
+      post : "/v0/auth/send_password_reset_email"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Send a password reset token to the email in the request. "
+                    "If the user is not registered, no email is sent, but the "
+                    "function returns as if an email is sent. This is done to "
+                    "preserve user privacy."
+      summary : "Request a password reset token by email"
+      security : {} // disable authentication
+    };
+  }
+  /**
+   Create a 2FA secret that the user can load into
+   their authenticator app. 2FA is not activated for the user until they
+   confirm they can create valid codes using the Confirm2fa endpoint.
+  */
+  rpc Create2fa(EmptyRequest) returns (Create2faResponse) {
+    option (google.api.http) = {
+      post : "/v0/auth/create_2fa"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Create a 2FA secret that the user can load into their "
+                    "authenticator app. 2FA is not activated for the user "
+                    "until they confirm they can create valid codes using a "
+                    "separate endpoint"
+      summary : "Generate 2FA credentials"
+    };
+  }
+
+  // Confirm 2FA by providing a TOTP code
+  rpc Confirm2fa(Confirm2faRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      put : "/v0/auth/confirm_2fa"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Confirm the 2FA authentication credentials, with a 2FA "
+                    "code generated from a previosuly received secret. After "
+                    "this operation is made, 2FA codes will be required for "
+                    "certain actions, such as logging in."
+      summary : "Confirm 2FA authenticaton credentials"
+    };
+  }
+
+  // Remove 2FA from the currently authenticated user
+  rpc Delete2fa(Delete2faRequest) returns (EmptyResponse) {
+    option (google.api.http) = {
+      delete : "/v0/auth/delete_2fa"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : ""
+      summary : "Remove 2FA credentials from the account"
+    };
+  }
+}
+
+// Options for creating a JWT
+message GetJwtRequest {
+  // The email of the user that's requesting a JWT. This is a required field.
+  string email = 1 [ (gogoproto.moretags) = "validate:\"required,email\"" ];
+
+  // The password of the user that's requesting a JWT. This is a required field.
+  string password = 2 [ (gogoproto.moretags) = "validate:\"required\"" ];
+
+  // The 2FA code to use when requesting a JWT. If 2FA is enabled, this is a
+  // required field.
+  string totp_code = 3;
+}
+
+// Result of creating a JWT
+message GetJwtResponse {
+  // The created JWT. This can be used to authenticate against the API, by
+  // prefixing it with "Bearer " and placing in the authorization header.
+  string token = 1;
+}
+
+// Options for changing password
+message ChangePasswordRequest {
+  // The old user password. This is a required field.
+  string old_password = 1 [ (gogoproto.moretags) = "validate:\"required\"" ];
+
+  // The new user password. This is a required field.
+  string new_password = 2
+      [ (gogoproto.moretags) = "validate:\"required,password\"" ];
+  // The new user password, again. This field should be populated with the text
+  // from a different field than the first new password. This is a required
+  // field.
+  string repeated_new_password = 3
+      [ (gogoproto.moretags) = "validate:\"required,eqfield=NewPassword\"" ];
+}
+
+// Options for resetting password
+message ResetPasswordRequest {
+  // The users password. This is a required field.
+  string password = 1
+      [ (gogoproto.moretags) = "validate:\"required,password\"" ];
+
+  // The users password resset token, obtained through requesting one being sent
+  // to the users email. This is a required field.
+  string token = 2 [ (gogoproto.moretags) = "validate:\"required\"" ];
+}
+
+// Options for requesting a password reset token
+message SendPasswordResetEmailRequest {
+  // The email the user signed up with. This is a required field.
+  string email = 1 [ (gogoproto.moretags) = "validate:\"required,email\"" ];
+}
+
+// Result of initiating the 2FA enabling process
+message Create2faResponse {
+
+  // A 2FA secret the user can input into their authenticator app to
+  // generate 2FA codes.
+  string totp_secret = 1;
+}
+
+// Request for confirming 2FA
+message Confirm2faRequest {
+  // A 2FA code the user generated with their authenticator app. This is a
+  // required field.
+  string code = 1;
+}
+
+// Request for removing 2FA from the currently authenticated user.
+message Delete2faRequest {
+  // A 2FA code the user generated with their authenticator app. This is a
+  // required field.
+  string code = 1;
+}
+
+// Create, list and delete API keys used for authenticating with the API.
+service ApiKeys {
+  // Create an API key
+  rpc Create(CreateApiKeyRequest) returns (CreateApiKeyResponse) {
+    option (google.api.http) = {
+      post : "/v0/apikey"
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Create an API key with the given permissions. Note that "
+                    "it is not possible to create an API with zero "
+                    "permissions. The created API key is returned. This is the "
+                    "only time that the key is shown, so make sure to write "
+                    "this down somewhere/display it to the user with an "
+                    "approriate warning. API keys are not stored directly in "
+                    "our database (we hash them first), so it is not possible "
+                    "at all to retrieve the plaintext keys."
+      summary : "Create an API key"
+      operation_id : "CreateApiKey"
+    };
+  }
+
+  // Delete an API key
+  rpc Delete(DeleteApiKeyRequest) returns (ApiKey) {
+    option (google.api.http) = {
+      delete : "/v0/apikey"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      operation_id : "DeleteApiKey"
+      summary : "Delete the given API key"
+    };
+  }
+
+  // List all API keys
+  rpc List(EmptyRequest) returns (ListApiKeysResponse) {
+    option (google.api.http) = {
+      get : "/v0/apikey/all"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      operation_id : "ListApiKeys"
+      summary : "List all API keys"
+    };
+  }
+
+  // Retrieve a specific API key
+  rpc Get(GetApiKeyRequest) returns (ApiKey) {
+    option (google.api.http) = {
+      get : "/v0/apikey"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      operation_id : "GetApiKey"
+      summary : "Get details about a specific API key."
+    };
+  }
+}
+
+// Permissions is the types of permissions our API keys can have.
+message Permissions {
+  // Read wallet information, such as balances and prior transactions.
+  bool read_wallet = 1;
+
+  // Create invoices
+  bool create_invoice = 2;
+
+  // Send transactions
+  bool send_transaction = 3;
+
+  // Edit account data, such as names.
+  bool edit_account = 4;
+}
+
+// API key for authentication with the API
+message ApiKey {
+  // The hashed API key. API keys are not stored in cleartext in the database,
+  // but compared against a hash. The user is only shown their API key once, and
+  // Teslacoil is unable to retrieve it in cleartext again.
+  bytes hashed_key = 1;
+
+  // The last letters of the API key. This is stored so that the user easier can
+  // identify the key they are looking for in a list of all their keys.
+  string last_letters = 2;
+
+  // The user ID of the owner of this API key
+  string user_uuid = 3;
+
+  // The description (if any) associated with this key.
+  string description = 4;
+
+  // The permissions for this API key
+  Permissions permissions = 5;
+
+  // When this API key was created
+  google.protobuf.Timestamp create_time = 6;
+}
+
+// Fields needed to create an API key
+message CreateApiKeyRequest {
+  // The permissions you want your new API key to have. Note that it is not
+  // possible to create an API key with zero permissions.
+  Permissions permissions = 1
+      [ (gogoproto.moretags) = "validate:\"required\"" ];
+
+  // An optional description of your API key. We highly recommend including
+  // this, as it makes it much easier to identify a specific key later on.
+  string description = 2;
+}
+
+// Result of creating an API key
+message CreateApiKeyResponse {
+  // The created API key
+  string key = 1;
+
+  // Extra information about the created API key
+  ApiKey key_information = 2;
+}
+
+// Fields needed to delete an API key
+message DeleteApiKeyRequest {
+  // The key you want to delete
+  bytes hash = 1;
+}
+
+// List of API keys
+message ListApiKeysResponse {
+  // A list of your API keys
+  repeated ApiKey keys = 1;
+}
+
+// Fields for fetching a specific API key
+message GetApiKeyRequest {
+  // The hash of the API key you want to retrieve
+  bytes hash = 1 [ (gogoproto.moretags) = "validate:\"required\"" ];
+}
+
+// Create and fetch invoices
+service Invoices {
+
+  // Create a new invoice with a lightning payment request
+  rpc CreateLightning(CreateInvoiceRequest) returns (Invoice) {
+    option (google.api.http) = {
+      post : "/v0/invoices/lightning"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "CreateLightning can be used to create a new invoice that "
+                    "has"
+                    " a lightning payment request associated with it. If the "
+                    "lightning"
+                    " payment request is paid, the invoice is considered paid"
+      operation_id : "CreateLightningInvoice"
+      summary : "Create a new invoice with a lightning payment request"
+    };
+  }
+
+  // List all created lightning invoices
+  rpc ListLightning(EmptyRequest) returns (InvoiceList) {
+    option (google.api.http) = {
+      get : "/v0/invoices/lightning/all"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      summary : "List all created lightning invoices"
+      operation_id : "ListLightningInvoices"
+    };
+  }
+
+  // Create a new invoice with a bitcoin onchain address
+  rpc CreateOnchain(CreateInvoiceRequest) returns (Invoice) {
+    option (google.api.http) = {
+      post : "/v0/invoices/onchain"
+      body : "*"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "CreateOnchain can be used to create a new invoice that has"
+                    " a bitcoin onchain address associated with it. If the "
+                    "address"
+                    " receives money, the invoice can reach three states:"
+                    " underpaid, overpaid and settled. Only overpaid and "
+                    "settled"
+                    " can be treated as settled."
+      operation_id : "CreateOnchainInvoice"
+      summary : "Create a new invoice with a bitcoin onchain address"
+    };
+  }
+
+  // List all created on-chain invoices
+  rpc ListOnchain(EmptyRequest) returns (InvoiceList) {
+    option (google.api.http) = {
+      get : "/v0/invoices/onchain/all"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      summary : "List all created on-chain invoices"
+      operation_id : "ListOnchainInvoices"
+    };
+  }
+
+  // Get a specific lightning invoice
+  rpc Get(GetInvoiceRequest) returns (Invoice) {
+    option (google.api.http) = {
+      get : "/v0/invoices"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "GetInvoice can be used to retreive an invoice by its "
+                    "ID or the transaction ID associated with it."
+      operation_id : "GetInvoice"
+      summary : "Get a specific invoice"
+    };
+  }
+
+  // List all created on-chain invoices
+  rpc List(EmptyRequest) returns (InvoiceList) {
+    option (google.api.http) = {
+      get : "/v0/invoices/all"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      summary : "List all created invoices"
+      operation_id : "ListInvoices"
+    };
+  }
+}
+
+// The states an invoice can be in
+enum InvoiceStatus {
+  INVOICE_STATUS_UNSPECIFIED =
+      0; // protolint:disable:this ENUM_FIELDS_HAVE_COMMENT
+
+  // The invoice has not received a payment
+  UNPAID = 1;
+
+  // This invoice has received a payment for the exact amount we expected
+  PAID = 3;
+
+  // Money was sent, but more than we expected. The invoice can be considered
+  // settled
+  OVERPAID = 4;
+
+  // Money was sent, but less than we expected. The invoice is not considered
+  // settled.
+  UNDERPAID = 5;
+
+  //  TODO: Add manually settled logic
+  // An administrator settled the invoice. The invoice is considered settled.
+  //  MANUALLY_SETTLED = 6;
+}
+
+// An invoice that contains all the fields that a Lightning and an on-chain
+// invoice has in common. It also contains a type parameter which indicates
+// whether it is a Lightning invoice or an on-chain invoice.
+message Invoice {
+  // The Teslacoil ID for this invoice
+  string uuid = 1;
+
+  // The user that created this invoice
+  string user_uuid = 2;
+
+  // The IDs of the transaction that settled this invoice. Length is 0 if the
+  // invoice isn't settled.
+  repeated string transaction_uuids = 3;
+
+  // The requested amount of money, measured in satoshis
+  int32 requested_amount_satoshi = 4;
+
+  // The requested amount of money, measured in bitcoin
+  double requested_amount_bitcoin = 5;
+
+  // How long this invoice is valid for, measured in seconds. If this invoice
+  // has an associated Lightning payment request, it is not to possible to pay
+  // it after the invoice is expired. If it has a bitcoin address associated
+  // with it, it is
+  //  still possible to send money to the associated bitcoin address after the
+  //  invoices is expired, but it will not cause the invoice to become settled.
+  double expiry_seconds = 6;
+
+  // The payment status of this invoice
+  InvoiceStatus payment_status = 7;
+
+  // whether this invoice received sufficient payment before it expired or not
+  bool paid_before_expiry = 19;
+
+  // When this invoice was settled, if at all.
+  google.protobuf.Timestamp settle_time = 8;
+
+  // The callback URL associated with this invoice, if any.
+  string callback_url = 9;
+
+  // The description associated with this invoice, if any.
+  string description = 10;
+
+  // An (optional) ID you associated with this invoice. This is never
+  // used by Teslacoil, other than to identify your invoice when notifying
+  // you of updates, as well as letting you retrieve the transaction by this
+  // ID. We wont validate that this ID is unique to your invoices. So if you
+  // want to use this field to later retrieve a invoice, you will have to
+  // make sure yourself that it only identifies a single element.
+  string client_id = 11;
+
+  // Specifies whether this invoice has a Lightning payment request or on-chain
+  // address associated with it
+  NetworkType type = 12;
+
+  // When this invoice was created.
+  google.protobuf.Timestamp create_time = 13;
+
+  // If this field is set, the money received from paying the invoice is
+  // immediately exchanged to this currency.
+  Currency exchange_currency = 14;
+
+  // The fiat currency this invoice is denonimated in, if any.
+  Currency fiat_currency = 15;
+
+  // If the invoice is denominated in fiat, the requested amount of money,
+  // measured in fiat
+  double requested_amount_fiat = 16;
+
+  // The bitcoin address (if any) associated with this invoice
+  string bitcoin_address = 17;
+
+  // The Lightning payment request (if any) associated with this invoice
+  string lightning_payment_request = 18;
+}
+
+// A list of invoices
+message InvoiceList {
+
+  // The requested invoices
+  repeated Invoice invoices = 1;
+
+  // The total amount of invoices
+  uint32 total = 2;
+}
+
+// The available fields for fetching invoices.
+message GetInvoiceRequest {
+  oneof invoice_identifier {
+    // The Teslacoil UUID of the invoice you want to retrieve. This cannot be
+    // set together with a transaction UUID.
+    string uuid = 1 [ (gogoproto.moretags) = "validate:\"uuid4\"" ];
+
+    // the ID of the linked transaction. This cannot be set with any of the
+    // other fields.
+    string transaction_uuid = 2;
+
+    // The Bitcoin address of the invoice you want to retrieve. This cannot be
+    // set with any of the other fields.
+    string address = 3 [ (gogoproto.moretags) = "validate:\"address\"" ];
+
+    // The Lightning payment request associated with this invoice. This cannot
+    // be set with any of the other fields.
+    string payment_request = 4
+        [ (gogoproto.moretags) = "validate:\"paymentrequest\"" ];
+  }
+}
+
+// The available fields for creating an invoice.
+message CreateInvoiceRequest {
+  // The amount you want your created invoice to be for, measured in the
+  // currency you specify.
+  // This is a required field, and cannot be less than or equal to zero.
+  double amount = 1 [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+
+  // The currency you want the amount field denominated in. This is a required
+  // field.
+  Currency currency = 3 [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+
+  // The expiry of this invoice. Defaults to 1 hour, if not
+  // set or set to zero. It is still possible fot the user to send money to the
+  // address associated with this invoice, but it will not make it count as
+  // settled.
+  double expiry_seconds = 4 [ (gogoproto.moretags) = "validate:\"gte=0\"" ];
+
+  // An (optional) description to associate with this invoice. This is only
+  // visible to the creator of the invoice.
+  string description = 5;
+
+  // An optional description to encode into the Lightning payment request
+  // associated with this invoice. This is publicly visible. If creating an
+  // on-chain invoice, setting this field has no effect.
+  string lightning_memo = 9;
+
+  // An (optional) callback URL to associate with this invoice. When the
+  // invoice receives payment, we send a POST request to this URL to notify
+  // you.
+  string callback_url = 6
+      [ (gogoproto.moretags) = "validate:\"omitempty,url\"" ];
+
+  // An (optional) ID you can associate with this invoice. This is never
+  // used by Teslacoil, other than to identify your invoice when notifying
+  // you of updates, as well as letting you retrieve the invoice by this ID.
+  // We wont validate that this ID is unique to your invoice. So if you
+  // want to use this field to later retrieve an invoice, you will have to
+  // make sure yourself that it only identifies a single element.
+  string client_id = 7;
+
+  // If this field is set, the money received from paying the invoice is
+  // immediately exchanged to this fiat currency given in the request. If
+  // a cryptocurrency was given, an error is returned.
+  Currency exchange_currency = 8
+      [ (gogoproto.moretags) = "validate:\"omitempty,fiat\"" ];
+}
+
+// Get rates for common fiat currencies such as USD, EUR and BTC.
+// This service can also be used to get a request for quote (RFQ) for buying
+// and selling BTC.
+service Currencies {
+  // Returns base/quote price. For example BTC/USD will return
+  // the current price of bitcoin denominated in USD.
+  rpc Convert(CurrenciesConvertRequest) returns (CurrenciesConvertResponse) {
+    option (google.api.http) = {
+      get : "/v0/currencies/convert"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Returns base/quote price. For example BTC/USD will return "
+                    "the amount of USD per BTC."
+      summary : "Convert an amount of one currency into another"
+    };
+  }
+
+  // Returns a RFQ for buying or selling BTC.
+  rpc Quote(CurrenciesQuoteRequest) returns (CurrenciesQuoteResponse) {
+    option (google.api.http) = {
+      get : "/v0/currencies/quote"
+    };
+
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "Get a quote for either buying or selling BTC."
+      summary : "Get a quote for buying or selling BTC"
+    };
+  }
+}
+
+// The valid sides for a rfq (request for quote)
+enum OrderSide {
+  ORDER_SIDE_UNSPECIFIED = 0; // protolint:disable:this ENUM_FIELDS_HAVE_COMMENT
+
+  // Buy bitcoin
+  BUY = 1;
+
+  // Sell bitcoin
+  SELL = 2;
+}
+
+// ISO 4217: alpha 3-letter e.g EUR, BTC.
+enum Currency {
+  CURRENCY_UNSPECIFIED = 0; // protolint:disable:this  ENUM_FIELDS_HAVE_COMMENT
+
+  // BTC is the ticker for bitcoin
+  BTC = 1;
+
+  // SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of
+  // 1 BTC. 1 SAT will always be equal to 0.000000001 BTC.
+  SAT = 2;
+
+  GBP = 3; // protolint:disable:this  ENUM_FIELDS_HAVE_COMMENT
+
+  NOK = 4; // protolint:disable:this  ENUM_FIELDS_HAVE_COMMENT
+
+  USD = 5; // protolint:disable:this  ENUM_FIELDS_HAVE_COMMENT
+
+  EUR = 6; // protolint:disable:this  ENUM_FIELDS_HAVE_COMMENT
+}
+
+// This request can be used to convert base amount into the specified quote
+// currency
+message CurrenciesConvertRequest {
+
+  // The base currency used for getting the base/quote price
+  Currency base_currency = 1
+      [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+
+  // The quote currency used for getting the base/quote price
+  Currency quote_currency = 2
+      [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+
+  // The amount you want to convert, measured in the base currency
+  double amount = 3 [ (gogoproto.moretags) = "validate:\"omitempty,gt=0\"" ];
+}
+
+// The response from the Convert endpoint
+message CurrenciesConvertResponse {
+  // base qurrency will be the base passed in the convert request
+  Currency base_currency = 1;
+
+  // quote currency will be the quote supplied in the convert request
+  Currency quote_currency = 2;
+
+  // amount is the quote amount per base amount.
+  double amount = 4;
+}
+
+// The arguments for the Quote endpoint
+message CurrenciesQuoteRequest {
+
+  // Can either be buy or sell, makes the quote either a buy order or a sell
+  // order
+  OrderSide side = 1 [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+
+  // The amount in 'currency' you want the RFQ to apply for
+  double amount = 2 [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+
+  // Which currency the amount is denominated in
+  Currency currency = 3 [ (gogoproto.moretags) = "validate:\"required,gt=0\"" ];
+}
+
+// The response from the Quote endpoint. The quote currency will always be the
+// same as the currency you supplied in the request
+message CurrenciesQuoteResponse {
+  // Base currency will always be BTC
+  Currency base_currency = 1;
+
+  // Quote currency will be the currency supplied in the convert request
+  Currency quote_currency = 2;
+
+  // How many satoshis you will get if order is completed
+  double amount_satoshi = 3;
+
+  // How many BTC you will get if order is completed
+  double amount_btc = 4;
+
+  // The base/quote rate the order used
+  double rate = 5;
+}
+
+// General error returned by the REST proxy
+message ErrorResponse {
+  // Description of what went wrong
+  string error = 1;
+
+  // Link to documentation
+  string docs = 2;
+
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    example : {
+      value : '{"error":"error description","docs":"https://docs.teslacoil.io"}'
+    }
+  };
+}

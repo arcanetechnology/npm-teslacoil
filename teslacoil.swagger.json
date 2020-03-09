@@ -1,0 +1,3664 @@
+{
+  "components": {
+    "callbacks": {
+      "LightningInvoice": {
+        "application/json": {
+          "schema": {
+            "properties": {
+              "address": {
+                "description": "The Teslacoil ID of this invoice",
+                "example": "1238319",
+                "type": "id"
+              },
+              "path": {
+                "description": "The path you should `GET` to retrieve more information about this invoice",
+                "example": "/v0/invoices/lightning?id=1238319",
+                "type": "string"
+              },
+              "type": {
+                "description": "Identifier for the callback type",
+                "example": "lightning-invoice",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        }
+      },
+      "OnchainDeposit": {
+        "application/json": {
+          "schema": {
+            "properties": {
+              "address": {
+                "description": "The Bitcoin address this deposit was paid to",
+                "example": "2NDb1Fuwo9Ngq47uXhtQBPw7vBF8wEXQozw",
+                "type": "string"
+              },
+              "path": {
+                "description": "The path you should `GET` to retrieve more information about this deposit",
+                "example": "/v0/deposits/onchain?address=2NDb1Fuwo9Ngq47uXhtQBPw7vBF8wEXQozw",
+                "type": "string"
+              },
+              "type": {
+                "description": "Identifier for the callback type",
+                "example": "onchain-deposit",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        }
+      },
+      "OnchainInvoice": {
+        "application/json": {
+          "schema": {
+            "properties": {
+              "address": {
+                "description": "The Teslacoil ID of this invoice",
+                "example": "1238319",
+                "type": "id"
+              },
+              "path": {
+                "description": "The path you should `GET` to retrieve more information about this invoice",
+                "example": "/v0/invoices/onchain?id=1238319",
+                "type": "string"
+              },
+              "type": {
+                "description": "Identifier for the callback type",
+                "example": "onchain-invoice",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        }
+      }
+    },
+    "requestBodies": {
+      "CreateInvoiceRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CreateInvoiceRequest"
+            }
+          }
+        },
+        "required": true
+      },
+      "EmptyRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EmptyRequest"
+            }
+          }
+        },
+        "required": true
+      }
+    },
+    "schemas": {
+      "ApiKey": {
+        "properties": {
+          "create_time": {
+            "format": "date-time",
+            "title": "When this API key was created",
+            "type": "string"
+          },
+          "description": {
+            "description": "The description (if any) associated with this key.",
+            "type": "string"
+          },
+          "hashed_key": {
+            "description": "The hashed API key. API keys are not stored in cleartext in the database,\nbut compared against a hash. The user is only shown their API key once, and\nTeslacoil is unable to retrieve it in cleartext again.",
+            "format": "byte",
+            "type": "string"
+          },
+          "last_letters": {
+            "description": "The last letters of the API key. This is stored so that the user easier can\nidentify the key they are looking for in a list of all their keys.",
+            "type": "string"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          },
+          "user_uuid": {
+            "title": "The user ID of the owner of this API key",
+            "type": "string"
+          }
+        },
+        "title": "API key for authentication with the API",
+        "type": "object",
+        "required": [
+          "create_time",
+          "description",
+          "hashed_key",
+          "last_letters",
+          "permissions",
+          "user_uuid"
+        ]
+      },
+      "BlockchainFeesResponse": {
+        "properties": {
+          "average_transaction_bitcoin": {
+            "format": "double",
+            "title": "The total fees needed for a 250 byte transacton, measured in bitcoin",
+            "type": "number"
+          },
+          "average_transaction_satoshi": {
+            "format": "int32",
+            "title": "The total fees needed for a 250 byte transacton, measured in satoshis",
+            "type": "integer"
+          },
+          "sats_per_byte": {
+            "format": "double",
+            "title": "The fee rate per virtual byte. total_fee = sats_per_byte *\nvirtual_transaction_size",
+            "type": "number"
+          }
+        },
+        "title": "Fees for sending a transaction on the Bitcoin blockchain",
+        "type": "object",
+        "required": [
+          "average_transaction_bitcoin",
+          "average_transaction_satoshi",
+          "sats_per_byte"
+        ]
+      },
+      "ChangePasswordRequest": {
+        "properties": {
+          "new_password": {
+            "description": "The new user password. This is a required field.",
+            "type": "string"
+          },
+          "old_password": {
+            "description": "The old user password. This is a required field.",
+            "type": "string"
+          },
+          "repeated_new_password": {
+            "description": "The new user password, again. This field should be populated with the text\nfrom a different field than the first new password. This is a required\nfield.",
+            "type": "string"
+          }
+        },
+        "title": "Options for changing password",
+        "type": "object"
+      },
+      "Confirm2faRequest": {
+        "properties": {
+          "code": {
+            "description": "A 2FA code the user generated with their authenticator app. This is a\nrequired field.",
+            "type": "string"
+          }
+        },
+        "title": "Request for confirming 2FA",
+        "type": "object"
+      },
+      "Create2faResponse": {
+        "properties": {
+          "totp_secret": {
+            "description": "A 2FA secret the user can input into their authenticator app to\ngenerate 2FA codes.",
+            "type": "string"
+          }
+        },
+        "title": "Result of initiating the 2FA enabling process",
+        "type": "object",
+        "required": [
+          "totp_secret"
+        ]
+      },
+      "CreateApiKeyRequest": {
+        "properties": {
+          "description": {
+            "description": "An optional description of your API key. We highly recommend including\nthis, as it makes it much easier to identify a specific key later on.",
+            "type": "string"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          }
+        },
+        "title": "Fields needed to create an API key",
+        "type": "object"
+      },
+      "CreateApiKeyResponse": {
+        "properties": {
+          "key": {
+            "title": "The created API key",
+            "type": "string"
+          },
+          "key_information": {
+            "$ref": "#/components/schemas/ApiKey"
+          }
+        },
+        "title": "Result of creating an API key",
+        "type": "object",
+        "required": [
+          "key",
+          "key_information"
+        ]
+      },
+      "CreateInvoiceRequest": {
+        "description": "The available fields for creating an invoice.",
+        "properties": {
+          "amount": {
+            "description": "The amount you want your created invoice to be for, measured in the\ncurrency you specify.\nThis is a required field, and cannot be less than or equal to zero.",
+            "format": "double",
+            "type": "number"
+          },
+          "callback_url": {
+            "description": "An (optional) callback URL to associate with this invoice. When the\ninvoice receives payment, we send a POST request to this URL to notify\nyou.",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "An (optional) ID you can associate with this invoice. This is never\nused by Teslacoil, other than to identify your invoice when notifying\nyou of updates, as well as letting you retrieve the invoice by this ID.\nWe wont validate that this ID is unique to your invoice. So if you\nwant to use this field to later retrieve an invoice, you will have to\nmake sure yourself that it only identifies a single element.",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "description": {
+            "description": "An (optional) description to associate with this invoice. This is only\nvisible to the creator of the invoice.",
+            "type": "string"
+          },
+          "exchange_currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "expiry_seconds": {
+            "description": "The expiry of this invoice. Defaults to 1 hour, if not\nset or set to zero. It is still possible fot the user to send money to the\naddress associated with this invoice, but it will not make it count as\nsettled.",
+            "format": "double",
+            "type": "number"
+          },
+          "lightning_memo": {
+            "description": "An optional description to encode into the Lightning payment request\nassociated with this invoice. This is publicly visible. If creating an\non-chain invoice, setting this field has no effect.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreateOnchainDepositRequest": {
+        "properties": {
+          "callback_url": {
+            "description": "The URL we send a POST request to when a transaction is sent to this\naddress.",
+            "type": "string"
+          },
+          "description": {
+            "description": "A description associated with the deposit address. Not visible to anyone\nexcept the creator of the address.",
+            "type": "string"
+          }
+        },
+        "title": "Options for creating a new on-chain deposit address",
+        "type": "object"
+      },
+      "CreateUserRequest": {
+        "properties": {
+          "email": {
+            "description": "The email of the user you want to create. This is a required field. After\nthe user is created, we'll send a message to this email address. The user\nwill then have to verify their address by clicking on a link in said email.\nUntil this is done, the user cannot sign in or otherwise use Teslacoil.",
+            "type": "string"
+          },
+          "first_name": {
+            "title": "first name is optional",
+            "type": "string"
+          },
+          "last_name": {
+            "title": "last name is optional",
+            "type": "string"
+          },
+          "password": {
+            "description": "The password of the user you want to create. This is a required field.",
+            "type": "string"
+          }
+        },
+        "title": "The available options for creating a user",
+        "type": "object"
+      },
+      "CurrenciesConvertResponse": {
+        "properties": {
+          "amount": {
+            "description": "amount is the quote amount per base amount.",
+            "format": "double",
+            "type": "number"
+          },
+          "base_currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "quote_currency": {
+            "$ref": "#/components/schemas/Currency"
+          }
+        },
+        "title": "The response from the Convert endpoint",
+        "type": "object",
+        "required": [
+          "amount",
+          "base_currency",
+          "quote_currency"
+        ]
+      },
+      "CurrenciesQuoteResponse": {
+        "properties": {
+          "amount_btc": {
+            "format": "double",
+            "title": "How many BTC you will get if order is completed",
+            "type": "number"
+          },
+          "amount_satoshi": {
+            "format": "double",
+            "title": "How many satoshis you will get if order is completed",
+            "type": "number"
+          },
+          "base_currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "quote_currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "rate": {
+            "format": "double",
+            "title": "The base/quote rate the order used",
+            "type": "number"
+          }
+        },
+        "title": "The response from the Quote endpoint. The quote currency will always be the\nsame as the currency you supplied in the request",
+        "type": "object",
+        "required": [
+          "amount_btc",
+          "amount_satoshi",
+          "base_currency",
+          "quote_currency",
+          "rate"
+        ]
+      },
+      "Currency": {
+        "description": "ISO 4217: alpha 3-letter e.g EUR, BTC.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC. 1 SAT will always be equal to 0.000000001 BTC.",
+        "enum": [
+          "BTC",
+          "SAT",
+          "GBP",
+          "NOK",
+          "USD",
+          "EUR"
+        ],
+        "type": "string"
+      },
+      "EmptyRequest": {
+        "title": "EmptyRequest is a request without any fields",
+        "type": "object"
+      },
+      "EmptyResponse": {
+        "title": "EmptyResponse is a response without any fields",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "example": {
+          "docs": "https://docs.teslacoil.io",
+          "error": "error description"
+        },
+        "properties": {
+          "docs": {
+            "title": "Link to documentation",
+            "type": "string"
+          },
+          "error": {
+            "title": "Description of what went wrong",
+            "type": "string"
+          }
+        },
+        "title": "General error returned by the REST proxy",
+        "type": "object",
+        "required": [
+          "docs",
+          "error"
+        ]
+      },
+      "GetJwtRequest": {
+        "properties": {
+          "email": {
+            "description": "The email of the user that's requesting a JWT. This is a required field.",
+            "type": "string"
+          },
+          "password": {
+            "description": "The password of the user that's requesting a JWT. This is a required field.",
+            "type": "string"
+          },
+          "totp_code": {
+            "description": "The 2FA code to use when requesting a JWT. If 2FA is enabled, this is a\nrequired field.",
+            "type": "string"
+          }
+        },
+        "title": "Options for creating a JWT",
+        "type": "object"
+      },
+      "GetJwtResponse": {
+        "properties": {
+          "token": {
+            "description": "The created JWT. This can be used to authenticate against the API, by\nprefixing it with \"Bearer \" and placing in the authorization header.",
+            "type": "string"
+          }
+        },
+        "title": "Result of creating a JWT",
+        "type": "object",
+        "required": [
+          "token"
+        ]
+      },
+      "Invoice": {
+        "description": "An invoice that contains all the fields that a Lightning and an on-chain\ninvoice has in common. It also contains a type parameter which indicates\nwhether it is a Lightning invoice or an on-chain invoice.",
+        "properties": {
+          "bitcoin_address": {
+            "title": "The bitcoin address (if any) associated with this invoice",
+            "type": "string"
+          },
+          "callback_url": {
+            "description": "The callback URL associated with this invoice, if any.",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "An (optional) ID you associated with this invoice. This is never\nused by Teslacoil, other than to identify your invoice when notifying\nyou of updates, as well as letting you retrieve the transaction by this\nID. We wont validate that this ID is unique to your invoices. So if you\nwant to use this field to later retrieve a invoice, you will have to\nmake sure yourself that it only identifies a single element.",
+            "type": "string"
+          },
+          "create_time": {
+            "description": "When this invoice was created.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "description": "The description associated with this invoice, if any.",
+            "type": "string"
+          },
+          "exchange_currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "expiry_seconds": {
+            "description": "How long this invoice is valid for, measured in seconds. If this invoice\nhas an associated Lightning payment request, it is not to possible to pay\nit after the invoice is expired. If it has a bitcoin address associated\nwith it, it is\n still possible to send money to the associated bitcoin address after the\n invoices is expired, but it will not cause the invoice to become settled.",
+            "format": "double",
+            "type": "number"
+          },
+          "fiat_currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "lightning_payment_request": {
+            "title": "The Lightning payment request (if any) associated with this invoice",
+            "type": "string"
+          },
+          "paid_before_expiry": {
+            "format": "boolean",
+            "title": "whether this invoice received sufficient payment before it expired or not",
+            "type": "boolean"
+          },
+          "payment_status": {
+            "$ref": "#/components/schemas/InvoiceStatus"
+          },
+          "requested_amount_bitcoin": {
+            "format": "double",
+            "title": "The requested amount of money, measured in bitcoin",
+            "type": "number"
+          },
+          "requested_amount_fiat": {
+            "format": "double",
+            "title": "If the invoice is denominated in fiat, the requested amount of money,\nmeasured in fiat",
+            "type": "number"
+          },
+          "requested_amount_satoshi": {
+            "format": "int32",
+            "title": "The requested amount of money, measured in satoshis",
+            "type": "integer"
+          },
+          "settle_time": {
+            "description": "When this invoice was settled, if at all.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "transaction_uuids": {
+            "description": "The IDs of the transaction that settled this invoice. Length is 0 if the\ninvoice isn't settled.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": {
+            "$ref": "#/components/schemas/NetworkType"
+          },
+          "user_uuid": {
+            "title": "The user that created this invoice",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "The Teslacoil ID for this invoice",
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bitcoin_address",
+          "callback_url",
+          "client_id",
+          "create_time",
+          "description",
+          "exchange_currency",
+          "expiry_seconds",
+          "fiat_currency",
+          "lightning_payment_request",
+          "paid_before_expiry",
+          "payment_status",
+          "requested_amount_bitcoin",
+          "requested_amount_fiat",
+          "requested_amount_satoshi",
+          "settle_time",
+          "transaction_uuids",
+          "type",
+          "user_uuid",
+          "uuid"
+        ]
+      },
+      "InvoiceList": {
+        "properties": {
+          "invoices": {
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            },
+            "title": "The requested invoices",
+            "type": "array"
+          },
+          "total": {
+            "format": "int64",
+            "title": "The total amount of invoices",
+            "type": "integer"
+          }
+        },
+        "title": "A list of invoices",
+        "type": "object",
+        "required": [
+          "invoices",
+          "total"
+        ]
+      },
+      "InvoiceStatus": {
+        "description": "- UNPAID: The invoice has not received a payment\n - PAID: This invoice has received a payment for the exact amount we expected\n - OVERPAID: Money was sent, but more than we expected. The invoice can be considered\nsettled\n - UNDERPAID: Money was sent, but less than we expected. The invoice is not considered\nsettled.",
+        "enum": [
+          "UNPAID",
+          "PAID",
+          "OVERPAID",
+          "UNDERPAID"
+        ],
+        "title": "The states an invoice can be in",
+        "type": "string"
+      },
+      "LightningFeesResponse": {
+        "properties": {
+          "milli_satoshi": {
+            "format": "int32",
+            "title": "Total millisatoshis needed to pay the given payment request",
+            "type": "integer"
+          },
+          "satoshi": {
+            "format": "int32",
+            "title": "Total satoshis needed to pay the given payment request",
+            "type": "integer"
+          }
+        },
+        "title": "Fees for sending a transaction on the Lightning Network",
+        "type": "object",
+        "required": [
+          "milli_satoshi",
+          "satoshi"
+        ]
+      },
+      "LightningTransaction": {
+        "properties": {
+          "amount_bitcoin": {
+            "format": "double",
+            "title": "The bitcoin amount sent or received in this transaction",
+            "type": "number"
+          },
+          "amount_satoshi": {
+            "format": "uint64",
+            "title": "The satoshi amount sent or received in this transaction",
+            "type": "string"
+          },
+          "callback_url": {
+            "description": "The URL to hit when the status of this transaction changes.",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "Every transaction can have a client ID associated to it. This is not used\nby Teslacoil, but can be used to correlate transactions with your internal\ndatabase when handling callbacks and other interactions with the Teslacoil\nAPI.",
+            "type": "string"
+          },
+          "create_time": {
+            "description": "The creation time of this transaction.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "description": "An internal description associated with this transaction. This is only\nvisible to the creator of the transaction.",
+            "type": "string"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/TransactionDirection"
+          },
+          "error": {
+            "description": "If the transaction failed, this field specifies why this happened.",
+            "type": "string"
+          },
+          "hashed_preimage": {
+            "description": "The hashed preimage of this transaction.",
+            "format": "byte",
+            "type": "string"
+          },
+          "invoice_uuid": {
+            "title": "The invoice ID this transaction was made to",
+            "type": "string"
+          },
+          "memo": {
+            "description": "The encoded payment request description of this transaction. This is\nencoded into the payment request, and is publicly visible.",
+            "type": "string"
+          },
+          "network_fee_bitcoin": {
+            "format": "double",
+            "title": "The network fee paid for this transaction, in bitcoin",
+            "type": "number"
+          },
+          "network_fee_satoshi": {
+            "format": "uint64",
+            "title": "The network fee paid for this transaction, in satoshis",
+            "type": "string"
+          },
+          "payment_request": {
+            "description": "The payment request belonging to this transactions. All Lightning\ntransactions have a payment request associated with them. Payment requests\nspecify the recipient and amount of a transaction, as well as other,\noptional, information.",
+            "type": "string"
+          },
+          "preimage": {
+            "description": "The preimage of this transaction, if any. Preimages for transactions are\nonly available if they are settled.",
+            "format": "byte",
+            "type": "string"
+          },
+          "settlement_time": {
+            "description": "The settlement time of this transaction. This is only available for\ncompleted transactions.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TransactionStatus"
+          },
+          "uuid": {
+            "title": "The Teslacoil ID for this transaction",
+            "type": "string"
+          }
+        },
+        "title": "A Lightning transaction that has been made to or from Teslacoil",
+        "type": "object",
+        "required": [
+          "amount_bitcoin",
+          "amount_satoshi",
+          "callback_url",
+          "client_id",
+          "create_time",
+          "description",
+          "direction",
+          "error",
+          "hashed_preimage",
+          "invoice_uuid",
+          "memo",
+          "network_fee_bitcoin",
+          "network_fee_satoshi",
+          "payment_request",
+          "preimage",
+          "settlement_time",
+          "status",
+          "uuid"
+        ]
+      },
+      "ListApiKeysResponse": {
+        "properties": {
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKey"
+            },
+            "title": "A list of your API keys",
+            "type": "array"
+          }
+        },
+        "title": "List of API keys",
+        "type": "object",
+        "required": [
+          "keys"
+        ]
+      },
+      "ListLightningResponse": {
+        "properties": {
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/LightningTransaction"
+            },
+            "title": "The requested transactions",
+            "type": "array"
+          }
+        },
+        "title": "List of transactions made on the Lightning Network",
+        "type": "object",
+        "required": [
+          "transactions"
+        ]
+      },
+      "ListOnchainTransactionsResponse": {
+        "properties": {
+          "total": {
+            "description": "How many transactions matched the filtering options sent. Can be used to\nimplement pagination client-side.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/OnchainTransaction"
+            },
+            "title": "The transactions fetched from Teslacoil",
+            "type": "array"
+          }
+        },
+        "title": "List of on-chain transactions to and from Teslacoil",
+        "type": "object",
+        "required": [
+          "total",
+          "transactions"
+        ]
+      },
+      "ListTransactionsResponse": {
+        "properties": {
+          "total": {
+            "description": "How many transactions matched the filtering options sent. Can be used to\nimplement pagination client-side.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            },
+            "title": "The transactions fetched from Teslacoil",
+            "type": "array"
+          }
+        },
+        "title": "List of transactions to and from Teslacoil",
+        "type": "object",
+        "required": [
+          "total",
+          "transactions"
+        ]
+      },
+      "NetworkType": {
+        "description": "- ONCHAIN: A transaction made on the Bitcoin blockchain\n - LIGHTNING: A transaction sent on the Lightning Network",
+        "enum": [
+          "ONCHAIN",
+          "LIGHTNING"
+        ],
+        "title": "The different transaction/invoice types Teslacoil support",
+        "type": "string"
+      },
+      "OnchainDepositResponse": {
+        "properties": {
+          "address": {
+            "description": "The bitcoin address you can deposit money to. All money received to this\naddress is credited to your account.",
+            "type": "string"
+          },
+          "callback_url": {
+            "description": "The URL (if any) we'll notify you on whenever money is sent to this\naddress.",
+            "type": "string"
+          },
+          "create_time": {
+            "description": "The time of creation for this deposit address.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "description": "A description (if any) associated to this deposit address.",
+            "type": "string"
+          }
+        },
+        "title": "Result of creating an on-chain deposit address",
+        "type": "object",
+        "required": [
+          "address",
+          "callback_url",
+          "create_time",
+          "description"
+        ]
+      },
+      "OnchainTransaction": {
+        "properties": {
+          "address": {
+            "description": "The address this transaction was sent to. If this is an outgoing\ntransaction, this is the recipient. If this as incoming, it is our deposit\naddress.",
+            "type": "string"
+          },
+          "amount_bitcoin": {
+            "description": "How much this transaction was for, i.e. how much it credited/debited the\nusers account. Measured in bitcoin.",
+            "format": "double",
+            "type": "number"
+          },
+          "amount_satoshi": {
+            "description": "How much this transaction was for, i.e. how much it credited/debited the\nusers account. Measured in satoshis.",
+            "format": "uint64",
+            "type": "string"
+          },
+          "callback_url": {
+            "description": "The URL, if any, to send updates to whenever events related to this\ntransaction occurs.",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "Every transaction can have a client ID associated to it. This is not used\nby Teslacoil, but can be used to correlate transactions with your internal\ndatabase when handling callbacks and other interactions with the Teslacoil\nAPI.",
+            "type": "string"
+          },
+          "confirmation_block_height": {
+            "description": "If this transaction is confirmed, this is the block height that the\ntransaction was confirmed at.",
+            "format": "uint64",
+            "type": "string"
+          },
+          "confirmation_time": {
+            "description": "If this transaction is confirmed, this is the time that the transaction was\nconfirmed.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "confirmed": {
+            "description": "Whether or not this transaction has been confirmed by being placed into the\nBitcoin blockchain. This does not happen immediately after a transaction is\nmade, because a Bitcoin miner needs to process it first.",
+            "format": "boolean",
+            "type": "boolean"
+          },
+          "create_time": {
+            "description": "When this transaction was created.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "title": "The description associated with this transaction, if any",
+            "type": "string"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/TransactionDirection"
+          },
+          "invoice_uuid": {
+            "title": "The invoice ID this transaction was made to",
+            "type": "string"
+          },
+          "network_fee_bitcoin": {
+            "description": "How much fees we paid to the bitcoin miners for this transaction. Not set\nif this transaction was sent to us, as we can't know that.",
+            "format": "double",
+            "type": "number"
+          },
+          "network_fee_satoshi": {
+            "description": "How much fees we paid to the bitcoin miners for this transaction. Not set\nif this transaction was sent to us, as we can't know that.",
+            "format": "uint64",
+            "type": "string"
+          },
+          "transaction_output": {
+            "description": "The output index of the underlying Bitcoin transaction that this specfic\ntransfer of funds refer to.",
+            "format": "uint64",
+            "type": "string"
+          },
+          "transaction_uuid": {
+            "description": "The Bitcoin network transaction ID of this transaction. This can be used to\nlook up the transaction in a block explorer or a Bitcoin node.",
+            "type": "string"
+          },
+          "uuid": {
+            "description": "The internal Teslacoil ID of this transaction. Can be used to retrieve the\ntransaction at a later point in time.",
+            "type": "string"
+          }
+        },
+        "title": "A transaction that occured on the Bitcoin blockchain",
+        "type": "object",
+        "required": [
+          "address",
+          "amount_bitcoin",
+          "amount_satoshi",
+          "callback_url",
+          "client_id",
+          "confirmation_block_height",
+          "confirmation_time",
+          "confirmed",
+          "create_time",
+          "description",
+          "direction",
+          "invoice_uuid",
+          "network_fee_bitcoin",
+          "network_fee_satoshi",
+          "transaction_output",
+          "transaction_uuid",
+          "uuid"
+        ]
+      },
+      "OrderSide": {
+        "description": "- BUY: Buy bitcoin\n - SELL: Sell bitcoin",
+        "enum": [
+          "BUY",
+          "SELL"
+        ],
+        "title": "The valid sides for a rfq (request for quote)",
+        "type": "string"
+      },
+      "Permissions": {
+        "description": "Permissions is the types of permissions our API keys can have.",
+        "properties": {
+          "create_invoice": {
+            "format": "boolean",
+            "title": "Create invoices",
+            "type": "boolean"
+          },
+          "edit_account": {
+            "description": "Edit account data, such as names.",
+            "format": "boolean",
+            "type": "boolean"
+          },
+          "read_wallet": {
+            "description": "Read wallet information, such as balances and prior transactions.",
+            "format": "boolean",
+            "type": "boolean"
+          },
+          "send_transaction": {
+            "format": "boolean",
+            "title": "Send transactions",
+            "type": "boolean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "create_invoice",
+          "edit_account",
+          "read_wallet",
+          "send_transaction"
+        ]
+      },
+      "ResetPasswordRequest": {
+        "properties": {
+          "password": {
+            "description": "The users password. This is a required field.",
+            "type": "string"
+          },
+          "token": {
+            "description": "The users password resset token, obtained through requesting one being sent\nto the users email. This is a required field.",
+            "type": "string"
+          }
+        },
+        "title": "Options for resetting password",
+        "type": "object"
+      },
+      "SendEmailVerificationTokenRequest": {
+        "properties": {
+          "email": {
+            "description": "The email address you want a verification message to be sent to. This is a\nrequired field.",
+            "type": "string"
+          }
+        },
+        "title": "Options for requesting a email verification token",
+        "type": "object"
+      },
+      "SendLightningRequest": {
+        "properties": {
+          "description": {
+            "description": "An optional description to associate with this transaction. This is only\nvisible to the sender of this request.",
+            "type": "string"
+          },
+          "payment_request": {
+            "title": "The Lightning payment request to pay",
+            "type": "string"
+          }
+        },
+        "title": "The available options when sending a transaction over Ligtning",
+        "type": "object"
+      },
+      "SendOnchainRequest": {
+        "properties": {
+          "address": {
+            "description": "The destination bitcoin address. Must be set.",
+            "type": "string"
+          },
+          "amount": {
+            "format": "double",
+            "title": "The amount to send, denominated in the currency supplied. You must\neither set a value, or send everything in the wallet. Cannot\nbe zero or negative",
+            "type": "number"
+          },
+          "callback_url": {
+            "description": "The URL, if any, to send updates to whenever events related to this\ntransaction occurs.",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "An (optional) ID you can associate with this transaction. This is never\nused by Teslacoil, other than to identify your transaction when notifying\nyou of updates, as well as letting you retrieve the transaction by this ID.\nWe wont validate that this ID is unique to your transactions. So if you\nwant to use this field to later retrieve a transaction, you will have to\nmake sure yourself that it only identifies a single element.",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "description": {
+            "description": "An (optional) description to associate with this transaction. Only visible\nto the sender of the transaction.",
+            "type": "string"
+          },
+          "fee_satoshi_per_byte": {
+            "description": "If set, we use this as the fee rate for your transaction, measured in\nsatoshi per (virtual) byte.",
+            "format": "double",
+            "type": "number"
+          },
+          "send_all": {
+            "description": "If set, sends all the funds in the wallet. Cannot be specified together\nwith a monetary amount.",
+            "format": "boolean",
+            "type": "boolean"
+          },
+          "target_confirmation": {
+            "description": "If set, we try and construct the transaction such that it is confirmed by\nthis number of blocks. A higher value here means a lower network fee, but\nyou will have to wait longer until the transaction is included in the\nblockchain. A lower value would make your transaction confirm quicked, but\nit would be more expensive.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "title": "The available options when sending transactions on-chain",
+        "type": "object"
+      },
+      "SendPasswordResetEmailRequest": {
+        "properties": {
+          "email": {
+            "description": "The email the user signed up with. This is a required field.",
+            "type": "string"
+          }
+        },
+        "title": "Options for requesting a password reset token",
+        "type": "object"
+      },
+      "SortingDirection": {
+        "default": "DESCENDING",
+        "description": "- DESCENDING: Sort transactions descending, chronologically\n - ASCENDING: Sort transactions ascending, chronologically",
+        "enum": [
+          "DESCENDING",
+          "ASCENDING"
+        ],
+        "title": "The different ways transactions can be sorted",
+        "type": "string"
+      },
+      "Transaction": {
+        "properties": {
+          "amount_bitcoin": {
+            "format": "double",
+            "title": "The amount sent in this transaction, measured in bitcoin",
+            "type": "number"
+          },
+          "amount_satoshi": {
+            "format": "uint64",
+            "title": "The amount sent in this transaction, measured in satoshi",
+            "type": "string"
+          },
+          "callback_url": {
+            "description": "The URL, if any, to send updates to whenever events related to this\ntransaction occurs.",
+            "type": "string"
+          },
+          "client_id": {
+            "title": "An (optional) ID you can associate with this transaction. This is never\nused by Teslacoil, other than to identify your transaction when notifying\nyou of updates, as well as letting you retrieve the transaction by this ID.\nWe wont validate that this ID is unique to your transactions. So if you\nwant to use this field to later retrieve a transaction, you will have to\nmake sure yourself that it only identifies a single element",
+            "type": "string"
+          },
+          "create_time": {
+            "format": "date-time",
+            "title": "When this transaction was sent or received",
+            "type": "string"
+          },
+          "description": {
+            "title": "The description associated with this transaction, if any",
+            "type": "string"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/TransactionDirection"
+          },
+          "invoice_uuid": {
+            "title": "The invoice ID this transaction was made to",
+            "type": "string"
+          },
+          "network_fee_bitcoin": {
+            "format": "double",
+            "title": "The network fee paid for this transaction, measured in bitcoin",
+            "type": "number"
+          },
+          "network_fee_satoshi": {
+            "format": "uint64",
+            "title": "The network fee paid for this transaction, measured in satoshi",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TransactionStatus"
+          },
+          "type": {
+            "$ref": "#/components/schemas/NetworkType"
+          },
+          "user_uuid": {
+            "title": "The ID of the user that made this transaction",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "The Teslacoil ID of this transaction",
+            "type": "string"
+          }
+        },
+        "title": "A transaction made to or from Teslacoil",
+        "type": "object",
+        "required": [
+          "amount_bitcoin",
+          "amount_satoshi",
+          "callback_url",
+          "client_id",
+          "create_time",
+          "description",
+          "direction",
+          "invoice_uuid",
+          "network_fee_bitcoin",
+          "network_fee_satoshi",
+          "status",
+          "type",
+          "user_uuid",
+          "uuid"
+        ]
+      },
+      "TransactionDirection": {
+        "description": "- INCOMING: Received to Teslacoil, a deposit\n - OUTGOING: Sent from Teslacoil, a withdrawal",
+        "enum": [
+          "INCOMING",
+          "OUTGOING"
+        ],
+        "title": "A transaction is either sent from or received to Teslacoil",
+        "type": "string"
+      },
+      "TransactionStatus": {
+        "description": "- PENDING: The transaction has not reached a conclusion whether it's completed or\nfailed yet\n - COMPLETED: The transaction has been received by the recipient, and is settled.\n - FAILED: The transaction has failed",
+        "enum": [
+          "PENDING",
+          "COMPLETED",
+          "FAILED"
+        ],
+        "title": "The states a Lightning transaction can be in",
+        "type": "string"
+      },
+      "UpdateUserRequest": {
+        "properties": {
+          "email": {
+            "title": "If set, updates the users email to this value",
+            "type": "string"
+          },
+          "first_name": {
+            "title": "If set, updates the users first name to this value",
+            "type": "string"
+          },
+          "last_name": {
+            "title": "If set, updates the users last name to this value",
+            "type": "string"
+          }
+        },
+        "title": "Options for updating user data",
+        "type": "object"
+      },
+      "User": {
+        "properties": {
+          "balance_bitcoin": {
+            "format": "double",
+            "title": "The users balance, measured in bitcoin",
+            "type": "number"
+          },
+          "balance_satoshi": {
+            "format": "int64",
+            "title": "The users balance, measured in satoshi",
+            "type": "string"
+          },
+          "email": {
+            "title": "The email for this user",
+            "type": "string"
+          },
+          "first_name": {
+            "title": "The first name, if any, of this user",
+            "type": "string"
+          },
+          "last_name": {
+            "title": "The last name, if any, of this user",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Teslacoil's internal id for this user",
+            "type": "string"
+          }
+        },
+        "title": "A Teslacoil user",
+        "type": "object",
+        "required": [
+          "balance_bitcoin",
+          "balance_satoshi",
+          "email",
+          "first_name",
+          "last_name",
+          "uuid"
+        ]
+      },
+      "VerifyEmailRequest": {
+        "properties": {
+          "token": {
+            "description": "Signed token that lets us securely verify a users email. This token is\nobtained by being sent to the users registered email.",
+            "type": "string"
+          }
+        },
+        "title": "Options for verifying emails",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "API_key_authorization": {
+        "description": "Authorize with the API by using an API key. API keys have different permissions, so make sure you generate and use a key with the set of permissions you require. You can generate and see your existing API-keys through the user interface. You can also contact your account manager or reach out to us on support@teslacoil.io for assistance.",
+        "in": "header",
+        "name": "Authorization",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "email": "hello@teslacoil.io",
+      "name": "Teslacoil Testnet",
+      "url": "https://testnet.teslacoil.io"
+    },
+    "description": "<!-- This file gets converted into HTML, and placed into the Proto API definition --><!-- For some reason code blocks seems to be having a hard time --><h1 id=\"teslacoil-api\">Teslacoil API</h1><p>Teslacoil simplifies the process of accepting and sending payments using Bitcoin and the Lightning Network.</p><h2 id=\"bitcoin-the-lightning-network\">Bitcoin &amp; The Lightning Network</h2><p>In this section of the documentation we explain the core concept that makes it easier to understand the REST API documented bellow.</p><h3 id=\"the-lightning-network---still-bitcoin-not-another-currency\">The Lightning Network - Still bitcoin, not another currency</h3><p>It is important to understand that the Lightning Network is not another cryptocurrency. The Lightning Network is a protocol that makes it possible to send and receive bitcoin without having to broadcast each transaction to the entire bitcoin network, while maintaining the same level of security offered by Bitcoin alone. By using the Lightning Network you also gain some additional benefits like improved privacy, cheaper and faster transactions.</p><p>Whether you are sending and receiving bitcoin normally (on-chain transactions) or via the Lightning Network, you will be transacting with bitcoin.</p><h3 id=\"fractions-of-a-bitcoin---satoshis-satssat\">Fractions of a bitcoin - Satoshis (sats/sat)</h3><p>One bitcoin can be split into fractions just like any other traditional currency (fiat currency). The smallest denomination of a bitcoin is called a “satoshi” (normally abbreviated to sat/sats) and there are 100 million satoshi in 1 bitcoin.</p><p><strong>The Teslacoil API defaults to using satoshi, but some endpoints also accept bitcoin amounts. The fields always include the name of the denomination. This applies to both sent and received data.</strong></p><h3 id=\"on-chain-vs-lightning\">“On-Chain” vs “Lightning”</h3><p>Throughout this documentation we will be referring to normal bitcoin transactions as “on-chain” transactions. This is because normal bitcoin transactions are always recorded directly on the blockchain.</p><p>Lightning transactions are sometimes referred to as “off-chain” transactions, however in this document we will refer to these types of transactions simply as “Lightning transactions”.</p><h3 id=\"callbacks\">Callbacks</h3><p>Many resources in the Teslacoil API can have callback URLs associated with them. These are:</p><ul><li>Invoices: When the invoice expires or receives payment we notify you at this URL</li><li>Deposit addresses: When the deposit address either receives a new payment, or the payment receives a Bitcoin blockchain confirmation, we notify you at this URL</li><li>Lightning transactions: When a Lightning transaction completes (either by failing or suceeding), we notify you at this URL</li><li>On-chain transactions: When a transaction you initiated gets a confirmation on the Bitcoin blockchain, we notify you at this URL</li></ul><p>The callback payloads all have the same shape:</p><!-- This is a butt ugly way of writing JSON, but doing it all within one pre/code --><!-- tag leads to everything being on one line... If/when Swagger-UI implements --><!-- Support for syntax hightlighted code we can chagne this --><!-- Relevant links:  --><!-- https://github.com/swagger-api/swagger-ui/pull/5259 --><!-- https://github.com/swagger-api/swagger-ui/issues/3189 --><pre class=\"microlight\"><pre> {</pre><pre>   \"type\": \"callback-type\", // see below for a list of callback types</pre><pre>   \"path\": \"/path/to/resource?identifier=foobar,</pre><pre>   ... // extra fields, specific to each callback type, see section on callback types below</pre><pre> }</pre></pre><p>We don’t send you detailed information about the updated resource, and this is as a security measure. Anyone on the internet could send a HTTP request to the callback URL you associated with your transaction/invoice/deposit address, and you can therefore not trust the information received there. You should take the value found in the <code>path</code> property of the callback payload, and send a <code>GET</code> request there. You will then receive up-to-date information about your resource.</p><h4 id=\"callback-types\">Callback types</h4><ul><li><code>onchain-invoice</code> - <code>id</code> is included as an extra field. This is the ID of the invoice.</li><li><code>lighting-invoice</code> - <code>id</code> is included as an extra field. This is the ID of the invoice.</li><li><code>onchain-deposit</code> - <code>address</code> is included as an extra field. This is the address which the deposit paid to.</li><li><code>onchain-transaction</code> - <code>id</code> is included as an extra field. This is the ID of the transaction.</li><li><code>lightning-transaction</code> - <code>id</code> is included as an extra field. This is the ID of the transaction.</li></ul><h2 id=\"getting-started\">Getting started:</h2><h3 id=\"important-endpoints-for-platform-integration\">Important endpoints for platform integration</h3><p>For platform integrations primarily concerned with sending and receiving payments, the endpoints under these headings are most important:</p><ul><li>Invoices<ul><li>Invoice endpoints are used to request payments from end users or inspect existing invoices.</li></ul></li><li>Transactions<ul><li>Transaction endpoints are used to send payments to end-users or inspect completed transactions (Both sent and received payments)</li></ul></li></ul>",
+    "title": "Teslacoil payment processing API",
+    "version": "v0.1.1-478-g8c52bebdbdacd359ff6f7b137c8853862812e708-dirty"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/v0/apikey": {
+      "delete": {
+        "operationId": "DeleteApiKey",
+        "parameters": [
+          {
+            "description": "The key you want to delete.",
+            "in": "query",
+            "name": "hash",
+            "required": false,
+            "schema": {
+              "format": "byte",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKey"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Delete the given API key",
+        "tags": [
+          "ApiKeys"
+        ]
+      },
+      "get": {
+        "operationId": "GetApiKey",
+        "parameters": [
+          {
+            "description": "The hash of the API key you want to retrieve.",
+            "in": "query",
+            "name": "hash",
+            "required": false,
+            "schema": {
+              "format": "byte",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKey"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get details about a specific API key.",
+        "tags": [
+          "ApiKeys"
+        ]
+      },
+      "post": {
+        "description": "Create an API key with the given permissions. Note that it is not possible to create an API with zero permissions. The created API key is returned. This is the only time that the key is shown, so make sure to write this down somewhere/display it to the user with an approriate warning. API keys are not stored directly in our database (we hash them first), so it is not possible at all to retrieve the plaintext keys.",
+        "operationId": "CreateApiKey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateApiKeyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Create an API key",
+        "tags": [
+          "ApiKeys"
+        ]
+      }
+    },
+    "/v0/apikey/all": {
+      "get": {
+        "operationId": "ListApiKeys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListApiKeysResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all API keys",
+        "tags": [
+          "ApiKeys"
+        ]
+      }
+    },
+    "/v0/auth/change_password": {
+      "put": {
+        "description": "Change the password for a user. It requiresheader authentication AND the current password in the request to besuccessful.",
+        "operationId": "ChangePassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Change the user password.",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/confirm_2fa": {
+      "put": {
+        "description": "Confirm the 2FA authentication credentials, with a 2FA code generated from a previosuly received secret. After this operation is made, 2FA codes will be required for certain actions, such as logging in.",
+        "operationId": "Confirm2fa",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Confirm2faRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Confirm 2FA authenticaton credentials",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/create_2fa": {
+      "post": {
+        "description": "Create a 2FA secret that the user can load into their authenticator app. 2FA is not activated for the user until they confirm they can create valid codes using a separate endpoint",
+        "operationId": "Create2fa",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Create2faResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Generate 2FA credentials",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/delete_2fa": {
+      "delete": {
+        "operationId": "Delete2fa",
+        "parameters": [
+          {
+            "description": "A 2FA code the user generated with their authenticator app. This is a\nrequired field.",
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Remove 2FA credentials from the account",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/get_jwt": {
+      "post": {
+        "description": "Authenticate the user with a email:password combination, (with an optional 2FA code if the user has enabled 2FA), and returns a JWT. Can be used to 'login' users for further interaction with the API.",
+        "operationId": "GetJwt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetJwtRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetJwtResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Authenticate with email, password and (optionally) a 2FA code",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/refresh_jwt": {
+      "get": {
+        "operationId": "RefreshJwt",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetJwtResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Refresh the JWT found in the authentication header",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/reset_password": {
+      "put": {
+        "description": "Reset the user password. A password reset tokenis required to change the password. This token is obtained through requesting a password reset email.",
+        "operationId": "ResetPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Reset the user password.",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/auth/send_password_reset_email": {
+      "post": {
+        "description": "Send a password reset token to the email in the request. If the user is not registered, no email is sent, but the function returns as if an email is sent. This is done to preserve user privacy.",
+        "operationId": "SendPasswordResetEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendPasswordResetEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Request a password reset token by email",
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/v0/currencies/convert": {
+      "get": {
+        "description": "Returns base/quote price. For example BTC/USD will return the amount of USD per BTC.",
+        "operationId": "Convert",
+        "parameters": [
+          {
+            "description": "The base currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC. 1 SAT will always be equal to 0.000000001 BTC.",
+            "in": "query",
+            "name": "base_currency",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BTC",
+                "SAT",
+                "GBP",
+                "NOK",
+                "USD",
+                "EUR"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The quote currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC. 1 SAT will always be equal to 0.000000001 BTC.",
+            "in": "query",
+            "name": "quote_currency",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BTC",
+                "SAT",
+                "GBP",
+                "NOK",
+                "USD",
+                "EUR"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The amount you want to convert, measured in the base currency.",
+            "in": "query",
+            "name": "amount",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrenciesConvertResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Convert an amount of one currency into another",
+        "tags": [
+          "Currencies"
+        ]
+      }
+    },
+    "/v0/currencies/quote": {
+      "get": {
+        "description": "Get a quote for either buying or selling BTC.",
+        "operationId": "Quote",
+        "parameters": [
+          {
+            "description": "Can either be buy or sell, makes the quote either a buy order or a sell\norder.\n\n - BUY: Buy bitcoin\n - SELL: Sell bitcoin",
+            "in": "query",
+            "name": "side",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BUY",
+                "SELL"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The amount in 'currency' you want the RFQ to apply for.",
+            "in": "query",
+            "name": "amount",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Which currency the amount is denominated in.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC. 1 SAT will always be equal to 0.000000001 BTC.",
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BTC",
+                "SAT",
+                "GBP",
+                "NOK",
+                "USD",
+                "EUR"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrenciesQuoteResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get a quote for buying or selling BTC",
+        "tags": [
+          "Currencies"
+        ]
+      }
+    },
+    "/v0/deposits/onchain": {
+      "get": {
+        "description": "Get an unused onchain deposit address. If you have generated a deposit address but never received any money to this, we return this address. Otherwise, we generate a new address. Receiving money multiple times to the same address works perfectly fine, but it severely harms your (or your customers) privacy. We therefore strongly not reusing new addresses.",
+        "operationId": "GetOnchainDeposit",
+        "parameters": [
+          {
+            "description": "The address to retrieve.",
+            "in": "query",
+            "name": "address",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnchainDepositResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get more information about the given onchain deposit address.",
+        "tags": [
+          "Deposits"
+        ]
+      },
+      "post": {
+        "callbacks": {
+          "ConfirmedDeposit": {
+            "{$request.body#/callback_url}": {
+              "post": {
+                "operationId": "ConfirmedOnchainDeposit",
+                "requestBody": {
+                  "content": {
+                    "$ref": "#/components/callbacks/OnchainDeposit"
+                  },
+                  "description": "A deposit made was confirmed on the Bitcoin blockchain"
+                },
+                "responses": {
+                  "200": {
+                    "description": "Your server implementation should return this HTTP status code if the data was received successfully",
+                    "links": {
+                      "GetOnchainDeposit": {
+                        "description": "The `path` given in this callback can can be used to `GET` the newly confirmed deposit"
+                      }
+                    },
+                    "ref": "#/components/callbacks/responses/200"
+                  }
+                }
+              }
+            }
+          },
+          "NewDeposit": {
+            "{$request.body#/callback_url}": {
+              "post": {
+                "operationId": "NewOnchainDeposit",
+                "requestBody": {
+                  "content": {
+                    "$ref": "#/components/callbacks/OnchainDeposit"
+                  },
+                  "description": "A new deposit was made to your deposit address"
+                },
+                "responses": {
+                  "200": {
+                    "description": "Your server implementation should return this HTTP status code if the data was received successfully",
+                    "links": {
+                      "GetOnchainDeposit": {
+                        "description": "The `path` given in this callback can can be used to `GET` the newly created deposit"
+                      }
+                    },
+                    "ref": "#/components/callbacks/responses/200"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Get a new onchain deposit address. You can set various options here, such as a description (only visible to the creator of the deposit address), a callback URL we'll notify whenever the address receives money or a client ID you can use to correlate the address with your own system.",
+        "operationId": "CreateOnchainDeposit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOnchainDepositRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnchainDepositResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get a new onchain deposit address.",
+        "tags": [
+          "Deposits"
+        ]
+      }
+    },
+    "/v0/deposits/onchain/unused": {
+      "post": {
+        "description": "Get an unused onchain deposit address. If you have generated a deposit address but never received any money to this, we return this address. Otherwise, we generate a new address. Receiving money multiple times to the same address works, but it severely harms your (or your customers) privacy. We therefore strongly encourage not reusing addresses.",
+        "operationId": "CreateUnusedOnchainDeposit",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmptyRequest"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnchainDepositResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get an unused onchain deposit address.",
+        "tags": [
+          "Deposits"
+        ]
+      }
+    },
+    "/v0/fees/blockchain": {
+      "get": {
+        "description": "Query for current fee levels for Bitcoin blockchain transactions. You can specify the required target block confirmation time, e.g. how many blocks you want to wait before your transaction is confirmed. A low target confirmation time would mean you would pay more in fees, but the transaction would be confirmed quicker. 6 blocks averages to 60 minutes waiting time. It is not guaranteed the transaction will be confirmed in 'target' blocks given a sat_per_byte fee",
+        "operationId": "BlockchainFees",
+        "parameters": [
+          {
+            "description": "The desired block time confirmation target. Defaults to 6.",
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockchainFeesResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Query for current fee levels for Bitcoin blockchain transactions",
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/v0/fees/lightning": {
+      "get": {
+        "description": "Get an estimate for how much the given payment request would cost in network fees to pay. This would be affected by how many nodes (if any) we would need to route through to get to the destination, as well as how expensive those nodes are to use. We will always return the cheapest route.",
+        "operationId": "LightningFees",
+        "parameters": [
+          {
+            "description": "The payment request to query for fees needed to pay.",
+            "in": "query",
+            "name": "payment_request",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LightningFeesResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Check how much fees would be needed to pay the given payment request",
+        "tags": [
+          "Fees"
+        ]
+      }
+    },
+    "/v0/invoices": {
+      "get": {
+        "description": "GetInvoice can be used to retreive an invoice by its ID or the transaction ID associated with it.",
+        "operationId": "GetInvoice",
+        "parameters": [
+          {
+            "description": "The Teslacoil UUID of the invoice you want to retrieve. This cannot be\nset together with a transaction UUID.",
+            "in": "query",
+            "name": "uuid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the ID of the linked transaction. This cannot be set with any of the\nother fields.",
+            "in": "query",
+            "name": "transaction_uuid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Bitcoin address of the invoice you want to retrieve. This cannot be\nset with any of the other fields.",
+            "in": "query",
+            "name": "address",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Lightning payment request associated with this invoice. This cannot\nbe set with any of the other fields.",
+            "in": "query",
+            "name": "payment_request",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get a specific invoice",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/v0/invoices/all": {
+      "get": {
+        "operationId": "ListInvoices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all created invoices",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/v0/invoices/lightning": {
+      "post": {
+        "callbacks": {
+          "Expired": {
+            "{$request.body#/callback_url}": {
+              "post": {
+                "operationId": "ExpiredLightningInvoice",
+                "requestBody": {
+                  "content": {
+                    "$ref": "#/components/callbacks/LightningInvoice"
+                  },
+                  "description": "A lightning invoice you created expired without receiving payment"
+                },
+                "responses": {
+                  "200": {
+                    "description": "Your server implementation should return this HTTP status code if the data was received successfully",
+                    "links": {
+                      "GetOnchainDeposit": {
+                        "description": "The `path` given in this callback can can be used to `GET` the newly expired invoice"
+                      }
+                    },
+                    "ref": "#/components/callbacks/responses/200"
+                  }
+                }
+              }
+            }
+          },
+          "Settled": {
+            "{$request.body#/callback_url}": {
+              "post": {
+                "operationId": "SettledLightningInvoice",
+                "requestBody": {
+                  "content": {
+                    "$ref": "#/components/callbacks/LightningInvoice"
+                  },
+                  "description": "A lightning invoice you created settled successfully"
+                },
+                "responses": {
+                  "200": {
+                    "description": "Your server implementation should return this HTTP status code if the data was received successfully",
+                    "links": {
+                      "GetOnchainDeposit": {
+                        "description": "The `path` given in this callback can can be used to `GET` the newly settled invoice"
+                      }
+                    },
+                    "ref": "#/components/callbacks/responses/200"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "CreateLightning can be used to create a new invoice that has a lightning payment request associated with it. If the lightning payment request is paid, the invoice is considered paid",
+        "operationId": "CreateLightningInvoice",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateInvoiceRequest"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Create a new invoice with a lightning payment request",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/v0/invoices/lightning/all": {
+      "get": {
+        "operationId": "ListLightningInvoices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all created lightning invoices",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/v0/invoices/onchain": {
+      "post": {
+        "callbacks": {
+          "Expired": {
+            "{$request.body#/callback_url}": {
+              "post": {
+                "operationId": "ExpiredOnchainInvoice",
+                "requestBody": {
+                  "content": {
+                    "$ref": "#/components/callbacks/OnchainInvoice"
+                  },
+                  "description": "An on-chain invoice you created expired without receiving payment"
+                },
+                "responses": {
+                  "200": {
+                    "description": "Your server implementation should return this HTTP status code if the data was received successfully",
+                    "links": {
+                      "GetOnchainDeposit": {
+                        "description": "The `path` given in this callback can can be used to `GET` the newly expired invoice"
+                      }
+                    },
+                    "ref": "#/components/callbacks/responses/200"
+                  }
+                }
+              }
+            }
+          },
+          "Settled": {
+            "{$request.body#/callback_url}": {
+              "post": {
+                "operationId": "SettledOnchainInvoice",
+                "requestBody": {
+                  "content": {
+                    "$ref": "#/components/callbacks/OnchainInvoice"
+                  },
+                  "description": "An on-chain invoice you created settled successfully"
+                },
+                "responses": {
+                  "200": {
+                    "description": "Your server implementation should return this HTTP status code if the data was received successfully",
+                    "links": {
+                      "GetOnchainDeposit": {
+                        "description": "The `path` given in this callback can can be used to `GET` the newly settled invoice"
+                      }
+                    },
+                    "ref": "#/components/callbacks/responses/200"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "CreateOnchain can be used to create a new invoice that has a bitcoin onchain address associated with it. If the address receives money, the invoice can reach three states: underpaid, overpaid and settled. Only overpaid and settled can be treated as settled.",
+        "operationId": "CreateOnchainInvoice",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateInvoiceRequest"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Create a new invoice with a bitcoin onchain address",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/v0/invoices/onchain/all": {
+      "get": {
+        "operationId": "ListOnchainInvoices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all created on-chain invoices",
+        "tags": [
+          "Invoices"
+        ]
+      }
+    },
+    "/v0/transactions": {
+      "get": {
+        "description": "Retrieve a specific transaction that's been sent to or from the wallet.",
+        "operationId": "GetTransaction",
+        "parameters": [
+          {
+            "description": "The Teslacoil ID of this transaction.",
+            "in": "query",
+            "name": "uuid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The client ID associated with this transaction.",
+            "in": "query",
+            "name": "client_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Retrieve a specific transaction.",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/all": {
+      "get": {
+        "description": "List all transactions that have been made with your wallet. You can speciy certain filtering and sorting options, all of which are optional.",
+        "operationId": "ListTransactions",
+        "parameters": [
+          {
+            "description": "The offset into the result set to retrieve from. Combined with specifying a\nlimit, allows for implementation of pagination.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many transactions to fetch. Together with specifying an offset, allows\nfor implementation of pagination.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that spent or received below this number of\nsatoshis.",
+            "in": "query",
+            "name": "max_satoshi",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that spent or received above this number of\nsatoshis.",
+            "in": "query",
+            "name": "min_satoshi",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that were sent or received after this time.",
+            "in": "query",
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that were sent or received before this time.",
+            "in": "query",
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that match this direction.\n\n - INCOMING: Received to Teslacoil, a deposit\n - OUTGOING: Sent from Teslacoil, a withdrawal",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "INCOMING",
+                "OUTGOING"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which direction to sort transactions, chronologically.\n\n - DESCENDING: Sort transactions descending, chronologically\n - ASCENDING: Sort transactions ascending, chronologically",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "DESCENDING",
+              "enum": [
+                "DESCENDING",
+                "ASCENDING"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTransactionsResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all transactions sent from and received to your wallet ",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/lightning": {
+      "get": {
+        "description": "Bitcoin Lightning transactions can be retrieved by various different identification methods. These include the Teslacoil ID, the client ID (set by the creator of the transaction) or the associated Lightning payment request",
+        "operationId": "GetLightningTransaction",
+        "parameters": [
+          {
+            "description": "The Teslacoil ID of the transaction you want to get.",
+            "in": "query",
+            "name": "uuid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Lightning payment request of the transaction you want to get.",
+            "in": "query",
+            "name": "payment_request",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LightningTransaction"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get a specific bitcoin lightning transaction",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/lightning/all": {
+      "get": {
+        "description": "List all Lightning transactions that have been made with your wallet. You can speciy certain filtering and sorting options, all of which are optional.",
+        "operationId": "ListLightningTransactions",
+        "parameters": [
+          {
+            "description": "The offset into the result set to retrieve from. Combined with specifying a\nlimit, allows for implementation of pagination.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many transactions to fetch. Together with specifying an offset, allows\nfor implementation of pagination.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that spent or received below this number of\nsatoshis.",
+            "in": "query",
+            "name": "max_satoshi",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that spent or received above this number of\nsatoshis.",
+            "in": "query",
+            "name": "min_satoshi",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that were sent or received after this time.",
+            "in": "query",
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that were sent or received before this time.",
+            "in": "query",
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that match this direction.\n\n - INCOMING: Received to Teslacoil, a deposit\n - OUTGOING: Sent from Teslacoil, a withdrawal",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "INCOMING",
+                "OUTGOING"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which direction to sort transactions, chronologically.\n\n - DESCENDING: Sort transactions descending, chronologically\n - ASCENDING: Sort transactions ascending, chronologically",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "DESCENDING",
+              "enum": [
+                "DESCENDING",
+                "ASCENDING"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListLightningResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all Bitcoin Lightning transactions sent from and received to your",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/lightning/send": {
+      "post": {
+        "description": "Send a lightning payment by paying a Lightning payment request. Lightning payment requests include information about both the recipient and the amount required, among other things. For more on Lightning payment requests, see this [link](TODO)",
+        "operationId": "SendLightning",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendLightningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LightningTransaction"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Send a lightning network payment",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/onchain": {
+      "get": {
+        "description": "Retrieve the Bitcoin blockchain transaction associated with the given identifier.",
+        "operationId": "GetOnchainTransaction",
+        "parameters": [
+          {
+            "description": "The Teslacoil ID of this transaction.",
+            "in": "query",
+            "name": "uuid",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The client ID associated with this transaction.",
+            "in": "query",
+            "name": "client_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnchainTransaction"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Retrieve a Bitcoin blockchain transaction",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/onchain/all": {
+      "get": {
+        "description": "List all Bitcoin blockchain transactions that have been made with your wallet. You can speciy certain filtering and sorting options, all of which are optional.",
+        "operationId": "ListOnchain",
+        "parameters": [
+          {
+            "description": "The offset into the result set to retrieve from. Combined with specifying a\nlimit, allows for implementation of pagination.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many transactions to fetch. Together with specifying an offset, allows\nfor implementation of pagination.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that spent or received below this number of\nsatoshis.",
+            "in": "query",
+            "name": "max_satoshi",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that spent or received above this number of\nsatoshis.",
+            "in": "query",
+            "name": "min_satoshi",
+            "required": false,
+            "schema": {
+              "format": "uint64",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that were sent or received after this time.",
+            "in": "query",
+            "name": "start_time",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that were sent or received before this time.",
+            "in": "query",
+            "name": "end_time",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only retrieve transactions that match this direction.\n\n - INCOMING: Received to Teslacoil, a deposit\n - OUTGOING: Sent from Teslacoil, a withdrawal",
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "enum": [
+                "INCOMING",
+                "OUTGOING"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which direction to sort transactions, chronologically.\n\n - DESCENDING: Sort transactions descending, chronologically\n - ASCENDING: Sort transactions ascending, chronologically",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "DESCENDING",
+              "enum": [
+                "DESCENDING",
+                "ASCENDING"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOnchainTransactionsResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "List all Bitcoin Lightning transactions sent from and received to your",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/transactions/onchain/send": {
+      "post": {
+        "description": "Send a transaction to a Bitcoin address, on the Bitcoin blockchain. You need to specify at least an amount (or optionally, that all funds in the wallet should be sent) and an address",
+        "operationId": "SendOnchain",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendOnchainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnchainTransaction"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Send a transaction to a Bitcoin address",
+        "tags": [
+          "Transactions"
+        ]
+      }
+    },
+    "/v0/users": {
+      "get": {
+        "description": "Retrieves the information associated with the currently authenticated user. The user ID is read from the authentication header, so no parameters are required here. ",
+        "operationId": "GetUser",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Get user data",
+        "tags": [
+          "Users"
+        ]
+      },
+      "post": {
+        "description": "Creates a new user with the given credentials. After creating the user, an email will be sent to the user, which they have to confirm before they can sign in.",
+        "operationId": "CreateUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Create a new user",
+        "tags": [
+          "Users"
+        ]
+      },
+      "put": {
+        "description": "Update the information associated with the currently authenticated user. These changes will require confirmation by email before they are persisted.",
+        "operationId": "UpdateUser",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "summary": "Update user data",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/v0/users/send_verification_email": {
+      "post": {
+        "description": "If the given email is not verified *and* has signed up with Teslacoil, we send a email verification token to this email. The user can then click on a link in said email, which forwards them to a page that verifies their email.",
+        "operationId": "SendEmailVerificationToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendEmailVerificationTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Request an email verification token",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/v0/users/verify_email": {
+      "post": {
+        "description": "Given a correct email verification token, mark the email associated with the given token as verified. The token is obtained through requesting one being sent to the email used for sign up. This is done automatically when a new user is created.",
+        "operationId": "VerifyEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyResponse"
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request: The request did not conform to the API expectations. An error message will be included, which says what field failed validation, and why."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized: Authentication was required, but none was given."
+          }
+        },
+        "security": [],
+        "summary": "Verify email",
+        "tags": [
+          "Users"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "API_key_authorization": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.localhost"
+    }
+  ]
+}
