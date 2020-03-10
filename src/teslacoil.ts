@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Direction, Invoice, Status, TeslaError } from './types'
+import { Direction, Invoice, PaymentStatus, TeslaError, Transaction } from './types'
 
 const api = axios.create({
   validateStatus: () => true,
@@ -25,19 +25,34 @@ export const getByPaymentRequest = async (paymentRequest: string): Promise<Invoi
     throw Error(apiKeyNotSetMessage)
   }
   try {
-    const response = await api.get(`/invoices/${paymentRequest}`)
-    return response.data
+    const response = await api.get(`v0/invoices?payment_request=${paymentRequest}`)
+    return response.data as Invoice
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const getInvoiceById = async (uuid: string): Promise<Invoice> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+  try {
+    const response = await api.get(`/v0/invoices/lightning?id=${uuid}`)
+    return response.data as Invoice
   } catch (error) {
     throw Error(error)
   }
 }
 
 interface CreateInvoiceArgs {
-  amountSat: number // must be greater than 0 and less than 4294968
-  memo?: string
+  amount: number // must be greater than 0 and less than 4294968
+  callback_url?: string
+  client_id?: string
+  currency: string
+  exchange_currency?: string
+  expiry_seconds?: number
+  lightning_memo?: string
   description?: string
-  callbackUrl?: string
-  orderId?: string
 }
 
 export const createInvoice = async (args: CreateInvoiceArgs): Promise<Invoice> => {
@@ -46,7 +61,7 @@ export const createInvoice = async (args: CreateInvoiceArgs): Promise<Invoice> =
   }
 
   try {
-    const response = await api.post('/invoices/create', args)
+    const response = await api.post('v0/invoices/lightning', args)
     return response.data as Invoice
   } catch (error) {
     throw Error(error)
@@ -54,19 +69,11 @@ export const createInvoice = async (args: CreateInvoiceArgs): Promise<Invoice> =
 }
 
 interface PayInvoiceArgs {
-  paymentRequest: string
+  payment_request: string
   description?: string
 }
 
-export const payInvoice = async (args: PayInvoiceArgs): Promise<Invoice | TeslaError> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-  const response = await api.post('/invoices/pay', args)
-  return response.data
-}
-
-export const payInvoiceSync = async (args: PayInvoiceArgs): Promise<Invoice | TeslaError> => {
+export const payInvoiceSync = async (args: PayInvoiceArgs): Promise<Transaction | TeslaError> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -78,8 +85,8 @@ export const payInvoiceSync = async (args: PayInvoiceArgs): Promise<Invoice | Te
   syncApi.defaults.timeout = 120000
   syncApi.defaults.headers = api.defaults.headers
 
-  const response = await syncApi.post('/invoices/pay', args)
-  return response.data
+  const response = await syncApi.post('/v0/transactions/lightning/send', args)
+  return response.data as Transaction
 }
 
-export { Invoice, Status, Direction }
+export { Invoice, PaymentStatus, Direction }

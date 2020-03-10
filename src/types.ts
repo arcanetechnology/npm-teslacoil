@@ -1,34 +1,46 @@
 export type Direction = 'INBOUND' | 'OUTBOUND'
-export type Status = 'CREATED' | 'SENT' | 'COMPLETED' | 'FLOPPED'
+export type PaymentStatus = 'PAID' | 'UNPAID' | 'OVERPAID' | 'UNDERPAID'
 
 export interface Invoice {
-  id: number
-  userId: number
-  callbackUrl?: string
-  // customerOrderId is an optional field where you can specify a custom
-  // order ID. The only place this is used is when hitting the callback
-  // URL of a transaction.
-  customerOrderId?: string
+  uuid: string
+  user_uuid: string
+  transaction_uuids: Array<string>
+  requested_amount_satoshi: number
+  requested_amount_bitcoin: number
+  expiry_seconds: number
+  payment_status: PaymentStatus
+  paid_before_expiry: boolean
+  settle_time?: Date
+  callback_url: string
+  description: string
+  client_id: string
+  type: string
+  create_time: Date
+  exchange_currency: string
+  fiat_currency: string
+  requested_amount_fiat: number
+  bitcoin_address: string
+  lightning_payment_request: string
+}
 
-  // fields that always exist on a Invoice
-  paymentRequest: string
-  expiry: number
-  amountSat: number
-  amountMilliSat: number
+export interface Transaction {
+  uuid: string
+  user_uuid: string
+  invoice_uuid: string
+  callback_url: string
+  client_id: string
   direction: Direction
-  status: Status
-  createdAt: Date
-
-  // fields that sometimes exist
-  description?: string
-  rHash?: ArrayBuffer
-  hash?: string
-  rPreimage?: ArrayBuffer
-  preimage?: string
-  memo?: string
-  settledAt?: Date
+  amount_satoshi: number
+  amount_bitcoin: number
+  network_fee_satoshi: number
+  network_fee_bitcoin: number
+  description: string
+  type: string
+  status: string
+  create_time: Date
 }
 
 export interface TeslaError {
-  error: { message: string; code: string; fields: [] }
+  error: string
+  docs: string
 }
