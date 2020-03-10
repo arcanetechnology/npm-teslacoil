@@ -37,7 +37,7 @@ export const getInvoiceById = async (uuid: string): Promise<Invoice> => {
     throw Error(apiKeyNotSetMessage)
   }
   try {
-    const response = await api.get(`/v0/invoices/lightning?id=${uuid}`)
+    const response = await api.get(`/v0/invoices?id=${uuid}`)
     return response.data as Invoice
   } catch (error) {
     throw Error(error)
