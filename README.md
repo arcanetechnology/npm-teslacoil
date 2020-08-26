@@ -32,35 +32,34 @@ To get an API key, you first need to register an account on [teslacoil.io/signup
 When you have your API-key, you can get started.
 
 ```typescript
-import * as teslacoil from "teslacoil";
+import * as teslacoil from 'teslacoil'
 
-teslacoil.setCredentials(`YOUR-API-KEY`);
+teslacoil.setCredentials(`YOUR-API-KEY`)
 ```
 
 The default network is mainnet, but testnet is also supported. You can use the API on testnet by doing:
 
 ```typescript
-import * as teslacoil from "teslacoil";
+import * as teslacoil from 'teslacoil'
 
-teslacoil.setCredentials(`YOUR-API-KEY`, "TESTNET");
+teslacoil.setCredentials(`YOUR-API-KEY`, 'TESTNET')
 ```
 
 ### Request data from REST APIs
 
 ```typescript
-import * as teslacoil from "teslacoil";
+import * as teslacoil from 'teslacoil'
 
-teslacoil.setCredentials(`YOUR-API-KEY`, "TESTNET");
+teslacoil.setCredentials(`YOUR-API-KEY`, 'TESTNET')
 
-// decode an invoice
-const decodedInvoice = await teslacoil.decodeInvoice("insert payment request here");
+// decode a lightning request
+const decodedInvoice = await teslacoil.DecodeLightning('insert payment request here')
 
 // create a invoice for 5000 sats
-const invoice = await teslacoil.createInvoice({ amountSat: 5000 });
+const invoice = await teslacoil.CreateLightningInvoice({ amount: 5000, currency: 'SAT' })
 ```
 
-As of yet, only four features are supported, and we are updating this on an ongoing basis.
-To see all of the features, see our [API docs](https://teslacoil.io/api). Here you will find complete code samples for making requests, as well as what responses look like, for all API endpoints and request types. All request and response types are also present in this library and can be found in [src/teslacoil.ts](https://github.com/ArcaneCryptoAS/teslacoil/blob/master/src/teslacoil.ts)
+To read documentation and try out the requests in an interactive mode, see our [API docs](https://docs.testnet.teslacoil.io/). Here you will find complete code samples for making requests, as well as what responses look like, for all API endpoints and request types.
 
 ## Publishing
 
