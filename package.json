@@ -1,6 +1,6 @@
 {
   "name": "teslacoil",
-  "version": "0.0.32",
+  "version": "0.0.34",
   "main": "dist/teslacoil.js",
   "types": "dist/teslacoil.d.ts",
   "author": "dev@arcane.no",
@@ -37,5 +37,5 @@
     "dist/**/*.js"
   ],
   "description": "package for sending and receiving bitcoin payments",
-  "repository": "https://github.com/ArcaneCryptoAS/teslacoil-npm"
+  "repository": "https://github.com/arcanetechnology/npm-teslacoil"
 }
