@@ -1,6 +1,6 @@
 {
   "name": "teslacoil",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "main": "dist/teslacoil.js",
   "types": "dist/teslacoil.d.ts",
   "author": "dev@arcane.no",
@@ -18,7 +18,8 @@
     "version": "npm run format && git add -A src",
     "postversion": "git push && git push --tags",
     "lint": "eslint src/*.ts",
-    "postinstall": "cd node_modules/restful-react && yarn install && yarn build && cd ../../ && bash gen-code.sh"
+    "compile-restful": "cd node_modules/restful-react && yarn install && yarn build",
+    "gen-code": "bash gen-code.sh"
   },
   "devDependencies": {
     "@types/axios": "^0.14.0",
