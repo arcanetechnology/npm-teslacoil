@@ -1286,9 +1286,7 @@ export const GetInvoice = async (
     throw Error(apiKeyNotSetMessage)
   }
   try {
-    const response = await api.get(
-      `/v0/invoices?id=${id}&transaction_id=${transaction_id}&address=${address}&payment_request=${payment_request}`
-    )
+    const response = await api.get(`/v0/invoices?id=${id}`)
     return response.data as Invoice
   } catch (error) {
     throw Error(error)
@@ -1375,7 +1373,7 @@ export const GetLightningTransaction = async (id?: string, payment_request?: str
     throw Error(apiKeyNotSetMessage)
   }
   try {
-    const response = await api.get(`/v0/transactions/lightning?id=${id}&payment_request=${payment_request}`)
+    const response = await api.get(`/v0/transactions/lightning?id=${id}`)
     return response.data as LightningTransaction
   } catch (error) {
     throw Error(error)
