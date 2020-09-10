@@ -107,6 +107,16 @@
       }
     },
     "requestBodies": {
+      "Authentication_Create2faBody": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "required": true
+      },
       "CreateInvoiceRequest": {
         "content": {
           "application/json": {
@@ -160,7 +170,6 @@
             "type": "string"
           },
           "admin": {
-            "format": "boolean",
             "title": "Whether or not the user is an administrator of the system",
             "type": "boolean"
           },
@@ -188,12 +197,10 @@
             "type": "string"
           },
           "has_changed_password": {
-            "format": "boolean",
             "title": "Whether or not this user has done the initial password change",
             "type": "boolean"
           },
           "has_confirmed_2fa": {
-            "format": "boolean",
             "title": "Whether or not this user has confirmed their 2FA credentials",
             "type": "boolean"
           },
@@ -207,7 +214,6 @@
             "type": "string"
           },
           "owner": {
-            "format": "boolean",
             "title": "Whether the user is the owner of this account or not",
             "type": "boolean"
           },
@@ -225,6 +231,24 @@
             "type": "string"
           }
         },
+        "required": [
+          "account_id",
+          "account_name",
+          "admin",
+          "balance_bitcoin",
+          "balance_satoshi",
+          "create_time",
+          "email",
+          "first_name",
+          "has_changed_password",
+          "has_confirmed_2fa",
+          "last_login_time",
+          "last_name",
+          "owner",
+          "permissions",
+          "update_time",
+          "user_id"
+        ],
         "type": "object"
       },
       "AccountingTransaction": {
@@ -368,6 +392,11 @@
             "type": "string"
           }
         },
+        "required": [
+          "new_password",
+          "old_password",
+          "repeated_new_password"
+        ],
         "title": "Options for changing password\nTODO: TOTP code",
         "type": "object"
       },
@@ -378,6 +407,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "code"
+        ],
         "title": "Request for confirming 2FA",
         "type": "object"
       },
@@ -401,6 +433,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "name"
+        ],
         "title": "Contains fields that can is configurable for an account",
         "type": "object"
       },
@@ -491,19 +526,23 @@
             "format": "int32",
             "type": "integer"
           },
+          "is_active": {
+            "description": "whether the created lnurl withdrawal should be active or not. If set to\nfalse, it is not possible to withdraw money using the created lnurl.",
+            "type": "boolean"
+          },
           "lightning_request_memo": {
             "description": "An optional description used to request the caller of this request to\nencode this field in the generated lightning request.",
             "type": "string"
           },
-          "max_withdrawable_satoshi": {
-            "format": "int32",
+          "max_withdrawable_milli_satoshi": {
+            "format": "int64",
             "title": "Maximum amount allowed to withdraw using the generated secret",
-            "type": "integer"
+            "type": "string"
           },
-          "min_withdrawable_satoshi": {
+          "min_withdrawable_milli_satoshi": {
             "description": "Minimum amount allowed to withdraw using the generated secret. If not set,\ndefaults to 0.",
-            "format": "int32",
-            "type": "integer"
+            "format": "int64",
+            "type": "string"
           }
         },
         "title": "Contains the necessary fields to create a LNURL Withdrawal",
@@ -699,6 +738,10 @@
             "type": "string"
           }
         },
+        "required": [
+          "email",
+          "password"
+        ],
         "title": "Options for creating a JWT",
         "type": "object"
       },
@@ -779,7 +822,6 @@
             "type": "string"
           },
           "paid_before_expiry": {
-            "format": "boolean",
             "title": "whether this invoice received sufficient payment before it expired or not",
             "type": "boolean"
           },
@@ -881,7 +923,7 @@
             "title": "what link the client wallet needs to hit to complete the withdrawal",
             "type": "string"
           },
-          "default_description": {
+          "defaultDescription": {
             "title": "default description you want the client wallet to set as the lightning memo",
             "type": "string"
           },
@@ -889,15 +931,15 @@
             "title": "the secret the client supplied",
             "type": "string"
           },
-          "max_withdrawable": {
-            "format": "int32",
+          "maxWithdrawable": {
+            "format": "int64",
             "title": "maximum amount that can be withdrawn for this lnurl withdrawal",
-            "type": "integer"
+            "type": "string"
           },
-          "min_withdrawable": {
-            "format": "int32",
+          "minWithdrawable": {
+            "format": "int64",
             "title": "minimum amount that can be withdrawn for this lnurl withdrawal",
-            "type": "integer"
+            "type": "string"
           },
           "tag": {
             "title": "a tag letting the caller know what type of lnurl action this is",
@@ -1024,6 +1066,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "names"
+        ],
         "title": "List of account names belonging to a user",
         "type": "object"
       },
@@ -1037,6 +1082,9 @@
             "type": "array"
           }
         },
+        "required": [
+          "accounts"
+        ],
         "title": "Contains a list of accounts",
         "type": "object"
       },
@@ -1071,6 +1119,10 @@
             "type": "integer"
           }
         },
+        "required": [
+          "settlements",
+          "total"
+        ],
         "title": "The result of requesting (a filtered view of) prior settlements",
         "type": "object"
       },
@@ -1165,7 +1217,6 @@
           },
           "confirmed": {
             "description": "Whether or not this transaction has been confirmed by being placed into the\nBitcoin blockchain. This does not happen immediately after a transaction is\nmade, because a Bitcoin miner needs to process it first.",
-            "format": "boolean",
             "type": "boolean"
           },
           "create_time": {
@@ -1260,9 +1311,6 @@
           "currencies": {
             "$ref": "#/components/schemas/Privileges"
           },
-          "deposits": {
-            "$ref": "#/components/schemas/Privileges"
-          },
           "exchange": {
             "$ref": "#/components/schemas/Privileges"
           },
@@ -1288,7 +1336,6 @@
           "api_keys",
           "auth",
           "currencies",
-          "deposits",
           "exchange",
           "experimental",
           "invoices",
@@ -1302,26 +1349,28 @@
       "Privileges": {
         "properties": {
           "create": {
-            "format": "boolean",
             "title": "Create gives permission to create new resources",
             "type": "boolean"
           },
           "delete": {
-            "format": "boolean",
             "title": "Delete gives permission to delete existing resources",
             "type": "boolean"
           },
           "read": {
-            "format": "boolean",
             "title": "Read gives permission to read resources",
             "type": "boolean"
           },
           "update": {
-            "format": "boolean",
             "title": "Update gives permission to update existing resources",
             "type": "boolean"
           }
         },
+        "required": [
+          "create",
+          "delete",
+          "read",
+          "update"
+        ],
         "title": "The four possible privileges an API key can have, CRUD. It can have none, all\nof them, and everything in between",
         "type": "object"
       },
@@ -1432,7 +1481,6 @@
           },
           "send_all": {
             "description": "If set, sends all the funds in the wallet. Cannot be specified together\nwith a monetary amount.",
-            "format": "boolean",
             "type": "boolean"
           },
           "target_confirmation": {
@@ -1524,7 +1572,6 @@
           },
           "done": {
             "description": "Whether or not this settlement is considered finished. It is considered\nfinished if all parties have sent and received the sums agreed upon.",
-            "format": "boolean",
             "type": "boolean"
           },
           "finalize_time": {
@@ -1794,6 +1841,20 @@
         "title": "Contains fields that can be changed for an account",
         "type": "object"
       },
+      "UpdateIsActiveRequest": {
+        "properties": {
+          "is_active": {
+            "title": "whether it is possible to withdraw money using the lnurl or not",
+            "type": "boolean"
+          },
+          "secret": {
+            "title": "the k1 secret generated when creating the lnurl withdrawal",
+            "type": "string"
+          }
+        },
+        "title": "Used to update whether the lnurl can withdraw money or not",
+        "type": "object"
+      },
       "UpdateUserRequest": {
         "properties": {
           "first_name": {
@@ -1836,6 +1897,42 @@
         ],
         "title": "A Teslacoil user",
         "type": "object"
+      },
+      "protobufAny": {
+        "description": "`Any` contains an arbitrary serialized protocol buffer message along with a\nURL that describes the type of the serialized message.\n\nProtobuf library provides support to pack/unpack Any values in the form\nof utility functions or additional generated methods of the Any type.\n\nExample 1: Pack and unpack a message in C++.\n\n    Foo foo = ...;\n    Any any;\n    any.PackFrom(foo);\n    ...\n    if (any.UnpackTo(&foo)) {\n      ...\n    }\n\nExample 2: Pack and unpack a message in Java.\n\n    Foo foo = ...;\n    Any any = Any.pack(foo);\n    ...\n    if (any.is(Foo.class)) {\n      foo = any.unpack(Foo.class);\n    }\n\n Example 3: Pack and unpack a message in Python.\n\n    foo = Foo(...)\n    any = Any()\n    any.Pack(foo)\n    ...\n    if any.Is(Foo.DESCRIPTOR):\n      any.Unpack(foo)\n      ...\n\n Example 4: Pack and unpack a message in Go\n\n     foo := &pb.Foo{...}\n     any, err := ptypes.MarshalAny(foo)\n     ...\n     foo := &pb.Foo{}\n     if err := ptypes.UnmarshalAny(any, foo); err != nil {\n       ...\n     }\n\nThe pack methods provided by protobuf library will by default use\n'type.googleapis.com/full.type.name' as the type URL and the unpack\nmethods only use the fully qualified type name after the last '/'\nin the type URL, for example \"foo.bar.com/x/y.z\" will yield type\nname \"y.z\".\n\n\nJSON\n====\nThe JSON representation of an `Any` value uses the regular\nrepresentation of the deserialized, embedded message, with an\nadditional field `@type` which contains the type URL. Example:\n\n    package google.profile;\n    message Person {\n      string first_name = 1;\n      string last_name = 2;\n    }\n\n    {\n      \"@type\": \"type.googleapis.com/google.profile.Person\",\n      \"firstName\": <string>,\n      \"lastName\": <string>\n    }\n\nIf the embedded message type is well-known and has a custom JSON\nrepresentation, that representation will be embedded adding a field\n`value` which holds the custom JSON in addition to the `@type`\nfield. Example (for message [google.protobuf.Duration][]):\n\n    {\n      \"@type\": \"type.googleapis.com/google.protobuf.Duration\",\n      \"value\": \"1.212s\"\n    }",
+        "properties": {
+          "type_url": {
+            "description": "A URL/resource name that uniquely identifies the type of the serialized\nprotocol buffer message. The last segment of the URL's path must represent\nthe fully qualified name of the type (as in\n`path/google.protobuf.Duration`). The name should be in a canonical form\n(e.g., leading \".\" is not accepted).\n\nIn practice, teams usually precompile into the binary all types that they\nexpect it to use in the context of Any. However, for URLs which use the\nscheme `http`, `https`, or no scheme, one can optionally set up a type\nserver that maps type URLs to message definitions as follows:\n\n* If no scheme is provided, `https` is assumed.\n* An HTTP GET on the URL must yield a [google.protobuf.Type][]\n  value in binary format, or produce an error.\n* Applications are allowed to cache lookup results based on the\n  URL, or have them precompiled into a binary to avoid any\n  lookup. Therefore, binary compatibility needs to be preserved\n  on changes to types. (Use versioned type names to manage\n  breaking changes.)\n\nNote: this functionality is not currently available in the official\nprotobuf release, and it is not used for type URLs beginning with\ntype.googleapis.com.\n\nSchemes other than `http`, `https` (or the empty scheme) might be\nused with implementation specific semantics.",
+            "type": "string"
+          },
+          "value": {
+            "description": "Must be a valid serialized protocol buffer of the above specified type.",
+            "format": "byte",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "runtimeError": {
+        "properties": {
+          "code": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/protobufAny"
+            },
+            "type": "array"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1859,7 +1956,7 @@
     },
     "description": "Unstoppable payments accessible over a easy-to-use REST  interface. See [our general docs site](..) for extensive guides and information on how to integrate with the API, as  well as general Bitcoin/Lightning guides, articles and FAQs.\n",
     "title": "Teslacoil payment processing API",
-    "version": "v0.5.0",
+    "version": "v0.6.4",
     "x-logo": {
       "url": "/img/teslacoil-logo-padding.png"
     }
@@ -1869,7 +1966,7 @@
     "/v0/accounting/statement": {
       "get": {
         "description": "This endpoint will return an account statement for all confirmedtransactions between the specified start and end time.It is similar to a bank statement.",
-        "operationId": "GetStatement",
+        "operationId": "Accounting_GetStatement",
         "parameters": [
           {
             "description": "The start time (opening date) for the account statement.",
@@ -1922,6 +2019,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Get an account statement for the given period",
@@ -1933,7 +2040,7 @@
     "/v0/accounts": {
       "get": {
         "description": "This endpoint will give you more information about the account you're authorized with, such as the balance.",
-        "operationId": "GetAccount",
+        "operationId": "Accounts_Get",
         "responses": {
           "200": {
             "content": {
@@ -1964,6 +2071,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -1978,7 +2095,7 @@
       },
       "post": {
         "description": "This endpoint will create a new account with the specified details. By default the user authorizing the request will be granted access to the account",
-        "operationId": "CreateAccount",
+        "operationId": "Accounts_Create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2019,6 +2136,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2032,7 +2159,7 @@
         ]
       },
       "put": {
-        "operationId": "UpdateAccount",
+        "operationId": "Accounts_Update",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2073,6 +2200,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2088,7 +2225,7 @@
     },
     "/v0/accounts/access": {
       "delete": {
-        "operationId": "RemoveAccess",
+        "operationId": "Accounts_RemoveAccess",
         "parameters": [
           {
             "description": "ID of the user that should no longer have access.",
@@ -2130,6 +2267,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2143,7 +2290,7 @@
         ]
       },
       "post": {
-        "operationId": "UpdateAccess",
+        "operationId": "Accounts_UpdateAccess",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2184,6 +2331,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2197,7 +2354,7 @@
         ]
       },
       "put": {
-        "operationId": "GiveAccess",
+        "operationId": "Accounts_GiveAccess",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2238,6 +2395,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2254,7 +2421,7 @@
     "/v0/accounts/list": {
       "get": {
         "description": "This endpoint will list all the accounts a user has access to.",
-        "operationId": "ListAccounts",
+        "operationId": "Accounts_List",
         "responses": {
           "200": {
             "content": {
@@ -2285,6 +2452,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2300,7 +2477,7 @@
     },
     "/v0/accounts/names": {
       "get": {
-        "operationId": "ListAccountNames",
+        "operationId": "Accounts_ListAccountNames",
         "responses": {
           "200": {
             "content": {
@@ -2331,6 +2508,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2346,7 +2533,7 @@
     },
     "/v0/accounts/user": {
       "get": {
-        "operationId": "GetUserInfo",
+        "operationId": "Accounts_GetUserInfo",
         "parameters": [
           {
             "description": "If you are an account owner, you can set this field to get information\nabout other users.",
@@ -2388,6 +2575,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2403,7 +2600,7 @@
     },
     "/v0/apikeys": {
       "delete": {
-        "operationId": "DeleteApiKey",
+        "operationId": "ApiKeys_Delete",
         "parameters": [
           {
             "description": "The key you want to delete.",
@@ -2446,6 +2643,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Delete the given API key",
@@ -2454,7 +2661,7 @@
         ]
       },
       "get": {
-        "operationId": "GetApiKey",
+        "operationId": "ApiKeys_Get",
         "parameters": [
           {
             "description": "The hash of the API key you want to retrieve.",
@@ -2497,6 +2704,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Get details about a specific API key.",
@@ -2506,7 +2723,7 @@
       },
       "post": {
         "description": "Create an API key with the given permissions. Note that it is not possible to create an API with zero permissions. The created API key is returned. This is the only time that the key is shown, so make sure to write this down somewhere/display it to the user with an approriate warning. API keys are not stored directly in our database (we hash them first), so it is not possible at all to retrieve the plaintext keys.",
-        "operationId": "CreateApiKey",
+        "operationId": "ApiKeys_Create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2547,6 +2764,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Create an API key",
@@ -2557,7 +2784,7 @@
     },
     "/v0/apikeys/list": {
       "get": {
-        "operationId": "ListApiKeys",
+        "operationId": "ApiKeys_List",
         "responses": {
           "200": {
             "content": {
@@ -2588,6 +2815,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "List all API keys",
@@ -2599,7 +2836,7 @@
     "/v0/auth/change_password": {
       "put": {
         "description": "Change the password for a user. It requiresheader authentication AND the current password in the request to besuccessful.",
-        "operationId": "ChangePassword",
+        "operationId": "Authentication_ChangePassword",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2640,6 +2877,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2656,7 +2903,7 @@
     "/v0/auth/confirm_2fa": {
       "put": {
         "description": "Confirm the 2FA authentication credentials, with a 2FA code generated from a previosuly received secret. After this operation is made, 2FA codes will be required for certain actions, such as logging in.",
-        "operationId": "Confirm2fa",
+        "operationId": "Authentication_Confirm2fa",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2697,6 +2944,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Confirm 2FA authenticaton credentials",
@@ -2708,16 +2965,9 @@
     "/v0/auth/create_2fa": {
       "post": {
         "description": "Create a 2FA secret that the user can load into their authenticator app. 2FA is not activated for the user until they confirm they can create valid codes using a separate endpoint",
-        "operationId": "Create2fa",
+        "operationId": "Authentication_Create2fa",
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {}
-              }
-            }
-          },
-          "required": true
+          "$ref": "#/components/requestBodies/Authentication_Create2faBody"
         },
         "responses": {
           "200": {
@@ -2749,6 +2999,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2765,7 +3025,7 @@
     "/v0/auth/get_jwt": {
       "post": {
         "description": "Authenticate a user with either a email:password:2FA:account combination or a limited JWT:2FA:account combination to get a full jwt. You can also authenticate with just email:password to get a limited JWT only authorized for certain endpoints, none of which can move funds. This endpoint can be used to 'login' users for further interaction with the API, typically used in a website.",
-        "operationId": "GetJwt",
+        "operationId": "Authentication_GetJwt",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2806,6 +3066,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -2817,7 +3087,7 @@
     },
     "/v0/auth/refresh_jwt": {
       "get": {
-        "operationId": "RefreshJwt",
+        "operationId": "Authentication_RefreshJwt",
         "responses": {
           "200": {
             "content": {
@@ -2848,6 +3118,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -2864,7 +3144,7 @@
     "/v0/auth/reset_password": {
       "put": {
         "description": "Reset the user password. A password reset tokenis required to change the password. This token is obtained through requesting a password reset email.",
-        "operationId": "ResetPassword",
+        "operationId": "Authentication_ResetPassword",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2905,6 +3185,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -2917,7 +3207,7 @@
     "/v0/auth/send_password_reset_email": {
       "post": {
         "description": "Send a password reset token to the email in the request. If the user is not registered, no email is sent, but the function returns as if an email is sent. This is done to preserve user privacy.",
-        "operationId": "SendPasswordResetEmail",
+        "operationId": "Authentication_SendPasswordResetEmail",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2958,6 +3248,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -2970,7 +3270,7 @@
     "/v0/currencies/convert": {
       "get": {
         "description": "Returns base/quote price. For example BTC/USD will return the amount of USD per BTC.",
-        "operationId": "ConvertCurrency",
+        "operationId": "Currencies_Convert",
         "parameters": [
           {
             "description": "The base currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
@@ -3047,6 +3347,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Convert an amount of one currency into another",
@@ -3058,7 +3368,7 @@
     "/v0/currencies/quote": {
       "get": {
         "description": "Get a quote for either buying or selling BTC.",
-        "operationId": "Quote",
+        "operationId": "Currencies_Quote",
         "parameters": [
           {
             "description": "Can either be buy or sell, makes the quote either a buy order or a sell\norder.\n\n - BUY: Buy bitcoin\n - SELL: Sell bitcoin",
@@ -3131,6 +3441,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Get a quote for buying or selling BTC",
@@ -3142,7 +3462,7 @@
     "/v0/exchange/limits": {
       "get": {
         "description": "Retrieve the maximum and current exposure you can have while trading",
-        "operationId": "RiskLimits",
+        "operationId": "Exchange_RiskLimits",
         "responses": {
           "200": {
             "content": {
@@ -3173,6 +3493,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Retrieve the maximum and current exposure you can have while trading",
@@ -3184,7 +3514,7 @@
     "/v0/exchange/settlement/list": {
       "get": {
         "description": "List prior settlements",
-        "operationId": "ListSettlements",
+        "operationId": "Exchange_ListSettlements",
         "responses": {
           "200": {
             "content": {
@@ -3215,6 +3545,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "List prior settlements",
@@ -3226,7 +3566,7 @@
     "/v0/exchange/trades/list": {
       "get": {
         "description": "List prior trades",
-        "operationId": "ListTrades",
+        "operationId": "Exchange_ListTrades",
         "parameters": [
           {
             "description": "The offset into the result set to retrieve from. Combined with specifying a\nlimit, allows for implementation of pagination.",
@@ -3346,6 +3686,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "List prior trades",
@@ -3357,7 +3707,7 @@
     "/v0/experimental/lnurl/withdraw": {
       "get": {
         "description": "Retreives an already created LNURL withdrawal based on the generated secret. This is expected to be hit by the client wallet, e.g bluewallet",
-        "operationId": "GetLNURLWithdrawal",
+        "operationId": "Experimental_GetLNURLWithdrawal",
         "parameters": [
           {
             "description": "the k1 secret generated when creating the lnurl withdrawal.",
@@ -3379,9 +3729,59 @@
               }
             },
             "description": "A successful response."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Gets a created LNURL withdrawal.",
+        "tags": [
+          "Experimental"
+        ]
+      },
+      "post": {
+        "description": "Mark the withdrawal specified in the request as ready forwithdrawing or not.",
+        "operationId": "Experimental_UpdateIsActive",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateIsActiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {}
+                }
+              }
+            },
+            "description": "A successful response."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
+          }
+        },
+        "summary": "Mark the withdrawal as ready for withdrawing or not",
         "tags": [
           "Experimental"
         ]
@@ -3390,7 +3790,7 @@
     "/v0/experimental/lnurl/withdraw/complete": {
       "get": {
         "description": "Complete a created LNURL withdrawal. ",
-        "operationId": "CompleteLNURLWithdraw",
+        "operationId": "Experimental_CompleteLNURLWithdraw",
         "parameters": [
           {
             "description": "The generated secret specific to this LNURL Withdrawal.",
@@ -3421,6 +3821,16 @@
               }
             },
             "description": "A successful response."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Perform a withdrawal using the LNURL protocol",
@@ -3432,7 +3842,7 @@
     "/v0/experimental/lnurl/withdraw/create": {
       "post": {
         "description": "Create a withdrawal using LNURL Withdraw. Hitting this endpoint will generate a temporary secret that must be supplied for completing the withdrawal",
-        "operationId": "CreateLNURLWithdraw",
+        "operationId": "Experimental_CreateLNURLWithdraw",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3453,6 +3863,16 @@
               }
             },
             "description": "A successful response."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Create a new LNURL Withdrawal that generates a secret",
@@ -3464,7 +3884,7 @@
     "/v0/fees/estimate/blockchain": {
       "get": {
         "description": "Query for current fee levels for Bitcoin blockchain transactions. You can specify the required target block confirmation time, e.g. how many blocks you want to wait before your transaction is confirmed. A low target confirmation time would mean you would pay more in fees, but the transaction would be confirmed quicker. 6 blocks averages to 60 minutes waiting time. It is not guaranteed the transaction will be confirmed in 'target' blocks given a sat_per_byte fee",
-        "operationId": "EstimateBlockchainFees",
+        "operationId": "Fees_EstimateBlockchainFees",
         "parameters": [
           {
             "description": "The desired block time confirmation target. Defaults to 6.",
@@ -3524,6 +3944,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -3536,7 +3966,7 @@
     "/v0/fees/estimate/lightning": {
       "get": {
         "description": "Get an estimate for how much the given payment request would cost in network fees to pay. This would be affected by how many nodes (if any) we would need to route through to get to the destination, as well as how expensive those nodes are to use. We will always return the cheapest route.",
-        "operationId": "EstimateLightningFees",
+        "operationId": "Fees_EstimateLightningFees",
         "parameters": [
           {
             "description": "The payment request to query for fees needed to pay.",
@@ -3595,6 +4025,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -3607,7 +4047,7 @@
     "/v0/invoices": {
       "get": {
         "description": "GetInvoice can be used to retreive an invoice by its ID or the transaction ID associated with it.",
-        "operationId": "GetInvoice",
+        "operationId": "Invoices_Get",
         "parameters": [
           {
             "description": "The Teslacoil UUID of the invoice you want to retrieve. This cannot be\nset together with a transaction UUID.",
@@ -3676,6 +4116,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Get a specific invoice",
@@ -3737,7 +4187,7 @@
           }
         },
         "description": "CreateLightning can be used to create a new invoice that has a lightning request associated with it. If the lightning payment request is paid, the invoice is considered paid",
-        "operationId": "CreateLightningInvoice",
+        "operationId": "Invoices_CreateLightning",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateInvoiceRequest"
         },
@@ -3771,6 +4221,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Create a new invoice with a lightning request",
@@ -3781,7 +4241,7 @@
     },
     "/v0/invoices/list": {
       "get": {
-        "operationId": "ListInvoices",
+        "operationId": "Invoices_List",
         "parameters": [
           {
             "description": "The offset into the result set to retrieve from. Combined with specifying a\nlimit, allows for implementation of pagination.",
@@ -3887,7 +4347,6 @@
             "name": "paid_before_expiry",
             "required": false,
             "schema": {
-              "format": "boolean",
               "type": "boolean"
             }
           },
@@ -3897,7 +4356,6 @@
             "name": "expired",
             "required": false,
             "schema": {
-              "format": "boolean",
               "type": "boolean"
             }
           },
@@ -3946,6 +4404,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "List all created invoices",
@@ -4007,7 +4475,7 @@
           }
         },
         "description": "CreateOnchain can be used to create a new invoice that has a bitcoin onchain address associated with it. If the address receives money, the invoice can reach three states: underpaid, overpaid and settled. Only overpaid and settled can be treated as settled.",
-        "operationId": "CreateOnchainInvoice",
+        "operationId": "Invoices_CreateOnchain",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateInvoiceRequest"
         },
@@ -4041,6 +4509,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Create a new invoice with a bitcoin onchain address",
@@ -4052,7 +4530,7 @@
     "/v0/system/ping": {
       "get": {
         "description": "Ping",
-        "operationId": "Ping",
+        "operationId": "System_Ping",
         "responses": {
           "200": {
             "content": {
@@ -4083,6 +4561,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -4095,7 +4583,7 @@
     "/v0/transactions": {
       "get": {
         "description": "Retrieve a specific transaction that's been sent to or from the wallet.",
-        "operationId": "GetTransaction",
+        "operationId": "Transactions_GetTransaction",
         "parameters": [
           {
             "description": "The Teslacoil ID of this transaction.",
@@ -4146,6 +4634,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Retrieve a specific transaction.",
@@ -4157,7 +4655,7 @@
     "/v0/transactions/lightning": {
       "get": {
         "description": "Bitcoin Lightning transactions can be retrieved by various different identification methods. These include the Teslacoil ID, the client ID (set by the creator of the transaction) or the associated Lightning payment request",
-        "operationId": "GetLightningTransaction",
+        "operationId": "Transactions_GetLightning",
         "parameters": [
           {
             "description": "The Teslacoil ID of the transaction you want to get.",
@@ -4208,6 +4706,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Get a specific bitcoin lightning transaction",
@@ -4219,7 +4727,7 @@
     "/v0/transactions/lightning/decode": {
       "get": {
         "description": "A lightning request has information encoded in it such as the amount, a memo encoded by the creator etc. This endpoint can be used to extract all that information from a lightning request.",
-        "operationId": "DecodeLightning",
+        "operationId": "Transactions_DecodeLightning",
         "parameters": [
           {
             "description": "The Lightning request you want to decode.",
@@ -4261,6 +4769,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [],
@@ -4278,7 +4796,7 @@
           }
         },
         "description": "Send a lightning payment by paying a Lightning payment request. Lightning requests include information about both the recipient and the amount required, among other things. For more on Lightning requests, see [this link](https://suredbits.com/lightning-101-what-is-a-lightning-invoice)",
-        "operationId": "SendLightning",
+        "operationId": "Transactions_SendLightning",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4319,6 +4837,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Send a lightning network payment",
@@ -4330,7 +4858,7 @@
     "/v0/transactions/list": {
       "get": {
         "description": "List all transactions that have been made with your wallet. You can speciy certain filtering and sorting options, all of which are optional.",
-        "operationId": "ListTransactions",
+        "operationId": "Transactions_ListTransactions",
         "parameters": [
           {
             "description": "The offset into the result set to retrieve from. Combined with specifying a\nlimit, allows for implementation of pagination.",
@@ -4452,7 +4980,6 @@
             "name": "include_settlements",
             "required": false,
             "schema": {
-              "format": "boolean",
               "type": "boolean"
             }
           }
@@ -4487,6 +5014,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "List all transactions sent from and received to your wallet ",
@@ -4498,7 +5035,7 @@
     "/v0/transactions/onchain": {
       "get": {
         "description": "Retrieve the Bitcoin blockchain transaction associated with the given identifier.",
-        "operationId": "GetOnchainTransaction",
+        "operationId": "Transactions_GetOnchain",
         "parameters": [
           {
             "description": "The Teslacoil ID of this transaction.",
@@ -4549,6 +5086,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Retrieve a Bitcoin blockchain transaction",
@@ -4565,7 +5112,7 @@
           }
         },
         "description": "Send a transaction to a Bitcoin address, on the Bitcoin blockchain. You need to specify at least an amount (or optionally, that all funds in the wallet should be sent) and an address",
-        "operationId": "SendOnchain",
+        "operationId": "Transactions_SendOnchain",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4606,6 +5153,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Send a transaction to a Bitcoin address",
@@ -4624,7 +5181,7 @@
             "$ref": "#/components/callbacks/onchainTransaction"
           }
         },
-        "operationId": "SendTransaction",
+        "operationId": "Transactions_SendTransaction",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4665,6 +5222,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "summary": "Initiate a transaction to either a bitcoin address or to a Lightning\npayment request",
@@ -4676,7 +5243,7 @@
     "/v0/users": {
       "post": {
         "description": "Creates a new user with the given credentials. After creating the user, an email will be sent to the user, which they have to confirm before they can sign in.",
-        "operationId": "CreateUser",
+        "operationId": "Users_CreateUser",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4717,6 +5284,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [
@@ -4731,7 +5308,7 @@
       },
       "put": {
         "description": "Update the information associated with the currently authenticated user. These changes will require confirmation by email before they are persisted.",
-        "operationId": "UpdateUser",
+        "operationId": "Users_UpdateUser",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4772,6 +5349,16 @@
               }
             },
             "description": "Unauthorized: Authentication was required, but none was given."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            },
+            "description": "An unexpected error response"
           }
         },
         "security": [

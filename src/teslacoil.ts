@@ -35,22 +35,22 @@ export interface Account {
  * Information describing a user and its relation to an account.
  */
 export interface AccountUser {
-  account_id?: string
-  account_name?: string
-  admin?: boolean
-  balance_bitcoin?: number
-  balance_satoshi?: string
-  create_time?: string
-  email?: string
-  first_name?: string
-  has_changed_password?: boolean
-  has_confirmed_2fa?: boolean
-  last_login_time?: string
-  last_name?: string
-  owner?: boolean
-  permissions?: Permissions
-  update_time?: string
-  user_id?: string
+  account_id: string
+  account_name: string
+  admin: boolean
+  balance_bitcoin: number
+  balance_satoshi: string
+  create_time: string
+  email: string
+  first_name: string
+  has_changed_password: boolean
+  has_confirmed_2fa: boolean
+  last_login_time: string
+  last_name: string
+  owner: boolean
+  permissions: Permissions
+  update_time: string
+  user_id: string
 }
 
 export interface AccountingTransaction {
@@ -109,17 +109,17 @@ export interface ChangePasswordRequest {
   /**
    * The new user password. This is a required field.
    */
-  new_password?: string
+  new_password: string
   /**
    * The old user password. This is a required field.
    */
-  old_password?: string
+  old_password: string
   /**
    * The new user password, again. This field should be populated with the text
    * from a different field than the first new password. This is a required
    * field.
    */
-  repeated_new_password?: string
+  repeated_new_password: string
 }
 
 export interface Confirm2faRequest {
@@ -127,7 +127,7 @@ export interface Confirm2faRequest {
    * A 2FA code the user generated with their authenticator app. This is a
    * required field.
    */
-  code?: string
+  code: string
 }
 
 export interface Create2faResponse {
@@ -139,7 +139,7 @@ export interface Create2faResponse {
 }
 
 export interface CreateAccountRequest {
-  name?: string
+  name: string
 }
 
 export interface CreateApiKeyRequest {
@@ -212,16 +212,21 @@ export interface CreateLNURLWithdrawRequest {
    */
   expiry_seconds?: number
   /**
+   * whether the created lnurl withdrawal should be active or not. If set to
+   * false, it is not possible to withdraw money using the created lnurl.
+   */
+  is_active?: boolean
+  /**
    * An optional description used to request the caller of this request to
    * encode this field in the generated lightning request.
    */
   lightning_request_memo?: string
-  max_withdrawable_satoshi?: number
+  max_withdrawable_milli_satoshi?: string
   /**
    * Minimum amount allowed to withdraw using the generated secret. If not set,
    * defaults to 0.
    */
-  min_withdrawable_satoshi?: number
+  min_withdrawable_milli_satoshi?: string
 }
 
 /**
@@ -308,11 +313,11 @@ export interface GetJwtRequest {
   /**
    * The email of the user that's requesting a JWT. This is a required field.
    */
-  email?: string
+  email: string
   /**
    * The password of the user that's requesting a JWT. This is a required field.
    */
-  password?: string
+  password: string
   /**
    * The 2FA code to use when requesting a JWT. If 2FA is enabled, this is a
    * required field.
@@ -413,10 +418,10 @@ export type InvoiceStatus = 'UNPAID' | 'PAID' | 'OVERPAID' | 'UNDERPAID'
  */
 export interface LNURLWithdrawResponse {
   callback?: string
-  default_description?: string
+  defaultDescription?: string
   k1?: string
-  max_withdrawable?: number
-  min_withdrawable?: number
+  maxWithdrawable?: string
+  minWithdrawable?: string
   tag?: string
 }
 
@@ -482,11 +487,11 @@ export interface LightningTransaction {
 }
 
 export interface ListAccountNamesResponse {
-  names?: string[]
+  names: string[]
 }
 
 export interface ListAccountsResponse {
-  accounts?: Account[]
+  accounts: Account[]
 }
 
 export interface ListApiKeysResponse {
@@ -494,8 +499,8 @@ export interface ListApiKeysResponse {
 }
 
 export interface ListSettlementsResponse {
-  settlements?: Settlement[]
-  total?: number
+  settlements: Settlement[]
+  total: number
 }
 
 export interface ListTradesResponse {
@@ -612,7 +617,6 @@ export interface Permissions {
   api_keys: Privileges
   auth: Privileges
   currencies: Privileges
-  deposits: Privileges
   exchange: Privileges
   experimental: Privileges
   invoices: Privileges
@@ -622,10 +626,10 @@ export interface Permissions {
 }
 
 export interface Privileges {
-  create?: boolean
-  delete?: boolean
-  read?: boolean
-  update?: boolean
+  create: boolean
+  delete: boolean
+  read: boolean
+  update: boolean
 }
 
 export interface ResetPasswordRequest {
@@ -865,6 +869,11 @@ export interface UpdateAccountRequest {
   new_permissions?: Permissions
 }
 
+export interface UpdateIsActiveRequest {
+  is_active?: boolean
+  secret?: string
+}
+
 export interface UpdateUserRequest {
   first_name?: string
   last_name?: string
@@ -877,9 +886,136 @@ export interface User {
   last_name: string
 }
 
+/**
+ * `Any` contains an arbitrary serialized protocol buffer message along with a
+ * URL that describes the type of the serialized message.
+ *
+ * Protobuf library provides support to pack/unpack Any values in the form
+ * of utility functions or additional generated methods of the Any type.
+ *
+ * Example 1: Pack and unpack a message in C++.
+ *
+ *     Foo foo = ...;
+ *     Any any;
+ *     any.PackFrom(foo);
+ *     ...
+ *     if (any.UnpackTo(&foo)) {
+ *       ...
+ *     }
+ *
+ * Example 2: Pack and unpack a message in Java.
+ *
+ *     Foo foo = ...;
+ *     Any any = Any.pack(foo);
+ *     ...
+ *     if (any.is(Foo.class)) {
+ *       foo = any.unpack(Foo.class);
+ *     }
+ *
+ *  Example 3: Pack and unpack a message in Python.
+ *
+ *     foo = Foo(...)
+ *     any = Any()
+ *     any.Pack(foo)
+ *     ...
+ *     if any.Is(Foo.DESCRIPTOR):
+ *       any.Unpack(foo)
+ *       ...
+ *
+ *  Example 4: Pack and unpack a message in Go
+ *
+ *      foo := &pb.Foo{...}
+ *      any, err := ptypes.MarshalAny(foo)
+ *      ...
+ *      foo := &pb.Foo{}
+ *      if err := ptypes.UnmarshalAny(any, foo); err != nil {
+ *        ...
+ *      }
+ *
+ * The pack methods provided by protobuf library will by default use
+ * 'type.googleapis.com/full.type.name' as the type URL and the unpack
+ * methods only use the fully qualified type name after the last '/'
+ * in the type URL, for example "foo.bar.com/x/y.z" will yield type
+ * name "y.z".
+ *
+ *
+ * JSON
+ * ====
+ * The JSON representation of an `Any` value uses the regular
+ * representation of the deserialized, embedded message, with an
+ * additional field `@type` which contains the type URL. Example:
+ *
+ *     package google.profile;
+ *     message Person {
+ *       string first_name = 1;
+ *       string last_name = 2;
+ *     }
+ *
+ *     {
+ *       "@type": "type.googleapis.com/google.profile.Person",
+ *       "firstName": <string>,
+ *       "lastName": <string>
+ *     }
+ *
+ * If the embedded message type is well-known and has a custom JSON
+ * representation, that representation will be embedded adding a field
+ * `value` which holds the custom JSON in addition to the `@type`
+ * field. Example (for message [google.protobuf.Duration][]):
+ *
+ *     {
+ *       "@type": "type.googleapis.com/google.protobuf.Duration",
+ *       "value": "1.212s"
+ *     }
+ */
+export interface ProtobufAny {
+  /**
+   * A URL/resource name that uniquely identifies the type of the serialized
+   * protocol buffer message. The last segment of the URL's path must represent
+   * the fully qualified name of the type (as in
+   * `path/google.protobuf.Duration`). The name should be in a canonical form
+   * (e.g., leading "." is not accepted).
+   *
+   * In practice, teams usually precompile into the binary all types that they
+   * expect it to use in the context of Any. However, for URLs which use the
+   * scheme `http`, `https`, or no scheme, one can optionally set up a type
+   * server that maps type URLs to message definitions as follows:
+   *
+   * * If no scheme is provided, `https` is assumed.
+   * * An HTTP GET on the URL must yield a [google.protobuf.Type][]
+   *   value in binary format, or produce an error.
+   * * Applications are allowed to cache lookup results based on the
+   *   URL, or have them precompiled into a binary to avoid any
+   *   lookup. Therefore, binary compatibility needs to be preserved
+   *   on changes to types. (Use versioned type names to manage
+   *   breaking changes.)
+   *
+   * Note: this functionality is not currently available in the official
+   * protobuf release, and it is not used for type URLs beginning with
+   * type.googleapis.com.
+   *
+   * Schemes other than `http`, `https` (or the empty scheme) might be
+   * used with implementation specific semantics.
+   */
+  type_url?: string
+  /**
+   * Must be a valid serialized protocol buffer of the above specified type.
+   */
+  value?: string
+}
+
+export interface RuntimeError {
+  code?: number
+  details?: ProtobufAny[]
+  error?: string
+  message?: string
+}
+
+// tslint:disable-next-line:no-empty-interface
+export interface AuthenticationCreate2faBodyRequestBody {}
+
 export type CreateInvoiceRequestRequestBody = CreateInvoiceRequest
 
-export const GetStatement = async (start_time?: string, end_time?: string): Promise<Statement> => {
+export const Accounting_GetStatement = async (start_time?: string, end_time?: string): Promise<Statement> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -891,7 +1027,7 @@ export const GetStatement = async (start_time?: string, end_time?: string): Prom
   }
 }
 
-export const GetAccount = async (): Promise<Account> => {
+export const Accounts_Get = async (): Promise<Account> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -903,7 +1039,7 @@ export const GetAccount = async (): Promise<Account> => {
   }
 }
 
-export const CreateAccount = async (req: CreateAccountRequest): Promise<Account> => {
+export const Accounts_Create = async (req: CreateAccountRequest): Promise<Account> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -915,7 +1051,7 @@ export const CreateAccount = async (req: CreateAccountRequest): Promise<Account>
   }
 }
 
-export const UpdateAccount = async (req: UpdateAccountRequest): Promise<Account> => {
+export const Accounts_Update = async (req: UpdateAccountRequest): Promise<Account> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -927,7 +1063,7 @@ export const UpdateAccount = async (req: UpdateAccountRequest): Promise<Account>
   }
 }
 
-export const RemoveAccess = async (user_id?: string): Promise<{}> => {
+export const Accounts_RemoveAccess = async (user_id?: string): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -939,7 +1075,7 @@ export const RemoveAccess = async (user_id?: string): Promise<{}> => {
   }
 }
 
-export const UpdateAccess = async (req: UpdateAccessRequest): Promise<{}> => {
+export const Accounts_UpdateAccess = async (req: UpdateAccessRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -951,7 +1087,7 @@ export const UpdateAccess = async (req: UpdateAccessRequest): Promise<{}> => {
   }
 }
 
-export const GiveAccess = async (req: GiveAccessRequest): Promise<{}> => {
+export const Accounts_GiveAccess = async (req: GiveAccessRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -963,7 +1099,7 @@ export const GiveAccess = async (req: GiveAccessRequest): Promise<{}> => {
   }
 }
 
-export const ListAccounts = async (): Promise<ListAccountsResponse> => {
+export const Accounts_List = async (): Promise<ListAccountsResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -975,7 +1111,7 @@ export const ListAccounts = async (): Promise<ListAccountsResponse> => {
   }
 }
 
-export const ListAccountNames = async (): Promise<ListAccountNamesResponse> => {
+export const Accounts_ListAccountNames = async (): Promise<ListAccountNamesResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -987,7 +1123,7 @@ export const ListAccountNames = async (): Promise<ListAccountNamesResponse> => {
   }
 }
 
-export const GetUserInfo = async (user_id?: string): Promise<AccountUser> => {
+export const Accounts_GetUserInfo = async (user_id?: string): Promise<AccountUser> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -999,7 +1135,7 @@ export const GetUserInfo = async (user_id?: string): Promise<AccountUser> => {
   }
 }
 
-export const DeleteApiKey = async (hash?: string): Promise<ApiKey> => {
+export const ApiKeys_Delete = async (hash?: string): Promise<ApiKey> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1011,7 +1147,7 @@ export const DeleteApiKey = async (hash?: string): Promise<ApiKey> => {
   }
 }
 
-export const GetApiKey = async (hash?: string): Promise<ApiKey> => {
+export const ApiKeys_Get = async (hash?: string): Promise<ApiKey> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1023,7 +1159,7 @@ export const GetApiKey = async (hash?: string): Promise<ApiKey> => {
   }
 }
 
-export const CreateApiKey = async (req: CreateApiKeyRequest): Promise<CreateApiKeyResponse> => {
+export const ApiKeys_Create = async (req: CreateApiKeyRequest): Promise<CreateApiKeyResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1035,7 +1171,7 @@ export const CreateApiKey = async (req: CreateApiKeyRequest): Promise<CreateApiK
   }
 }
 
-export const ListApiKeys = async (): Promise<ListApiKeysResponse> => {
+export const ApiKeys_List = async (): Promise<ListApiKeysResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1047,7 +1183,7 @@ export const ListApiKeys = async (): Promise<ListApiKeysResponse> => {
   }
 }
 
-export const ChangePassword = async (req: ChangePasswordRequest): Promise<{}> => {
+export const Authentication_ChangePassword = async (req: ChangePasswordRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1059,7 +1195,7 @@ export const ChangePassword = async (req: ChangePasswordRequest): Promise<{}> =>
   }
 }
 
-export const Confirm2fa = async (req: Confirm2faRequest): Promise<{}> => {
+export const Authentication_Confirm2fa = async (req: Confirm2faRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1071,7 +1207,9 @@ export const Confirm2fa = async (req: Confirm2faRequest): Promise<{}> => {
   }
 }
 
-export const Create2fa = async (req: {}): Promise<Create2faResponse> => {
+export const Authentication_Create2fa = async (
+  req: AuthenticationCreate2faBodyRequestBody
+): Promise<Create2faResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1083,7 +1221,7 @@ export const Create2fa = async (req: {}): Promise<Create2faResponse> => {
   }
 }
 
-export const GetJwt = async (req: GetJwtRequest): Promise<GetJwtResponse> => {
+export const Authentication_GetJwt = async (req: GetJwtRequest): Promise<GetJwtResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1095,7 +1233,7 @@ export const GetJwt = async (req: GetJwtRequest): Promise<GetJwtResponse> => {
   }
 }
 
-export const RefreshJwt = async (): Promise<GetJwtResponse> => {
+export const Authentication_RefreshJwt = async (): Promise<GetJwtResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1107,7 +1245,7 @@ export const RefreshJwt = async (): Promise<GetJwtResponse> => {
   }
 }
 
-export const ResetPassword = async (req: ResetPasswordRequest): Promise<{}> => {
+export const Authentication_ResetPassword = async (req: ResetPasswordRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1119,7 +1257,7 @@ export const ResetPassword = async (req: ResetPasswordRequest): Promise<{}> => {
   }
 }
 
-export const SendPasswordResetEmail = async (req: SendPasswordResetEmailRequest): Promise<{}> => {
+export const Authentication_SendPasswordResetEmail = async (req: SendPasswordResetEmailRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1131,7 +1269,7 @@ export const SendPasswordResetEmail = async (req: SendPasswordResetEmailRequest)
   }
 }
 
-export const ConvertCurrency = async (
+export const Currencies_Convert = async (
   base_currency?: string,
   quote_currency?: string,
   amount?: number
@@ -1149,7 +1287,11 @@ export const ConvertCurrency = async (
   }
 }
 
-export const Quote = async (side?: string, amount?: number, currency?: string): Promise<CurrenciesQuoteResponse> => {
+export const Currencies_Quote = async (
+  side?: string,
+  amount?: number,
+  currency?: string
+): Promise<CurrenciesQuoteResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1161,7 +1303,7 @@ export const Quote = async (side?: string, amount?: number, currency?: string): 
   }
 }
 
-export const RiskLimits = async (): Promise<RiskLimitsResponse> => {
+export const Exchange_RiskLimits = async (): Promise<RiskLimitsResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1173,7 +1315,7 @@ export const RiskLimits = async (): Promise<RiskLimitsResponse> => {
   }
 }
 
-export const ListSettlements = async (): Promise<ListSettlementsResponse> => {
+export const Exchange_ListSettlements = async (): Promise<ListSettlementsResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1185,7 +1327,7 @@ export const ListSettlements = async (): Promise<ListSettlementsResponse> => {
   }
 }
 
-export const ListTrades = async (
+export const Exchange_ListTrades = async (
   offset?: number,
   limit?: number,
   max_satoshi?: string,
@@ -1208,7 +1350,7 @@ export const ListTrades = async (
   }
 }
 
-export const GetLNURLWithdrawal = async (secret?: string): Promise<LNURLWithdrawResponse> => {
+export const Experimental_GetLNURLWithdrawal = async (secret?: string): Promise<LNURLWithdrawResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1220,7 +1362,19 @@ export const GetLNURLWithdrawal = async (secret?: string): Promise<LNURLWithdraw
   }
 }
 
-export const CompleteLNURLWithdraw = async (k1?: string, pr?: string): Promise<{}> => {
+export const Experimental_UpdateIsActive = async (req: UpdateIsActiveRequest): Promise<{}> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+  try {
+    const response = await api.post('/v0/experimental/lnurl/withdraw', req)
+    return response.data as {}
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Experimental_CompleteLNURLWithdraw = async (k1?: string, pr?: string): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1232,7 +1386,9 @@ export const CompleteLNURLWithdraw = async (k1?: string, pr?: string): Promise<{
   }
 }
 
-export const CreateLNURLWithdraw = async (req: CreateLNURLWithdrawRequest): Promise<CreateLNURLWithdrawResponse> => {
+export const Experimental_CreateLNURLWithdraw = async (
+  req: CreateLNURLWithdrawRequest
+): Promise<CreateLNURLWithdrawResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1244,7 +1400,7 @@ export const CreateLNURLWithdraw = async (req: CreateLNURLWithdrawRequest): Prom
   }
 }
 
-export const EstimateBlockchainFees = async (
+export const Fees_EstimateBlockchainFees = async (
   target?: number,
   currency?: string
 ): Promise<EstimateBlockchainFeesResponse> => {
@@ -1259,7 +1415,7 @@ export const EstimateBlockchainFees = async (
   }
 }
 
-export const EstimateLightningFees = async (
+export const Fees_EstimateLightningFees = async (
   payment_request?: string,
   currency?: string
 ): Promise<EstimateLightningFeesResponse> => {
@@ -1276,7 +1432,7 @@ export const EstimateLightningFees = async (
   }
 }
 
-export const GetInvoice = async (
+export const Invoices_Get = async (
   id?: string,
   transaction_id?: string,
   address?: string,
@@ -1293,7 +1449,7 @@ export const GetInvoice = async (
   }
 }
 
-export const CreateLightningInvoice = async (req: CreateInvoiceRequest): Promise<Invoice> => {
+export const Invoices_CreateLightning = async (req: CreateInvoiceRequest): Promise<Invoice> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1305,7 +1461,7 @@ export const CreateLightningInvoice = async (req: CreateInvoiceRequest): Promise
   }
 }
 
-export const ListInvoices = async (
+export const Invoices_List = async (
   offset?: number,
   limit?: number,
   max_satoshi?: string,
@@ -1332,7 +1488,7 @@ export const ListInvoices = async (
   }
 }
 
-export const CreateOnchainInvoice = async (req: CreateInvoiceRequest): Promise<Invoice> => {
+export const Invoices_CreateOnchain = async (req: CreateInvoiceRequest): Promise<Invoice> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1344,7 +1500,7 @@ export const CreateOnchainInvoice = async (req: CreateInvoiceRequest): Promise<I
   }
 }
 
-export const Ping = async (): Promise<{}> => {
+export const System_Ping = async (): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1356,7 +1512,7 @@ export const Ping = async (): Promise<{}> => {
   }
 }
 
-export const GetTransaction = async (id?: string, client_id?: string): Promise<Transaction> => {
+export const Transactions_GetTransaction = async (id?: string, client_id?: string): Promise<Transaction> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1368,7 +1524,10 @@ export const GetTransaction = async (id?: string, client_id?: string): Promise<T
   }
 }
 
-export const GetLightningTransaction = async (id?: string, payment_request?: string): Promise<LightningTransaction> => {
+export const Transactions_GetLightning = async (
+  id?: string,
+  payment_request?: string
+): Promise<LightningTransaction> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1380,7 +1539,7 @@ export const GetLightningTransaction = async (id?: string, payment_request?: str
   }
 }
 
-export const DecodeLightning = async (payment_request?: string): Promise<DecodeLightningResponse> => {
+export const Transactions_DecodeLightning = async (payment_request?: string): Promise<DecodeLightningResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1392,7 +1551,7 @@ export const DecodeLightning = async (payment_request?: string): Promise<DecodeL
   }
 }
 
-export const SendLightning = async (req: SendLightningRequest): Promise<SendTransactionResponse> => {
+export const Transactions_SendLightning = async (req: SendLightningRequest): Promise<SendTransactionResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1404,7 +1563,7 @@ export const SendLightning = async (req: SendLightningRequest): Promise<SendTran
   }
 }
 
-export const ListTransactions = async (
+export const Transactions_ListTransactions = async (
   offset?: number,
   limit?: number,
   max_satoshi?: string,
@@ -1430,7 +1589,7 @@ export const ListTransactions = async (
   }
 }
 
-export const GetOnchainTransaction = async (id?: string, client_id?: string): Promise<OnchainTransaction> => {
+export const Transactions_GetOnchain = async (id?: string, client_id?: string): Promise<OnchainTransaction> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1442,7 +1601,7 @@ export const GetOnchainTransaction = async (id?: string, client_id?: string): Pr
   }
 }
 
-export const SendOnchain = async (req: SendOnchainRequest): Promise<OnchainTransaction> => {
+export const Transactions_SendOnchain = async (req: SendOnchainRequest): Promise<OnchainTransaction> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1454,7 +1613,7 @@ export const SendOnchain = async (req: SendOnchainRequest): Promise<OnchainTrans
   }
 }
 
-export const SendTransaction = async (req: SendTransactionRequest): Promise<SendTransactionResponse> => {
+export const Transactions_SendTransaction = async (req: SendTransactionRequest): Promise<SendTransactionResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1466,7 +1625,7 @@ export const SendTransaction = async (req: SendTransactionRequest): Promise<Send
   }
 }
 
-export const CreateUser = async (req: CreateUserRequest): Promise<User> => {
+export const Users_CreateUser = async (req: CreateUserRequest): Promise<User> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1478,7 +1637,7 @@ export const CreateUser = async (req: CreateUserRequest): Promise<User> => {
   }
 }
 
-export const UpdateUser = async (req: UpdateUserRequest): Promise<{}> => {
+export const Users_UpdateUser = async (req: UpdateUserRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
