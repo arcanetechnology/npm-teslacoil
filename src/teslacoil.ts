@@ -206,16 +206,12 @@ export interface CreateInvoiceRequest {
 }
 
 export interface CreateLNURLWithdrawRequest {
+  custom_complete_url?: string
   /**
    * if set, will make sure the lnurl withdrawal can't be completed after a set
    * time defaults to 3600 (1 hour).
    */
   expiry_seconds?: number
-  /**
-   * whether the created lnurl withdrawal should be active or not. If set to
-   * false, it is not possible to withdraw money using the created lnurl.
-   */
-  is_active?: boolean
   /**
    * An optional description used to request the caller of this request to
    * encode this field in the generated lightning request.
@@ -234,6 +230,7 @@ export interface CreateLNURLWithdrawRequest {
  * user.
  */
 export interface CreateLNURLWithdrawResponse {
+  k1_secret?: string
   /**
    * An encoded lnurl containing a link to GET more information about the
    * withdrawal, including the secret.
@@ -869,11 +866,6 @@ export interface UpdateAccountRequest {
   new_permissions?: Permissions
 }
 
-export interface UpdateIsActiveRequest {
-  is_active?: boolean
-  secret?: string
-}
-
 export interface UpdateUserRequest {
   first_name?: string
   last_name?: string
@@ -1015,12 +1007,29 @@ export interface AuthenticationCreate2faBodyRequestBody {}
 
 export type CreateInvoiceRequestRequestBody = CreateInvoiceRequest
 
+const buildURL = (...args: any[]): string => {
+  let url = ''
+  args.forEach(arg => {
+    if (arg) {
+      if (url === '') {
+        url += `?${arg}=\${${arg}}`
+      } else {
+        url += `&${arg}=\${${arg}}`
+      }
+    }
+  })
+  return `${url}`
+}
+
 export const Accounting_GetStatement = async (start_time?: string, end_time?: string): Promise<Statement> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/accounting/statement?start_time=${start_time}&end_time=${end_time}`)
+    const response = await api.get(
+      `/v0/accounting/statement${buildURL(start_time && 'start_time', end_time && 'end_time')}`
+    )
     return response.data as Statement
   } catch (error) {
     throw Error(error)
@@ -1031,6 +1040,7 @@ export const Accounts_Get = async (): Promise<Account> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/accounts`)
     return response.data as Account
@@ -1043,6 +1053,7 @@ export const Accounts_Create = async (req: CreateAccountRequest): Promise<Accoun
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/accounts', req)
     return response.data as Account
@@ -1055,6 +1066,7 @@ export const Accounts_Update = async (req: UpdateAccountRequest): Promise<Accoun
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.put('/v0/accounts', req)
     return response.data as Account
@@ -1067,8 +1079,9 @@ export const Accounts_RemoveAccess = async (user_id?: string): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.delete(`/v0/accounts/access?user_id=${user_id}`)
+    const response = await api.delete(`/v0/accounts/access${buildURL(user_id && 'user_id')}`)
     return response.data as {}
   } catch (error) {
     throw Error(error)
@@ -1079,6 +1092,7 @@ export const Accounts_UpdateAccess = async (req: UpdateAccessRequest): Promise<{
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/accounts/access', req)
     return response.data as {}
@@ -1091,6 +1105,7 @@ export const Accounts_GiveAccess = async (req: GiveAccessRequest): Promise<{}> =
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.put('/v0/accounts/access', req)
     return response.data as {}
@@ -1103,6 +1118,7 @@ export const Accounts_List = async (): Promise<ListAccountsResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/accounts/list`)
     return response.data as ListAccountsResponse
@@ -1115,6 +1131,7 @@ export const Accounts_ListAccountNames = async (): Promise<ListAccountNamesRespo
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/accounts/names`)
     return response.data as ListAccountNamesResponse
@@ -1127,8 +1144,9 @@ export const Accounts_GetUserInfo = async (user_id?: string): Promise<AccountUse
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/accounts/user?user_id=${user_id}`)
+    const response = await api.get(`/v0/accounts/user${buildURL(user_id && 'user_id')}`)
     return response.data as AccountUser
   } catch (error) {
     throw Error(error)
@@ -1139,8 +1157,9 @@ export const ApiKeys_Delete = async (hash?: string): Promise<ApiKey> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.delete(`/v0/apikeys?hash=${hash}`)
+    const response = await api.delete(`/v0/apikeys${buildURL(hash && 'hash')}`)
     return response.data as ApiKey
   } catch (error) {
     throw Error(error)
@@ -1151,8 +1170,9 @@ export const ApiKeys_Get = async (hash?: string): Promise<ApiKey> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/apikeys?hash=${hash}`)
+    const response = await api.get(`/v0/apikeys${buildURL(hash && 'hash')}`)
     return response.data as ApiKey
   } catch (error) {
     throw Error(error)
@@ -1163,6 +1183,7 @@ export const ApiKeys_Create = async (req: CreateApiKeyRequest): Promise<CreateAp
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/apikeys', req)
     return response.data as CreateApiKeyResponse
@@ -1175,6 +1196,7 @@ export const ApiKeys_List = async (): Promise<ListApiKeysResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/apikeys/list`)
     return response.data as ListApiKeysResponse
@@ -1187,6 +1209,7 @@ export const Authentication_ChangePassword = async (req: ChangePasswordRequest):
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.put('/v0/auth/change_password', req)
     return response.data as {}
@@ -1199,6 +1222,7 @@ export const Authentication_Confirm2fa = async (req: Confirm2faRequest): Promise
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.put('/v0/auth/confirm_2fa', req)
     return response.data as {}
@@ -1207,14 +1231,13 @@ export const Authentication_Confirm2fa = async (req: Confirm2faRequest): Promise
   }
 }
 
-export const Authentication_Create2fa = async (
-  req: AuthenticationCreate2faBodyRequestBody
-): Promise<Create2faResponse> => {
+export const Authentication_Create2fa = async (): Promise<Create2faResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.post('/v0/auth/create_2fa', req)
+    const response = await api.post('/v0/auth/create_2fa')
     return response.data as Create2faResponse
   } catch (error) {
     throw Error(error)
@@ -1225,6 +1248,7 @@ export const Authentication_GetJwt = async (req: GetJwtRequest): Promise<GetJwtR
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/auth/get_jwt', req)
     return response.data as GetJwtResponse
@@ -1237,6 +1261,7 @@ export const Authentication_RefreshJwt = async (): Promise<GetJwtResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/auth/refresh_jwt`)
     return response.data as GetJwtResponse
@@ -1249,6 +1274,7 @@ export const Authentication_ResetPassword = async (req: ResetPasswordRequest): P
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.put('/v0/auth/reset_password', req)
     return response.data as {}
@@ -1261,6 +1287,7 @@ export const Authentication_SendPasswordResetEmail = async (req: SendPasswordRes
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/auth/send_password_reset_email', req)
     return response.data as {}
@@ -1277,9 +1304,14 @@ export const Currencies_Convert = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(
-      `/v0/currencies/convert?base_currency=${base_currency}&quote_currency=${quote_currency}&amount=${amount}`
+      `/v0/currencies/convert${buildURL(
+        base_currency && 'base_currency',
+        quote_currency && 'quote_currency',
+        amount && 'amount'
+      )}`
     )
     return response.data as CurrenciesConvertResponse
   } catch (error) {
@@ -1295,8 +1327,11 @@ export const Currencies_Quote = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/currencies/quote?side=${side}&amount=${amount}&currency=${currency}`)
+    const response = await api.get(
+      `/v0/currencies/quote${buildURL(side && 'side', amount && 'amount', currency && 'currency')}`
+    )
     return response.data as CurrenciesQuoteResponse
   } catch (error) {
     throw Error(error)
@@ -1307,6 +1342,7 @@ export const Exchange_RiskLimits = async (): Promise<RiskLimitsResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/exchange/limits`)
     return response.data as RiskLimitsResponse
@@ -1319,6 +1355,7 @@ export const Exchange_ListSettlements = async (): Promise<ListSettlementsRespons
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/exchange/settlement/list`)
     return response.data as ListSettlementsResponse
@@ -1340,9 +1377,19 @@ export const Exchange_ListTrades = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(
-      `/v0/exchange/trades/list?offset=${offset}&limit=${limit}&max_satoshi=${max_satoshi}&min_satoshi=${min_satoshi}&start_time=${start_time}&end_time=${end_time}&sort=${sort}&side=${side}`
+      `/v0/exchange/trades/list${buildURL(
+        offset && 'offset',
+        limit && 'limit',
+        max_satoshi && 'max_satoshi',
+        min_satoshi && 'min_satoshi',
+        start_time && 'start_time',
+        end_time && 'end_time',
+        sort && 'sort',
+        side && 'side'
+      )}`
     )
     return response.data as ListTradesResponse
   } catch (error) {
@@ -1354,32 +1401,32 @@ export const Experimental_GetLNURLWithdrawal = async (secret?: string): Promise<
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/experimental/lnurl/withdraw?secret=${secret}`)
+    const response = await api.get(`/v0/experimental/lnurl/withdraw${buildURL(secret && 'secret')}`)
     return response.data as LNURLWithdrawResponse
   } catch (error) {
     throw Error(error)
   }
 }
 
-export const Experimental_UpdateIsActive = async (req: UpdateIsActiveRequest): Promise<{}> => {
+export const Experimental_CompleteLNURLWithdraw = async (
+  k1?: string,
+  pr?: string,
+  transaction_callback_url?: string
+): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
-  try {
-    const response = await api.post('/v0/experimental/lnurl/withdraw', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
 
-export const Experimental_CompleteLNURLWithdraw = async (k1?: string, pr?: string): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
   try {
-    const response = await api.get(`/v0/experimental/lnurl/withdraw/complete?k1=${k1}&pr=${pr}`)
+    const response = await api.get(
+      `/v0/experimental/lnurl/withdraw/complete${buildURL(
+        k1 && 'k1',
+        pr && 'pr',
+        transaction_callback_url && 'transaction_callback_url'
+      )}`
+    )
     return response.data as {}
   } catch (error) {
     throw Error(error)
@@ -1392,6 +1439,7 @@ export const Experimental_CreateLNURLWithdraw = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/experimental/lnurl/withdraw/create', req)
     return response.data as CreateLNURLWithdrawResponse
@@ -1407,8 +1455,11 @@ export const Fees_EstimateBlockchainFees = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/fees/estimate/blockchain?target=${target}&currency=${currency}`)
+    const response = await api.get(
+      `/v0/fees/estimate/blockchain${buildURL(target && 'target', currency && 'currency')}`
+    )
     return response.data as EstimateBlockchainFeesResponse
   } catch (error) {
     throw Error(error)
@@ -1422,9 +1473,10 @@ export const Fees_EstimateLightningFees = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(
-      `/v0/fees/estimate/lightning?payment_request=${payment_request}&currency=${currency}`
+      `/v0/fees/estimate/lightning${buildURL(payment_request && 'payment_request', currency && 'currency')}`
     )
     return response.data as EstimateLightningFeesResponse
   } catch (error) {
@@ -1441,8 +1493,16 @@ export const Invoices_Get = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/invoices?id=${id}`)
+    const response = await api.get(
+      `/v0/invoices${buildURL(
+        id && 'id',
+        transaction_id && 'transaction_id',
+        address && 'address',
+        payment_request && 'payment_request'
+      )}`
+    )
     return response.data as Invoice
   } catch (error) {
     throw Error(error)
@@ -1453,6 +1513,7 @@ export const Invoices_CreateLightning = async (req: CreateInvoiceRequest): Promi
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/invoices/lightning', req)
     return response.data as Invoice
@@ -1478,9 +1539,23 @@ export const Invoices_List = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(
-      `/v0/invoices/list?offset=${offset}&limit=${limit}&max_satoshi=${max_satoshi}&min_satoshi=${min_satoshi}&start_time=${start_time}&end_time=${end_time}&type=${type}&payment_status=${payment_status}&transactions_count=${transactions_count}&paid_before_expiry=${paid_before_expiry}&expired=${expired}&sort_direction=${sort_direction}`
+      `/v0/invoices/list${buildURL(
+        offset && 'offset',
+        limit && 'limit',
+        max_satoshi && 'max_satoshi',
+        min_satoshi && 'min_satoshi',
+        start_time && 'start_time',
+        end_time && 'end_time',
+        type && 'type',
+        payment_status && 'payment_status',
+        transactions_count && 'transactions_count',
+        paid_before_expiry && 'paid_before_expiry',
+        expired && 'expired',
+        sort_direction && 'sort_direction'
+      )}`
     )
     return response.data as InvoiceList
   } catch (error) {
@@ -1492,6 +1567,7 @@ export const Invoices_CreateOnchain = async (req: CreateInvoiceRequest): Promise
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/invoices/onchain', req)
     return response.data as Invoice
@@ -1504,6 +1580,7 @@ export const System_Ping = async (): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(`/v0/system/ping`)
     return response.data as {}
@@ -1516,8 +1593,9 @@ export const Transactions_GetTransaction = async (id?: string, client_id?: strin
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/transactions?id=${id}&client_id=${client_id}`)
+    const response = await api.get(`/v0/transactions${buildURL(id && 'id', client_id && 'client_id')}`)
     return response.data as Transaction
   } catch (error) {
     throw Error(error)
@@ -1531,8 +1609,11 @@ export const Transactions_GetLightning = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/transactions/lightning?id=${id}`)
+    const response = await api.get(
+      `/v0/transactions/lightning${buildURL(id && 'id', payment_request && 'payment_request')}`
+    )
     return response.data as LightningTransaction
   } catch (error) {
     throw Error(error)
@@ -1543,8 +1624,9 @@ export const Transactions_DecodeLightning = async (payment_request?: string): Pr
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/transactions/lightning/decode?payment_request=${payment_request}`)
+    const response = await api.get(`/v0/transactions/lightning/decode${buildURL(payment_request && 'payment_request')}`)
     return response.data as DecodeLightningResponse
   } catch (error) {
     throw Error(error)
@@ -1555,6 +1637,7 @@ export const Transactions_SendLightning = async (req: SendLightningRequest): Pro
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/transactions/lightning/send', req)
     return response.data as SendTransactionResponse
@@ -1579,9 +1662,22 @@ export const Transactions_ListTransactions = async (
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.get(
-      `/v0/transactions/list?offset=${offset}&limit=${limit}&max_satoshi=${max_satoshi}&min_satoshi=${min_satoshi}&start_time=${start_time}&end_time=${end_time}&direction=${direction}&sort=${sort}&network_type=${network_type}&status=${status}&include_settlements=${include_settlements}`
+      `/v0/transactions/list${buildURL(
+        offset && 'offset',
+        limit && 'limit',
+        max_satoshi && 'max_satoshi',
+        min_satoshi && 'min_satoshi',
+        start_time && 'start_time',
+        end_time && 'end_time',
+        direction && 'direction',
+        sort && 'sort',
+        network_type && 'network_type',
+        status && 'status',
+        include_settlements && 'include_settlements'
+      )}`
     )
     return response.data as ListTransactionsResponse
   } catch (error) {
@@ -1593,8 +1689,9 @@ export const Transactions_GetOnchain = async (id?: string, client_id?: string): 
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
-    const response = await api.get(`/v0/transactions/onchain?id=${id}&client_id=${client_id}`)
+    const response = await api.get(`/v0/transactions/onchain${buildURL(id && 'id', client_id && 'client_id')}`)
     return response.data as OnchainTransaction
   } catch (error) {
     throw Error(error)
@@ -1605,6 +1702,7 @@ export const Transactions_SendOnchain = async (req: SendOnchainRequest): Promise
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/transactions/onchain/send', req)
     return response.data as OnchainTransaction
@@ -1617,6 +1715,7 @@ export const Transactions_SendTransaction = async (req: SendTransactionRequest):
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/transactions/send', req)
     return response.data as SendTransactionResponse
@@ -1629,6 +1728,7 @@ export const Users_CreateUser = async (req: CreateUserRequest): Promise<User> =>
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.post('/v0/users', req)
     return response.data as User
@@ -1641,6 +1741,7 @@ export const Users_UpdateUser = async (req: UpdateUserRequest): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
+
   try {
     const response = await api.put('/v0/users', req)
     return response.data as {}

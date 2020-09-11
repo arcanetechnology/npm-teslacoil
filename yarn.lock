@@ -25,6 +25,11 @@
   dependencies:
     regenerator-runtime "^0.13.4"
 
+"@exodus/schemasafe@^1.0.0-rc.2":
+  version "1.0.0-rc.2"
+  resolved "https://registry.yarnpkg.com/@exodus/schemasafe/-/schemasafe-1.0.0-rc.2.tgz#3a0214ce90709f4d4c19d526890ed2e42b286a66"
+  integrity sha512-W98NvvOe/Med3o66xTO03pd7a2omZebH79PV64gSE+ceDdU8uxQhFTa7ISiD1kseyqyOrMyW5/MNdsGEU02i3Q==
+
 "@mrmlnc/readdir-enhanced@^2.2.1":
   version "2.2.1"
   resolved "https://registry.yarnpkg.com/@mrmlnc/readdir-enhanced/-/readdir-enhanced-2.2.1.tgz#524af240d1a360527b730475ecfa1344aa540dde"
@@ -2275,22 +2280,23 @@ oas-kit-common@^1.0.7, oas-kit-common@^1.0.8:
     fast-safe-stringify "^2.0.7"
 
 oas-linter@^3.1.0:
-  version "3.1.3"
-  resolved "https://registry.yarnpkg.com/oas-linter/-/oas-linter-3.1.3.tgz#1526b3da32a1bbf124d720f27fd4eb9971cebfff"
-  integrity sha512-jFWBHjSoqODGo7cKA/VWqqWSLbHNtnyCEpa2nMMS64SzCUbZDk63Oe7LqQZ2qJA0K2VRreYLt6cVkYy6MqNRDg==
+  version "3.2.0"
+  resolved "https://registry.yarnpkg.com/oas-linter/-/oas-linter-3.2.0.tgz#82d2e586da00adc24c44e44de4b31a6f6ba5cc7e"
+  integrity sha512-LP5F1dhjULEJV5oGRg6ROztH2FddzttrrUEwq5J2GB2Zy938mg0vwt1+Rthn/qqDHtj4Qgq21duNGHh+Ew1wUg==
   dependencies:
+    "@exodus/schemasafe" "^1.0.0-rc.2"
     should "^13.2.1"
-    yaml "^1.8.3"
+    yaml "^1.10.0"
 
 oas-resolver@^2.3.0:
-  version "2.4.3"
-  resolved "https://registry.yarnpkg.com/oas-resolver/-/oas-resolver-2.4.3.tgz#a4a2b599bbf2810c1cfab6a301950573a64a6e84"
-  integrity sha512-+66lGk5GewIXoIkqxfeWp89M/SgQT67oITiuG6qNIUuq1gczIIy68ZrMiE+gyDZY2IAdVxY9k73o9nHBnKwHPA==
+  version "2.4.4"
+  resolved "https://registry.yarnpkg.com/oas-resolver/-/oas-resolver-2.4.4.tgz#d4161f0826a4ea77976608b68843d1cf8eca657b"
+  integrity sha512-670+SM5CXYrjI547cgUeQTdB1wJb2gyrJ7bnGywQMrmciKXhXj/EFbE/8c8wed+j1WmGAh7xS+QdQxiuIlNqlw==
   dependencies:
     node-fetch-h2 "^2.3.0"
     oas-kit-common "^1.0.8"
-    reftools "^1.1.5"
-    yaml "^1.8.3"
+    reftools "^1.1.6"
+    yaml "^1.10.0"
     yargs "^15.3.1"
 
 oas-schema-walker@^1.1.3:
@@ -2723,10 +2729,10 @@ read-pkg@^3.0.0:
     normalize-package-data "^2.3.2"
     path-type "^3.0.0"
 
-reftools@^1.1.0, reftools@^1.1.5:
-  version "1.1.5"
-  resolved "https://registry.yarnpkg.com/reftools/-/reftools-1.1.5.tgz#7f71a8860096e9e28c49b7e16f020790c703ec15"
-  integrity sha512-o7RX5wMzITYj+8P8oaccFH2xYu5nQ63TH0d73Ce5YgpiY9NyFytaQfeg1p1Z5T4yfjKSj0sYuUscBqZgkLsooQ==
+reftools@^1.1.0, reftools@^1.1.6:
+  version "1.1.6"
+  resolved "https://registry.yarnpkg.com/reftools/-/reftools-1.1.6.tgz#841b1ac241259632d63167bf708eccfbfbbba5b5"
+  integrity sha512-rQfJ025lvPjw9qyQuNPqE+cRs5qVs7BMrZwgRJnmuMcX/8r/eJE8f5/RCunJWViXKHmN5K2DFafYzglLOHE/tw==
 
 regenerator-runtime@^0.13.4:
   version "0.13.7"
@@ -2836,7 +2842,7 @@ resolve@^1.10.0, resolve@^1.11.0, resolve@^1.5.0:
 
 "restful-react@https://github.com/bjornoj/restful-react":
   version "14.4.0"
-  resolved "https://github.com/bjornoj/restful-react#95b57a12213cd30a88d4c1b8b99a2b389def755b"
+  resolved "https://github.com/bjornoj/restful-react#64a44cfdbe0a84b955965f09acb35051a5451806"
   dependencies:
     case "^1.6.2"
     chalk "^3.0.0"
@@ -2895,9 +2901,9 @@ rxjs@^6.4.0:
     tslib "^1.9.0"
 
 rxjs@^6.6.0:
-  version "6.6.2"
-  resolved "https://registry.yarnpkg.com/rxjs/-/rxjs-6.6.2.tgz#8096a7ac03f2cc4fe5860ef6e572810d9e01c0d2"
-  integrity sha512-BHdBMVoWC2sL26w//BCu3YzKT4s2jip/WhwsGEDmeKYBhKDZeYezVUnHatYB7L85v5xs0BAQmg6BEYJEKxBabg==
+  version "6.6.3"
+  resolved "https://registry.yarnpkg.com/rxjs/-/rxjs-6.6.3.tgz#8ca84635c4daa900c0d3967a6ee7ac60271ee552"
+  integrity sha512-trsQc+xYYXZ3urjOiJOuCOa5N3jAZ3eiSpQB5hIT8zGlL2QfnHLJ2r7GMkBGuIausdJN1OneaI6gQlsqNHHmZQ==
   dependencies:
     tslib "^1.9.0"
 
@@ -3277,9 +3283,9 @@ supports-color@^5.3.0:
     has-flag "^3.0.0"
 
 supports-color@^7.1.0:
-  version "7.1.0"
-  resolved "https://registry.yarnpkg.com/supports-color/-/supports-color-7.1.0.tgz#68e32591df73e25ad1c4b49108a2ec507962bfd1"
-  integrity sha512-oRSIpR8pxT1Wr2FquTNnGet79b3BWljqOuoW/h4oBhxJ/HUbX5nX6JSruTkvXDCFMwDPvsaTTbvMLKZWSy0R5g==
+  version "7.2.0"
+  resolved "https://registry.yarnpkg.com/supports-color/-/supports-color-7.2.0.tgz#1b7dcdcb32b8138801b3e478ba6a51caa89648da"
+  integrity sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==
   dependencies:
     has-flag "^4.0.0"
 
@@ -3622,7 +3628,7 @@ yaml-js@^0.2.3:
   resolved "https://registry.yarnpkg.com/yaml-js/-/yaml-js-0.2.3.tgz#f4cf6c1b3c784f59f55547d7dfcdd06418303291"
   integrity sha512-6xUQtVKl1qcd0EXtTEzUDVJy9Ji1fYa47LtkDtYKlIjhibPE9knNPmoRyf6SGREFHlOAUyDe9OdYqRP4DuSi5Q==
 
-yaml@^1.8.3:
+yaml@^1.10.0, yaml@^1.8.3:
   version "1.10.0"
   resolved "https://registry.yarnpkg.com/yaml/-/yaml-1.10.0.tgz#3b593add944876077d4d683fee01081bd9fff31e"
   integrity sha512-yr2icI4glYaNG+KWONODapy2/jDdMSDnrONSjblABjD9B4Z5LgiircSt8m8sRZFNi08kG9Sm0uSHtEmP3zaEGg==
