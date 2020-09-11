@@ -7,16 +7,26 @@ const api = axios.create({
 })
 
 const apiKeyNotSetMessage = "looks like you haven't set your api-key! set api-key by calling setCredentials(key)"
-type environments = 'MAINNET' | 'TESTNET'
+type environments = 'MAINNET' | 'TESTNET' | 'REGTEST'
 let apiKey = ''
 
-export const setCredentials = (key: string, network: environments = 'MAINNET'): void => {
+export const setCredentials = (key: string, network: environments = 'REGTEST'): void => {
   if (key === '') {
     throw Error('api key can not be set to empty string')
   }
 
   apiKey = key
-  api.defaults.baseURL = network === 'MAINNET' ? 'https://api.teslacoil.io' : 'https://testnetapi.teslacoil.io'
+  switch (network) {
+    case 'MAINNET':
+      api.defaults.baseURL = 'https://api.teslacoil.io'
+      break
+    case 'TESTNET':
+      api.defaults.baseURL = 'https://testnetapi.teslacoil.io'
+      break
+    case 'REGTEST':
+      api.defaults.baseURL = 'http://localhost:5000'
+      break
+  }
   api.defaults.timeout = 5000
   api.defaults.headers = { Authorization: apiKey }
 }
@@ -120,6 +130,10 @@ export interface ChangePasswordRequest {
    * field.
    */
   repeated_new_password: string
+}
+
+export interface CompleteLNURLWithdrawResponse {
+  transaction_id?: string
 }
 
 export interface Confirm2faRequest {
@@ -1414,7 +1428,7 @@ export const Experimental_CompleteLNURLWithdraw = async (
   k1?: string,
   pr?: string,
   transaction_callback_url?: string
-): Promise<{}> => {
+): Promise<CompleteLNURLWithdrawResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1427,7 +1441,7 @@ export const Experimental_CompleteLNURLWithdraw = async (
         transaction_callback_url && 'transaction_callback_url'
       )}`
     )
-    return response.data as {}
+    return response.data as CompleteLNURLWithdrawResponse
   } catch (error) {
     throw Error(error)
   }

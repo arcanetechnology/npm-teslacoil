@@ -15,16 +15,26 @@ const api = axios.create({
 });
 
 const apiKeyNotSetMessage = \"looks like you haven't set your api-key! set api-key by calling setCredentials(key)\";
-type environments = \"MAINNET\" | \"TESTNET\";
+type environments = \"MAINNET\" | \"TESTNET\" | \"REGTEST\";
 let apiKey = \"\";
 
-export const setCredentials = (key: string, network: environments = \"MAINNET\"): void => {
+export const setCredentials = (key: string, network: environments = \"REGTEST\"): void => {
   if (key === \"\") {
     throw Error(\"api key can not be set to empty string\");
   }
 
   apiKey = key;
-  api.defaults.baseURL = network === \"MAINNET\" ? \"https://api.teslacoil.io\" : \"https://testnetapi.teslacoil.io\";
+  switch (network) {
+    case \"MAINNET\":
+      api.defaults.baseURL = \"https://api.teslacoil.io\";
+      break;
+    case \"TESTNET\":
+      api.defaults.baseURL = \"https://testnetapi.teslacoil.io\";
+      break;
+    case \"REGTEST\":
+      api.defaults.baseURL = \"http://localhost:5000\";
+      break;
+  }
   api.defaults.timeout = 5000;
   api.defaults.headers = { Authorization: apiKey };
 };
