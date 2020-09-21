@@ -132,7 +132,7 @@
       "Account": {
         "properties": {
           "auto_exchange_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/fiatcurrencyFiatCurrency"
           },
           "balance_bitcoin": {
             "format": "double",
@@ -172,6 +172,9 @@
           "admin": {
             "title": "Whether or not the user is an administrator of the system",
             "type": "boolean"
+          },
+          "auto_exchange_currency": {
+            "$ref": "#/components/schemas/fiatcurrencyFiatCurrency"
           },
           "balance_bitcoin": {
             "format": "double",
@@ -229,12 +232,16 @@
             "format": "uuid",
             "title": "ID of which user",
             "type": "string"
+          },
+          "user_preferred_display_currency": {
+            "$ref": "#/components/schemas/CryptoCurrencyFormat"
           }
         },
         "required": [
           "account_id",
           "account_name",
           "admin",
+          "auto_exchange_currency",
           "balance_bitcoin",
           "balance_satoshi",
           "create_time",
@@ -247,7 +254,8 @@
           "owner",
           "permissions",
           "update_time",
-          "user_id"
+          "user_id",
+          "user_preferred_display_currency"
         ],
         "type": "object"
       },
@@ -400,6 +408,17 @@
         "title": "Options for changing password\nTODO: TOTP code",
         "type": "object"
       },
+      "CompleteLNURLWithdrawResponse": {
+        "properties": {
+          "transaction_id": {
+            "format": "uuid",
+            "title": "the ID of the transaction that was initiated for the withdrawal request",
+            "type": "string"
+          }
+        },
+        "title": "Contains fields with information about every that was created when completing\nthe lnurl withdrawal",
+        "type": "object"
+      },
       "Confirm2faRequest": {
         "properties": {
           "code": {
@@ -498,14 +517,14 @@
             "type": "string"
           },
           "currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "description": {
             "description": "An (optional) description to associate with this invoice. This is only\nvisible to the creator of the invoice.",
             "type": "string"
           },
           "exchange_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/fiatcurrencyFiatCurrency"
           },
           "expiry_seconds": {
             "description": "The expiry of this invoice. Defaults to 1 hour, if not\nset or set to zero. It is still possible for the user to send money to the\naddress associated with this invoice, but it will not make it count as\nsettled.",
@@ -521,14 +540,14 @@
       },
       "CreateLNURLWithdrawRequest": {
         "properties": {
+          "custom_complete_url": {
+            "title": "what (if any) URL the users wallet should hit to complete the url",
+            "type": "string"
+          },
           "expiry_seconds": {
             "description": "if set, will make sure the lnurl withdrawal can't be completed after a set\ntime defaults to 3600 (1 hour).",
             "format": "int32",
             "type": "integer"
-          },
-          "is_active": {
-            "description": "whether the created lnurl withdrawal should be active or not. If set to\nfalse, it is not possible to withdraw money using the created lnurl.",
-            "type": "boolean"
           },
           "lightning_request_memo": {
             "description": "An optional description used to request the caller of this request to\nencode this field in the generated lightning request.",
@@ -551,6 +570,10 @@
       "CreateLNURLWithdrawResponse": {
         "description": "Contains all necessary information to show a lnurl withdrawal QR code to the\nuser.",
         "properties": {
+          "k1_secret": {
+            "title": "the k1 secret generated used to identify the withdrawal internally",
+            "type": "string"
+          },
           "lnurl": {
             "description": "An encoded lnurl containing a link to GET more information about the\nwithdrawal, including the secret.",
             "type": "string"
@@ -576,6 +599,15 @@
         "title": "The available options for creating a user",
         "type": "object"
       },
+      "CryptoCurrencyFormat": {
+        "description": "- BITCOIN: Whole units of bitcoin\n - SATOSHIS: 1/100 000 000 of a bitcoin",
+        "enum": [
+          "BITCOIN",
+          "SATOSHIS"
+        ],
+        "title": "Formats cryptocurrencies can be displayed in",
+        "type": "string"
+      },
       "CurrenciesConvertResponse": {
         "properties": {
           "amount": {
@@ -584,10 +616,10 @@
             "type": "number"
           },
           "base_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "quote_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           }
         },
         "required": [
@@ -611,10 +643,10 @@
             "type": "number"
           },
           "base_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "quote_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "rate": {
             "format": "double",
@@ -631,18 +663,6 @@
         ],
         "title": "The response from the Quote endpoint. The quote currency will always be the\nsame as the currency you supplied in the request",
         "type": "object"
-      },
-      "Currency": {
-        "description": "ISO 4217: alpha 3-letter e.g EUR, BTC.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
-        "enum": [
-          "BTC",
-          "SAT",
-          "GBP",
-          "NOK",
-          "USD",
-          "EUR"
-        ],
-        "type": "string"
       },
       "DecodeLightningResponse": {
         "properties": {
@@ -685,7 +705,7 @@
             "type": "number"
           },
           "currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "sats_per_byte": {
             "format": "double",
@@ -704,7 +724,7 @@
       "EstimateLightningFeesResponse": {
         "properties": {
           "currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "fee": {
             "format": "double",
@@ -802,7 +822,7 @@
             "type": "string"
           },
           "exchange_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/fiatcurrencyFiatCurrency"
           },
           "expiry_seconds": {
             "description": "How long this invoice is valid for, measured in seconds. If this invoice\nhas an associated Lightning request, it is not to possible to pay\nit after the invoice is expired. If it has a bitcoin address associated\nwith it, it is\n still possible to send money to the associated bitcoin address after the\n invoices is expired, but it will not cause the invoice to become settled.",
@@ -810,7 +830,7 @@
             "type": "number"
           },
           "fiat_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/fiatcurrencyFiatCurrency"
           },
           "id": {
             "format": "uuid",
@@ -1468,7 +1488,7 @@
             "type": "string"
           },
           "currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "description": {
             "description": "An (optional) description to associate with this transaction. Only visible\nto the sender of the transaction.",
@@ -1522,7 +1542,7 @@
             "type": "string"
           },
           "currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "description": {
             "description": "An optional description to associate with this transaction. This is only\nvisible to the sender of this request.",
@@ -1565,7 +1585,7 @@
             "type": "string"
           },
           "currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "direction": {
             "$ref": "#/components/schemas/TransactionDirection"
@@ -1670,7 +1690,7 @@
             "type": "number"
           },
           "base": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "create_time": {
             "format": "date-time",
@@ -1683,7 +1703,7 @@
             "type": "string"
           },
           "quote": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/currencyCurrency"
           },
           "rate": {
             "format": "double",
@@ -1828,7 +1848,7 @@
       "UpdateAccountRequest": {
         "properties": {
           "new_auto_exchange_currency": {
-            "$ref": "#/components/schemas/Currency"
+            "$ref": "#/components/schemas/fiatcurrencyFiatCurrency"
           },
           "new_name": {
             "title": "The new name you want set for the account",
@@ -1841,20 +1861,6 @@
         "title": "Contains fields that can be changed for an account",
         "type": "object"
       },
-      "UpdateIsActiveRequest": {
-        "properties": {
-          "is_active": {
-            "title": "whether it is possible to withdraw money using the lnurl or not",
-            "type": "boolean"
-          },
-          "secret": {
-            "title": "the k1 secret generated when creating the lnurl withdrawal",
-            "type": "string"
-          }
-        },
-        "title": "Used to update whether the lnurl can withdraw money or not",
-        "type": "object"
-      },
       "UpdateUserRequest": {
         "properties": {
           "first_name": {
@@ -1864,6 +1870,9 @@
           "last_name": {
             "title": "If set, updates the users last name to this value",
             "type": "string"
+          },
+          "preferred_display_currency": {
+            "$ref": "#/components/schemas/CryptoCurrencyFormat"
           }
         },
         "title": "Options for updating user data",
@@ -1887,16 +1896,42 @@
           "last_name": {
             "title": "The last name, if any, of this user",
             "type": "string"
+          },
+          "preferred_crypto_display_currency": {
+            "$ref": "#/components/schemas/CryptoCurrencyFormat"
           }
         },
         "required": [
           "email",
           "first_name",
           "id",
-          "last_name"
+          "last_name",
+          "preferred_crypto_display_currency"
         ],
         "title": "A Teslacoil user",
         "type": "object"
+      },
+      "currencyCurrency": {
+        "description": "ISO 4217: alpha 3-letter e.g EUR, BTC.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000\nof 1 BTC.",
+        "enum": [
+          "BTC",
+          "SAT",
+          "GBP",
+          "NOK",
+          "USD",
+          "EUR"
+        ],
+        "type": "string"
+      },
+      "fiatcurrencyFiatCurrency": {
+        "enum": [
+          "GBP",
+          "NOK",
+          "USD",
+          "EUR"
+        ],
+        "title": "Fiat currencies support by Teslacoil",
+        "type": "string"
       },
       "protobufAny": {
         "description": "`Any` contains an arbitrary serialized protocol buffer message along with a\nURL that describes the type of the serialized message.\n\nProtobuf library provides support to pack/unpack Any values in the form\nof utility functions or additional generated methods of the Any type.\n\nExample 1: Pack and unpack a message in C++.\n\n    Foo foo = ...;\n    Any any;\n    any.PackFrom(foo);\n    ...\n    if (any.UnpackTo(&foo)) {\n      ...\n    }\n\nExample 2: Pack and unpack a message in Java.\n\n    Foo foo = ...;\n    Any any = Any.pack(foo);\n    ...\n    if (any.is(Foo.class)) {\n      foo = any.unpack(Foo.class);\n    }\n\n Example 3: Pack and unpack a message in Python.\n\n    foo = Foo(...)\n    any = Any()\n    any.Pack(foo)\n    ...\n    if any.Is(Foo.DESCRIPTOR):\n      any.Unpack(foo)\n      ...\n\n Example 4: Pack and unpack a message in Go\n\n     foo := &pb.Foo{...}\n     any, err := ptypes.MarshalAny(foo)\n     ...\n     foo := &pb.Foo{}\n     if err := ptypes.UnmarshalAny(any, foo); err != nil {\n       ...\n     }\n\nThe pack methods provided by protobuf library will by default use\n'type.googleapis.com/full.type.name' as the type URL and the unpack\nmethods only use the fully qualified type name after the last '/'\nin the type URL, for example \"foo.bar.com/x/y.z\" will yield type\nname \"y.z\".\n\n\nJSON\n====\nThe JSON representation of an `Any` value uses the regular\nrepresentation of the deserialized, embedded message, with an\nadditional field `@type` which contains the type URL. Example:\n\n    package google.profile;\n    message Person {\n      string first_name = 1;\n      string last_name = 2;\n    }\n\n    {\n      \"@type\": \"type.googleapis.com/google.profile.Person\",\n      \"firstName\": <string>,\n      \"lastName\": <string>\n    }\n\nIf the embedded message type is well-known and has a custom JSON\nrepresentation, that representation will be embedded adding a field\n`value` which holds the custom JSON in addition to the `@type`\nfield. Example (for message [google.protobuf.Duration][]):\n\n    {\n      \"@type\": \"type.googleapis.com/google.protobuf.Duration\",\n      \"value\": \"1.212s\"\n    }",
@@ -1956,7 +1991,7 @@
     },
     "description": "Unstoppable payments accessible over a easy-to-use REST  interface. See [our general docs site](..) for extensive guides and information on how to integrate with the API, as  well as general Bitcoin/Lightning guides, articles and FAQs.\n",
     "title": "Teslacoil payment processing API",
-    "version": "v0.6.4",
+    "version": "v0.6.5",
     "x-logo": {
       "url": "/img/teslacoil-logo-padding.png"
     }
@@ -3273,7 +3308,7 @@
         "operationId": "Currencies_Convert",
         "parameters": [
           {
-            "description": "The base currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
+            "description": "The base currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000\nof 1 BTC.",
             "in": "query",
             "name": "base_currency",
             "required": false,
@@ -3290,7 +3325,7 @@
             }
           },
           {
-            "description": "The quote currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
+            "description": "The quote currency used for getting the base/quote price.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000\nof 1 BTC.",
             "in": "query",
             "name": "quote_currency",
             "required": false,
@@ -3394,14 +3429,12 @@
             }
           },
           {
-            "description": "Which currency the amount is denominated in.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
+            "description": "Which currency the amount is denominated in.",
             "in": "query",
             "name": "currency",
             "required": false,
             "schema": {
               "enum": [
-                "BTC",
-                "SAT",
                 "GBP",
                 "NOK",
                 "USD",
@@ -3745,46 +3778,6 @@
         "tags": [
           "Experimental"
         ]
-      },
-      "post": {
-        "description": "Mark the withdrawal specified in the request as ready forwithdrawing or not.",
-        "operationId": "Experimental_UpdateIsActive",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateIsActiveRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {}
-                }
-              }
-            },
-            "description": "A successful response."
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/runtimeError"
-                }
-              }
-            },
-            "description": "An unexpected error response"
-          }
-        },
-        "summary": "Mark the withdrawal as ready for withdrawing or not",
-        "tags": [
-          "Experimental"
-        ]
       }
     },
     "/v0/experimental/lnurl/withdraw/complete": {
@@ -3809,6 +3802,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "The URL we send a POST request to when the transaction is completed.",
+            "in": "query",
+            "name": "transaction_callback_url",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3816,7 +3818,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "properties": {}
+                  "$ref": "#/components/schemas/CompleteLNURLWithdrawResponse"
                 }
               }
             },
@@ -3897,7 +3899,7 @@
             }
           },
           {
-            "description": "The currency the fee should be denominated in, defaults to SAT.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
+            "description": "The currency the fee should be denominated in, defaults to SAT.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000\nof 1 BTC.",
             "in": "query",
             "name": "currency",
             "required": false,
@@ -3978,7 +3980,7 @@
             }
           },
           {
-            "description": "The currency the fee should be denominated in, defaults to SAT.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000 of\n1 BTC.",
+            "description": "The currency the fee should be denominated in, defaults to SAT.\n\n - BTC: BTC is the ticker for bitcoin\n - SAT: SAT is the smallest denominator of 1 BTC, and is equal to 1/100_000_000\nof 1 BTC.",
             "in": "query",
             "name": "currency",
             "required": false,
