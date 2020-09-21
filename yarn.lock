@@ -138,9 +138,9 @@ ajv@^6.10.0, ajv@^6.10.2:
     uri-js "^4.2.2"
 
 ajv@^6.12.3:
-  version "6.12.4"
-  resolved "https://registry.yarnpkg.com/ajv/-/ajv-6.12.4.tgz#0614facc4522127fa713445c6bfd3ebd376e2234"
-  integrity sha512-eienB2c9qVQs2KWexhkrdMLVDoIQCz5KSeLxwg9Lzk4DOfBtIK9PQwwufcsn1jjGuf9WZmqPMbGxOzfcuphJCQ==
+  version "6.12.5"
+  resolved "https://registry.yarnpkg.com/ajv/-/ajv-6.12.5.tgz#19b0e8bae8f476e5ba666300387775fb1a00a4da"
+  integrity sha512-lRF8RORchjpKG50/WFf8xmg7sgCLFiYNNnqdKflk63whMQcWR5ngGjiSXkL9bjxy6B2npOK2HSMN49jEBMSkag==
   dependencies:
     fast-deep-equal "^3.1.1"
     fast-json-stable-stringify "^2.0.0"
@@ -2289,9 +2289,9 @@ oas-linter@^3.1.0:
     yaml "^1.10.0"
 
 oas-resolver@^2.3.0:
-  version "2.4.4"
-  resolved "https://registry.yarnpkg.com/oas-resolver/-/oas-resolver-2.4.4.tgz#d4161f0826a4ea77976608b68843d1cf8eca657b"
-  integrity sha512-670+SM5CXYrjI547cgUeQTdB1wJb2gyrJ7bnGywQMrmciKXhXj/EFbE/8c8wed+j1WmGAh7xS+QdQxiuIlNqlw==
+  version "2.5.0"
+  resolved "https://registry.yarnpkg.com/oas-resolver/-/oas-resolver-2.5.0.tgz#b8f1d784da87c819fc4448f24aba13193d98c549"
+  integrity sha512-69OF0iCTDXXp3ttAEPUcCz/eSJd6eyrWAIrPit2wnL7Q4Ti82Q2dXQVMdz5S+JPCgtZOETnTgPs/EsMuH2vIzg==
   dependencies:
     node-fetch-h2 "^2.3.0"
     oas-kit-common "^1.0.8"
@@ -2842,7 +2842,7 @@ resolve@^1.10.0, resolve@^1.11.0, resolve@^1.5.0:
 
 "restful-react@https://github.com/bjornoj/restful-react":
   version "14.4.0"
-  resolved "https://github.com/bjornoj/restful-react#64a44cfdbe0a84b955965f09acb35051a5451806"
+  resolved "https://github.com/bjornoj/restful-react#6b24f4bb632addd1cbe58f5b4e0fdba540d01dd8"
   dependencies:
     case "^1.6.2"
     chalk "^3.0.0"
