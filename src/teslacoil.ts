@@ -1033,18 +1033,21 @@ export interface AuthenticationCreate2faBodyRequestBody {}
 
 export type CreateInvoiceRequestRequestBody = CreateInvoiceRequest
 
-const buildURL = (...args: any[]): string => {
-  let url = ''
+const buildURL = (route: string, ...args: [string, string | number | undefined | boolean][]): string => {
+  let url = route
+  let params = ''
   args.forEach(arg => {
-    if (arg) {
-      if (url === '') {
-        url += `?${arg}=\${${arg}}`
+    const name = arg[0]
+    const value = arg[1]
+    if (value) {
+      if (params === '') {
+        params += `?${name}=${value}`
       } else {
-        url += `&${arg}=\${${arg}}`
+        params += `&${name}=${value}`
       }
     }
   })
-  return `${url}`
+  return `${url}${params}`
 }
 
 export const Accounting_GetStatement = async (start_time?: string, end_time?: string): Promise<Statement> => {
@@ -1054,7 +1057,7 @@ export const Accounting_GetStatement = async (start_time?: string, end_time?: st
 
   try {
     const response = await api.get(
-      `/v0/accounting/statement${buildURL(start_time ? 'start_time' : undefined, end_time ? 'end_time' : undefined)}`
+      buildURL('/v0/accounting/statement', ['start_time', start_time], ['end_time', end_time])
     )
     return response.data as Statement
   } catch (error) {
@@ -1068,7 +1071,7 @@ export const Accounts_Get = async (): Promise<Account> => {
   }
 
   try {
-    const response = await api.get(`/v0/accounts`)
+    const response = await api.get(buildURL('/v0/accounts'))
     return response.data as Account
   } catch (error) {
     throw Error(error)
@@ -1107,7 +1110,7 @@ export const Accounts_RemoveAccess = async (user_id?: string): Promise<{}> => {
   }
 
   try {
-    const response = await api.delete(`/v0/accounts/access${buildURL(user_id ? 'user_id' : undefined)}`)
+    const response = await api.delete(buildURL('/v0/accounts/access', ['user_id', user_id]))
     return response.data as {}
   } catch (error) {
     throw Error(error)
@@ -1146,7 +1149,7 @@ export const Accounts_List = async (): Promise<ListAccountsResponse> => {
   }
 
   try {
-    const response = await api.get(`/v0/accounts/list`)
+    const response = await api.get(buildURL('/v0/accounts/list'))
     return response.data as ListAccountsResponse
   } catch (error) {
     throw Error(error)
@@ -1159,7 +1162,7 @@ export const Accounts_ListAccountNames = async (): Promise<ListAccountNamesRespo
   }
 
   try {
-    const response = await api.get(`/v0/accounts/names`)
+    const response = await api.get(buildURL('/v0/accounts/names'))
     return response.data as ListAccountNamesResponse
   } catch (error) {
     throw Error(error)
@@ -1172,7 +1175,7 @@ export const Accounts_GetUserInfo = async (user_id?: string): Promise<AccountUse
   }
 
   try {
-    const response = await api.get(`/v0/accounts/user${buildURL(user_id ? 'user_id' : undefined)}`)
+    const response = await api.get(buildURL('/v0/accounts/user', ['user_id', user_id]))
     return response.data as AccountUser
   } catch (error) {
     throw Error(error)
@@ -1185,7 +1188,7 @@ export const ApiKeys_Delete = async (hash?: string): Promise<ApiKey> => {
   }
 
   try {
-    const response = await api.delete(`/v0/apikeys${buildURL(hash ? 'hash' : undefined)}`)
+    const response = await api.delete(buildURL('/v0/apikeys', ['hash', hash]))
     return response.data as ApiKey
   } catch (error) {
     throw Error(error)
@@ -1198,7 +1201,7 @@ export const ApiKeys_Get = async (hash?: string): Promise<ApiKey> => {
   }
 
   try {
-    const response = await api.get(`/v0/apikeys${buildURL(hash ? 'hash' : undefined)}`)
+    const response = await api.get(buildURL('/v0/apikeys', ['hash', hash]))
     return response.data as ApiKey
   } catch (error) {
     throw Error(error)
@@ -1224,7 +1227,7 @@ export const ApiKeys_List = async (): Promise<ListApiKeysResponse> => {
   }
 
   try {
-    const response = await api.get(`/v0/apikeys/list`)
+    const response = await api.get(buildURL('/v0/apikeys/list'))
     return response.data as ListApiKeysResponse
   } catch (error) {
     throw Error(error)
@@ -1289,7 +1292,7 @@ export const Authentication_RefreshJwt = async (): Promise<GetJwtResponse> => {
   }
 
   try {
-    const response = await api.get(`/v0/auth/refresh_jwt`)
+    const response = await api.get(buildURL('/v0/auth/refresh_jwt'))
     return response.data as GetJwtResponse
   } catch (error) {
     throw Error(error)
@@ -1333,11 +1336,12 @@ export const Currencies_Convert = async (
 
   try {
     const response = await api.get(
-      `/v0/currencies/convert${buildURL(
-        base_currency ? 'base_currency' : undefined,
-        quote_currency ? 'quote_currency' : undefined,
-        amount ? 'amount' : undefined
-      )}`
+      buildURL(
+        '/v0/currencies/convert',
+        ['base_currency', base_currency],
+        ['quote_currency', quote_currency],
+        ['amount', amount]
+      )
     )
     return response.data as CurrenciesConvertResponse
   } catch (error) {
@@ -1356,11 +1360,7 @@ export const Currencies_Quote = async (
 
   try {
     const response = await api.get(
-      `/v0/currencies/quote${buildURL(
-        side ? 'side' : undefined,
-        amount ? 'amount' : undefined,
-        currency ? 'currency' : undefined
-      )}`
+      buildURL('/v0/currencies/quote', ['side', side], ['amount', amount], ['currency', currency])
     )
     return response.data as CurrenciesQuoteResponse
   } catch (error) {
@@ -1374,7 +1374,7 @@ export const Exchange_RiskLimits = async (): Promise<RiskLimitsResponse> => {
   }
 
   try {
-    const response = await api.get(`/v0/exchange/limits`)
+    const response = await api.get(buildURL('/v0/exchange/limits'))
     return response.data as RiskLimitsResponse
   } catch (error) {
     throw Error(error)
@@ -1387,7 +1387,7 @@ export const Exchange_ListSettlements = async (): Promise<ListSettlementsRespons
   }
 
   try {
-    const response = await api.get(`/v0/exchange/settlement/list`)
+    const response = await api.get(buildURL('/v0/exchange/settlement/list'))
     return response.data as ListSettlementsResponse
   } catch (error) {
     throw Error(error)
@@ -1410,16 +1410,17 @@ export const Exchange_ListTrades = async (
 
   try {
     const response = await api.get(
-      `/v0/exchange/trades/list${buildURL(
-        offset ? 'offset' : undefined,
-        limit ? 'limit' : undefined,
-        max_satoshi ? 'max_satoshi' : undefined,
-        min_satoshi ? 'min_satoshi' : undefined,
-        start_time ? 'start_time' : undefined,
-        end_time ? 'end_time' : undefined,
-        sort ? 'sort' : undefined,
-        side ? 'side' : undefined
-      )}`
+      buildURL(
+        '/v0/exchange/trades/list',
+        ['offset', offset],
+        ['limit', limit],
+        ['max_satoshi', max_satoshi],
+        ['min_satoshi', min_satoshi],
+        ['start_time', start_time],
+        ['end_time', end_time],
+        ['sort', sort],
+        ['side', side]
+      )
     )
     return response.data as ListTradesResponse
   } catch (error) {
@@ -1433,7 +1434,7 @@ export const Experimental_GetLNURLWithdrawal = async (secret?: string): Promise<
   }
 
   try {
-    const response = await api.get(`/v0/experimental/lnurl/withdraw${buildURL(secret ? 'secret' : undefined)}`)
+    const response = await api.get(buildURL('/v0/experimental/lnurl/withdraw', ['secret', secret]))
     return response.data as LNURLWithdrawResponse
   } catch (error) {
     throw Error(error)
@@ -1451,11 +1452,12 @@ export const Experimental_CompleteLNURLWithdraw = async (
 
   try {
     const response = await api.get(
-      `/v0/experimental/lnurl/withdraw/complete${buildURL(
-        k1 ? 'k1' : undefined,
-        pr ? 'pr' : undefined,
-        transaction_callback_url ? 'transaction_callback_url' : undefined
-      )}`
+      buildURL(
+        '/v0/experimental/lnurl/withdraw/complete',
+        ['k1', k1],
+        ['pr', pr],
+        ['transaction_callback_url', transaction_callback_url]
+      )
     )
     return response.data as CompleteLNURLWithdrawResponse
   } catch (error) {
@@ -1487,9 +1489,7 @@ export const Fees_EstimateBlockchainFees = async (
   }
 
   try {
-    const response = await api.get(
-      `/v0/fees/estimate/blockchain${buildURL(target ? 'target' : undefined, currency ? 'currency' : undefined)}`
-    )
+    const response = await api.get(buildURL('/v0/fees/estimate/blockchain', ['target', target], ['currency', currency]))
     return response.data as EstimateBlockchainFeesResponse
   } catch (error) {
     throw Error(error)
@@ -1506,10 +1506,7 @@ export const Fees_EstimateLightningFees = async (
 
   try {
     const response = await api.get(
-      `/v0/fees/estimate/lightning${buildURL(
-        payment_request ? 'payment_request' : undefined,
-        currency ? 'currency' : undefined
-      )}`
+      buildURL('/v0/fees/estimate/lightning', ['payment_request', payment_request], ['currency', currency])
     )
     return response.data as EstimateLightningFeesResponse
   } catch (error) {
@@ -1529,12 +1526,13 @@ export const Invoices_Get = async (
 
   try {
     const response = await api.get(
-      `/v0/invoices${buildURL(
-        id ? 'id' : undefined,
-        transaction_id ? 'transaction_id' : undefined,
-        address ? 'address' : undefined,
-        payment_request ? 'payment_request' : undefined
-      )}`
+      buildURL(
+        '/v0/invoices',
+        ['id', id],
+        ['transaction_id', transaction_id],
+        ['address', address],
+        ['payment_request', payment_request]
+      )
     )
     return response.data as Invoice
   } catch (error) {
@@ -1575,20 +1573,21 @@ export const Invoices_List = async (
 
   try {
     const response = await api.get(
-      `/v0/invoices/list${buildURL(
-        offset ? 'offset' : undefined,
-        limit ? 'limit' : undefined,
-        max_satoshi ? 'max_satoshi' : undefined,
-        min_satoshi ? 'min_satoshi' : undefined,
-        start_time ? 'start_time' : undefined,
-        end_time ? 'end_time' : undefined,
-        type ? 'type' : undefined,
-        payment_status ? 'payment_status' : undefined,
-        transactions_count ? 'transactions_count' : undefined,
-        paid_before_expiry ? 'paid_before_expiry' : undefined,
-        expired ? 'expired' : undefined,
-        sort_direction ? 'sort_direction' : undefined
-      )}`
+      buildURL(
+        '/v0/invoices/list',
+        ['offset', offset],
+        ['limit', limit],
+        ['max_satoshi', max_satoshi],
+        ['min_satoshi', min_satoshi],
+        ['start_time', start_time],
+        ['end_time', end_time],
+        ['type', type],
+        ['payment_status', payment_status],
+        ['transactions_count', transactions_count],
+        ['paid_before_expiry', paid_before_expiry],
+        ['expired', expired],
+        ['sort_direction', sort_direction]
+      )
     )
     return response.data as InvoiceList
   } catch (error) {
@@ -1615,7 +1614,7 @@ export const System_Ping = async (): Promise<{}> => {
   }
 
   try {
-    const response = await api.get(`/v0/system/ping`)
+    const response = await api.get(buildURL('/v0/system/ping'))
     return response.data as {}
   } catch (error) {
     throw Error(error)
@@ -1628,9 +1627,7 @@ export const Transactions_GetTransaction = async (id?: string, client_id?: strin
   }
 
   try {
-    const response = await api.get(
-      `/v0/transactions${buildURL(id ? 'id' : undefined, client_id ? 'client_id' : undefined)}`
-    )
+    const response = await api.get(buildURL('/v0/transactions', ['id', id], ['client_id', client_id]))
     return response.data as Transaction
   } catch (error) {
     throw Error(error)
@@ -1647,7 +1644,7 @@ export const Transactions_GetLightning = async (
 
   try {
     const response = await api.get(
-      `/v0/transactions/lightning${buildURL(id ? 'id' : undefined, payment_request ? 'payment_request' : undefined)}`
+      buildURL('/v0/transactions/lightning', ['id', id], ['payment_request', payment_request])
     )
     return response.data as LightningTransaction
   } catch (error) {
@@ -1661,9 +1658,7 @@ export const Transactions_DecodeLightning = async (payment_request?: string): Pr
   }
 
   try {
-    const response = await api.get(
-      `/v0/transactions/lightning/decode${buildURL(payment_request ? 'payment_request' : undefined)}`
-    )
+    const response = await api.get(buildURL('/v0/transactions/lightning/decode', ['payment_request', payment_request]))
     return response.data as DecodeLightningResponse
   } catch (error) {
     throw Error(error)
@@ -1702,19 +1697,20 @@ export const Transactions_ListTransactions = async (
 
   try {
     const response = await api.get(
-      `/v0/transactions/list${buildURL(
-        offset ? 'offset' : undefined,
-        limit ? 'limit' : undefined,
-        max_satoshi ? 'max_satoshi' : undefined,
-        min_satoshi ? 'min_satoshi' : undefined,
-        start_time ? 'start_time' : undefined,
-        end_time ? 'end_time' : undefined,
-        direction ? 'direction' : undefined,
-        sort ? 'sort' : undefined,
-        network_type ? 'network_type' : undefined,
-        status ? 'status' : undefined,
-        include_settlements ? 'include_settlements' : undefined
-      )}`
+      buildURL(
+        '/v0/transactions/list',
+        ['offset', offset],
+        ['limit', limit],
+        ['max_satoshi', max_satoshi],
+        ['min_satoshi', min_satoshi],
+        ['start_time', start_time],
+        ['end_time', end_time],
+        ['direction', direction],
+        ['sort', sort],
+        ['network_type', network_type],
+        ['status', status],
+        ['include_settlements', include_settlements]
+      )
     )
     return response.data as ListTransactionsResponse
   } catch (error) {
@@ -1728,9 +1724,7 @@ export const Transactions_GetOnchain = async (id?: string, client_id?: string): 
   }
 
   try {
-    const response = await api.get(
-      `/v0/transactions/onchain${buildURL(id ? 'id' : undefined, client_id ? 'client_id' : undefined)}`
-    )
+    const response = await api.get(buildURL('/v0/transactions/onchain', ['id', id], ['client_id', client_id]))
     return response.data as OnchainTransaction
   } catch (error) {
     throw Error(error)
