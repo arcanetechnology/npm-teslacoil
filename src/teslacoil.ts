@@ -135,6 +135,7 @@ export interface ChangePasswordRequest {
 }
 
 export interface CompleteLNURLWithdrawResponse {
+  status?: string
   transaction_id?: string
 }
 
@@ -200,6 +201,8 @@ export interface CreateInvoiceRequest {
    */
   client_id?: string
   currency?: CurrencyCurrency
+  customer_company?: string
+  customer_email?: string
   /**
    * An (optional) description to associate with this invoice. This is only
    * visible to the creator of the invoice.
@@ -354,7 +357,18 @@ export interface GiveAccessRequest {
  * whether it is a Lightning invoice or an on-chain invoice.
  */
 export interface Invoice {
+  /**
+   * The account that created this invoice.
+   */
   account_id: string
+  /**
+   * How much this invoice has received in payments, so far. This is measured in
+   * whole lots of the currency associated with this invoice.
+   */
+  amount_paid: number
+  /**
+   * The bitcoin address (if any) associated with this invoice.
+   */
   bitcoin_address: string
   /**
    * The callback URL associated with this invoice, if any.
@@ -373,6 +387,15 @@ export interface Invoice {
    * When this invoice was created.
    */
   create_time: string
+  currency: CurrencyCurrency
+  /**
+   * The company of the customer that is expect to pay this invoice.
+   */
+  customer_company: string
+  /**
+   * The email of the customer that is expect to pay this invoice.
+   */
+  customer_email: string
   /**
    * The description associated with this invoice, if any.
    */
@@ -387,13 +410,31 @@ export interface Invoice {
    *  invoices is expired, but it will not cause the invoice to become settled.
    */
   expiry_seconds: number
-  fiat_currency: FiatcurrencyFiatCurrency
+  /**
+   * The Teslacoil ID for this invoice.
+   */
   id: string
-  lightning_payment_request: string
+  lightning_request: string
+  /**
+   * Whether this invoice received sufficient payment before it expired or not.
+   */
   paid_before_expiry: boolean
   payment_status: InvoiceStatus
+  /**
+   * The amount of money requested in this invoice. It is measured in whole lots
+   * of the currency field. If the currency is set to BTC, this field is going
+   * to equal the field for how much BTC was requested.
+   */
+  requested_amount: number
+  /**
+   * The requested amount of money, measured in bitcoin. This is calculated when
+   * fetching the invoice, based on current exchange rates.
+   */
   requested_amount_bitcoin: number
-  requested_amount_fiat: number
+  /**
+   * The requested amount of money, measured in satoshis. This is calculated
+   * when fetching the invoice, based on current exchange rates.
+   */
   requested_amount_satoshi: string
   /**
    * When this invoice was settled, if at all.
@@ -404,7 +445,6 @@ export interface Invoice {
    * invoice isn't settled.
    */
   transaction_ids: string[]
-  type: NetworkType
 }
 
 export interface InvoiceList {
@@ -466,8 +506,15 @@ export interface LightningTransaction {
   id: string
   invoice_id: string
   /**
-   * The encoded payment request description of this transaction. This is
-   * encoded into the payment request, and is publicly visible.
+   * The lightning request belonging to this transactions. All Lightning
+   * transactions have a lightning request associated with them. Lightning
+   * requests specify the recipient and amount of a transaction, as well as
+   * other, optional, information.
+   */
+  lightning_request: string
+  /**
+   * The encoded lightning request description of this transaction. This is
+   * encoded into the lightning request, and is publicly visible.
    */
   memo: string
   network_fee_bitcoin: number
@@ -476,13 +523,6 @@ export interface LightningTransaction {
    * If the lightning payment failed, this field specifies why this happened.
    */
   payment_error: string
-  /**
-   * The payment request belonging to this transactions. All Lightning
-   * transactions have a payment request associated with them. Payment requests
-   * specify the recipient and amount of a transaction, as well as other,
-   * optional, information.
-   */
-  payment_request: string
   /**
    * The preimage of this transaction, if any. Preimages for transactions are
    * only available if they are settled.
@@ -688,7 +728,7 @@ export interface SendLightningRequest {
    * visible to the sender of this request.
    */
   description?: string
-  payment_request?: string
+  lightning_request?: string
 }
 
 export interface SendOnchainRequest {
@@ -747,7 +787,7 @@ export interface SendPasswordResetEmailRequest {
 export interface SendTransactionRequest {
   /**
    * The destination bitcoin address. If this set, you must also set the amount
-   * and currency. Cannot be set together with a Lightning payment requests.
+   * and currency. Cannot be set together with a Lightning request.
    */
   address?: string
   amount?: number
@@ -767,7 +807,7 @@ export interface SendTransactionRequest {
    * visible to the sender of this request.
    */
   description?: string
-  payment_request?: string
+  lightning_request?: string
 }
 
 /**
@@ -820,6 +860,57 @@ export interface Statement {
   outbound_milli_sat?: string
   start_time?: string
   transactions?: AccountingTransaction[]
+}
+
+export interface TeslaPayInvoice {
+  /**
+   * The invoice amount, denominated in the currency returned.
+   */
+  amount?: number
+  /**
+   * The bitcoin amount expected to be received given the current exchange rate.
+   */
+  amount_bitcoin?: number
+  /**
+   * How much this invoice has received in payments, so far. This is measured in
+   * whole lots of the currency associated with this invoice.
+   */
+  amount_paid?: number
+  /**
+   * The bitcoin address associated with this invoice.
+   */
+  bitcoin_address?: string
+  currency?: CurrencyCurrency
+  /**
+   * the custom order ID associated with this invoice.
+   */
+  custom_order_id?: string
+  /**
+   * The company of the customer that is expect to pay this invoice.
+   */
+  customer_company?: string
+  /**
+   * An (optional) description that was associated with this invoice.
+   */
+  description?: string
+  /**
+   * What time this invoice is expired and can no longer be paid.
+   */
+  expire_time?: string
+  expired?: boolean
+  /**
+   * The lightning request associated with this invoice.
+   */
+  lightning_request?: string
+  /**
+   * Your company name.
+   */
+  recipient?: string
+  /**
+   * When this invoice was settled, if at all.
+   */
+  settle_time?: string
+  status?: InvoiceStatus
 }
 
 export interface Trade {
@@ -903,6 +994,102 @@ export interface User {
 export type CurrencyCurrency = 'BTC' | 'SAT' | 'GBP' | 'NOK' | 'USD' | 'EUR'
 
 export type FiatcurrencyFiatCurrency = 'GBP' | 'NOK' | 'USD' | 'EUR'
+
+export interface FrdrpcBitcoinPrice {
+  /**
+   * The price of 1 BTC, expressed in USD.
+   */
+  price?: string
+  /**
+   * The timestamp for this price price provided.
+   */
+  price_timestamp?: string
+}
+
+/**
+ *  - LOCAL_CHANNEL_OPEN: A channel opening transaction for a channel opened by our node.
+ *  - REMOTE_CHANNEL_OPEN: A channel opening transaction for a channel opened by a remote node.
+ *  - CHANNEL_OPEN_FEE: The on chain fee paid to open a channel.
+ *  - CHANNEL_CLOSE: A channel closing transaction.
+ *  - RECEIPT: Receipt of funds. On chain this reflects receives, off chain settlement
+ * of invoices.
+ *  - PAYMENT: Payment of funds. On chain this reflects sends, off chain settlement
+ * of our payments.
+ *  - FEE: Payment of fees.
+ *  - CIRCULAR_RECEIPT: Receipt of a payment to ourselves.
+ *  - FORWARD: A forward through our node.
+ *  - FORWARD_FEE: Fees earned from forwarding.
+ *  - CIRCULAR_PAYMENT: Sending of a payment to ourselves.
+ *  - CIRCULAR_FEE: The fees paid to send an off chain payment to ourselves.
+ *  - SWEEP: A transaction that sweeps funds back into our wallet's control.
+ *  - SWEEP_FEE: The amount of fees paid for a sweep transaction.
+ *  - CHANNEL_CLOSE_FEE: The fees paid to close a channel.
+ */
+export type FrdrpcEntryType =
+  | 'UNKNOWN'
+  | 'LOCAL_CHANNEL_OPEN'
+  | 'REMOTE_CHANNEL_OPEN'
+  | 'CHANNEL_OPEN_FEE'
+  | 'CHANNEL_CLOSE'
+  | 'RECEIPT'
+  | 'PAYMENT'
+  | 'FEE'
+  | 'CIRCULAR_RECEIPT'
+  | 'FORWARD'
+  | 'FORWARD_FEE'
+  | 'CIRCULAR_PAYMENT'
+  | 'CIRCULAR_FEE'
+  | 'SWEEP'
+  | 'SWEEP_FEE'
+  | 'CHANNEL_CLOSE_FEE'
+
+export interface FrdrpcNodeAuditResponse {
+  /**
+   * On chain reports for the period queried.
+   */
+  reports?: FrdrpcReportEntry[]
+}
+
+export interface FrdrpcReportEntry {
+  /**
+   * The amount of the entry, expressed in millisatoshis.
+   */
+  amount?: string
+  /**
+   * The asset affected by the entry.
+   */
+  asset?: string
+  btc_price?: FrdrpcBitcoinPrice
+  /**
+   * Whether the entry is a credit or a debit.
+   */
+  credit?: boolean
+  /**
+   * The fiat amount of the entry's amount in USD.
+   */
+  fiat?: string
+  /**
+   * An additional note for the entry, providing additional context.
+   */
+  note?: string
+  /**
+   * Whether the entry occurred on chain or off chain.
+   */
+  on_chain?: boolean
+  /**
+   * A unique identifier for the entry, if available.
+   */
+  reference?: string
+  /**
+   * The unix timestamp of the event.
+   */
+  timestamp?: string
+  /**
+   * The transaction id of the entry.
+   */
+  txid?: string
+  type?: FrdrpcEntryType
+}
 
 /**
  * `Any` contains an arbitrary serialized protocol buffer message along with a
@@ -1031,8 +1218,6 @@ export interface RuntimeError {
 // tslint:disable-next-line:no-empty-interface
 export interface AuthenticationCreate2faBodyRequestBody {}
 
-export type CreateInvoiceRequestRequestBody = CreateInvoiceRequest
-
 const buildURL = (route: string, ...args: [string, string | number | undefined | boolean][]): string => {
   let url = route
   let params = ''
@@ -1048,6 +1233,24 @@ const buildURL = (route: string, ...args: [string, string | number | undefined |
     }
   })
   return `${url}${params}`
+}
+
+export const Accounting_NodeAudit = async (
+  start_time?: string,
+  end_time?: string
+): Promise<FrdrpcNodeAuditResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(
+      buildURL('/v0/accounting/audit/node', ['start_time', start_time], ['end_time', end_time])
+    )
+    return response.data as FrdrpcNodeAuditResponse
+  } catch (error) {
+    throw Error(error)
+  }
 }
 
 export const Accounting_GetStatement = async (start_time?: string, end_time?: string): Promise<Statement> => {
@@ -1497,7 +1700,7 @@ export const Fees_EstimateBlockchainFees = async (
 }
 
 export const Fees_EstimateLightningFees = async (
-  payment_request?: string,
+  lightning_request?: string,
   currency?: string
 ): Promise<EstimateLightningFeesResponse> => {
   if (apiKey === '') {
@@ -1506,7 +1709,7 @@ export const Fees_EstimateLightningFees = async (
 
   try {
     const response = await api.get(
-      buildURL('/v0/fees/estimate/lightning', ['payment_request', payment_request], ['currency', currency])
+      buildURL('/v0/fees/estimate/lightning', ['lightning_request', lightning_request], ['currency', currency])
     )
     return response.data as EstimateLightningFeesResponse
   } catch (error) {
@@ -1518,7 +1721,7 @@ export const Invoices_Get = async (
   id?: string,
   transaction_id?: string,
   address?: string,
-  payment_request?: string
+  lightning_request?: string
 ): Promise<Invoice> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
@@ -1531,7 +1734,7 @@ export const Invoices_Get = async (
         ['id', id],
         ['transaction_id', transaction_id],
         ['address', address],
-        ['payment_request', payment_request]
+        ['lightning_request', lightning_request]
       )
     )
     return response.data as Invoice
@@ -1540,13 +1743,13 @@ export const Invoices_Get = async (
   }
 }
 
-export const Invoices_CreateLightning = async (req: CreateInvoiceRequest): Promise<Invoice> => {
+export const Invoices_Create = async (req: CreateInvoiceRequest): Promise<Invoice> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.post('/v0/invoices/lightning', req)
+    const response = await api.post('/v0/invoices', req)
     return response.data as Invoice
   } catch (error) {
     throw Error(error)
@@ -1556,8 +1759,9 @@ export const Invoices_CreateLightning = async (req: CreateInvoiceRequest): Promi
 export const Invoices_List = async (
   offset?: number,
   limit?: number,
-  max_satoshi?: string,
-  min_satoshi?: string,
+  max_amount?: number,
+  min_amount?: number,
+  currency?: string,
   start_time?: string,
   end_time?: string,
   type?: string,
@@ -1577,8 +1781,9 @@ export const Invoices_List = async (
         '/v0/invoices/list',
         ['offset', offset],
         ['limit', limit],
-        ['max_satoshi', max_satoshi],
-        ['min_satoshi', min_satoshi],
+        ['max_amount', max_amount],
+        ['min_amount', min_amount],
+        ['currency', currency],
         ['start_time', start_time],
         ['end_time', end_time],
         ['type', type],
@@ -1595,19 +1800,6 @@ export const Invoices_List = async (
   }
 }
 
-export const Invoices_CreateOnchain = async (req: CreateInvoiceRequest): Promise<Invoice> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/invoices/onchain', req)
-    return response.data as Invoice
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
 export const System_Ping = async (): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
@@ -1616,6 +1808,19 @@ export const System_Ping = async (): Promise<{}> => {
   try {
     const response = await api.get(buildURL('/v0/system/ping'))
     return response.data as {}
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const TeslaPay_Get = async (id?: string): Promise<TeslaPayInvoice> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/teslapay', ['id', id]))
+    return response.data as TeslaPayInvoice
   } catch (error) {
     throw Error(error)
   }
@@ -1636,7 +1841,7 @@ export const Transactions_GetTransaction = async (id?: string, client_id?: strin
 
 export const Transactions_GetLightning = async (
   id?: string,
-  payment_request?: string
+  lightning_request?: string
 ): Promise<LightningTransaction> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
@@ -1644,7 +1849,7 @@ export const Transactions_GetLightning = async (
 
   try {
     const response = await api.get(
-      buildURL('/v0/transactions/lightning', ['id', id], ['payment_request', payment_request])
+      buildURL('/v0/transactions/lightning', ['id', id], ['lightning_request', lightning_request])
     )
     return response.data as LightningTransaction
   } catch (error) {
@@ -1652,13 +1857,15 @@ export const Transactions_GetLightning = async (
   }
 }
 
-export const Transactions_DecodeLightning = async (payment_request?: string): Promise<DecodeLightningResponse> => {
+export const Transactions_DecodeLightning = async (lightning_request?: string): Promise<DecodeLightningResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.get(buildURL('/v0/transactions/lightning/decode', ['payment_request', payment_request]))
+    const response = await api.get(
+      buildURL('/v0/transactions/lightning/decode', ['lightning_request', lightning_request])
+    )
     return response.data as DecodeLightningResponse
   } catch (error) {
     throw Error(error)
