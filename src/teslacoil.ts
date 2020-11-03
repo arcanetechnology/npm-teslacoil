@@ -48,7 +48,7 @@ export interface AccountUser {
   account_id: string
   account_name: string
   admin: boolean
-  auto_exchange_currency: FiatcurrencyFiatCurrency
+  auto_exchange_currency?: FiatcurrencyFiatCurrency
   balance_bitcoin: number
   balance_satoshi: string
   create_time: string
@@ -79,6 +79,14 @@ export interface AccountingTransaction {
   transaction_description?: string
 }
 
+/**
+ * Response from the amount transacted endpoint.
+ */
+export interface AmountTransactedResponse {
+  amount_transacted_fiat: number
+  amount_transacted_satoshi: string
+}
+
 export interface ApiKey {
   account_id: string
   create_time: string
@@ -101,6 +109,17 @@ export interface ApiKey {
   last_use_time?: string
   permissions: Permissions
   whitelisted_ips: string[]
+}
+
+export interface BitcoinPrice {
+  /**
+   * The price of 1 BTC, expressed in USD.
+   */
+  price?: string
+  /**
+   * The timestamp for this price price provided.
+   */
+  price_timestamp?: string
 }
 
 /**
@@ -257,6 +276,15 @@ export interface CreateLNURLWithdrawResponse {
   lnurl?: string
 }
 
+/**
+ * Possible parameters when creating a trade.
+ */
+export interface CreateTradeRequest {
+  amount?: number
+  quote?: FiatcurrencyFiatCurrency
+  side?: OrderSide
+}
+
 export interface CreateUserRequest {
   /**
    * The email of the user you want to create. This is a required field. After
@@ -269,6 +297,28 @@ export interface CreateUserRequest {
   email?: string
   first_name?: string
   last_name?: string
+}
+
+export interface CreatedInvoiceEvent {
+  /**
+   * The amount of this invoice, denominated in the currency.
+   */
+  amount: number
+  currency: CurrencyCurrency
+}
+
+export interface CreatedTradeEvent {
+  /**
+   * The fiat amount traded, denominated in the currency.
+   */
+  amount_fiat: number
+  amount_satoshi: string
+  currency: FiatcurrencyFiatCurrency
+  side: OrderSide
+  /**
+   * What (if any) transaction this trade relates to.
+   */
+  transaction_id?: string
 }
 
 /**
@@ -306,6 +356,43 @@ export interface DecodeLightningResponse {
   payment_hash?: string
 }
 
+/**
+ *  - LOCAL_CHANNEL_OPEN: A channel opening transaction for a channel opened by our node.
+ *  - REMOTE_CHANNEL_OPEN: A channel opening transaction for a channel opened by a remote node.
+ *  - CHANNEL_OPEN_FEE: The on chain fee paid to open a channel.
+ *  - CHANNEL_CLOSE: A channel closing transaction.
+ *  - RECEIPT: Receipt of funds. On chain this reflects receives, off chain settlement
+ * of invoices.
+ *  - PAYMENT: Payment of funds. On chain this reflects sends, off chain settlement
+ * of our payments.
+ *  - FEE: Payment of fees.
+ *  - CIRCULAR_RECEIPT: Receipt of a payment to ourselves.
+ *  - FORWARD: A forward through our node.
+ *  - FORWARD_FEE: Fees earned from forwarding.
+ *  - CIRCULAR_PAYMENT: Sending of a payment to ourselves.
+ *  - CIRCULAR_FEE: The fees paid to send an off chain payment to ourselves.
+ *  - SWEEP: A transaction that sweeps funds back into our wallet's control.
+ *  - SWEEP_FEE: The amount of fees paid for a sweep transaction.
+ *  - CHANNEL_CLOSE_FEE: The fees paid to close a channel.
+ */
+export type EntryType =
+  | 'UNKNOWN'
+  | 'LOCAL_CHANNEL_OPEN'
+  | 'REMOTE_CHANNEL_OPEN'
+  | 'CHANNEL_OPEN_FEE'
+  | 'CHANNEL_CLOSE'
+  | 'RECEIPT'
+  | 'PAYMENT'
+  | 'FEE'
+  | 'CIRCULAR_RECEIPT'
+  | 'FORWARD'
+  | 'FORWARD_FEE'
+  | 'CIRCULAR_PAYMENT'
+  | 'CIRCULAR_FEE'
+  | 'SWEEP'
+  | 'SWEEP_FEE'
+  | 'CHANNEL_CLOSE_FEE'
+
 export interface EstimateBlockchainFeesResponse {
   average_fee: number
   currency: CurrencyCurrency
@@ -315,6 +402,22 @@ export interface EstimateBlockchainFeesResponse {
 export interface EstimateLightningFeesResponse {
   currency: CurrencyCurrency
   fee: number
+}
+
+/**
+ * Contains the information you get about each activity. It will always have
+ * exactly one event.
+ */
+export interface Event {
+  created_invoice?: CreatedInvoiceEvent
+  created_trade?: CreatedTradeEvent
+  description?: string
+  event_id: string
+  incoming_transaction?: IncomingTransactionEvent
+  invoice_status_change?: InvoiceStatusChangeEvent
+  sent_lightning_transaction?: SentLightningTransactionEvent
+  sent_onchain_transaction?: SentOnchainTransactionEvent
+  time: string
 }
 
 export interface GetJwtRequest {
@@ -349,6 +452,10 @@ export interface GetJwtResponse {
 export interface GiveAccessRequest {
   permissions?: Permissions
   user_id?: string
+}
+
+export interface IncomingTransactionEvent {
+  amount_satoshi: string
 }
 
 /**
@@ -400,7 +507,7 @@ export interface Invoice {
    * The description associated with this invoice, if any.
    */
   description: string
-  exchange_currency: FiatcurrencyFiatCurrency
+  exchange_currency?: FiatcurrencyFiatCurrency
   /**
    * How long this invoice is valid for, measured in seconds. If this invoice
    * has an associated Lightning request, it is not to possible to pay
@@ -439,7 +546,7 @@ export interface Invoice {
   /**
    * When this invoice was settled, if at all.
    */
-  settle_time: string
+  settle_time?: string
   /**
    * The IDs of the transaction that settled this invoice. Length is 0 if the
    * invoice isn't settled.
@@ -461,6 +568,21 @@ export interface InvoiceList {
  * settled.
  */
 export type InvoiceStatus = 'UNPAID' | 'PAID' | 'OVERPAID' | 'UNDERPAID'
+
+export interface InvoiceStatusChangeEvent {
+  /**
+   * the amount of the invoice, denominated in the currency.
+   */
+  amount_fiat: number
+  /**
+   * How much this invoice has received in payments, so far. This is measured in
+   * whole lots of the currency associated with this invoice.
+   */
+  amount_paid: number
+  currency: CurrencyCurrency
+  invoice_id: string
+  invoice_status: InvoiceStatus
+}
 
 /**
  * Contains all necessary information to prefill the users wallet with info, and
@@ -504,7 +626,7 @@ export interface LightningTransaction {
    */
   hashed_preimage: string
   id: string
-  invoice_id: string
+  invoice_id?: string
   /**
    * The lightning request belonging to this transactions. All Lightning
    * transactions have a lightning request associated with them. Lightning
@@ -573,6 +695,13 @@ export interface ListTransactionsResponse {
  */
 export type NetworkType = 'ONCHAIN' | 'LIGHTNING'
 
+export interface NodeAuditResponse {
+  /**
+   * On chain reports for the period queried.
+   */
+  reports?: ReportEntry[]
+}
+
 export interface OnchainTransaction {
   /**
    * The address this transaction was sent to. If this is an outgoing
@@ -629,7 +758,7 @@ export interface OnchainTransaction {
    * transaction at a later point in time.
    */
   id: string
-  invoice_id: string
+  invoice_id?: string
   /**
    * How much fees we paid to the bitcoin miners for this transaction. Not set
    * if this transaction was sent to us, as we can't know that.
@@ -680,6 +809,51 @@ export interface Privileges {
   delete: boolean
   read: boolean
   update: boolean
+}
+
+export interface RecentEventsResponse {
+  events?: Event[]
+}
+
+export interface ReportEntry {
+  /**
+   * The amount of the entry, expressed in millisatoshis.
+   */
+  amount?: string
+  /**
+   * The asset affected by the entry.
+   */
+  asset?: string
+  btc_price?: BitcoinPrice
+  /**
+   * Whether the entry is a credit or a debit.
+   */
+  credit?: boolean
+  /**
+   * The fiat amount of the entry's amount in USD.
+   */
+  fiat?: string
+  /**
+   * An additional note for the entry, providing additional context.
+   */
+  note?: string
+  /**
+   * Whether the entry occurred on chain or off chain.
+   */
+  on_chain?: boolean
+  /**
+   * A unique identifier for the entry, if available.
+   */
+  reference?: string
+  /**
+   * The unix timestamp of the event.
+   */
+  timestamp?: string
+  /**
+   * The transaction id of the entry.
+   */
+  txid?: string
+  type?: EntryType
 }
 
 export interface ResetPasswordRequest {
@@ -736,6 +910,10 @@ export interface SendOnchainRequest {
    * The destination bitcoin address. Must be set.
    */
   address?: string
+  /**
+   * The amount to send, denominated in the currency supplied.
+   * Cannot be zero or negative.
+   */
   amount?: number
   /**
    * The URL, if any, to send updates to whenever events related to this
@@ -763,15 +941,10 @@ export interface SendOnchainRequest {
    */
   fee_satoshi_per_byte?: number
   /**
-   * If set, sends all the funds in the wallet. Cannot be specified together
-   * with a monetary amount.
-   */
-  send_all?: boolean
-  /**
    * If set, we try and construct the transaction such that it is confirmed by
    * this number of blocks. A higher value here means a lower network fee, but
    * you will have to wait longer until the transaction is included in the
-   * blockchain. A lower value would make your transaction confirm quicked, but
+   * blockchain. A lower value would make your transaction confirm quicker, but
    * it would be more expensive.
    */
   target_confirmation?: number
@@ -784,32 +957,6 @@ export interface SendPasswordResetEmailRequest {
   email?: string
 }
 
-export interface SendTransactionRequest {
-  /**
-   * The destination bitcoin address. If this set, you must also set the amount
-   * and currency. Cannot be set together with a Lightning request.
-   */
-  address?: string
-  amount?: number
-  callback_url?: string
-  /**
-   * An (optional) ID you associated with this invoice. This is never
-   * used by Teslacoil, other than to identify your invoice when notifying
-   * you of updates, as well as letting you retrieve the transaction by this
-   * ID. We wont validate that this ID is unique to your invoices. So if you
-   * want to use this field to later retrieve a invoice, you will have to
-   * make sure yourself that it only identifies a single element.
-   */
-  client_id?: string
-  currency?: CurrencyCurrency
-  /**
-   * An optional description to associate with this transaction. This is only
-   * visible to the sender of this request.
-   */
-  description?: string
-  lightning_request?: string
-}
-
 /**
  * The fields returned when a transaction was successfully initiated.
  * It does not include specific information about the transaction for security
@@ -820,6 +967,14 @@ export interface SendTransactionRequest {
 export interface SendTransactionResponse {
   id?: string
   url?: string
+}
+
+export interface SentLightningTransactionEvent {
+  amount_satoshi: string
+}
+
+export interface SentOnchainTransactionEvent {
+  amount_satoshi: string
 }
 
 /**
@@ -922,7 +1077,21 @@ export interface Trade {
   quote: CurrencyCurrency
   rate: number
   side: OrderSide
+  status: TradeStatus
+  /**
+   * what (if any) transaction this trade relates to.
+   */
+  transaction_id?: string
 }
+
+/**
+ * The valid sides for a trade. Used in getting a RFQ (request for quote), and
+ * creating and describing trades.
+ *
+ *  - TRADE_FAILED: The trade could not be completed.
+ *  - TRADE_ACCEPTED: The OTC desk has accepted the order.
+ */
+export type TradeStatus = 'TRADE_FAILED' | 'TRADE_ACCEPTED'
 
 export interface Transaction {
   account_id: string
@@ -938,7 +1107,7 @@ export interface Transaction {
   description: string
   direction: TransactionDirection
   id: string
-  invoice_id: string
+  invoice_id?: string
   network_fee_bitcoin: number
   network_fee_satoshi: string
   network_type: NetworkType
@@ -976,6 +1145,25 @@ export interface UpdateUserRequest {
   preferred_display_currency?: CryptoCurrencyFormat
 }
 
+/**
+ * Response from the usage endpoint.
+ */
+export interface UsageResponse {
+  /**
+   * How many invoices have been created.
+   */
+  invoice_count: number
+  settlement_count: number
+  /**
+   * How many trades have been created.
+   */
+  trade_count: number
+  /**
+   * How many transactions have been created.
+   */
+  transaction_count: number
+}
+
 export interface User {
   email: string
   first_name: string
@@ -995,229 +1183,6 @@ export type CurrencyCurrency = 'BTC' | 'SAT' | 'GBP' | 'NOK' | 'USD' | 'EUR'
 
 export type FiatcurrencyFiatCurrency = 'GBP' | 'NOK' | 'USD' | 'EUR'
 
-export interface FrdrpcBitcoinPrice {
-  /**
-   * The price of 1 BTC, expressed in USD.
-   */
-  price?: string
-  /**
-   * The timestamp for this price price provided.
-   */
-  price_timestamp?: string
-}
-
-/**
- *  - LOCAL_CHANNEL_OPEN: A channel opening transaction for a channel opened by our node.
- *  - REMOTE_CHANNEL_OPEN: A channel opening transaction for a channel opened by a remote node.
- *  - CHANNEL_OPEN_FEE: The on chain fee paid to open a channel.
- *  - CHANNEL_CLOSE: A channel closing transaction.
- *  - RECEIPT: Receipt of funds. On chain this reflects receives, off chain settlement
- * of invoices.
- *  - PAYMENT: Payment of funds. On chain this reflects sends, off chain settlement
- * of our payments.
- *  - FEE: Payment of fees.
- *  - CIRCULAR_RECEIPT: Receipt of a payment to ourselves.
- *  - FORWARD: A forward through our node.
- *  - FORWARD_FEE: Fees earned from forwarding.
- *  - CIRCULAR_PAYMENT: Sending of a payment to ourselves.
- *  - CIRCULAR_FEE: The fees paid to send an off chain payment to ourselves.
- *  - SWEEP: A transaction that sweeps funds back into our wallet's control.
- *  - SWEEP_FEE: The amount of fees paid for a sweep transaction.
- *  - CHANNEL_CLOSE_FEE: The fees paid to close a channel.
- */
-export type FrdrpcEntryType =
-  | 'UNKNOWN'
-  | 'LOCAL_CHANNEL_OPEN'
-  | 'REMOTE_CHANNEL_OPEN'
-  | 'CHANNEL_OPEN_FEE'
-  | 'CHANNEL_CLOSE'
-  | 'RECEIPT'
-  | 'PAYMENT'
-  | 'FEE'
-  | 'CIRCULAR_RECEIPT'
-  | 'FORWARD'
-  | 'FORWARD_FEE'
-  | 'CIRCULAR_PAYMENT'
-  | 'CIRCULAR_FEE'
-  | 'SWEEP'
-  | 'SWEEP_FEE'
-  | 'CHANNEL_CLOSE_FEE'
-
-export interface FrdrpcNodeAuditResponse {
-  /**
-   * On chain reports for the period queried.
-   */
-  reports?: FrdrpcReportEntry[]
-}
-
-export interface FrdrpcReportEntry {
-  /**
-   * The amount of the entry, expressed in millisatoshis.
-   */
-  amount?: string
-  /**
-   * The asset affected by the entry.
-   */
-  asset?: string
-  btc_price?: FrdrpcBitcoinPrice
-  /**
-   * Whether the entry is a credit or a debit.
-   */
-  credit?: boolean
-  /**
-   * The fiat amount of the entry's amount in USD.
-   */
-  fiat?: string
-  /**
-   * An additional note for the entry, providing additional context.
-   */
-  note?: string
-  /**
-   * Whether the entry occurred on chain or off chain.
-   */
-  on_chain?: boolean
-  /**
-   * A unique identifier for the entry, if available.
-   */
-  reference?: string
-  /**
-   * The unix timestamp of the event.
-   */
-  timestamp?: string
-  /**
-   * The transaction id of the entry.
-   */
-  txid?: string
-  type?: FrdrpcEntryType
-}
-
-/**
- * `Any` contains an arbitrary serialized protocol buffer message along with a
- * URL that describes the type of the serialized message.
- *
- * Protobuf library provides support to pack/unpack Any values in the form
- * of utility functions or additional generated methods of the Any type.
- *
- * Example 1: Pack and unpack a message in C++.
- *
- *     Foo foo = ...;
- *     Any any;
- *     any.PackFrom(foo);
- *     ...
- *     if (any.UnpackTo(&foo)) {
- *       ...
- *     }
- *
- * Example 2: Pack and unpack a message in Java.
- *
- *     Foo foo = ...;
- *     Any any = Any.pack(foo);
- *     ...
- *     if (any.is(Foo.class)) {
- *       foo = any.unpack(Foo.class);
- *     }
- *
- *  Example 3: Pack and unpack a message in Python.
- *
- *     foo = Foo(...)
- *     any = Any()
- *     any.Pack(foo)
- *     ...
- *     if any.Is(Foo.DESCRIPTOR):
- *       any.Unpack(foo)
- *       ...
- *
- *  Example 4: Pack and unpack a message in Go
- *
- *      foo := &pb.Foo{...}
- *      any, err := ptypes.MarshalAny(foo)
- *      ...
- *      foo := &pb.Foo{}
- *      if err := ptypes.UnmarshalAny(any, foo); err != nil {
- *        ...
- *      }
- *
- * The pack methods provided by protobuf library will by default use
- * 'type.googleapis.com/full.type.name' as the type URL and the unpack
- * methods only use the fully qualified type name after the last '/'
- * in the type URL, for example "foo.bar.com/x/y.z" will yield type
- * name "y.z".
- *
- *
- * JSON
- * ====
- * The JSON representation of an `Any` value uses the regular
- * representation of the deserialized, embedded message, with an
- * additional field `@type` which contains the type URL. Example:
- *
- *     package google.profile;
- *     message Person {
- *       string first_name = 1;
- *       string last_name = 2;
- *     }
- *
- *     {
- *       "@type": "type.googleapis.com/google.profile.Person",
- *       "firstName": <string>,
- *       "lastName": <string>
- *     }
- *
- * If the embedded message type is well-known and has a custom JSON
- * representation, that representation will be embedded adding a field
- * `value` which holds the custom JSON in addition to the `@type`
- * field. Example (for message [google.protobuf.Duration][]):
- *
- *     {
- *       "@type": "type.googleapis.com/google.protobuf.Duration",
- *       "value": "1.212s"
- *     }
- */
-export interface ProtobufAny {
-  /**
-   * A URL/resource name that uniquely identifies the type of the serialized
-   * protocol buffer message. The last segment of the URL's path must represent
-   * the fully qualified name of the type (as in
-   * `path/google.protobuf.Duration`). The name should be in a canonical form
-   * (e.g., leading "." is not accepted).
-   *
-   * In practice, teams usually precompile into the binary all types that they
-   * expect it to use in the context of Any. However, for URLs which use the
-   * scheme `http`, `https`, or no scheme, one can optionally set up a type
-   * server that maps type URLs to message definitions as follows:
-   *
-   * * If no scheme is provided, `https` is assumed.
-   * * An HTTP GET on the URL must yield a [google.protobuf.Type][]
-   *   value in binary format, or produce an error.
-   * * Applications are allowed to cache lookup results based on the
-   *   URL, or have them precompiled into a binary to avoid any
-   *   lookup. Therefore, binary compatibility needs to be preserved
-   *   on changes to types. (Use versioned type names to manage
-   *   breaking changes.)
-   *
-   * Note: this functionality is not currently available in the official
-   * protobuf release, and it is not used for type URLs beginning with
-   * type.googleapis.com.
-   *
-   * Schemes other than `http`, `https` (or the empty scheme) might be
-   * used with implementation specific semantics.
-   */
-  type_url?: string
-  /**
-   * Must be a valid serialized protocol buffer of the above specified type.
-   */
-  value?: string
-}
-
-export interface RuntimeError {
-  code?: number
-  details?: ProtobufAny[]
-  error?: string
-  message?: string
-}
-
-// tslint:disable-next-line:no-empty-interface
-export interface AuthenticationCreate2faBodyRequestBody {}
-
 const buildURL = (route: string, ...args: [string, string | number | undefined | boolean][]): string => {
   let url = route
   let params = ''
@@ -1235,10 +1200,7 @@ const buildURL = (route: string, ...args: [string, string | number | undefined |
   return `${url}${params}`
 }
 
-export const Accounting_NodeAudit = async (
-  start_time?: string,
-  end_time?: string
-): Promise<FrdrpcNodeAuditResponse> => {
+export const Accounting_NodeAudit = async (start_time?: string, end_time?: string): Promise<NodeAuditResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
@@ -1247,7 +1209,7 @@ export const Accounting_NodeAudit = async (
     const response = await api.get(
       buildURL('/v0/accounting/audit/node', ['start_time', start_time], ['end_time', end_time])
     )
-    return response.data as FrdrpcNodeAuditResponse
+    return response.data as NodeAuditResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1385,213 +1347,27 @@ export const Accounts_GetUserInfo = async (user_id?: string): Promise<AccountUse
   }
 }
 
-export const ApiKeys_Delete = async (hash?: string): Promise<ApiKey> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.delete(buildURL('/v0/apikeys', ['hash', hash]))
-    return response.data as ApiKey
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const ApiKeys_Get = async (hash?: string): Promise<ApiKey> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/apikeys', ['hash', hash]))
-    return response.data as ApiKey
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const ApiKeys_Create = async (req: CreateApiKeyRequest): Promise<CreateApiKeyResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/apikeys', req)
-    return response.data as CreateApiKeyResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const ApiKeys_List = async (): Promise<ListApiKeysResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/apikeys/list'))
-    return response.data as ListApiKeysResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_ChangePassword = async (req: ChangePasswordRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.put('/v0/auth/change_password', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_Confirm2fa = async (req: Confirm2faRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.put('/v0/auth/confirm_2fa', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_Create2fa = async (): Promise<Create2faResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/auth/create_2fa')
-    return response.data as Create2faResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_GetJwt = async (req: GetJwtRequest): Promise<GetJwtResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/auth/get_jwt', req)
-    return response.data as GetJwtResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_RefreshJwt = async (): Promise<GetJwtResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/auth/refresh_jwt'))
-    return response.data as GetJwtResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_ResetPassword = async (req: ResetPasswordRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.put('/v0/auth/reset_password', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Authentication_SendPasswordResetEmail = async (req: SendPasswordResetEmailRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/auth/send_password_reset_email', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Currencies_Convert = async (
-  base_currency?: string,
-  quote_currency?: string,
-  amount?: number
-): Promise<CurrenciesConvertResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(
-      buildURL(
-        '/v0/currencies/convert',
-        ['base_currency', base_currency],
-        ['quote_currency', quote_currency],
-        ['amount', amount]
-      )
-    )
-    return response.data as CurrenciesConvertResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Currencies_Quote = async (
-  side?: string,
-  amount?: number,
-  currency?: string
-): Promise<CurrenciesQuoteResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(
-      buildURL('/v0/currencies/quote', ['side', side], ['amount', amount], ['currency', currency])
-    )
-    return response.data as CurrenciesQuoteResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Exchange_RiskLimits = async (): Promise<RiskLimitsResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/exchange/limits'))
-    return response.data as RiskLimitsResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
 export const Exchange_ListSettlements = async (): Promise<ListSettlementsResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.get(buildURL('/v0/exchange/settlement/list'))
+    const response = await api.get(buildURL('/v0/exchange/settlements/list'))
     return response.data as ListSettlementsResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Exchange_CreateTrade = async (req: CreateTradeRequest): Promise<Trade> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.post('/v0/exchange/trades', req)
+    return response.data as Trade
   } catch (error) {
     throw Error(error)
   }
@@ -1644,7 +1420,7 @@ export const Experimental_GetLNURLWithdrawal = async (secret?: string): Promise<
   }
 }
 
-export const Experimental_CompleteLNURLWithdraw = async (
+export const Experimental_CompleteLNURLWithdrawal = async (
   k1?: string,
   pr?: string,
   transaction_callback_url?: string
@@ -1668,7 +1444,7 @@ export const Experimental_CompleteLNURLWithdraw = async (
   }
 }
 
-export const Experimental_CreateLNURLWithdraw = async (
+export const Experimental_CreateLNURLWithdrawal = async (
   req: CreateLNURLWithdrawRequest
 ): Promise<CreateLNURLWithdrawResponse> => {
   if (apiKey === '') {
@@ -1678,40 +1454,6 @@ export const Experimental_CreateLNURLWithdraw = async (
   try {
     const response = await api.post('/v0/experimental/lnurl/withdraw/create', req)
     return response.data as CreateLNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Fees_EstimateBlockchainFees = async (
-  target?: number,
-  currency?: string
-): Promise<EstimateBlockchainFeesResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/fees/estimate/blockchain', ['target', target], ['currency', currency]))
-    return response.data as EstimateBlockchainFeesResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Fees_EstimateLightningFees = async (
-  lightning_request?: string,
-  currency?: string
-): Promise<EstimateLightningFeesResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(
-      buildURL('/v0/fees/estimate/lightning', ['lightning_request', lightning_request], ['currency', currency])
-    )
-    return response.data as EstimateLightningFeesResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1800,14 +1542,51 @@ export const Invoices_List = async (
   }
 }
 
-export const System_Ping = async (): Promise<{}> => {
+export const Stats_AmountTransacted = async (
+  start_time?: string,
+  end_time?: string,
+  currency?: string
+): Promise<AmountTransactedResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.get(buildURL('/v0/system/ping'))
-    return response.data as {}
+    const response = await api.get(
+      buildURL(
+        '/v0/stats/amount_transacted',
+        ['start_time', start_time],
+        ['end_time', end_time],
+        ['currency', currency]
+      )
+    )
+    return response.data as AmountTransactedResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Stats_RecentEvents = async (): Promise<RecentEventsResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/stats/recent_events'))
+    return response.data as RecentEventsResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Stats_Usage = async (start_time?: string, end_time?: string): Promise<UsageResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/stats/usage', ['start_time', start_time], ['end_time', end_time]))
+    return response.data as UsageResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1938,53 +1717,14 @@ export const Transactions_GetOnchain = async (id?: string, client_id?: string): 
   }
 }
 
-export const Transactions_SendOnchain = async (req: SendOnchainRequest): Promise<OnchainTransaction> => {
+export const Transactions_SendOnchain = async (req: SendOnchainRequest): Promise<SendTransactionResponse> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
     const response = await api.post('/v0/transactions/onchain/send', req)
-    return response.data as OnchainTransaction
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Transactions_SendTransaction = async (req: SendTransactionRequest): Promise<SendTransactionResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/transactions/send', req)
     return response.data as SendTransactionResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Users_CreateUser = async (req: CreateUserRequest): Promise<User> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/users', req)
-    return response.data as User
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Users_UpdateUser = async (req: UpdateUserRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.put('/v0/users', req)
-    return response.data as {}
   } catch (error) {
     throw Error(error)
   }

@@ -3,7 +3,7 @@ set -u
 set -o pipefail
 
 DEST_FILE=src/teslacoil.ts
-node node_modules/restful-react/dist/bin/restful-react.js import --file teslacoil.swagger.json \
+node node_modules/restful-react/dist/bin/restful-react.js import --file teslacoil.stripped-openapi.json \
     --output $DEST_FILE --ts
 
 echo -e "/* eslint-disable */
