@@ -1183,7 +1183,21 @@ export type CurrencyCurrency = 'BTC' | 'SAT' | 'GBP' | 'NOK' | 'USD' | 'EUR'
 
 export type FiatcurrencyFiatCurrency = 'GBP' | 'NOK' | 'USD' | 'EUR'
 
-const buildURL = (route: string, ...args: [string, string | number | undefined | boolean][]): string => {
+/**
+ * - CREATE_TIME: Sort invoices chronologically. This is the default sorting property.
+ *  - STATUS: Sort invoices by their payment status.
+ *  - AMOUNT: Sort invoices by the amount they are for.
+ */
+export type InvsortProperty = 'CREATE_TIME' | 'STATUS' | 'AMOUNT'
+
+/**
+ * - CREATE_TIME: Sort transactions chronologically. This is the default sorting property.
+ *  - STATUS: Sort invoices by their status.
+ *  - AMOUNT: Sort invoices by their size.
+ */
+export type TxsortProperty = 'CREATE_TIME' | 'STATUS' | 'AMOUNT'
+
+const buildURL = (route: string, ...args: [string, string | number | undefined | boolean | Array<any>][]): string => {
   let url = route
   let params = ''
   args.forEach(arg => {
@@ -1407,58 +1421,6 @@ export const Exchange_ListTrades = async (
   }
 }
 
-export const Experimental_GetLNURLWithdrawal = async (secret?: string): Promise<LNURLWithdrawResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/experimental/lnurl/withdraw', ['secret', secret]))
-    return response.data as LNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Experimental_CompleteLNURLWithdrawal = async (
-  k1?: string,
-  pr?: string,
-  transaction_callback_url?: string
-): Promise<CompleteLNURLWithdrawResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(
-      buildURL(
-        '/v0/experimental/lnurl/withdraw/complete',
-        ['k1', k1],
-        ['pr', pr],
-        ['transaction_callback_url', transaction_callback_url]
-      )
-    )
-    return response.data as CompleteLNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Experimental_CreateLNURLWithdrawal = async (
-  req: CreateLNURLWithdrawRequest
-): Promise<CreateLNURLWithdrawResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/experimental/lnurl/withdraw/create', req)
-    return response.data as CreateLNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
 export const Invoices_Get = async (
   id?: string,
   transaction_id?: string,
@@ -1507,11 +1469,12 @@ export const Invoices_List = async (
   start_time?: string,
   end_time?: string,
   type?: string,
-  payment_status?: string,
+  payment_statuses?: Array<InvoiceStatus>,
   transactions_count?: number,
   paid_before_expiry?: boolean,
   expired?: boolean,
-  sort_direction: 'DESCENDING' | 'ASCENDING' = 'DESCENDING'
+  sort: 'DESCENDING' | 'ASCENDING' = 'DESCENDING',
+  sort_by: 'CREATE_TIME' | 'STATUS' | 'AMOUNT' = 'CREATE_TIME'
 ): Promise<InvoiceList> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
@@ -1529,14 +1492,67 @@ export const Invoices_List = async (
         ['start_time', start_time],
         ['end_time', end_time],
         ['type', type],
-        ['payment_status', payment_status],
+        ['payment_statuses', payment_statuses],
         ['transactions_count', transactions_count],
         ['paid_before_expiry', paid_before_expiry],
         ['expired', expired],
-        ['sort_direction', sort_direction]
+        ['sort', sort],
+        ['sort_by', sort_by]
       )
     )
     return response.data as InvoiceList
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Lnurl_GetLNURLWithdrawal = async (secret?: string): Promise<LNURLWithdrawResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/lnurl/withdraw', ['secret', secret]))
+    return response.data as LNURLWithdrawResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Lnurl_CompleteLNURLWithdrawal = async (
+  k1?: string,
+  pr?: string,
+  transaction_callback_url?: string
+): Promise<CompleteLNURLWithdrawResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(
+      buildURL(
+        '/v0/lnurl/withdraw/complete',
+        ['k1', k1],
+        ['pr', pr],
+        ['transaction_callback_url', transaction_callback_url]
+      )
+    )
+    return response.data as CompleteLNURLWithdrawResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Lnurl_CreateLNURLWithdrawal = async (
+  req: CreateLNURLWithdrawRequest
+): Promise<CreateLNURLWithdrawResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.post('/v0/lnurl/withdraw/create', req)
+    return response.data as CreateLNURLWithdrawResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1673,8 +1689,9 @@ export const Transactions_ListTransactions = async (
   end_time?: string,
   direction?: string,
   sort: 'DESCENDING' | 'ASCENDING' = 'DESCENDING',
+  sort_by: 'CREATE_TIME' | 'STATUS' | 'AMOUNT' = 'CREATE_TIME',
   network_type?: string,
-  status?: string,
+  statuses?: Array<TransactionStatus>,
   include_settlements?: boolean
 ): Promise<ListTransactionsResponse> => {
   if (apiKey === '') {
@@ -1693,8 +1710,9 @@ export const Transactions_ListTransactions = async (
         ['end_time', end_time],
         ['direction', direction],
         ['sort', sort],
+        ['sort_by', sort_by],
         ['network_type', network_type],
-        ['status', status],
+        ['statuses', statuses],
         ['include_settlements', include_settlements]
       )
     )
