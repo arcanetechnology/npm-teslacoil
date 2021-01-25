@@ -4,3 +4,4 @@ yarn-error.log
 .idea/
 
 teslacoil.stripped-openapi.json
+teslacoil.openapi.json

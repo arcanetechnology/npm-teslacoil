@@ -172,6 +172,19 @@ export interface BitcoinPrice {
   price_timestamp?: string
 }
 
+export interface BlockchainTransaction {
+  confirmations?: number
+  confirmed_block_hash?: string
+  confirmed_time?: string
+  fee_bitcoin?: number
+  fee_satoshi?: string
+  inputs?: Input[]
+  outputs?: Output[]
+  reasonable_fee?: boolean
+  replace_by_fee?: boolean
+  sent_time?: string
+}
+
 /**
  * Description of event that triggered callback
  */
@@ -201,11 +214,6 @@ export interface ChangePasswordRequest {
    * field.
    */
   repeated_new_password: string
-}
-
-export interface CompleteLNURLWithdrawResponse {
-  status?: string
-  transaction_id?: string
 }
 
 export interface Confirm2faRequest {
@@ -303,40 +311,6 @@ export interface CreateInvoiceRequest {
    * defaults the corresponding value for the account.
    */
   onchain_confirmation_threshold?: number
-}
-
-export interface CreateLNURLWithdrawRequest {
-  custom_complete_url?: string
-  exchange_currency?: FiatcurrencyFiatCurrency
-  /**
-   * if set, will make sure the lnurl withdrawal can't be completed after a set
-   * time defaults to 3600 (1 hour).
-   */
-  expiry_seconds?: number
-  /**
-   * An optional description used to request the caller of this request to
-   * encode this field in the generated lightning request.
-   */
-  lightning_request_memo?: string
-  max_withdrawable_milli_satoshi?: string
-  /**
-   * Minimum amount allowed to withdraw using the generated secret. If not set,
-   * defaults to 0.
-   */
-  min_withdrawable_milli_satoshi?: string
-}
-
-/**
- * Contains all necessary information to show a lnurl withdrawal QR code to the
- * user.
- */
-export interface CreateLNURLWithdrawResponse {
-  k1_secret?: string
-  /**
-   * An encoded lnurl containing a link to GET more information about the
-   * withdrawal, including the secret.
-   */
-  lnurl?: string
 }
 
 /**
@@ -521,6 +495,21 @@ export interface IncomingTransactionEvent {
   amount_bitcoin: number
 }
 
+export interface Input {
+  /**
+   * The address of this input. Usually contains one address, but can be
+   * multiple if the utxo used multisig.
+   */
+  addresses?: string[]
+  amount_bitcoin?: number
+  parent_network_id?: string
+  /**
+   * The output index of the underlying Bitcoin transaction that this specfic
+   * transfer of funds refer to.
+   */
+  transaction_output?: number
+}
+
 /**
  * An invoice that contains all the fields that a Lightning and an on-chain
  * invoice has in common. It also contains a type parameter which indicates
@@ -548,6 +537,11 @@ export interface Invoice {
    * The callback URL associated with this invoice, if any.
    */
   callback_url: string
+  /**
+   * URL to Teslacoil checkout page. Users can be sent here, to pay the amount
+   * requested in the invoice.
+   */
+  checkout_url: string
   /**
    * An (optional) ID you associated with this invoice. This is never
    * used by Teslacoil, other than to identify your invoice when notifying
@@ -679,19 +673,6 @@ export interface InvoiceStatusChangeEvent {
   currency: CurrencyCurrency
   invoice_id: string
   invoice_status: InvoiceStatus
-}
-
-/**
- * Contains all necessary information to prefill the users wallet with info, and
- * complete the withdrawal.
- */
-export interface LNURLWithdrawResponse {
-  callback?: string
-  defaultDescription?: string
-  k1?: string
-  maxWithdrawable?: string
-  minWithdrawable?: string
-  tag?: string
 }
 
 export interface LightningTransaction {
@@ -896,6 +877,20 @@ export interface OnchainTransaction {
  *  - SELL: Sell bitcoin
  */
 export type OrderSide = 'BUY' | 'SELL'
+
+export interface Output {
+  /**
+   * The address of this output. Usually contains one address, but can be
+   * multiple if the utxo used multisig.
+   */
+  addresses?: string[]
+  amount_bitcoin?: number
+  /**
+   * The output index of the underlying Bitcoin transaction that this specfic
+   * transfer of funds refer to.
+   */
+  transaction_output?: number
+}
 
 export interface Permissions {
   accounting: Privileges
@@ -1137,7 +1132,7 @@ export interface Statement {
   transactions?: AccountingTransaction[]
 }
 
-export interface TeslaPayInvoice {
+export interface TeslaPayDeposit {
   /**
    * The invoice amount, denominated in the currency returned.
    */
@@ -1169,6 +1164,7 @@ export interface TeslaPayInvoice {
    */
   expire_time: string
   expired: boolean
+  has_pending_transactions: boolean
   /**
    * The lightning request associated with this invoice.
    */
@@ -1188,6 +1184,40 @@ export interface TeslaPayInvoice {
    */
   settle_time?: string
   status: InvoiceStatus
+}
+
+/**
+ * Contains the fields necessary for a third party to fullfill a withdrawal from
+ * Teslacoil.
+ */
+export interface TeslaPayWithdrawal {
+  /**
+   * The amount the user is withdrawing, denominated in the given currency.
+   */
+  amount: number
+  /**
+   * The amount the user is withdrawing, denominated in bitcoin.
+   */
+  amount_bitcoin: number
+  /**
+   * When this withdrawal was initiated, if any.
+   */
+  create_time: string
+  currency: CurrencyCurrency
+  /**
+   * When this withdrawal was executed, if any.
+   */
+  execute_time?: string
+  expire_time: string
+  /**
+   * How long this withdrawal is valid before it expires, measured in seconds.
+   */
+  expiry_seconds: number
+  /**
+   * Bech32-encoded lightning:... URL the user scan scan/input to withdraw using
+   * LNURL.
+   */
+  ln_url: string
 }
 
 export interface Trade {
@@ -1353,6 +1383,124 @@ export type FiatcurrencyFiatCurrency = 'GBP' | 'NOK' | 'USD' | 'EUR'
 export type InvsortProperty = 'CREATE_TIME' | 'STATUS' | 'AMOUNT'
 
 /**
+ * Response when executing a LNURL withdrawal.
+ */
+export interface LnurlExecuteWithdrawalResponse {
+  /**
+   * The reason for this withdrawal failing, if any. Only set if the status is
+   * error.
+   */
+  reason?: string
+  status?: LnurlStatus
+}
+
+export interface LnurlGetWithdrawalResponse {
+  /**
+   * Link the client needs to hit, in order to execute the withdrawal.
+   */
+  callback?: string
+  defaultDescription?: string
+  /**
+   * The secret associated with this withdrawal.
+   */
+  k1?: string
+  /**
+   * Maximum amount that can be withdrawn for this withdrawal, measured in
+   * millisatoshis.
+   */
+  maxWithdrawable?: string
+  /**
+   * Minimum amount that can be withdrawn for this withdrawal, measured in
+   * millisatoshis.
+   */
+  minWithdrawable?: string
+  /**
+   * If status is error, this explains what went wrong.
+   */
+  reason?: string
+  status?: LnurlStatus
+  tag?: LnurlTag
+}
+
+/**
+ * Possible statuses when executing LNURL withdrawals.
+ */
+export type LnurlStatus = 'OK' | 'ERROR'
+
+export type LnurlTag = 'WITHDRAW_REQUEST'
+
+export interface PreptxExecuteRequest {
+  id?: string
+  /**
+   * Either a bitcoin address or payment request, where the previously specified
+   * amount will be sent.
+   */
+  payment_destination?: string
+}
+
+/**
+ * A prepared transaction that could potentially result in a transaction at a
+ * later point.
+ */
+export interface PreptxPreparation {
+  /**
+   * The amount to send, denominated in set currency.
+   */
+  amount: number
+  /**
+   * The callback URL associated with this prepared transaction, if any.
+   */
+  callback_url?: string
+  /**
+   * URL to the checkout page the end user can be sent to, in order to complete
+   * their withdrawal.
+   */
+  checkout_url: string
+  create_time: string
+  currency: CurrencyCurrency
+  execute_time?: string
+  expire_time: string
+  /**
+   * How long this prepared is valid before it expires, measured in seconds.
+   */
+  expiry_seconds: number
+  /**
+   * The Teslacoil ID of this prepared transaction.
+   */
+  id: string
+  /**
+   * An encoded LNURL containing a link to GET more information about the
+   * withdrawal, including the secret.
+   */
+  ln_url: string
+  /**
+   * The ID of the transaction that happened as a result of this prepared
+   * transaction. Not set if the prepared transaction was never executed.
+   */
+  transaction_id?: string
+}
+
+export interface PreptxPrepareRequest {
+  /**
+   * The amount to send, denominated in the currency supplied.
+   * Cannot be zero or negative.
+   */
+  amount?: number
+  /**
+   * A callback URL to associate with this prepared transaction. If this field
+   * is provided, we send a callback to the specified URL when this transaction
+   * is executed.
+   */
+  callback_url?: string
+  currency?: CurrencyCurrency
+  /**
+   * When a prepared transaction expires, it can no longer be executed.
+   * It defaults to one hour. If set, must be greater than 10 seconds.
+   */
+  expiry_seconds?: number
+}
+
+/**
  * - CREATE_TIME: Sort transactions chronologically. This is the default sorting property.
  *  - STATUS: Sort invoices by their status.
  *  - AMOUNT: Sort invoices by their size.
@@ -1429,139 +1577,124 @@ export const Accounting_GetStatement = async (start_time?: string, end_time?: st
   }
 }
 
-export const Accounts_Get = async (): Promise<Account> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/accounts'))
-    return response.data as Account
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Accounts_Create = async (req: CreateAccountRequest): Promise<Account> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/accounts', req)
-    return response.data as Account
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Accounts_Update = async (req: UpdateAccountRequest): Promise<Account> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.put('/v0/accounts', req)
-    return response.data as Account
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface AccountsRemoveAccessResponse {}
-
-export interface AccountsRemoveAccessQueryParams {
+export interface ApiKeysDeleteQueryParams {
   /**
-   * ID of the user that should no longer have access.
+   * The key you want to delete.
    */
-  user_id?: string
+  hash?: string
 }
 
-export const Accounts_RemoveAccess = async (user_id?: string): Promise<{}> => {
+export const ApiKeys_Delete = async (hash?: string): Promise<ApiKey> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.delete(buildURL('/v0/accounts/access', ['user_id', user_id]))
-    return response.data as {}
+    const response = await api.delete(buildURL('/v0/apikeys', ['hash', hash]))
+    return response.data as ApiKey
   } catch (error) {
     throw Error(error)
   }
 }
 
-export interface AccountsUpdateAccessResponse {}
-
-export const Accounts_UpdateAccess = async (req: UpdateAccessRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/accounts/access', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface AccountsGiveAccessResponse {}
-
-export const Accounts_GiveAccess = async (req: GiveAccessRequest): Promise<{}> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.put('/v0/accounts/access', req)
-    return response.data as {}
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Accounts_List = async (): Promise<ListAccountsResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/accounts/list'))
-    return response.data as ListAccountsResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Accounts_ListAccountNames = async (): Promise<ListAccountNamesResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/accounts/names'))
-    return response.data as ListAccountNamesResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface AccountsGetUserInfoQueryParams {
+export interface ApiKeysGetQueryParams {
   /**
-   * If you are an account owner, you can set this field to get information
-   * about other users.
+   * The hash of the API key you want to retrieve.
    */
-  user_id?: string
+  hash?: string
 }
 
-export const Accounts_GetUserInfo = async (user_id?: string): Promise<AccountUser> => {
+export const ApiKeys_Get = async (hash?: string): Promise<ApiKey> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.get(buildURL('/v0/accounts/user', ['user_id', user_id]))
-    return response.data as AccountUser
+    const response = await api.get(buildURL('/v0/apikeys', ['hash', hash]))
+    return response.data as ApiKey
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const ApiKeys_Create = async (req: CreateApiKeyRequest): Promise<CreateApiKeyResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.post('/v0/apikeys', req)
+    return response.data as CreateApiKeyResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const ApiKeys_List = async (): Promise<ListApiKeysResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/apikeys/list'))
+    return response.data as ListApiKeysResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export interface CurrenciesConvertQueryParams {
+  /**
+   * The base currency used for getting the base/quote price.
+   *
+   *  - BTC: BTC is the ticker for bitcoin
+   */
+  base_currency?: 'BTC' | 'GBP' | 'NOK' | 'USD' | 'EUR'
+  /**
+   * The quote currency used for getting the base/quote price.
+   *
+   *  - BTC: BTC is the ticker for bitcoin
+   */
+  quote_currency?: 'BTC' | 'GBP' | 'NOK' | 'USD' | 'EUR'
+  /**
+   * The amount you want to convert, measured in the base currency. Defaults
+   * to 1.
+   */
+  amount?: number
+}
+
+export const Currencies_Convert = async (
+  base_currency?: string,
+  quote_currency?: string,
+  amount?: number
+): Promise<CurrenciesConvertResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(
+      buildURL(
+        '/v0/currencies/convert',
+        ['base_currency', base_currency],
+        ['quote_currency', quote_currency],
+        ['amount', amount]
+      )
+    )
+    return response.data as CurrenciesConvertResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Exchange_RiskLimits = async (): Promise<RiskLimitsResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/exchange/limits'))
+    return response.data as RiskLimitsResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1665,6 +1798,66 @@ export const Exchange_ListTrades = async (
       )
     )
     return response.data as ListTradesResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export interface FeesEstimateBlockchainFeesQueryParams {
+  /**
+   * The desired block time confirmation target. Defaults to 6.
+   */
+  target?: number
+  /**
+   * The currency the fee should be denominated in, defaults to BTC.
+   *
+   *  - BTC: BTC is the ticker for bitcoin
+   */
+  currency?: 'BTC' | 'GBP' | 'NOK' | 'USD' | 'EUR'
+}
+
+export const Fees_EstimateBlockchainFees = async (
+  target?: number,
+  currency?: string
+): Promise<EstimateBlockchainFeesResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/fees/estimate/blockchain', ['target', target], ['currency', currency]))
+    return response.data as EstimateBlockchainFeesResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export interface FeesEstimateLightningFeesQueryParams {
+  /**
+   * The payment request to query for fees needed to pay.
+   */
+  lightning_request?: string
+  /**
+   * The currency the fee should be denominated in, defaults to BTC.
+   *
+   *  - BTC: BTC is the ticker for bitcoin
+   */
+  currency?: 'BTC' | 'GBP' | 'NOK' | 'USD' | 'EUR'
+}
+
+export const Fees_EstimateLightningFees = async (
+  lightning_request?: string,
+  currency?: string
+): Promise<EstimateLightningFeesResponse> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(
+      buildURL('/v0/fees/estimate/lightning', ['lightning_request', lightning_request], ['currency', currency])
+    )
+    return response.data as EstimateLightningFeesResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1868,202 +2061,16 @@ export const Invoices_List = async (
   }
 }
 
-export interface LnurlGetLNURLWithdrawalQueryParams {
-  /**
-   * the k1 secret generated when creating the lnurl withdrawal.
-   */
-  secret?: string
-}
+export interface SystemPingResponse {}
 
-export const Lnurl_GetLNURLWithdrawal = async (secret?: string): Promise<LNURLWithdrawResponse> => {
+export const System_Ping = async (): Promise<{}> => {
   if (apiKey === '') {
     throw Error(apiKeyNotSetMessage)
   }
 
   try {
-    const response = await api.get(buildURL('/v0/lnurl/withdraw', ['secret', secret]))
-    return response.data as LNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface LnurlCompleteLNURLWithdrawalQueryParams {
-  /**
-   * The generated secret specific to this LNURL Withdrawal.
-   */
-  k1?: string
-  /**
-   * The lightning request teslacoil should pay to complete the LNURL
-   * Withdrawal.
-   */
-  pr?: string
-  /**
-   * The URL we send a POST request to when the transaction is completed.
-   */
-  transaction_callback_url?: string
-}
-
-export const Lnurl_CompleteLNURLWithdrawal = async (
-  k1?: string,
-  pr?: string,
-  transaction_callback_url?: string
-): Promise<CompleteLNURLWithdrawResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(
-      buildURL(
-        '/v0/lnurl/withdraw/complete',
-        ['k1', k1],
-        ['pr', pr],
-        ['transaction_callback_url', transaction_callback_url]
-      )
-    )
-    return response.data as CompleteLNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Lnurl_CreateLNURLWithdrawal = async (
-  req: CreateLNURLWithdrawRequest
-): Promise<CreateLNURLWithdrawResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.post('/v0/lnurl/withdraw/create', req)
-    return response.data as CreateLNURLWithdrawResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface StatsAmountTransactedQueryParams {
-  /**
-   * The earliest transaction that should be included. If not set, includes
-   * everything up to end time.
-   */
-  start_time?: string
-  /**
-   * The latest transaction that should be included. If not set, includes
-   * everything from start time.
-   */
-  end_time?: string
-  /**
-   * The currency you want the response fiat amount to be denominated in.
-   */
-  currency?: 'GBP' | 'NOK' | 'USD' | 'EUR'
-}
-
-export const Stats_AmountTransacted = async (
-  start_time?: string,
-  end_time?: string,
-  currency?: string
-): Promise<AmountTransactedResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(
-      buildURL(
-        '/v0/stats/amount_transacted',
-        ['start_time', start_time],
-        ['end_time', end_time],
-        ['currency', currency]
-      )
-    )
-    return response.data as AmountTransactedResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const Stats_RecentEvents = async (): Promise<RecentEventsResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/stats/recent_events'))
-    return response.data as RecentEventsResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface StatsUsageQueryParams {
-  /**
-   * The earliest event that should be included. If not set, includes everything
-   * up to end time.
-   */
-  start_time?: string
-  /**
-   * The latest event that should be included. If not set, includes everything
-   * from start time.
-   */
-  end_time?: string
-}
-
-export const Stats_Usage = async (start_time?: string, end_time?: string): Promise<UsageResponse> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/stats/usage', ['start_time', start_time], ['end_time', end_time]))
-    return response.data as UsageResponse
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const System_GetLogLevels = async (): Promise<LogLevels> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/system/log'))
-    return response.data as LogLevels
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export const System_SetLogLevels = async (req: SetLogLevelsRequest): Promise<LogLevels> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.patch('/v0/system/log', req)
-    return response.data as LogLevels
-  } catch (error) {
-    throw Error(error)
-  }
-}
-
-export interface TeslaPayGetQueryParams {
-  /**
-   * The Teslacoil ID of the invoice.
-   */
-  id?: string
-}
-
-export const TeslaPay_Get = async (id?: string): Promise<TeslaPayInvoice> => {
-  if (apiKey === '') {
-    throw Error(apiKeyNotSetMessage)
-  }
-
-  try {
-    const response = await api.get(buildURL('/v0/teslapay', ['id', id]))
-    return response.data as TeslaPayInvoice
+    const response = await api.get(buildURL('/v0/system/ping'))
+    return response.data as {}
   } catch (error) {
     throw Error(error)
   }
@@ -2315,6 +2322,61 @@ export const Transactions_SendOnchain = async (req: SendOnchainRequest): Promise
   try {
     const response = await api.post('/v0/transactions/onchain/send', req)
     return response.data as SendTransactionResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export interface TransactionsCancelPreparedTransactionResponse {}
+
+export interface TransactionsCancelPreparedTransactionQueryParams {
+  /**
+   * The Teslacoil ID of this prepared transaction;.
+   */
+  id?: string
+}
+
+export const Transactions_CancelPreparedTransaction = async (id?: string): Promise<{}> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.delete(buildURL('/v0/transactions/prepare', ['id', id]))
+    return response.data as {}
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export interface TransactionsGetPreparedTransactionQueryParams {
+  /**
+   * The Teslacoil ID of this prepared transaction;.
+   */
+  id?: string
+}
+
+export const Transactions_GetPreparedTransaction = async (id?: string): Promise<PreptxPreparation> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.get(buildURL('/v0/transactions/prepare', ['id', id]))
+    return response.data as PreptxPreparation
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Transactions_PrepareTransaction = async (req: PreptxPrepareRequest): Promise<PreptxPreparation> => {
+  if (apiKey === '') {
+    throw Error(apiKeyNotSetMessage)
+  }
+
+  try {
+    const response = await api.post('/v0/transactions/prepare', req)
+    return response.data as PreptxPreparation
   } catch (error) {
     throw Error(error)
   }
