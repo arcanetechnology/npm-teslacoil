@@ -1497,6 +1497,13 @@ export interface PreptxPrepareRequest {
   callback_url?: string
   currency?: CurrencyCurrency
   /**
+   * If set, the users bitcoin wallet will hit this endpoint to complete the
+   * withdrawal It is useful if you want to validate something internally in
+   * your system before sending money to the user. If set, you must remember to
+   * execute the prepared transaction.
+   */
+  custom_complete_url?: string
+  /**
    * When a prepared transaction expires, it can no longer be executed.
    * It defaults to one hour. If set, must be greater than 10 seconds.
    */
