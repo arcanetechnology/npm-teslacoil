@@ -1471,6 +1471,7 @@ export interface PreptxPreparation {
    * The Teslacoil ID of this prepared transaction.
    */
   id: string
+  k1_secret?: string
   /**
    * An encoded LNURL containing a link to GET more information about the
    * withdrawal, including the secret.
