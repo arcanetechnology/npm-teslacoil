@@ -63,6 +63,8 @@ export interface Account {
    */
   onchain_invoice_confirmation_threshold?: number
   pending_balance_bitcoin?: number
+  profile_picture?: string
+  shopify_url?: string
 }
 
 /**
@@ -76,6 +78,7 @@ export interface AccountUser {
   accepted_invoice_spread: number
   account_id: string
   account_name: string
+  account_profile_picture: string
   address_type: AddressType
   admin: boolean
   auto_exchange_currency?: FiatcurrencyFiatCurrency
@@ -102,6 +105,7 @@ export interface AccountUser {
   owner: boolean
   pending_balance_bitcoin: number
   permissions: Permissions
+  shopify_url?: string
   update_time: string
   user_id: string
   user_preferred_display_currency: CryptoCurrencyFormat
@@ -119,6 +123,17 @@ export interface AccountingTransaction {
   network_type?: NetworkType
   outbound_milli_sat?: string
   transaction_description?: string
+}
+
+export interface AddOrUpdateShopifyIntegrationRequest {
+  shopify_url?: string
+}
+
+export interface AddOrUpdateShopifyIntegrationResponse {
+  /**
+   * A html script you should embed in shopify.
+   */
+  script?: string
 }
 
 /**
@@ -314,15 +329,41 @@ export interface CreateInvoiceRequest {
    * defaults the corresponding value for the account.
    */
   onchain_confirmation_threshold?: number
+  /**
+   * An (optional) redirect URL to associate with this invoice.
+   *
+   * If you're not using the Teslacoil checkout solution you can ignore this
+   * field. When using the checkout solution, the user will be automatically
+   * redirected to this URL once payment is complete. The URL should be a
+   * complete URL, with the protocol (https/http) specified.
+   */
+  redirect_url?: string
 }
 
 /**
  * Possible parameters when creating a trade.
  */
 export interface CreateTradeRequest {
-  amount?: number
-  quote?: FiatcurrencyFiatCurrency
-  side?: OrderSide
+  /**
+   * How many units of the base currency you want to trade. Cannot be specified
+   * together with amount quote.
+   */
+  amount_base?: number
+  /**
+   * How many units of the quote currency to trade. Cannot be specified
+   * together with amount base.
+   */
+  amount_quote?: number
+  /**
+   * The base side of your trade.
+   */
+  base?: string
+  provider: Provider
+  /**
+   * The quote side of your trade.
+   */
+  quote?: string
+  side: OrderSide
 }
 
 export interface CreateUserRequest {
@@ -382,6 +423,37 @@ export interface CurrenciesQuoteResponse {
   base_currency: CurrencyCurrency
   quote_currency: CurrencyCurrency
   rate: number
+}
+
+export interface CustomCategory {
+  /**
+   * A set of regular expressions which identify transactions by their label as
+   * belonging in this custom category. If a label matches any single regex in
+   * the set, it is considered to be in the category. These expressions will be
+   * matched against various labels that are present in lnd: on chain
+   * transactions will be matched against their label field, off chain receipts
+   * will be matched against their memo. At present, there is no way to match
+   * forwards or off chain payments. These expressions must be unique across
+   * custom categories, otherwise faraday will not be able to identify which
+   * custom category a transaction belongs in.
+   */
+  label_patterns?: string[]
+  /**
+   * The name for the custom category which will contain all transactions that
+   * are labelled with a string matching one of the regexes provided in
+   * label identifiers.
+   */
+  name?: string
+  /**
+   * Set to true to apply this category to off chain transactions. Can be set in
+   * conjunction with on_chain to apply the category to all transactions.
+   */
+  off_chain?: boolean
+  /**
+   * Set to true to apply this category to on chain transactions. Can be set in
+   * conjunction with off_chain to apply the category to all transactions.
+   */
+  on_chain?: boolean
 }
 
 export interface DecodeLightningResponse {
@@ -458,6 +530,15 @@ export interface Event {
   sent_lightning_transaction?: SentLightningTransactionEvent
   sent_onchain_transaction?: SentOnchainTransactionEvent
   time: string
+}
+
+export interface ExecuteRequest {
+  id?: string
+  /**
+   * Either a bitcoin address or payment request, where the previously specified
+   * amount will be sent.
+   */
+  payment_destination?: string
 }
 
 export interface GetJwtRequest {
@@ -645,7 +726,7 @@ export interface Invoice {
    * are yet-to-be accepted, based on the on-chain confirmation threshold value
    * for this invoice.
    */
-  transactions: Transaction[]
+  transactions: TxTransaction[]
 }
 
 export interface InvoiceList {
@@ -678,68 +759,6 @@ export interface InvoiceStatusChangeEvent {
   invoice_status: InvoiceStatus
 }
 
-export interface LightningTransaction {
-  amount_bitcoin: number
-  amount_satoshi: string
-  /**
-   * The URL to hit when the status of this transaction changes.
-   */
-  callback_url: string
-  /**
-   * Every transaction can have a client ID associated to it. This is not used
-   * by Teslacoil, but can be used to correlate transactions with your internal
-   * database when handling callbacks and other interactions with the Teslacoil
-   * API.
-   */
-  client_id: string
-  /**
-   * The creation time of this transaction.
-   */
-  create_time: string
-  /**
-   * An internal description associated with this transaction. This is only
-   * visible to the creator of the transaction.
-   */
-  description: string
-  direction: TransactionDirection
-  /**
-   * The hashed preimage of this transaction.
-   */
-  hashed_preimage: string
-  id: string
-  invoice_id?: string
-  /**
-   * The lightning request belonging to this transactions. All Lightning
-   * transactions have a lightning request associated with them. Lightning
-   * requests specify the recipient and amount of a transaction, as well as
-   * other, optional, information.
-   */
-  lightning_request: string
-  /**
-   * The encoded lightning request description of this transaction. This is
-   * encoded into the lightning request, and is publicly visible.
-   */
-  memo: string
-  network_fee_bitcoin: number
-  network_fee_satoshi: string
-  /**
-   * If the lightning payment failed, this field specifies why this happened.
-   */
-  payment_error: string
-  /**
-   * The preimage of this transaction, if any. Preimages for transactions are
-   * only available if they are settled.
-   */
-  preimage: string
-  /**
-   * The settlement time of this transaction. This is only available for
-   * completed transactions.
-   */
-  settlement_time: string
-  status: TransactionStatus
-  trades: Trade[]
-}
-
 export interface ListAccountNamesResponse {
   names: string[]
 }
@@ -752,23 +771,9 @@ export interface ListApiKeysResponse {
   keys: ApiKey[]
 }
 
-export interface ListSettlementsResponse {
-  settlements: Settlement[]
-  total: number
-}
-
 export interface ListTradesResponse {
   total: number
   trades: Trade[]
-}
-
-export interface ListTransactionsResponse {
-  /**
-   * How many transactions matched the filtering options sent. Can be used to
-   * implement pagination client-side.
-   */
-  total: number
-  transactions: Transaction[]
 }
 
 export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'OFF'
@@ -790,86 +795,6 @@ export interface NodeAuditResponse {
    * On chain reports for the period queried.
    */
   reports?: ReportEntry[]
-}
-
-export interface OnchainTransaction {
-  /**
-   * The address this transaction was sent to. If this is an outgoing
-   * transaction, this is the recipient. If this as incoming, it is our deposit
-   * address.
-   */
-  address: string
-  /**
-   * How much this transaction was for, i.e. how much it credited/debited the
-   * account. Measured in bitcoin.
-   */
-  amount_bitcoin: number
-  /**
-   * How much this transaction was for, i.e. how much it credited/debited the
-   * account. Measured in satoshis.
-   */
-  amount_satoshi: string
-  /**
-   * The URL, if any, to send updates to whenever events related to this
-   * transaction occurs.
-   */
-  callback_url: string
-  /**
-   * Every transaction can have a client ID associated to it. This is not used
-   * by Teslacoil, but can be used to correlate transactions with your internal
-   * database when handling callbacks and other interactions with the Teslacoil
-   * API.
-   */
-  client_id: string
-  /**
-   * If this transaction is confirmed, this is the block height that the
-   * transaction was confirmed at.
-   */
-  confirmation_block_height: string
-  /**
-   * If this transaction is confirmed, this is the time that the transaction was
-   * confirmed.
-   */
-  confirmation_time: string
-  /**
-   * Whether or not this transaction has been confirmed by being placed into the
-   * Bitcoin blockchain. This does not happen immediately after a transaction is
-   * made, because a Bitcoin miner needs to process it first.
-   */
-  confirmed: boolean
-  /**
-   * When this transaction was created.
-   */
-  create_time: string
-  description: string
-  direction: TransactionDirection
-  /**
-   * The internal Teslacoil ID of this transaction. Can be used to retrieve the
-   * transaction at a later point in time.
-   */
-  id: string
-  invoice_id?: string
-  /**
-   * How much fees we paid to the bitcoin miners for this transaction. Not set
-   * if this transaction was sent to us, as we can't know that.
-   */
-  network_fee_bitcoin: number
-  /**
-   * How much fees we paid to the bitcoin miners for this transaction. Not set
-   * if this transaction was sent to us, as we can't know that.
-   */
-  network_fee_satoshi: string
-  /**
-   * The Bitcoin network transaction ID of this transaction. This can be used to
-   * look up the transaction in a block explorer or a Bitcoin node.
-   */
-  network_id: string
-  trades: Trade[]
-  /**
-   * The output index of the underlying Bitcoin transaction that this specfic
-   * transfer of funds refer to.
-   */
-  transaction_output: string
 }
 
 /**
@@ -909,12 +834,93 @@ export interface Permissions {
   users: Privileges
 }
 
+/**
+ * A prepared transaction that could potentially result in a transaction at a
+ * later point.
+ */
+export interface Preparation {
+  /**
+   * The amount to send, denominated in set currency.
+   */
+  amount: number
+  /**
+   * The callback URL associated with this prepared transaction, if any.
+   */
+  callback_url?: string
+  /**
+   * URL to the checkout page the end user can be sent to, in order to complete
+   * their withdrawal.
+   */
+  checkout_url: string
+  create_time: string
+  currency: CurrencyCurrency
+  execute_time?: string
+  expire_time: string
+  /**
+   * How long this prepared is valid before it expires, measured in seconds.
+   */
+  expiry_seconds: number
+  /**
+   * The Teslacoil ID of this prepared transaction.
+   */
+  id: string
+  k1_secret?: string
+  /**
+   * An encoded LNURL containing a link to GET more information about the
+   * withdrawal, including the secret.
+   */
+  ln_url: string
+  /**
+   * The ID of the transaction that happened as a result of this prepared
+   * transaction. Not set if the prepared transaction was never executed.
+   */
+  transaction_id?: string
+}
+
+export interface PrepareRequest {
+  /**
+   * The amount to send, denominated in the currency supplied.
+   * Cannot be zero or negative.
+   */
+  amount?: number
+  /**
+   * A callback URL to associate with this prepared transaction. If this field
+   * is provided, we send a callback to the specified URL when this transaction
+   * is executed.
+   */
+  callback_url?: string
+  currency?: CurrencyCurrency
+  /**
+   * If set, the users bitcoin wallet will hit this endpoint to complete the
+   * withdrawal It is useful if you want to validate something internally in
+   * your system before sending money to the user. If set, you must remember to
+   * execute the prepared transaction.
+   */
+  custom_complete_url?: string
+  /**
+   * When a prepared transaction expires, it can no longer be executed.
+   * It defaults to one hour. If set, must be greater than 10 seconds.
+   */
+  expiry_seconds?: number
+  /**
+   * An (optional) redirect URL to associate with this prepared transaction.
+   *
+   * If you're not using the Teslacoil checkout solution you can ignore this
+   * field. When using the checkout solution, the user will be automatically
+   * redirected to this URL once payment is complete. The URL should be a
+   * complete URL, with the protocol (https/http) specified.
+   */
+  redirect_url?: string
+}
+
 export interface Privileges {
   create: boolean
   delete: boolean
   read: boolean
   update: boolean
 }
+
+export type Provider = 'ENIGMA' | 'KRAKEN'
 
 export interface RecentEventsResponse {
   events?: Event[]
@@ -934,6 +940,11 @@ export interface ReportEntry {
    * Whether the entry is a credit or a debit.
    */
   credit?: boolean
+  /**
+   * This field will be populated for entry type custom, and represents the name
+   * of a custom category that the report was produced with.
+   */
+  custom_category?: string
   /**
    * The fiat amount of the entry's amount in USD.
    */
@@ -988,92 +999,11 @@ export interface RiskLimitsResponse {
   [key: string]: any
 }
 
-export interface SendLightningRequest {
-  /**
-   * The URL we send a POST request to when the transaction is completed.
-   */
-  callback_url?: string
-  /**
-   * An (optional) ID you associated with this transaction. This is never
-   * used by Teslacoil, other than to identify your transaction when notifying
-   * you of updates, as well as letting you retrieve the transaction by this
-   * ID. We wont validate that this ID is unique to your transaction. So if you
-   * want to use this field to later retrieve a transaction, you will have to
-   * make sure yourself that it only identifies a single element.
-   */
-  client_id?: string
-  /**
-   * An optional description to associate with this transaction. This is only
-   * visible to the sender of this request.
-   */
-  description?: string
-  exchange_currency?: FiatcurrencyFiatCurrency
-  lightning_request?: string
-}
-
-export interface SendOnchainRequest {
-  /**
-   * The destination bitcoin address. Must be set.
-   */
-  address?: string
-  /**
-   * The amount to send, denominated in the currency supplied.
-   * Cannot be zero or negative.
-   */
-  amount?: number
-  /**
-   * The URL, if any, to send updates to whenever events related to this
-   * transaction occurs.
-   */
-  callback_url?: string
-  /**
-   * An (optional) ID you can associate with this transaction. This is never
-   * used by Teslacoil, other than to identify your transaction when notifying
-   * you of updates, as well as letting you retrieve the transaction by this ID.
-   * We wont validate that this ID is unique to your transactions. So if you
-   * want to use this field to later retrieve a transaction, you will have to
-   * make sure yourself that it only identifies a single element.
-   */
-  client_id?: string
-  currency?: CurrencyCurrency
-  /**
-   * An (optional) description to associate with this transaction. Only visible
-   * to the sender of the transaction.
-   */
-  description?: string
-  exchange_currency?: FiatcurrencyFiatCurrency
-  /**
-   * If set, we use this as the fee rate for your transaction, measured in
-   * satoshi per (virtual) byte.
-   */
-  fee_satoshi_per_byte?: number
-  /**
-   * If set, we try and construct the transaction such that it is confirmed by
-   * this number of blocks. A higher value here means a lower network fee, but
-   * you will have to wait longer until the transaction is included in the
-   * blockchain. A lower value would make your transaction confirm quicker, but
-   * it would be more expensive.
-   */
-  target_confirmation?: number
-}
-
 export interface SendPasswordResetEmailRequest {
   /**
    * The email the user signed up with. This is a required field.
    */
   email?: string
-}
-
-/**
- * The fields returned when a transaction was successfully initiated.
- * It does not include specific information about the transaction for security
- * purposes, as there are several steps payment must go through before it is
- * sent which might take some time. You can poll for the latest updates using
- * the provided url.
- */
-export interface SendTransactionResponse {
-  id?: string
-  url?: string
 }
 
 export interface SentLightningTransactionEvent {
@@ -1096,28 +1026,6 @@ export interface SetLogLevelsRequestDetailed {
 }
 
 /**
- * A settlement represents the finalization of trades performed at a prior time.
- * The parties transfer funds to each other to settle their debts.
- */
-export interface Settlement {
-  amount?: number
-  create_time?: string
-  currency?: CurrencyCurrency
-  direction?: TransactionDirection
-  /**
-   * Whether or not this settlement is considered finished. It is considered
-   * finished if all parties have sent and received the sums agreed upon.
-   */
-  done?: boolean
-  /**
-   * When, if any, this settlement was finalized.
-   */
-  finalize_time?: string
-  id?: string
-  transactions?: Transaction[]
-}
-
-/**
  * - DESCENDING: Sort transactions descending, chronologically
  *  - ASCENDING: Sort transactions ascending, chronologically
  */
@@ -1136,6 +1044,7 @@ export interface Statement {
 }
 
 export interface TeslaPayDeposit {
+  account_profile_picture: string
   /**
    * The invoice amount, denominated in the currency returned.
    */
@@ -1149,6 +1058,11 @@ export interface TeslaPayDeposit {
    * The bitcoin address associated with this invoice.
    */
   bitcoin_address: string
+  /**
+   * URL to Teslacoil checkout page. Users can be sent here, to pay the amount
+   * requested in the invoice.
+   */
+  checkout_url: string
   currency: CurrencyCurrency
   /**
    * the custom order ID associated with this invoice.
@@ -1169,6 +1083,10 @@ export interface TeslaPayDeposit {
   expired: boolean
   has_pending_transactions: boolean
   /**
+   * The Teslacoil ID for this invoice.
+   */
+  id: string
+  /**
    * The lightning request associated with this invoice.
    */
   lightning_request?: string
@@ -1176,6 +1094,11 @@ export interface TeslaPayDeposit {
    * Your company name.
    */
   recipient: string
+  /**
+   * URL to redirect the user to on completion. Overriden by query parameter
+   * redirect URL.
+   */
+  redirect_url: string
   /**
    * The bitcoin amount expected to be received given the current exchange rate.
    * If the invoice has already received partial payment, this field contains
@@ -1194,6 +1117,7 @@ export interface TeslaPayDeposit {
  * Teslacoil.
  */
 export interface TeslaPayWithdrawal {
+  account_profile_picture: string
   /**
    * The amount the user is withdrawing, denominated in the given currency.
    */
@@ -1221,15 +1145,21 @@ export interface TeslaPayWithdrawal {
    * LNURL.
    */
   ln_url: string
+  /**
+   * URL to redirect the user to on completion. Overriden by query parameter
+   * redirect URL.
+   */
+  redirect_url: string
 }
 
 export interface Trade {
   amount_base: number
   amount_quote: number
-  base: CurrencyCurrency
+  base: string
   create_time: string
+  fee: number
   id: string
-  quote: CurrencyCurrency
+  quote: string
   rate: number
   side: OrderSide
   status: TradeStatus
@@ -1244,58 +1174,19 @@ export interface Trade {
  * creating and describing trades.
  *
  *  - TRADE_FAILED: The trade could not be completed.
- *  - TRADE_ACCEPTED: The OTC desk has accepted the order.
- *  - TRADE_INITIATED: A trade has been initiated, but the OTC desk has not yet accepted the
- * order.
+ *  - TRADE_ACCEPTED: The exchange provider has accepted the order but not yet closed it.
+ *  - TRADE_INITIATED: A trade has been initiated, but the exchange provider has not yet accepted
+ * the order.
+ *  - TRADE_EXPIRED: The trade was not filled in time and is expired.
+ *  - TRADE_COMPLETE: The trade is accepted and exchanged at the exchange provider.
  */
-export type TradeStatus = 'TRADE_FAILED' | 'TRADE_ACCEPTED' | 'TRADE_INITIATED'
-
-export interface Transaction {
-  account_id: string
-  amount_bitcoin: number
-  amount_satoshi: string
-  /**
-   * The URL, if any, to send updates to whenever events related to this
-   * transaction occurs.
-   */
-  callback_url: string
-  client_id: string
-  complete_time?: string
-  create_time: string
-  description: string
-  /**
-   * Either the Bitcoin address or Lighting request of this transcation.
-   */
-  destination: string
-  direction: TransactionDirection
-  id: string
-  invoice_id?: string
-  network_fee_bitcoin: number
-  network_fee_satoshi: string
-  /**
-   * The Bitcoin network transaction ID or the lightning transaction payment
-   * hash of this transaction. It can be used to identify the transaction in the
-   * respective networks.
-   */
-  network_id: string
-  network_type: NetworkType
-  status: TransactionStatus
-  trades: Trade[]
-}
+export type TradeStatus = 'TRADE_FAILED' | 'TRADE_ACCEPTED' | 'TRADE_INITIATED' | 'TRADE_EXPIRED' | 'TRADE_COMPLETE'
 
 /**
  * - INCOMING: Received to Teslacoil, a deposit
  *  - OUTGOING: Sent from Teslacoil, a withdrawal
  */
 export type TransactionDirection = 'INCOMING' | 'OUTGOING'
-
-/**
- * - PENDING: The transaction has not reached a conclusion whether it's completed or
- * failed yet
- *  - COMPLETED: The transaction has been received by the recipient, and is settled.
- *  - FAILED: The transaction has failed
- */
-export type TransactionStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
 
 export interface UpdateAccessRequest {
   new_permissions?: Permissions
@@ -1317,6 +1208,10 @@ export interface UpdateAccountRequest {
    * for fee estimation. If set, smallest value is 1, highest is 1008.
    */
   default_conf_target?: number
+  /**
+   * New logo for the account. Expects base64-encoded string.
+   */
+  logo?: string
   new_auto_exchange_currency?: FiatcurrencyFiatCurrency
   new_name?: string
   new_permissions?: Permissions
@@ -1324,11 +1219,6 @@ export interface UpdateAccountRequest {
    * The new value for the on-chain invoice confirmation threshold setting.
    */
   onchain_invoice_confirmation_threshold?: number
-  /**
-   * If this field is set, the accepted invoice spread will be removed from the
-   * account.
-   */
-  remove_accepted_invoice_spread?: boolean
   /**
    * If this field is set, the auto exchange currency will be removed, and no
    * invoices will be auto exchanged going forward.
@@ -1432,83 +1322,304 @@ export type LnurlStatus = 'OK' | 'ERROR'
 
 export type LnurlTag = 'WITHDRAW_REQUEST'
 
-export interface PreptxExecuteRequest {
-  id?: string
+export interface TxLightning {
+  amount_bitcoin: number
+  amount_satoshi: string
   /**
-   * Either a bitcoin address or payment request, where the previously specified
-   * amount will be sent.
+   * The URL to hit when the status of this transaction changes.
    */
-  payment_destination?: string
+  callback_url: string
+  /**
+   * Every transaction can have a client ID associated to it. This is not used
+   * by Teslacoil, but can be used to correlate transactions with your internal
+   * database when handling callbacks and other interactions with the Teslacoil
+   * API.
+   */
+  client_id: string
+  /**
+   * The creation time of this transaction.
+   */
+  create_time: string
+  /**
+   * An internal description associated with this transaction. This is only
+   * visible to the creator of the transaction.
+   */
+  description: string
+  direction: TransactionDirection
+  /**
+   * The hashed preimage of this transaction.
+   */
+  hashed_preimage: string
+  id: string
+  invoice_id?: string
+  /**
+   * The lightning request belonging to this transactions. All Lightning
+   * transactions have a lightning request associated with them. Lightning
+   * requests specify the recipient and amount of a transaction, as well as
+   * other, optional, information.
+   */
+  lightning_request: string
+  /**
+   * The encoded lightning request description of this transaction. This is
+   * encoded into the lightning request, and is publicly visible.
+   */
+  memo: string
+  network_fee_bitcoin: number
+  network_fee_satoshi: string
+  /**
+   * If the lightning payment failed, this field specifies why this happened.
+   */
+  payment_error: string
+  /**
+   * The preimage of this transaction, if any. Preimages for transactions are
+   * only available if they are settled.
+   */
+  preimage: string
+  /**
+   * The settlement time of this transaction. This is only available for
+   * completed transactions.
+   */
+  settlement_time: string
+  status: TxStatus
+  trades: Trade[]
 }
 
-/**
- * A prepared transaction that could potentially result in a transaction at a
- * later point.
- */
-export interface PreptxPreparation {
+export interface TxListResponse {
   /**
-   * The amount to send, denominated in set currency.
+   * How many transactions matched the filtering options sent. Can be used to
+   * implement pagination client-side.
    */
-  amount: number
+  total: number
+  transactions: TxTransaction[]
+}
+
+export interface TxListSettlementsResponse {
+  settlements: TxSettlement[]
+  total: number
+}
+
+export interface TxOnchain {
   /**
-   * The callback URL associated with this prepared transaction, if any.
+   * The address this transaction was sent to. If this is an outgoing
+   * transaction, this is the recipient. If this as incoming, it is our deposit
+   * address.
+   */
+  address: string
+  /**
+   * How much this transaction was for, i.e. how much it credited/debited the
+   * account. Measured in bitcoin.
+   */
+  amount_bitcoin: number
+  /**
+   * How much this transaction was for, i.e. how much it credited/debited the
+   * account. Measured in satoshis.
+   */
+  amount_satoshi: string
+  /**
+   * The URL, if any, to send updates to whenever events related to this
+   * transaction occurs.
+   */
+  callback_url: string
+  /**
+   * Every transaction can have a client ID associated to it. This is not used
+   * by Teslacoil, but can be used to correlate transactions with your internal
+   * database when handling callbacks and other interactions with the Teslacoil
+   * API.
+   */
+  client_id: string
+  /**
+   * If this transaction is confirmed, this is the block height that the
+   * transaction was confirmed at.
+   */
+  confirmation_block_height: string
+  /**
+   * If this transaction is confirmed, this is the time that the transaction was
+   * confirmed.
+   */
+  confirmation_time: string
+  /**
+   * Whether or not this transaction has been confirmed by being placed into the
+   * Bitcoin blockchain. This does not happen immediately after a transaction is
+   * made, because a Bitcoin miner needs to process it first.
+   */
+  confirmed: boolean
+  /**
+   * When this transaction was created.
+   */
+  create_time: string
+  description: string
+  direction: TransactionDirection
+  /**
+   * The internal Teslacoil ID of this transaction. Can be used to retrieve the
+   * transaction at a later point in time.
+   */
+  id: string
+  invoice_id?: string
+  /**
+   * How much fees we paid to the bitcoin miners for this transaction. Not set
+   * if this transaction was sent to us, as we can't know that.
+   */
+  network_fee_bitcoin: number
+  /**
+   * How much fees we paid to the bitcoin miners for this transaction. Not set
+   * if this transaction was sent to us, as we can't know that.
+   */
+  network_fee_satoshi: string
+  /**
+   * The Bitcoin network transaction ID of this transaction. This can be used to
+   * look up the transaction in a block explorer or a Bitcoin node.
+   */
+  network_id: string
+  trades: Trade[]
+  /**
+   * The output index of the underlying Bitcoin transaction that this specfic
+   * transfer of funds refer to.
+   */
+  transaction_output: string
+}
+
+export interface TxSendLightningRequest {
+  /**
+   * The URL we send a POST request to when the transaction is completed.
    */
   callback_url?: string
   /**
-   * URL to the checkout page the end user can be sent to, in order to complete
-   * their withdrawal.
+   * An (optional) ID you associated with this transaction. This is never
+   * used by Teslacoil, other than to identify your transaction when notifying
+   * you of updates, as well as letting you retrieve the transaction by this
+   * ID. We wont validate that this ID is unique to your transaction. So if you
+   * want to use this field to later retrieve a transaction, you will have to
+   * make sure yourself that it only identifies a single element.
    */
-  checkout_url: string
-  create_time: string
-  currency: CurrencyCurrency
-  execute_time?: string
-  expire_time: string
+  client_id?: string
   /**
-   * How long this prepared is valid before it expires, measured in seconds.
+   * An optional description to associate with this transaction. This is only
+   * visible to the sender of this request.
    */
-  expiry_seconds: number
-  /**
-   * The Teslacoil ID of this prepared transaction.
-   */
-  id: string
-  k1_secret?: string
-  /**
-   * An encoded LNURL containing a link to GET more information about the
-   * withdrawal, including the secret.
-   */
-  ln_url: string
-  /**
-   * The ID of the transaction that happened as a result of this prepared
-   * transaction. Not set if the prepared transaction was never executed.
-   */
-  transaction_id?: string
+  description?: string
+  exchange_currency?: FiatcurrencyFiatCurrency
+  lightning_request?: string
 }
 
-export interface PreptxPrepareRequest {
+export interface TxSendOnchainRequest {
+  /**
+   * The destination bitcoin address. Must be set.
+   */
+  address?: string
   /**
    * The amount to send, denominated in the currency supplied.
    * Cannot be zero or negative.
    */
   amount?: number
   /**
-   * A callback URL to associate with this prepared transaction. If this field
-   * is provided, we send a callback to the specified URL when this transaction
-   * is executed.
+   * The URL, if any, to send updates to whenever events related to this
+   * transaction occurs.
    */
   callback_url?: string
+  /**
+   * An (optional) ID you can associate with this transaction. This is never
+   * used by Teslacoil, other than to identify your transaction when notifying
+   * you of updates, as well as letting you retrieve the transaction by this ID.
+   * We wont validate that this ID is unique to your transactions. So if you
+   * want to use this field to later retrieve a transaction, you will have to
+   * make sure yourself that it only identifies a single element.
+   */
+  client_id?: string
   currency?: CurrencyCurrency
   /**
-   * If set, the users bitcoin wallet will hit this endpoint to complete the
-   * withdrawal It is useful if you want to validate something internally in
-   * your system before sending money to the user. If set, you must remember to
-   * execute the prepared transaction.
+   * An (optional) description to associate with this transaction. Only visible
+   * to the sender of the transaction.
    */
-  custom_complete_url?: string
+  description?: string
+  exchange_currency?: FiatcurrencyFiatCurrency
   /**
-   * When a prepared transaction expires, it can no longer be executed.
-   * It defaults to one hour. If set, must be greater than 10 seconds.
+   * If set, we use this as the fee rate for your transaction, measured in
+   * satoshi per (virtual) byte.
    */
-  expiry_seconds?: number
+  fee_satoshi_per_byte?: number
+  /**
+   * If set, we try and construct the transaction such that it is confirmed by
+   * this number of blocks. A higher value here means a lower network fee, but
+   * you will have to wait longer until the transaction is included in the
+   * blockchain. A lower value would make your transaction confirm quicker, but
+   * it would be more expensive.
+   */
+  target_confirmation?: number
+}
+
+/**
+ * The fields returned when a transaction was successfully initiated.
+ * It does not include specific information about the transaction for security
+ * purposes, as there are several steps payment must go through before it is
+ * sent which might take some time. You can poll for the latest updates using
+ * the provided url.
+ */
+export interface TxSendResponse {
+  id?: string
+  url?: string
+}
+
+/**
+ * A settlement represents the finalization of trades performed at a prior time.
+ * The parties transfer funds to each other to settle their debts.
+ */
+export interface TxSettlement {
+  amount?: number
+  create_time?: string
+  currency?: CurrencyCurrency
+  direction?: TransactionDirection
+  /**
+   * Whether or not this settlement is considered finished. It is considered
+   * finished if all parties have sent and received the sums agreed upon.
+   */
+  done?: boolean
+  /**
+   * When, if any, this settlement was finalized.
+   */
+  finalize_time?: string
+  id?: string
+  transactions?: TxTransaction[]
+}
+
+/**
+ * - PENDING: The transaction has not reached a conclusion whether it's completed or
+ * failed yet
+ *  - COMPLETED: The transaction has been received by the recipient, and is settled.
+ *  - FAILED: The transaction has failed
+ */
+export type TxStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
+
+export interface TxTransaction {
+  account_id: string
+  amount_bitcoin: number
+  amount_satoshi: string
+  /**
+   * The URL, if any, to send updates to whenever events related to this
+   * transaction occurs.
+   */
+  callback_url: string
+  client_id: string
+  complete_time?: string
+  create_time: string
+  description: string
+  /**
+   * Either the Bitcoin address or Lighting request of this transcation.
+   */
+  destination: string
+  direction: TransactionDirection
+  id: string
+  invoice_id?: string
+  network_fee_bitcoin: number
+  network_fee_satoshi: string
+  /**
+   * The Bitcoin network transaction ID or the lightning transaction payment
+   * hash of this transaction. It can be used to identify the transaction in the
+   * respective networks.
+   */
+  network_id: string
+  network_type: NetworkType
+  status: TxStatus
+  trades: Trade[]
 }
 
 /**
@@ -1643,6 +1754,17 @@ export const Accounts_ListAccountNames = async (): Promise<ListAccountNamesRespo
   try {
     const response = await api.get(buildURL('/v0/accounts/names'))
     return response.data as ListAccountNamesResponse
+  } catch (error) {
+    throw Error(error)
+  }
+}
+
+export const Accounts_AddOrUpdateShopifyIntegration = async (
+  req: AddOrUpdateShopifyIntegrationRequest
+): Promise<AddOrUpdateShopifyIntegrationResponse> => {
+  try {
+    const response = await api.post('/v0/accounts/shopify', req)
+    return response.data as AddOrUpdateShopifyIntegrationResponse
   } catch (error) {
     throw Error(error)
   }
@@ -1887,10 +2009,10 @@ export const Exchange_RiskLimits = async (): Promise<RiskLimitsResponse> => {
   }
 }
 
-export const Exchange_ListSettlements = async (): Promise<ListSettlementsResponse> => {
+export const Exchange_ListSettlements = async (): Promise<TxListSettlementsResponse> => {
   try {
     const response = await api.get(buildURL('/v0/exchange/settlements/list'))
-    return response.data as ListSettlementsResponse
+    return response.data as TxListSettlementsResponse
   } catch (error) {
     throw Error(error)
   }
@@ -2320,11 +2442,15 @@ export interface TeslaPayGetDepositQueryParams {
    * The Teslacoil ID of the deposit.
    */
   id?: string
+  /**
+   * The client ID associated with this invoice.
+   */
+  client_id?: string
 }
 
-export const TeslaPay_GetDeposit = async (id?: string): Promise<TeslaPayDeposit> => {
+export const TeslaPay_GetDeposit = async (id?: string, client_id?: string): Promise<TeslaPayDeposit> => {
   try {
-    const response = await api.get(buildURL('/v0/teslapay/deposit', ['id', id]))
+    const response = await api.get(buildURL('/v0/teslapay/deposit', ['id', id], ['client_id', client_id]))
     return response.data as TeslaPayDeposit
   } catch (error) {
     throw Error(error)
@@ -2358,10 +2484,10 @@ export interface TransactionsGetTransactionQueryParams {
   client_id?: string
 }
 
-export const Transactions_GetTransaction = async (id?: string, client_id?: string): Promise<Transaction> => {
+export const Transactions_GetTransaction = async (id?: string, client_id?: string): Promise<TxTransaction> => {
   try {
     const response = await api.get(buildURL('/v0/transactions', ['id', id], ['client_id', client_id]))
-    return response.data as Transaction
+    return response.data as TxTransaction
   } catch (error) {
     throw Error(error)
   }
@@ -2378,15 +2504,12 @@ export interface TransactionsGetLightningQueryParams {
   lightning_request?: string
 }
 
-export const Transactions_GetLightning = async (
-  id?: string,
-  lightning_request?: string
-): Promise<LightningTransaction> => {
+export const Transactions_GetLightning = async (id?: string, lightning_request?: string): Promise<TxLightning> => {
   try {
     const response = await api.get(
       buildURL('/v0/transactions/lightning', ['id', id], ['lightning_request', lightning_request])
     )
-    return response.data as LightningTransaction
+    return response.data as TxLightning
   } catch (error) {
     throw Error(error)
   }
@@ -2410,10 +2533,10 @@ export const Transactions_DecodeLightning = async (lightning_request?: string): 
   }
 }
 
-export const Transactions_SendLightning = async (req: SendLightningRequest): Promise<SendTransactionResponse> => {
+export const Transactions_SendLightning = async (req: TxSendLightningRequest): Promise<TxSendResponse> => {
   try {
     const response = await api.post('/v0/transactions/lightning/send', req)
-    return response.data as SendTransactionResponse
+    return response.data as TxSendResponse
   } catch (error) {
     throw Error(error)
   }
@@ -2506,7 +2629,7 @@ export const Transactions_ListTransactions = async (
   network_type?: string,
   statuses?: ('PENDING' | 'COMPLETED' | 'FAILED')[],
   include_settlements?: boolean
-): Promise<ListTransactionsResponse> => {
+): Promise<TxListResponse> => {
   try {
     const response = await api.get(
       buildURL(
@@ -2525,7 +2648,7 @@ export const Transactions_ListTransactions = async (
         ['include_settlements', include_settlements]
       )
     )
-    return response.data as ListTransactionsResponse
+    return response.data as TxListResponse
   } catch (error) {
     throw Error(error)
   }
@@ -2550,21 +2673,21 @@ export const Transactions_GetOnchain = async (
   id?: string,
   client_id?: string,
   network_id?: string
-): Promise<OnchainTransaction> => {
+): Promise<TxOnchain> => {
   try {
     const response = await api.get(
       buildURL('/v0/transactions/onchain', ['id', id], ['client_id', client_id], ['network_id', network_id])
     )
-    return response.data as OnchainTransaction
+    return response.data as TxOnchain
   } catch (error) {
     throw Error(error)
   }
 }
 
-export const Transactions_SendOnchain = async (req: SendOnchainRequest): Promise<SendTransactionResponse> => {
+export const Transactions_SendOnchain = async (req: TxSendOnchainRequest): Promise<TxSendResponse> => {
   try {
     const response = await api.post('/v0/transactions/onchain/send', req)
-    return response.data as SendTransactionResponse
+    return response.data as TxSendResponse
   } catch (error) {
     throw Error(error)
   }
@@ -2595,30 +2718,28 @@ export interface TransactionsGetPreparedTransactionQueryParams {
   id?: string
 }
 
-export const Transactions_GetPreparedTransaction = async (id?: string): Promise<PreptxPreparation> => {
+export const Transactions_GetPreparedTransaction = async (id?: string): Promise<Preparation> => {
   try {
     const response = await api.get(buildURL('/v0/transactions/prepare', ['id', id]))
-    return response.data as PreptxPreparation
+    return response.data as Preparation
   } catch (error) {
     throw Error(error)
   }
 }
 
-export const Transactions_PrepareTransaction = async (req: PreptxPrepareRequest): Promise<PreptxPreparation> => {
+export const Transactions_PrepareTransaction = async (req: PrepareRequest): Promise<Preparation> => {
   try {
     const response = await api.post('/v0/transactions/prepare', req)
-    return response.data as PreptxPreparation
+    return response.data as Preparation
   } catch (error) {
     throw Error(error)
   }
 }
 
-export const Transactions_ExecutePreparedTransaction = async (
-  req: PreptxExecuteRequest
-): Promise<PreptxPreparation> => {
+export const Transactions_ExecutePreparedTransaction = async (req: ExecuteRequest): Promise<Preparation> => {
   try {
     const response = await api.post('/v0/transactions/prepare/execute', req)
-    return response.data as PreptxPreparation
+    return response.data as Preparation
   } catch (error) {
     throw Error(error)
   }
